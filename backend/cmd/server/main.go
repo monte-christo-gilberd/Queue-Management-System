@@ -36,11 +36,21 @@ func main() {
 	userService := service.NewUserService(userRepo, cfg.JWTSecret)
 	userHandler := handler.NewUserHandler(userService)
 
-	engine := router.SetupRouter(router.NewAppRouter(
-		ticketHandler,
-		userHandler,
-		middleware.RequireAuth(cfg.JWTSecret),
-	))
+	queueRepo := repository.NewQueueRepository(db)
+	subscriptionChecker := repository.NewSubscriptionChecker(db)
+	queueService := service.NewQueueService(queueRepo, subscriptionChecker, txRunner)
+	queueHandler := handler.NewQueueHandler(queueService)
+
+	engine := router.SetupRouter(
+		router.NewAppRouter(
+			ticketHandler,
+			userHandler,
+			queueHandler,
+			middleware.RequireAuth(
+				cfg.JWTSecret,
+			),
+		),
+	)
 
 	port := fmt.Sprintf(":%s", cfg.Port)
 	engine.Run(port)

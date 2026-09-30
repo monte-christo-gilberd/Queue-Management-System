@@ -28,13 +28,17 @@ type UserHandler struct {
 	service UserService
 }
 
-func NewUserHandler(service UserService) *UserHandler {
+func NewUserHandler(
+	service UserService,
+) *UserHandler {
 	return &UserHandler{
 		service: service,
 	}
 }
 
-func (h *UserHandler) Register(c *gin.Context) {
+func (h *UserHandler) Register(
+	c *gin.Context,
+) {
 
 	ctx := c.Request.Context()
 	var request dto.RegisterRequest
@@ -85,7 +89,9 @@ func (h *UserHandler) Register(c *gin.Context) {
 
 }
 
-func (h *UserHandler) Login(c *gin.Context) {
+func (h *UserHandler) Login(
+	c *gin.Context,
+) {
 
 	ctx := c.Request.Context()
 	var request dto.LoginRequest

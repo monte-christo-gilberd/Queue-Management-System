@@ -2,30 +2,17 @@ package router
 
 import "github.com/gin-gonic/gin"
 
-type TicketHandler interface {
-	Join(c *gin.Context)
-	Next(c *gin.Context)
-}
-
-type UserHandler interface {
-	Register(c *gin.Context)
-	Login(c *gin.Context)
-}
-
-type AppRouter struct {
-	ticketHandler  TicketHandler
-	userHandler    UserHandler
-	authMiddleware gin.HandlerFunc
-}
 
 func NewAppRouter(
 	ticketHandler TicketHandler,
 	userHandler UserHandler,
+	queueHandler QueueHandler,
 	authMiddleware gin.HandlerFunc,
 ) *AppRouter {
 	return &AppRouter{
 		ticketHandler:  ticketHandler,
 		userHandler:    userHandler,
+		queueHandler:   queueHandler,
 		authMiddleware: authMiddleware,
 	}
 }
@@ -35,16 +22,31 @@ func SetupRouter(router *AppRouter) *gin.Engine {
 	api := engine.Group("/api")
 
 	users := api.Group("/users")
+	
+	queues := api.Group("/queues")
+	queues.Use(router.authMiddleware)
+	
+	queue := queues.Group("/:queue_id")
+	
+
 	{
 		users.POST("/register", router.userHandler.Register)
 		users.POST("/login", router.userHandler.Login)
 	}
 
-	queue := api.Group("queues/:queue_id")
-	queue.Use(router.authMiddleware)
+	{
+		queues.POST("", router.queueHandler.Create)
+		queues.GET("", router.queueHandler.List)
+	}
+
 	{
 		queue.POST("/join", router.ticketHandler.Join)
 		queue.POST("/next", router.ticketHandler.Next)
+
+		queue.GET("", router.queueHandler.Get)
+		queue.PUT("", router.queueHandler.Update)
+		queue.PUT("/authz", router.queueHandler.UpdateAuthz)
+		queue.POST("/close", router.queueHandler.Close)
 	}
 
 	return engine

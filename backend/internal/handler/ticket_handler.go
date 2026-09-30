@@ -27,13 +27,17 @@ type TicketHandler struct {
 	service TicketService
 }
 
-func NewTicketHandler(service TicketService) *TicketHandler {
+func NewTicketHandler(
+	service TicketService,
+) *TicketHandler {
 	return &TicketHandler{
 		service: service,
 	}
 }
 
-func (h *TicketHandler) Join(c *gin.Context) {
+func (h *TicketHandler) Join(
+	c *gin.Context,
+) {
 
 	ctx := c.Request.Context()
 	queueIDStr := c.Param("queue_id")
@@ -85,7 +89,9 @@ func (h *TicketHandler) Join(c *gin.Context) {
 	)
 }
 
-func (h *TicketHandler) Next(c *gin.Context) {
+func (h *TicketHandler) Next(
+	c *gin.Context,
+) {
 
 	ctx := c.Request.Context()
 	queueIDStr := c.Param("queue_id")

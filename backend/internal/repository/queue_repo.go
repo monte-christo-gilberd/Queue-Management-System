@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"qms/internal/apperror"
 	"qms/internal/model"
@@ -99,7 +101,6 @@ func (r *QueueRepository) CreateNewQueue(
 
 func (r *QueueRepository) GetQueueByID(
 	ctx context.Context,
-	tx *sqlx.Tx,
 	queueID int64,
 ) (model.Queue, model.QueueAuthz, error) {
 
@@ -117,12 +118,15 @@ func (r *QueueRepository) GetQueueByID(
 		WHERE id = $1
 	`
 
-	err := tx.GetContext(
+	err := r.db.GetContext(
 		ctx,
 		&queue,
 		queueQuery,
 		queueID,
 	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Queue{}, model.QueueAuthz{}, apperror.ErrNotFound
+	}
 	if err != nil {
 		return model.Queue{}, model.QueueAuthz{}, err
 	}
@@ -144,12 +148,15 @@ func (r *QueueRepository) GetQueueByID(
 		WHERE queue_id = $1
 	`
 
-	err = tx.GetContext(
+	err = r.db.GetContext(
 		ctx,
 		&queueAuthz,
 		authzQuery,
 		queue.ID,
 	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Queue{}, model.QueueAuthz{}, apperror.ErrNotFound
+	}
 	if err != nil {
 		return model.Queue{}, model.QueueAuthz{}, err
 	}
@@ -159,7 +166,6 @@ func (r *QueueRepository) GetQueueByID(
 
 func (r *QueueRepository) ListQueueByOwner(
 	ctx context.Context,
-	tx *sqlx.Tx,
 	ownerID int64,
 ) ([]model.Queue, error) {
 
@@ -176,9 +182,8 @@ func (r *QueueRepository) ListQueueByOwner(
 		FROM queues
 		WHERE owner_id = $1
 		ORDER BY created_at DESC
-		LIMIT 10
 	`
-	err := tx.SelectContext(
+	err := r.db.SelectContext(
 		ctx,
 		&queues,
 		query,
@@ -193,7 +198,6 @@ func (r *QueueRepository) ListQueueByOwner(
 
 func (r *QueueRepository) UpdateQueueDetails(
 	ctx context.Context,
-	tx *sqlx.Tx,
 	queueID int64,
 	queueName,
 	queueDescription string,
@@ -207,7 +211,7 @@ func (r *QueueRepository) UpdateQueueDetails(
 		WHERE id = $3
 	`
 
-	result, err := tx.ExecContext(
+	result, err := r.db.ExecContext(
 		ctx,
 		query,
 		queueName,
@@ -232,37 +236,9 @@ func (r *QueueRepository) UpdateQueueDetails(
 
 func (r *QueueRepository) UpdateQueueAuthz(
 	ctx context.Context,
-	tx *sqlx.Tx,
 	queueID int64,
 	authz model.QueueAuthz,
 ) error {
-
-	var queueAuthz model.QueueAuthz
-	const authzQuery = `
-		SELECT
-			queue_id,
-			can_manage_queue,
-			can_manage_counters,
-			can_manage_qr,
-			can_view_queue,
-			can_manage_display,
-			can_continue_queue,
-			can_notify_customer,
-			can_manage_tickets,
-			can_manage_notes
-		FROM queue_authz
-		WHERE queue_id = $1
-	`
-
-	err := tx.GetContext(
-		ctx,
-		&queueAuthz,
-		authzQuery,
-		queueID,
-	)
-	if err != nil {
-		return err
-	}
 
 	var updates []string
 
@@ -304,7 +280,7 @@ func (r *QueueRepository) UpdateQueueAuthz(
     WHERE queue_id = $1
 `, strings.Join(updates, ", "))
 
-	result, err := tx.ExecContext(
+	result, err := r.db.ExecContext(
 		ctx,
 		authzInjectQuery,
 		queueID,
@@ -327,7 +303,6 @@ func (r *QueueRepository) UpdateQueueAuthz(
 
 func (r *QueueRepository) CloseQueue(
 	ctx context.Context,
-	tx *sqlx.Tx,
 	queueID int64,
 ) error {
 
@@ -337,7 +312,7 @@ func (r *QueueRepository) CloseQueue(
 		WHERE
 			id = $1 AND status = 'active'
 	`
-	result, err := tx.ExecContext(
+	result, err := r.db.ExecContext(
 		ctx,
 		query,
 		queueID,
