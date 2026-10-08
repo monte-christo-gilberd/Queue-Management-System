@@ -56,14 +56,6 @@ func (f *fakeTicketRepo) MarkCompleted(
 	return nil // tidak dipakai di test ini
 }
 
-type fakeTxRunner struct{}
-
-func (fakeTxRunner) WithTx(
-	ctx context.Context,
-	fn func(*sqlx.Tx) error,
-) error {
-	return fn(nil)
-}
 
 func TestJoinQueue_RetriesOnDuplicate(t *testing.T) {
 	repo := &fakeTicketRepo{failTimes: 2}

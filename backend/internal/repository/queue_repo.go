@@ -167,6 +167,7 @@ func (r *QueueRepository) GetQueueByID(
 func (r *QueueRepository) ListQueueByOwner(
 	ctx context.Context,
 	ownerID int64,
+	activeOnly bool,
 ) ([]model.Queue, error) {
 
 	var queues []model.Queue
@@ -181,6 +182,7 @@ func (r *QueueRepository) ListQueueByOwner(
 			closed_at
 		FROM queues
 		WHERE owner_id = $1
+		AND ($2 = false OR status = 'active')
 		ORDER BY created_at DESC
 	`
 	err := r.db.SelectContext(
@@ -188,6 +190,7 @@ func (r *QueueRepository) ListQueueByOwner(
 		&queues,
 		query,
 		ownerID,
+		activeOnly,
 	)
 	if err != nil {
 		return []model.Queue{}, err
@@ -238,7 +241,7 @@ func (r *QueueRepository) UpdateQueueAuthz(
 	ctx context.Context,
 	queueID int64,
 	authz model.QueueAuthz,
-) error {
+) (model.QueueAuthz, error) {
 
 	var updates []string
 
@@ -271,34 +274,69 @@ func (r *QueueRepository) UpdateQueueAuthz(
 	}
 
 	if len(updates) == 0 {
-		return nil
+		var current model.QueueAuthz
+		const selectQuery = `
+			SELECT
+				queue_id,
+				can_manage_queue,
+				can_manage_counters,
+				can_manage_qr,
+				can_view_queue,
+				can_manage_display,
+				can_continue_queue,
+				can_notify_customer,
+				can_manage_tickets,
+				can_manage_notes
+			FROM queue_authz
+			WHERE queue_id = $1
+		`
+		err := r.db.GetContext(
+			ctx,
+			&current,
+			selectQuery,
+			queueID,
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.QueueAuthz{}, apperror.ErrNotFound
+		}
+		if err != nil {
+			return model.QueueAuthz{}, err
+		}
+		return current, nil
 	}
 
 	authzInjectQuery := fmt.Sprintf(`
     UPDATE queue_authz
     SET %s
     WHERE queue_id = $1
+    RETURNING
+        queue_id,
+        can_manage_queue,
+        can_manage_counters,
+        can_manage_qr,
+        can_view_queue,
+        can_manage_display,
+        can_continue_queue,
+        can_notify_customer,
+        can_manage_tickets,
+        can_manage_notes
 `, strings.Join(updates, ", "))
 
-	result, err := r.db.ExecContext(
+	var fresh model.QueueAuthz
+	err := r.db.GetContext(
 		ctx,
+		&fresh,
 		authzInjectQuery,
 		queueID,
 	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.QueueAuthz{}, apperror.ErrNotFound
+	}
 	if err != nil {
-		return err
+		return model.QueueAuthz{}, err
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
-		return apperror.ErrNotFound
-	}
-
-	return nil
+	return fresh, nil
 }
 
 func (r *QueueRepository) CloseQueue(

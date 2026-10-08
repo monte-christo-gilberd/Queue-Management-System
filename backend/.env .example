@@ -1,3 +1,6 @@
 DATABASE_URL=postgresql://[user]:[password]@[host]:[port]/[database]
 PORT=[port]
 JWT_SECRET=[jwt-secret]
+# Opsional, koma-dipisah. Kosong = hanya same-origin + klien tanpa Origin (mobile/Expo).
+# Contoh: ALLOWED_ORIGINS=https://app.example.com,http://localhost:3000
+ALLOWED_ORIGINS=

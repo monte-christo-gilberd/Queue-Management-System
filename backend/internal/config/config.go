@@ -3,23 +3,26 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	DatabaseURL string
-	JWTSecret   string
-	Port        string
+	DatabaseURL    string
+	JWTSecret      string
+	Port           string
+	AllowedOrigins []string
 }
 
 func Load() (Config, error) {
 	_ = godotenv.Load()
 
 	cfg := Config{
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		JWTSecret:   os.Getenv("JWT_SECRET"),
-		Port:        os.Getenv("PORT"),
+		DatabaseURL:    os.Getenv("DATABASE_URL"),
+		JWTSecret:      os.Getenv("JWT_SECRET"),
+		Port:           os.Getenv("PORT"),
+		AllowedOrigins: parseOrigins(os.Getenv("ALLOWED_ORIGINS")),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -33,4 +36,18 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func parseOrigins(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var out []string
+	for _, o := range strings.Split(raw, ",") {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			out = append(out, o)
+		}
+	}
+	return out
 }

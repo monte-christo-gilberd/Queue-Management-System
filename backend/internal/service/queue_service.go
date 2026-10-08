@@ -23,6 +23,7 @@ type QueueRepository interface {
 	ListQueueByOwner(
 		ctx context.Context,
 		ownerID int64,
+		activeOnly bool,
 	) ([]model.Queue, error)
 	UpdateQueueDetails(
 		ctx context.Context,
@@ -34,13 +35,12 @@ type QueueRepository interface {
 		ctx context.Context,
 		queueID int64,
 		authz model.QueueAuthz,
-	) error
+	) (model.QueueAuthz, error)
 	CloseQueue(
 		ctx context.Context,
 		queueID int64,
 	) error
 }
-
 type SubscriptionChecker interface {
 	IsActive(
 		ctx context.Context,
@@ -52,18 +52,24 @@ type QueueService struct {
 	repository   QueueRepository
 	subscription SubscriptionChecker
 	tx           TxRunner
+	notifier     EventNotifier
 }
 
 func NewQueueService(
 	repository QueueRepository,
 	subscription SubscriptionChecker,
 	tx TxRunner,
+	notifiers ...EventNotifier,
 ) *QueueService {
-	return &QueueService{
+	svc := &QueueService{
 		repository:   repository,
 		subscription: subscription,
 		tx:           tx,
 	}
+	if len(notifiers) > 0 {
+		svc.notifier = notifiers[0]
+	}
+	return svc
 }
 
 func (s *QueueService) CreateQueue(
@@ -73,16 +79,12 @@ func (s *QueueService) CreateQueue(
 	queueDescription string,
 ) (model.Queue, model.QueueAuthz, error) {
 
-	subscribed, err := s.isSubscribed(
+	err := s.isSubscribed(
 		ctx,
 		ownerID,
 	)
 	if err != nil {
 		return model.Queue{}, model.QueueAuthz{}, err
-	}
-
-	if !subscribed {
-		return model.Queue{}, model.QueueAuthz{}, apperror.ErrSubscriptionInactive
 	}
 
 	var queue model.Queue
@@ -118,18 +120,6 @@ func (s *QueueService) GetQueue(
 	requesterID int64,
 ) (model.Queue, model.QueueAuthz, error) {
 
-	subscribed, err := s.isSubscribed(
-		ctx,
-		requesterID,
-	)
-	if err != nil {
-		return model.Queue{}, model.QueueAuthz{}, err
-	}
-
-	if !subscribed {
-		return model.Queue{}, model.QueueAuthz{}, apperror.ErrSubscriptionInactive
-	}
-
 	queue, queueAuthz, err := s.validateOwnership(
 		ctx,
 		queueID,
@@ -147,28 +137,23 @@ func (s *QueueService) ListQueue(
 	requesterID int64,
 ) ([]model.Queue, error) {
 
-	subscribed, err := s.isSubscribed(
+	err := s.isSubscribed(
 		ctx,
 		requesterID,
 	)
-	if err != nil {
-		return []model.Queue{}, err
-	}
 
-	if !subscribed {
-		return []model.Queue{}, apperror.ErrSubscriptionInactive
+	activeOnly := true
+	if err == nil {
+		activeOnly = false
 	}
 
 	queues, err := s.repository.ListQueueByOwner(
 		ctx,
 		requesterID,
+		activeOnly,
 	)
 	if err != nil {
 		return []model.Queue{}, err
-	}
-
-	if queues == nil {
-		return []model.Queue{}, apperror.ErrNotFound
 	}
 
 	return queues, nil
@@ -182,16 +167,12 @@ func (s *QueueService) UpdateQueue(
 	queueDescription string,
 ) error {
 
-	subscribed, err := s.isSubscribed(
+	err := s.isSubscribed(
 		ctx,
 		requesterID,
 	)
 	if err != nil {
 		return err
-	}
-
-	if !subscribed {
-		return apperror.ErrSubscriptionInactive
 	}
 
 	_, _, err = s.validateOwnership(
@@ -213,6 +194,9 @@ func (s *QueueService) UpdateQueue(
 	if err != nil {
 		return err
 	}
+	notifyEvent(s.notifier, queueID, EventQueueUpdated, map[string]any{
+		"queue_id": queueID,
+	})
 	return nil
 }
 
@@ -221,18 +205,14 @@ func (s *QueueService) UpdateAuthz(
 	queueID,
 	requesterID int64,
 	queueAuthz model.QueueAuthz,
-) error {
+) (model.QueueAuthz, error) {
 
-	subscribed, err := s.isSubscribed(
+	err := s.isSubscribed(
 		ctx,
 		requesterID,
 	)
 	if err != nil {
-		return err
-	}
-
-	if !subscribed {
-		return apperror.ErrSubscriptionInactive
+		return model.QueueAuthz{}, err
 	}
 
 	_, _, err = s.validateOwnership(
@@ -241,18 +221,22 @@ func (s *QueueService) UpdateAuthz(
 		requesterID,
 	)
 	if err != nil {
-		return err
+		return model.QueueAuthz{}, err
 	}
 
-	err = s.repository.UpdateQueueAuthz(
+	fresh, err := s.repository.UpdateQueueAuthz(
 		ctx,
 		queueID,
 		queueAuthz,
 	)
 	if err != nil {
-		return err
+		return model.QueueAuthz{}, err
 	}
-	return nil
+	notifyEvent(s.notifier, queueID, EventQueueUpdated, map[string]any{
+		"queue_id":    queueID,
+		"queue_authz": fresh,
+	})
+	return fresh, nil
 }
 
 func (s *QueueService) CloseQueue(
@@ -261,19 +245,7 @@ func (s *QueueService) CloseQueue(
 	requesterID int64,
 ) error {
 
-	subscribed, err := s.isSubscribed(
-		ctx,
-		requesterID,
-	)
-	if err != nil {
-		return err
-	}
-
-	if !subscribed {
-		return apperror.ErrSubscriptionInactive
-	}
-
-	_, _, err = s.validateOwnership(
+	_, _, err := s.validateOwnership(
 		ctx,
 		queueID,
 		requesterID,
@@ -290,26 +262,31 @@ func (s *QueueService) CloseQueue(
 		return err
 	}
 
+	notifyEvent(s.notifier, queueID, EventQueueClosed, map[string]any{
+		"queue_id": queueID,
+	})
+
 	return nil
 }
 
 func (s *QueueService) isSubscribed(
 	ctx context.Context,
 	ownerID int64,
-) (bool, error) {
+) error {
 
 	isSubscribed, err := s.subscription.IsActive(
 		ctx,
 		ownerID,
 	)
+
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	if isSubscribed {
-		return true, nil
+	if !isSubscribed {
+		return apperror.ErrSubscriptionInactive
 	}
-	return false, nil
+	return nil
 }
 
 func (s *QueueService) validateOwnership(

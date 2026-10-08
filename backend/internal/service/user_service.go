@@ -103,7 +103,9 @@ func (s *UserService) Login(
 	return token, nil
 }
 
-func (s *UserService) issueToken(userID int64) (string, error) {
+func (s *UserService) issueToken(
+	userID int64,
+) (string, error) {
 	claims := jwt.MapClaims{
 		"sub": strconv.FormatInt(userID, 10),
 		"exp": time.Now().Add(24 * time.Hour).Unix(),

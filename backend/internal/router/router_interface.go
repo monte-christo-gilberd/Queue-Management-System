@@ -21,9 +21,14 @@ type QueueHandler interface {
 	Close(c *gin.Context)
 }
 
+type SSEHandler interface {
+	ServeSSE(c *gin.Context)
+}
+
 type AppRouter struct {
 	ticketHandler  TicketHandler
 	userHandler    UserHandler
 	queueHandler   QueueHandler
+	sseHandler     SSEHandler
 	authMiddleware gin.HandlerFunc
 }

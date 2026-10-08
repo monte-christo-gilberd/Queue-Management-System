@@ -40,7 +40,8 @@ func NewSqlxTxRunner(db *sqlx.DB) *SqlxTxRunner {
 
 func (r *SqlxTxRunner) WithTx(
 	ctx context.Context,
-	fn func(*sqlx.Tx) error) error {
+	fn func(*sqlx.Tx) error,
+) error {
 	return WithTx(
 		ctx,
 		r.db,

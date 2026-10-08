@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"qms/internal/apperror"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -36,12 +35,12 @@ func (r *SubscriptionChecker) IsActive(
 
 	err := r.db.GetContext(
 		ctx,
-		subscriptionExpiresAt,
+		&subscriptionExpiresAt,
 		query,
 		ownerID,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, apperror.ErrNotFound
+		return false, nil
 	}
 	if err != nil {
 		return false, err

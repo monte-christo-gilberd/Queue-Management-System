@@ -40,7 +40,7 @@ type QueueService interface {
 		queueID,
 		requesterID int64,
 		queueAuthz model.QueueAuthz,
-	) error
+	) (model.QueueAuthz, error)
 	CloseQueue(
 		ctx context.Context,
 		queueID,
@@ -85,8 +85,8 @@ func (h *QueueHandler) Create(
 	if errors.Is(err, apperror.ErrSubscriptionInactive) {
 		respondError(
 			c,
-			http.StatusForbidden,
-			"Forbidden",
+			http.StatusPaymentRequired,
+			"SUBSCRIPTION_INACTIVE",
 			"inactive owner subscription",
 		)
 		return
@@ -254,6 +254,15 @@ func (h *QueueHandler) Update(
 		req.QueueName,
 		req.QueueDescription,
 	)
+	if errors.Is(err, apperror.ErrSubscriptionInactive) {
+		respondError(
+			c,
+			http.StatusPaymentRequired,
+			"SUBSCRIPTION_INACTIVE",
+			"inactive owner subscription",
+		)
+		return
+	}
 	if errors.Is(err, apperror.ErrNotFound) {
 		respondError(
 			c,
@@ -317,7 +326,7 @@ func (h *QueueHandler) UpdateAuthz(
 	}
 
 	queueAuthz := model.QueueAuthz{
-		QueueID:           req.QueueID,
+		QueueID:           queueID,
 		CanManageQueue:    req.CanManageQueue,
 		CanManageCounters: req.CanManageCounters,
 		CanManageQr:       req.CanManageQr,
@@ -329,12 +338,21 @@ func (h *QueueHandler) UpdateAuthz(
 		CanManageNotes:    req.CanManageNotes,
 	}
 
-	err = h.service.UpdateAuthz(
+	freshAuthz, err := h.service.UpdateAuthz(
 		c.Request.Context(),
 		queueID,
 		requesterID,
 		queueAuthz,
 	)
+	if errors.Is(err, apperror.ErrSubscriptionInactive) {
+		respondError(
+			c,
+			http.StatusPaymentRequired,
+			"SUBSCRIPTION_INACTIVE",
+			"inactive owner subscription",
+		)
+		return
+	}
 	if errors.Is(err, apperror.ErrNotFound) {
 		respondError(
 			c,
@@ -358,9 +376,10 @@ func (h *QueueHandler) UpdateAuthz(
 		c,
 		http.StatusOK,
 		gin.H{
-			"action":   "update_authz",
-			"queue_id": queueID,
-			"status":   "success",
+			"action":      "update_authz",
+			"queue_id":    queueID,
+			"queue_authz": freshAuthz,
+			"status":      "success",
 		},
 	)
 }

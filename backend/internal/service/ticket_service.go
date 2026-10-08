@@ -35,16 +35,22 @@ type TicketRepository interface {
 type TicketService struct {
 	repository TicketRepository
 	tx         TxRunner
+	notifier   EventNotifier
 }
 
 func NewTicketService(
 	repository TicketRepository,
 	tx TxRunner,
+	notifiers ...EventNotifier,
 ) *TicketService {
-	return &TicketService{
+	svc := &TicketService{
 		repository: repository,
 		tx:         tx,
 	}
+	if len(notifiers) > 0 {
+		svc.notifier = notifiers[0]
+	}
+	return svc
 }
 
 const SortKeyGap int64 = 65536
@@ -101,6 +107,8 @@ func (s *TicketService) JoinQueue(
 		return model.Ticket{}, apperror.ErrRetryExhausted
 	}
 
+	notifyEvent(s.notifier, queueID, EventTicketJoined, ticket)
+
 	return ticket, nil
 }
 
@@ -135,6 +143,8 @@ func (s *TicketService) NextTicket(
 	if err != nil {
 		return model.Ticket{}, err
 	}
+
+	notifyEvent(s.notifier, queueID, EventTicketNext, ticket)
 
 	return ticket, nil
 }

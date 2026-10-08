@@ -10,6 +10,7 @@ import (
 	"qms/internal/repository"
 	"qms/internal/router"
 	"qms/internal/service"
+	"qms/internal/sse"
 )
 
 func main() {
@@ -27,9 +28,12 @@ func main() {
 
 	defer db.Close()
 
+	hub := sse.NewHub()
+	go hub.Run()
+
 	txRunner := database.NewSqlxTxRunner(db)
 	ticketRepo := repository.NewTicketRepository(db)
-	ticketService := service.NewTicketService(ticketRepo, txRunner)
+	ticketService := service.NewTicketService(ticketRepo, txRunner, hub)
 	ticketHandler := handler.NewTicketHandler(ticketService)
 
 	userRepo := repository.NewUserRepository(db)
@@ -38,8 +42,9 @@ func main() {
 
 	queueRepo := repository.NewQueueRepository(db)
 	subscriptionChecker := repository.NewSubscriptionChecker(db)
-	queueService := service.NewQueueService(queueRepo, subscriptionChecker, txRunner)
+	queueService := service.NewQueueService(queueRepo, subscriptionChecker, txRunner, hub)
 	queueHandler := handler.NewQueueHandler(queueService)
+	sseHandler := handler.NewSSEHandler(hub, queueService)
 
 	engine := router.SetupRouter(
 		router.NewAppRouter(
@@ -49,6 +54,7 @@ func main() {
 			middleware.RequireAuth(
 				cfg.JWTSecret,
 			),
+			sseHandler,
 		),
 	)
 
