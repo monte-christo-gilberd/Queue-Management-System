@@ -31,4 +31,5 @@ type AppRouter struct {
 	queueHandler   QueueHandler
 	sseHandler     SSEHandler
 	authMiddleware gin.HandlerFunc
+	allowedOrigins []string
 }

@@ -25,9 +25,9 @@ type fakeQueueRepo struct {
 	listErr    error
 
 	updateDetailsErr error
-	updateAuthz    model.QueueAuthz
-	updateAuthzErr error
-	closeErr       error
+	updateAuthz      model.QueueAuthz
+	updateAuthzErr   error
+	closeErr         error
 }
 
 func (f *fakeQueueRepo) CreateNewQueue(
@@ -188,13 +188,13 @@ func TestGetQueue_NotFound(t *testing.T) {
 		}
 	})
 
-	t.Run("Bukan Pemilik", func(t *testing.T) {
+	t.Run("Not Owner", func(t *testing.T) {
 		repo := &fakeQueueRepo{
 			getQueue: model.Queue{ID: 1, OwnerID: 100},
 		}
 		svc := service.NewQueueService(repo, nil, nil)
 
-		// requesterID = 999 (bukan pemilik id 100)
+		// requesterID = 999 (Not Owner id 100)
 		_, _, err := svc.GetQueue(ctx, 1, 999)
 		if !errors.Is(err, apperror.ErrNotFound) {
 			t.Errorf("expected ErrNotFound, got: %v", err)

@@ -22,7 +22,7 @@ func Load() (Config, error) {
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		Port:           os.Getenv("PORT"),
-		AllowedOrigins: parseOrigins(os.Getenv("ALLOWED_ORIGINS")),
+		AllowedOrigins: (parseOrigins(os.Getenv("ALLOWED_ORIGINS"))),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -30,6 +30,9 @@ func Load() (Config, error) {
 	}
 	if cfg.JWTSecret == "" {
 		return Config{}, fmt.Errorf("missing required env var: JWT_SECRET")
+	}
+	if cfg.AllowedOrigins == nil {
+		return Config{}, fmt.Errorf("missing required env var: ALLOWED_ORIGINS")
 	}
 	if cfg.Port == "" {
 		cfg.Port = "8080"

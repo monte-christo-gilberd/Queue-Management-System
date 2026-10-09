@@ -1,13 +1,13 @@
 package dto
 
 type CreateQueueRequest struct {
-	QueueName        string `json:"queue_name" binding:"required"`
-	QueueDescription string `json:"queue_description"`
+	QueueName        string `json:"queue_name" binding:"required,no_html_tags"`
+	QueueDescription string `json:"queue_description" binding:"no_html_tags"`
 }
 
 type UpdateQueueRequest struct {
-	QueueName        string `json:"queue_name"`
-	QueueDescription string `json:"queue_description"`
+	QueueName        string `json:"queue_name" binding:"no_html_tags"`
+	QueueDescription string `json:"queue_description" binding:"no_html_tags"`
 }
 
 type UpdateAuthzRequest struct {

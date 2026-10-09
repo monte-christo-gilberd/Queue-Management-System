@@ -1,6 +1,8 @@
 package router
 
 import (
+	"qms/internal/middleware"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -10,13 +12,15 @@ func NewAppRouter(
 	queueHandler QueueHandler,
 	authMiddleware gin.HandlerFunc,
 	sseHandlers SSEHandler,
+	allowedOrigins []string,
 ) *AppRouter {
 	app := &AppRouter{
 		ticketHandler:  ticketHandler,
 		userHandler:    userHandler,
 		queueHandler:   queueHandler,
 		authMiddleware: authMiddleware,
-		sseHandler: sseHandlers,
+		sseHandler:     sseHandlers,
+		allowedOrigins: allowedOrigins,
 	}
 	return app
 }
@@ -25,6 +29,8 @@ func SetupRouter(
 	router *AppRouter,
 ) *gin.Engine {
 	engine := gin.Default()
+	engine.Use(middleware.CORS(router.allowedOrigins))
+
 	api := engine.Group("/api")
 	v1 := api.Group("/v1")
 

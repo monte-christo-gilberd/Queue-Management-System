@@ -11,6 +11,10 @@ import (
 	"qms/internal/router"
 	"qms/internal/service"
 	"qms/internal/sse"
+	noHTMLValidator "qms/internal/validator"
+
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 )
 
 func main() {
@@ -55,8 +59,13 @@ func main() {
 				cfg.JWTSecret,
 			),
 			sseHandler,
+			cfg.AllowedOrigins,
 		),
 	)
+
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		v.RegisterValidation("no_html_tags", noHTMLValidator.NoHTMLTags)
+	}
 
 	port := fmt.Sprintf(":%s", cfg.Port)
 	engine.Run(port)
