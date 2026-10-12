@@ -1,1 +1,5 @@
 .env
+
+template-for-frontend
+FRONTEND_GENERATION_GUIDE.md
+FRONTEND_PROGRESS.md
