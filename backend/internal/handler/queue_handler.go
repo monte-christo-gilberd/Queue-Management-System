@@ -19,11 +19,11 @@ type QueueService interface {
 		queueName,
 		queueDescription string,
 	) (model.Queue, model.QueueAuthz, error)
-	GetQueue(
+	ViewQueue(
 		ctx context.Context,
 		queueID,
 		requesterID int64,
-	) (model.Queue, model.QueueAuthz, error)
+	) (model.Queue, model.QueueAuthz, bool, error)
 	ListQueue(
 		ctx context.Context,
 		requesterID int64,
@@ -115,8 +115,8 @@ func (h *QueueHandler) Create(
 		http.StatusCreated,
 		gin.H{
 			"action":      "create_queue",
-			"queue":       queue,
-			"queue_authz": queueAuthz,
+			"queue":       dto.NewQueueResponse(queue),
+			"queue_authz": dto.NewQueueAuthzResponse(queueAuthz),
 		},
 	)
 }
@@ -142,7 +142,7 @@ func (h *QueueHandler) Get(
 		return
 	}
 
-	queue, queueAuthz, err := h.service.GetQueue(
+	queue, queueAuthz, isOwner, err := h.service.ViewQueue(
 		c.Request.Context(),
 		queueID,
 		requesterID,
@@ -166,13 +166,26 @@ func (h *QueueHandler) Get(
 		return
 	}
 
+	// Pemegang tiket hanya melihat info publik queue (tanpa owner_id & izin).
+	if !isOwner {
+		respondData(
+			c,
+			http.StatusOK,
+			gin.H{
+				"action": "get_queue",
+				"queue":  dto.NewPublicQueueResponse(queue),
+			},
+		)
+		return
+	}
+
 	respondData(
 		c,
 		http.StatusOK,
 		gin.H{
 			"action":      "get_queue",
-			"queue":       queue,
-			"queue_authz": queueAuthz,
+			"queue":       dto.NewQueueResponse(queue),
+			"queue_authz": dto.NewQueueAuthzResponse(queueAuthz),
 		},
 	)
 }
@@ -210,7 +223,7 @@ func (h *QueueHandler) List(
 		http.StatusOK,
 		gin.H{
 			"action": "list_queues",
-			"queues": queues,
+			"queues": dto.NewQueueResponses(queues),
 		},
 	)
 }
@@ -378,7 +391,7 @@ func (h *QueueHandler) UpdateAuthz(
 		gin.H{
 			"action":      "update_authz",
 			"queue_id":    queueID,
-			"queue_authz": freshAuthz,
+			"queue_authz": dto.NewQueueAuthzResponse(freshAuthz),
 			"status":      "success",
 		},
 	)

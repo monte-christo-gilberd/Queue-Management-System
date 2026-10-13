@@ -35,36 +35,61 @@ func main() {
 	hub := sse.NewHub()
 	go hub.Run()
 
-	txRunner := database.NewSqlxTxRunner(db)
-	ticketRepo := repository.NewTicketRepository(db)
-	ticketService := service.NewTicketService(ticketRepo, txRunner, hub)
-	ticketHandler := handler.NewTicketHandler(ticketService)
+	txRunner := database.
+		NewSqlxTxRunner(db)
+	userRepo := repository.
+		NewUserRepository(db)
+	userService := service.
+		NewUserService(userRepo, cfg.JWTSecret)
+	userHandler := handler.
+		NewUserHandler(userService)
 
-	userRepo := repository.NewUserRepository(db)
-	userService := service.NewUserService(userRepo, cfg.JWTSecret)
-	userHandler := handler.NewUserHandler(userService)
+	queueRepo := repository.
+		NewQueueRepository(db)
+	subscriptionChecker := repository.
+		NewSubscriptionChecker(db)
+	ticketRepo := repository.
+		NewTicketRepository(db)
+	queueService := service.
+		NewQueueService(
+			queueRepo,
+			subscriptionChecker,
+			txRunner,
+			hub,
+		).
+		WithTicketHolderChecker(ticketRepo)
+	queueHandler := handler.
+		NewQueueHandler(queueService)
 
-	queueRepo := repository.NewQueueRepository(db)
-	subscriptionChecker := repository.NewSubscriptionChecker(db)
-	queueService := service.NewQueueService(queueRepo, subscriptionChecker, txRunner, hub)
-	queueHandler := handler.NewQueueHandler(queueService)
-	sseHandler := handler.NewSSEHandler(hub, queueService)
+	ticketService := service.
+		NewTicketService(ticketRepo, txRunner, hub).
+		WithQueueGuard(queueService)
+	ticketHandler := handler.
+		NewTicketHandler(ticketService)
 
-	engine := router.SetupRouter(
-		router.NewAppRouter(
-			ticketHandler,
-			userHandler,
-			queueHandler,
-			middleware.RequireAuth(
-				cfg.JWTSecret,
+	sseHandler := handler.
+		NewSSEHandler(hub, queueService)
+
+	engine := router.
+		SetupRouter(
+			router.NewAppRouter(
+				ticketHandler,
+				userHandler,
+				queueHandler,
+				middleware.RequireAuth(
+					cfg.JWTSecret,
+				),
+				sseHandler,
+				cfg.AllowedOrigins,
 			),
-			sseHandler,
-			cfg.AllowedOrigins,
-		),
-	)
+		)
 
-	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
-		v.RegisterValidation("no_html_tags", noHTMLValidator.NoHTMLTags)
+	if v, ok := binding.
+		Validator.Engine().(*validator.Validate); ok {
+		v.RegisterValidation(
+			"no_html_tags",
+			noHTMLValidator.NoHTMLTags,
+		)
 	}
 
 	port := fmt.Sprintf(":%s", cfg.Port)

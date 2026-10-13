@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"qms/internal/apperror"
+	"qms/internal/dto"
 	"qms/internal/model"
 
 	"github.com/jmoiron/sqlx"
@@ -48,11 +49,21 @@ type SubscriptionChecker interface {
 	) (bool, error)
 }
 
+// TicketHolderChecker melaporkan apakah user punya tiket di sebuah queue. Dipenuhi TicketRepository.
+type TicketHolderChecker interface {
+	HasTicket(
+		ctx context.Context,
+		queueID,
+		userID int64,
+	) (bool, error)
+}
+
 type QueueService struct {
 	repository   QueueRepository
 	subscription SubscriptionChecker
 	tx           TxRunner
 	notifier     EventNotifier
+	holders      TicketHolderChecker
 }
 
 func NewQueueService(
@@ -70,6 +81,12 @@ func NewQueueService(
 		svc.notifier = notifiers[0]
 	}
 	return svc
+}
+
+// WithTicketHolderChecker mengaktifkan akses baca queue untuk pemegang tiket (lihat ViewQueue).
+func (s *QueueService) WithTicketHolderChecker(holders TicketHolderChecker) *QueueService {
+	s.holders = holders
+	return s
 }
 
 func (s *QueueService) CreateQueue(
@@ -130,6 +147,63 @@ func (s *QueueService) GetQueue(
 	}
 
 	return queue, queueAuthz, nil
+}
+
+// ViewQueue: owner mendapat queue + authz (isOwner true); pemegang tiket mendapat queue saja
+// (authz kosong, isOwner false); selain itu apperror.ErrNotFound.
+func (s *QueueService) ViewQueue(
+	ctx context.Context,
+	queueID,
+	requesterID int64,
+) (model.Queue, model.QueueAuthz, bool, error) {
+
+	queue, queueAuthz, err := s.repository.GetQueueByID(
+		ctx,
+		queueID,
+	)
+	if err != nil {
+		return model.Queue{}, model.QueueAuthz{}, false, err
+	}
+
+	if requesterID == queue.OwnerID {
+		return queue, queueAuthz, true, nil
+	}
+
+	if s.holders != nil {
+		isHolder, err := s.holders.HasTicket(
+			ctx,
+			queueID,
+			requesterID,
+		)
+		if err != nil {
+			return model.Queue{}, model.QueueAuthz{}, false, err
+		}
+		if isHolder {
+			return queue, model.QueueAuthz{}, false, nil
+		}
+	}
+
+	return model.Queue{}, model.QueueAuthz{}, false, apperror.ErrNotFound
+}
+
+// GetActiveQueue memastikan queue ada (ErrNotFound) dan masih aktif (ErrQueueClosed).
+func (s *QueueService) GetActiveQueue(
+	ctx context.Context,
+	queueID int64,
+) (model.Queue, error) {
+
+	queue, _, err := s.repository.GetQueueByID(
+		ctx,
+		queueID,
+	)
+	if err != nil {
+		return model.Queue{}, err
+	}
+	if queue.Status != "active" {
+		return model.Queue{}, apperror.ErrQueueClosed
+	}
+
+	return queue, nil
 }
 
 func (s *QueueService) ListQueue(
@@ -194,7 +268,7 @@ func (s *QueueService) UpdateQueue(
 	if err != nil {
 		return err
 	}
-	notifyEvent(s.notifier, queueID, EventQueueUpdated, map[string]any{
+	notifyEvent(s.notifier, queueID, EventQueueUpdated, map[string]interface{}{
 		"queue_id": queueID,
 	})
 	return nil
@@ -232,9 +306,9 @@ func (s *QueueService) UpdateAuthz(
 	if err != nil {
 		return model.QueueAuthz{}, err
 	}
-	notifyEvent(s.notifier, queueID, EventQueueUpdated, map[string]any{
+	notifyEvent(s.notifier, queueID, EventQueueUpdated, map[string]interface{}{
 		"queue_id":    queueID,
-		"queue_authz": fresh,
+		"queue_authz": dto.NewQueueAuthzResponse(fresh),
 	})
 	return fresh, nil
 }
@@ -262,7 +336,7 @@ func (s *QueueService) CloseQueue(
 		return err
 	}
 
-	notifyEvent(s.notifier, queueID, EventQueueClosed, map[string]any{
+	notifyEvent(s.notifier, queueID, EventQueueClosed, map[string]interface{}{
 		"queue_id": queueID,
 	})
 

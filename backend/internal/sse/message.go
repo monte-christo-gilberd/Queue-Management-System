@@ -15,16 +15,16 @@ const (
 // Event adalah kontrak JSON ke browser web & Expo RN.
 // Contoh: {"type":"ticket_joined","queue_id":1,"payload":{...},"ts":"..."}
 type Event struct {
-	Type      string    `json:"type"`
-	QueueID   int64     `json:"queue_id"`
-	Payload   any       `json:"payload,omitempty"`
-	Timestamp time.Time `json:"ts"`
+	Type      string      `json:"type"`
+	QueueID   int64       `json:"queue_id"`
+	Payload   interface{} `json:"payload,omitempty"`
+	Timestamp time.Time   `json:"ts"`
 }
 
 func NewEvent(
 	queueID int64,
 	eventType string,
-	payload any,
+	payload interface{},
 ) Event {
 	return Event{
 		Type:      eventType,
@@ -37,7 +37,7 @@ func NewEvent(
 func MarshalEvent(
 	queueID int64,
 	eventType string,
-	payload any,
+	payload interface{},
 ) []byte {
 	msg, err := json.Marshal(NewEvent(queueID, eventType, payload))
 	if err != nil {

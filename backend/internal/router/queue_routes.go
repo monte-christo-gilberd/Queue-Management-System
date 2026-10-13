@@ -12,6 +12,7 @@ func registerQueueRoutes(
 
 	rg.POST("/:queue_id/join", ticketH.Join)
 	rg.POST("/:queue_id/next", ticketH.Next)
+	rg.GET("/:queue_id/tickets", ticketH.List)
 
 	rg.GET("/:queue_id", queueH.Get)
 	rg.PUT("/:queue_id", queueH.Update)

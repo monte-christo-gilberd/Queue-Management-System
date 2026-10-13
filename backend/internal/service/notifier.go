@@ -4,7 +4,7 @@ package service
 // (Hub.Notify(queueID, action, payload)) sehingga tidak ada import cycle:
 // service tidak import ws, ws tidak import service.
 type EventNotifier interface {
-	Notify(queueID int64, action string, payload any)
+	Notify(queueID int64, action string, payload interface{})
 }
 
 // Nama event disamakan dengan internal/ws/message.go.
@@ -19,7 +19,7 @@ func notifyEvent(
 	notifier EventNotifier,
 	queueID int64,
 	action string,
-	payload any,
+	payload interface{},
 ) {
 	if notifier == nil {
 		return

@@ -107,7 +107,7 @@ func (h *Hub) Broadcast(queueID int64, message []byte) {
 // Notify memenuhi interface service.EventNotifier tanpa import cycle:
 // service mendefinisikan interface Notify(queueID, action, payload),
 // Hub menyediakannya secara struktural.
-func (h *Hub) Notify(queueID int64, action string, payload any) {
+func (h *Hub) Notify(queueID int64, action string, payload interface{}) {
 	h.Broadcast(queueID, MarshalEvent(queueID, action, payload))
 }
 

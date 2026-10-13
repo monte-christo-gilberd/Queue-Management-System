@@ -1,4 +1,4 @@
-package router
+package router_test
 
 import (
 	"context"
@@ -15,6 +15,7 @@ type stubTicket struct{}
 
 func (stubTicket) Join(c *gin.Context) {}
 func (stubTicket) Next(c *gin.Context) {}
+func (stubTicket) List(c *gin.Context) {}
 
 type stubUser struct{}
 
@@ -32,12 +33,12 @@ func (stubQueue) Close(c *gin.Context)       {}
 
 type stubValidator struct{}
 
-func (stubValidator) GetQueue(
+func (stubValidator) ViewQueue(
 	ctx context.Context,
 	queueID,
 	requesterID int64,
-) (model.Queue, model.QueueAuthz, error) {
-	return model.Queue{ID: queueID, OwnerID: requesterID}, model.QueueAuthz{}, nil
+) (model.Queue, model.QueueAuthz, bool, error) {
+	return model.Queue{ID: queueID, OwnerID: requesterID}, model.QueueAuthz{}, true, nil
 }
 
 func issueTestToken(secret string, userID int64) string {

@@ -5,6 +5,7 @@ import "github.com/gin-gonic/gin"
 type TicketHandler interface {
 	Join(c *gin.Context)
 	Next(c *gin.Context)
+	List(c *gin.Context)
 }
 
 type UserHandler interface {

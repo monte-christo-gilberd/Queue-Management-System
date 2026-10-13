@@ -12,12 +12,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// QueueValidator: owner dan pemegang tiket boleh subscribe; selain itu apperror.ErrNotFound.
 type QueueValidator interface {
-	GetQueue(
+	ViewQueue(
 		ctx context.Context,
 		queueID,
 		requesterID int64,
-	) (model.Queue, model.QueueAuthz, error)
+	) (model.Queue, model.QueueAuthz, bool, error)
 }
 
 type SSEHandler struct {
@@ -59,7 +60,7 @@ func (h *SSEHandler) ServeSSE(
 
 	if h.queues != nil {
 		
-		if _, _, err := h.queues.GetQueue(
+		if _, _, _, err := h.queues.ViewQueue(
 			c.Request.Context(),
 			queueID,
 			requesterID,
@@ -102,5 +103,7 @@ func (h *SSEHandler) ServeSSE(
 		)
 		return
 	}
+	// Lepas klien dari room saat koneksi putus, supaya tidak menumpuk sampai buffer-nya penuh.
+	defer h.hub.Unsubscribe(client)
 	client.Serve(c.Request)
 }

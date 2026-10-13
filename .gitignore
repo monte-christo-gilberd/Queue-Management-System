@@ -1,4 +1,5 @@
 .env
+.vscode
 
 template-for-frontend
 FRONTEND_GENERATION_GUIDE.md

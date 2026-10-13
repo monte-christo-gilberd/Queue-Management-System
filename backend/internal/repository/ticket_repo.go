@@ -188,3 +188,102 @@ func (r *TicketRepository) MarkCompleted(
 	}
 	return nil
 }
+
+func (r *TicketRepository) ListByQueue(
+	ctx context.Context,
+	queueID int64,
+	statuses []string,
+) ([]model.Ticket, error) {
+
+	tickets := []model.Ticket{}
+
+	const selectTickets = `
+		SELECT
+			id,
+			queue_id,
+			ticket_number,
+			sort_key,
+			user_id,
+			status,
+			skip_count,
+			last_notified_at,
+			created_at,
+			completed_at,
+			cancelled_at
+		FROM tickets
+		WHERE queue_id = ?
+	`
+	const orderAndLimit = `
+		ORDER BY 
+			sort_key ASC, 
+			id ASC
+		LIMIT 500
+	`
+
+	// Tanpa filter status: query statis biasa.
+	if len(statuses) == 0 {
+		err := r.db.SelectContext(
+			ctx,
+			&tickets,
+			r.db.Rebind(selectTickets+orderAndLimit),
+			queueID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		return tickets, nil
+	}
+
+	// sqlx.In memperluas slice menjadi daftar placeholder; Rebind mengubah ? menjadi $1, $2, ...
+	query, args, err := sqlx.In(
+		selectTickets+` AND status IN (?)`+orderAndLimit,
+		queueID,
+		statuses,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = r.db.SelectContext(
+		ctx,
+		&tickets,
+		r.db.Rebind(query),
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return tickets, nil
+}
+
+// HasTicket melaporkan apakah user pernah punya tiket (status apa pun) di queue ini.
+func (r *TicketRepository) HasTicket(
+	ctx context.Context,
+	queueID,
+	userID int64,
+) (bool, error) {
+
+	var exists bool
+
+	const query = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM tickets
+			WHERE queue_id = $1 AND user_id = $2
+		)
+	`
+
+	err := r.db.GetContext(
+		ctx,
+		&exists,
+		query,
+		queueID,
+		userID,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	return exists, nil
+}

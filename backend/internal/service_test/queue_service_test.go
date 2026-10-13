@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"qms/internal/apperror"
+	"qms/internal/dto"
 	"qms/internal/model"
 	"qms/internal/service"
 
@@ -102,13 +103,13 @@ type fakeNotifier struct {
 	calls   int
 	queueID int64
 	action  string
-	payload any
+	payload interface{}
 }
 
 func (f *fakeNotifier) Notify(
 	queueID int64,
 	action string,
-	payload any,
+	payload interface{},
 ) {
 	f.calls++
 	f.queueID = queueID
@@ -308,11 +309,11 @@ func TestUpdateAuthz_NotifiesQueueUpdated(t *testing.T) {
 	if notifier.action != service.EventQueueUpdated {
 		t.Errorf("expected action %q, got %q", service.EventQueueUpdated, notifier.action)
 	}
-	payload, ok := notifier.payload.(map[string]any)
+	payload, ok := notifier.payload.(map[string]interface{})
 	if !ok {
 		t.Fatalf("expected map payload, got %T", notifier.payload)
 	}
-	if payload["queue_authz"] != freshAuthz {
+	if payload["queue_authz"] != dto.NewQueueAuthzResponse(freshAuthz) {
 		t.Errorf("expected payload authz %+v, got %+v", freshAuthz, payload["queue_authz"])
 	}
 }
@@ -399,5 +400,92 @@ func TestCloseQueue_NotFound(t *testing.T) {
 	err := svc.CloseQueue(ctx, 999, 100)
 	if !errors.Is(err, apperror.ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got: %v", err)
+	}
+}
+
+type fakeHolders struct {
+	has bool
+	err error
+}
+
+func (f fakeHolders) HasTicket(
+	ctx context.Context,
+	queueID,
+	userID int64,
+) (bool, error) {
+	return f.has, f.err
+}
+
+func TestViewQueue_OwnerGetsAuthz(t *testing.T) {
+	repo := &fakeQueueRepo{
+		getQueue: model.Queue{ID: 1, OwnerID: 7},
+		getAuthz: model.QueueAuthz{QueueID: 1, CanManageQueue: true},
+	}
+	svc := service.NewQueueService(repo, nil, nil).
+		WithTicketHolderChecker(fakeHolders{})
+
+	_, authz, isOwner, err := svc.ViewQueue(context.Background(), 1, 7)
+
+	if err != nil || !isOwner || !authz.CanManageQueue {
+		t.Fatalf("owner: err=%v isOwner=%v authz=%+v", err, isOwner, authz)
+	}
+}
+
+func TestViewQueue_TicketHolderGetsQueueWithoutAuthz(t *testing.T) {
+	repo := &fakeQueueRepo{
+		getQueue: model.Queue{ID: 1, OwnerID: 7},
+		getAuthz: model.QueueAuthz{QueueID: 1, CanManageQueue: true},
+	}
+	svc := service.NewQueueService(repo, nil, nil).
+		WithTicketHolderChecker(fakeHolders{has: true})
+
+	queue, authz, isOwner, err := svc.ViewQueue(context.Background(), 1, 8)
+
+	if err != nil || isOwner || queue.ID != 1 || authz != (model.QueueAuthz{}) {
+		t.Fatalf("holder: err=%v isOwner=%v queue=%+v authz=%+v", err, isOwner, queue, authz)
+	}
+}
+
+func TestViewQueue_OutsiderIsNotFound(t *testing.T) {
+	repo := &fakeQueueRepo{getQueue: model.Queue{ID: 1, OwnerID: 7}}
+	svc := service.NewQueueService(repo, nil, nil).
+		WithTicketHolderChecker(fakeHolders{has: false})
+
+	_, _, _, err := svc.ViewQueue(context.Background(), 1, 8)
+
+	if !errors.Is(err, apperror.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestViewQueue_NoHolderCheckerMeansOwnerOnly(t *testing.T) {
+	repo := &fakeQueueRepo{getQueue: model.Queue{ID: 1, OwnerID: 7}}
+	svc := service.NewQueueService(repo, nil, nil)
+
+	_, _, _, err := svc.ViewQueue(context.Background(), 1, 8)
+
+	if !errors.Is(err, apperror.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestGetActiveQueue(t *testing.T) {
+	cases := []struct {
+		name    string
+		repo    *fakeQueueRepo
+		wantErr error
+	}{
+		{"active", &fakeQueueRepo{getQueue: model.Queue{ID: 1, Status: "active"}}, nil},
+		{"closed", &fakeQueueRepo{getQueue: model.Queue{ID: 1, Status: "closed"}}, apperror.ErrQueueClosed},
+		{"missing", &fakeQueueRepo{getErr: apperror.ErrNotFound}, apperror.ErrNotFound},
+	}
+	for _, c := range cases {
+		svc := service.NewQueueService(c.repo, nil, nil)
+
+		_, err := svc.GetActiveQueue(context.Background(), 1)
+
+		if !errors.Is(err, c.wantErr) {
+			t.Errorf("%s: expected %v, got %v", c.name, c.wantErr, err)
+		}
 	}
 }

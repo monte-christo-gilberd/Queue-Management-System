@@ -7,7 +7,7 @@ import (
 func respondData(
 	c *gin.Context,
 	status int,
-	data any,
+	data interface{},
 ) {
 	c.JSON(
 		status,
