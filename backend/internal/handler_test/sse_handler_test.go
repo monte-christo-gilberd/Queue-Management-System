@@ -94,3 +94,30 @@ func TestServeSSE_RejectsBeforeSubscribing(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Equal(t, 0, hub.RoomSize(5))
 }
+
+func TestServeSSE_SetsStreamingHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	hub := sse.NewHub()
+	go hub.Run()
+
+	engine := gin.New()
+	engine.GET("/queues/:queue_id/event", handler.NewSSEHandler(hub, stubQueueValidator{}).ServeSSE)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest(http.MethodGet, "/queues/5/event", nil).WithContext(ctx)
+	w := &lockedRecorder{hdr: http.Header{}}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		engine.ServeHTTP(w, req)
+	}()
+
+	require.Eventually(t, func() bool { return hub.RoomSize(5) == 1 }, time.Second, 5*time.Millisecond)
+	cancel()
+	<-done
+
+	assert.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
+	assert.Equal(t, "no", w.Header().Get("X-Accel-Buffering"))
+}

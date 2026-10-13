@@ -6,6 +6,7 @@ type TicketHandler interface {
 	Join(c *gin.Context)
 	Next(c *gin.Context)
 	List(c *gin.Context)
+	Status(c *gin.Context)
 }
 
 type UserHandler interface {

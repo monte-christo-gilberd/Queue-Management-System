@@ -75,3 +75,24 @@ func nullTimePtr(t sql.NullTime) *time.Time {
 	}
 	return &t.Time
 }
+
+type QueueStatusResponse struct {
+	Queue         PublicQueueResponse `json:"queue"`
+	MyTicket      *TicketResponse     `json:"my_ticket"`
+	CurrentNumber *int                `json:"current_number"`
+	WaitingAhead  *int                `json:"waiting_ahead"`
+}
+
+func NewQueueStatusResponse(s model.QueueStatus) QueueStatusResponse {
+	var mine *TicketResponse
+	if s.MyTicket != nil {
+		t := NewTicketResponse(*s.MyTicket)
+		mine = &t
+	}
+	return QueueStatusResponse{
+		Queue:         NewPublicQueueResponse(s.Queue),
+		MyTicket:      mine,
+		CurrentNumber: s.CurrentNumber,
+		WaitingAhead:  s.WaitingAhead,
+	}
+}

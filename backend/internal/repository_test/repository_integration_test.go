@@ -361,3 +361,71 @@ func TestJoinQueue_TwiceBySameUserIsAlreadyJoined(t *testing.T) {
 	_, err = svc.NextTicket(ctx, q2.ID, customer)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
+
+func TestQueueStatus_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "o@b.c", time.Now().Add(time.Hour))
+	u1, u2, u3 := seedUser(t, db, "1@b.c"), seedUser(t, db, "2@b.c"), seedUser(t, db, "3@b.c")
+	outsider := seedUser(t, db, "x@b.c")
+	q, _ := createQueue(t, db, owner, "Q")
+
+	ticketRepo := repository.NewTicketRepository(db)
+	txRunner := database.NewSqlxTxRunner(db)
+	queueSvc := service.NewQueueService(
+		repository.NewQueueRepository(db),
+		repository.NewSubscriptionChecker(db),
+		txRunner,
+	).WithTicketHolderChecker(ticketRepo)
+	svc := service.NewTicketService(ticketRepo, txRunner).WithQueueGuard(queueSvc)
+
+	// Belum ada tiket: owner melihat status kosong; orang luar 404.
+	st, err := svc.QueueStatus(ctx, q.ID, owner)
+	require.NoError(t, err)
+	assert.Nil(t, st.MyTicket)
+	assert.Nil(t, st.CurrentNumber)
+	assert.Nil(t, st.WaitingAhead)
+	_, err = svc.QueueStatus(ctx, q.ID, outsider)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+
+	t1, err := svc.JoinQueue(ctx, q.ID, u1)
+	require.NoError(t, err)
+	_, err = svc.JoinQueue(ctx, q.ID, u2)
+	require.NoError(t, err)
+	t3, err := svc.JoinQueue(ctx, q.ID, u3)
+	require.NoError(t, err)
+
+	// u3 antrean ketiga: 2 orang di depan, belum ada yang dilayani.
+	st, err = svc.QueueStatus(ctx, q.ID, u3)
+	require.NoError(t, err)
+	require.NotNil(t, st.MyTicket)
+	assert.Equal(t, t3.ID, st.MyTicket.ID)
+	assert.Nil(t, st.CurrentNumber)
+	require.NotNil(t, st.WaitingAhead)
+	assert.Equal(t, 2, *st.WaitingAhead)
+
+	// Owner memanggil Next dua kali: nomor saat ini = tiket ke-2 (completed terbaru).
+	_, err = svc.NextTicket(ctx, q.ID, owner)
+	require.NoError(t, err)
+	_, err = svc.NextTicket(ctx, q.ID, owner)
+	require.NoError(t, err)
+
+	st, err = svc.QueueStatus(ctx, q.ID, u3)
+	require.NoError(t, err)
+	require.NotNil(t, st.CurrentNumber)
+	assert.Equal(t, 2, *st.CurrentNumber)
+	require.NotNil(t, st.WaitingAhead)
+	assert.Equal(t, 0, *st.WaitingAhead)
+
+	// u1 sudah dilayani: tiketnya completed, tidak ada hitungan di depan.
+	st, err = svc.QueueStatus(ctx, q.ID, u1)
+	require.NoError(t, err)
+	require.NotNil(t, st.MyTicket)
+	assert.Equal(t, t1.ID, st.MyTicket.ID)
+	assert.Equal(t, "completed", st.MyTicket.Status)
+	assert.Nil(t, st.WaitingAhead)
+
+	// Repo langsung: FindByUser tanpa tiket -> ErrNotFound.
+	_, err = ticketRepo.FindByUser(ctx, q.ID, outsider)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+}

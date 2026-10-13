@@ -30,6 +30,11 @@ type TicketService interface {
 		requesterID int64,
 		statuses []string,
 	) ([]model.Ticket, error)
+	QueueStatus(
+		ctx context.Context,
+		queueID,
+		requesterID int64,
+	) (model.QueueStatus, error)
 }
 
 type TicketHandler struct {
@@ -277,6 +282,63 @@ func (h *TicketHandler) List(
 			"action":   "list_tickets",
 			"queue_id": queueID,
 			"tickets":  dto.NewTicketResponses(tickets),
+		},
+	)
+}
+
+func (h *TicketHandler) Status(
+	c *gin.Context,
+) {
+
+	queueID, err := strconv.ParseInt(
+		c.Param("queue_id"),
+		10,
+		64,
+	)
+	if err != nil {
+		respondError(
+			c,
+			http.StatusBadRequest,
+			"BAD_REQUEST",
+			"invalid queue id",
+		)
+		return
+	}
+
+	status, err := h.service.QueueStatus(
+		c.Request.Context(),
+		queueID,
+		c.GetInt64("user_id"),
+	)
+	if errors.Is(err, apperror.ErrNotFound) {
+		respondError(
+			c,
+			http.StatusNotFound,
+			"NOT_FOUND",
+			"queue not found",
+		)
+		return
+	}
+	if err != nil {
+		respondError(
+			c,
+			http.StatusInternalServerError,
+			"INTERNAL_ERROR",
+			"internal server error",
+		)
+		return
+	}
+
+	body := dto.NewQueueStatusResponse(status)
+	respondData(
+		c,
+		http.StatusOK,
+		gin.H{
+			"action":         "queue_status",
+			"queue":          body.Queue,
+			"my_ticket":      body.MyTicket,
+			"current_number": body.CurrentNumber,
+			"waiting_ahead":  body.WaitingAhead,
 		},
 	)
 }

@@ -67,7 +67,7 @@ func parseEvents(t *testing.T, raw string) []sse.Event {
 	var events []sse.Event
 	for _, frame := range strings.Split(raw, "\n\n") {
 		frame = strings.TrimSpace(frame)
-		if frame == "" {
+		if frame == "" || strings.HasPrefix(frame, ":") { // komentar SSE (": connected", ": ping")
 			continue
 		}
 		require.True(t, strings.HasPrefix(frame, "data: "), "frame SSE harus diawali 'data: ': %q", frame)
@@ -98,7 +98,7 @@ func TestBroadcast_IsolatesRooms(t *testing.T) {
 
 	for name, c := range map[string]*syncRecorder{"c1": c1, "c2": c2} {
 		require.Eventually(t, func() bool {
-			return c.String() != ""
+			return strings.Contains(c.String(), "data: ")
 		}, time.Second, 5*time.Millisecond, "%s harus menerima pesan room 1", name)
 
 		events := parseEvents(t, c.String())
@@ -109,6 +109,31 @@ func TestBroadcast_IsolatesRooms(t *testing.T) {
 
 	// Beri waktu broadcast selesai sebelum memastikan room 2 tidak menerima apa pun.
 	assert.Never(t, func() bool {
-		return c3.String() != ""
+		return strings.Contains(c3.String(), "data: ")
 	}, 100*time.Millisecond, 10*time.Millisecond, "klien room 2 tidak boleh menerima pesan room 1")
+}
+
+func TestServe_SendsOpeningCommentAndHeartbeat(t *testing.T) {
+	hub := sse.NewHub()
+	go hub.Run()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	w := newSyncRecorder()
+	client := sse.NewClient(hub, w, 1).WithHeartbeat(20 * time.Millisecond)
+	req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+	go client.Serve(req)
+
+	// Byte pertama keluar segera (tanpa menunggu event) supaya fetch() klien resolve.
+	require.Eventually(t, func() bool {
+		return strings.HasPrefix(w.String(), ": connected\n\n")
+	}, time.Second, 2*time.Millisecond)
+
+	// Lalu heartbeat berkala menjaga koneksi idle tetap hidup.
+	require.Eventually(t, func() bool {
+		return strings.Contains(w.String(), ": ping\n\n")
+	}, time.Second, 5*time.Millisecond)
+
+	assert.Empty(t, parseEvents(t, w.String()), "komentar bukan event")
 }

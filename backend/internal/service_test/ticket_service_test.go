@@ -21,6 +21,13 @@ type fakeTicketRepo struct {
 
 	alreadyJoined      bool // HasTicket true sejak awal
 	joinedAfterInserts int  // HasTicket jadi true setelah N kali Insert (simulasi balapan)
+
+	myTicket        *model.Ticket // hasil FindByUser; nil = ErrNotFound
+	lastCompleted   int
+	hasCompleted    bool
+	waitingBefore   int
+	waitingBeforeSK int64 // sort_key yang diterima CountWaitingBefore
+	countCalled     bool
 }
 
 func (f *fakeTicketRepo) MaxWaitingSortKey(
@@ -75,6 +82,34 @@ func (f *fakeTicketRepo) HasTicket(
 	return f.joinedAfterInserts > 0 && f.insertCallCount >= f.joinedAfterInserts, nil
 }
 
+func (f *fakeTicketRepo) FindByUser(
+	ctx context.Context,
+	queueID,
+	userID int64,
+) (model.Ticket, error) {
+	if f.myTicket == nil {
+		return model.Ticket{}, apperror.ErrNotFound
+	}
+	return *f.myTicket, nil
+}
+
+func (f *fakeTicketRepo) LastCompletedNumber(
+	ctx context.Context,
+	queueID int64,
+) (int, bool, error) {
+	return f.lastCompleted, f.hasCompleted, nil
+}
+
+func (f *fakeTicketRepo) CountWaitingBefore(
+	ctx context.Context,
+	queueID,
+	sortKey int64,
+) (int, error) {
+	f.countCalled = true
+	f.waitingBeforeSK = sortKey
+	return f.waitingBefore, nil
+}
+
 func (f *fakeTicketRepo) ListByQueue(
 	ctx context.Context,
 	queueID int64,
@@ -89,6 +124,21 @@ type fakeQueueGuard struct {
 	ownerID int64
 	closed  bool
 	missing bool
+}
+
+// ViewQueue: hanya owner dan userID 55 (pemegang tiket di tes) yang boleh.
+func (g fakeQueueGuard) ViewQueue(
+	ctx context.Context,
+	queueID,
+	requesterID int64,
+) (model.Queue, model.QueueAuthz, bool, error) {
+	if requesterID == g.ownerID {
+		return model.Queue{ID: queueID, OwnerID: g.ownerID}, model.QueueAuthz{}, true, nil
+	}
+	if requesterID == 55 {
+		return model.Queue{ID: queueID, OwnerID: g.ownerID}, model.QueueAuthz{}, false, nil
+	}
+	return model.Queue{}, model.QueueAuthz{}, false, apperror.ErrNotFound
 }
 
 func (g fakeQueueGuard) GetActiveQueue(
@@ -251,4 +301,70 @@ func TestJoinQueue_ConcurrentSameUserDuplicateBecomesAlreadyJoined(t *testing.T)
 
 	assert.ErrorIs(t, err, apperror.ErrAlreadyJoined)
 	assert.Equal(t, 1, repo.insertCallCount)
+}
+
+func newStatusSvc(repo *fakeTicketRepo) *service.TicketService {
+	return service.NewTicketService(repo, fakeTxRunner{}).
+		WithQueueGuard(fakeQueueGuard{ownerID: 7})
+}
+
+func TestQueueStatus_WaitingHolderGetsAheadCountAndCurrent(t *testing.T) {
+	repo := &fakeTicketRepo{
+		myTicket:      &model.Ticket{ID: 9, TicketNumber: 5, SortKey: 327680, Status: "waiting"},
+		lastCompleted: 3, hasCompleted: true,
+		waitingBefore: 1,
+	}
+
+	got, err := newStatusSvc(repo).QueueStatus(context.Background(), 1, 55)
+
+	assert.NoError(t, err)
+	if assert.NotNil(t, got.MyTicket) {
+		assert.Equal(t, 5, got.MyTicket.TicketNumber)
+	}
+	if assert.NotNil(t, got.CurrentNumber) {
+		assert.Equal(t, 3, *got.CurrentNumber)
+	}
+	if assert.NotNil(t, got.WaitingAhead) {
+		assert.Equal(t, 1, *got.WaitingAhead)
+	}
+	assert.Equal(t, int64(327680), repo.waitingBeforeSK)
+}
+
+func TestQueueStatus_CompletedHolderHasNoAheadCount(t *testing.T) {
+	repo := &fakeTicketRepo{
+		myTicket:      &model.Ticket{ID: 9, TicketNumber: 2, SortKey: 131072, Status: "completed"},
+		lastCompleted: 4, hasCompleted: true,
+	}
+
+	got, err := newStatusSvc(repo).QueueStatus(context.Background(), 1, 55)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, got.MyTicket)
+	assert.Nil(t, got.WaitingAhead)
+	assert.False(t, repo.countCalled)
+}
+
+func TestQueueStatus_OwnerWithoutTicketAndNothingServedYet(t *testing.T) {
+	repo := &fakeTicketRepo{}
+
+	got, err := newStatusSvc(repo).QueueStatus(context.Background(), 1, 7)
+
+	assert.NoError(t, err)
+	assert.Nil(t, got.MyTicket)
+	assert.Nil(t, got.CurrentNumber)
+	assert.Nil(t, got.WaitingAhead)
+}
+
+func TestQueueStatus_OutsiderIsNotFound(t *testing.T) {
+	_, err := newStatusSvc(&fakeTicketRepo{}).QueueStatus(context.Background(), 1, 99)
+
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+}
+
+func TestQueueStatus_ErrorsWithoutGuard(t *testing.T) {
+	svc := service.NewTicketService(&fakeTicketRepo{}, fakeTxRunner{})
+
+	_, err := svc.QueueStatus(context.Background(), 1, 7)
+
+	assert.Error(t, err)
 }

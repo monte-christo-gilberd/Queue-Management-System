@@ -287,3 +287,107 @@ func (r *TicketRepository) HasTicket(
 
 	return exists, nil
 }
+
+// FindByUser mengembalikan tiket user di queue ini (UNIQUE queue_id+user_id, jadi paling banyak satu).
+func (r *TicketRepository) FindByUser(
+	ctx context.Context,
+	queueID,
+	userID int64,
+) (model.Ticket, error) {
+
+	var ticket model.Ticket
+
+	const query = `
+		SELECT
+			id,
+			queue_id,
+			ticket_number,
+			sort_key,
+			user_id,
+			status,
+			skip_count,
+			last_notified_at,
+			created_at,
+			completed_at,
+			cancelled_at
+		FROM tickets
+		WHERE queue_id = $1 AND user_id = $2
+	`
+
+	err := r.db.GetContext(
+		ctx,
+		&ticket,
+		query,
+		queueID,
+		userID,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Ticket{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return model.Ticket{}, err
+	}
+
+	return ticket, nil
+}
+
+// LastCompletedNumber: ticket_number tiket completed terbaru; ok=false bila belum ada.
+func (r *TicketRepository) LastCompletedNumber(
+	ctx context.Context,
+	queueID int64,
+) (number int, ok bool, err error) {
+
+	const query = `
+		SELECT ticket_number
+		FROM tickets
+		WHERE queue_id = $1 AND status = 'completed'
+		ORDER BY completed_at DESC, id DESC
+		LIMIT 1
+	`
+
+	err = r.db.GetContext(
+		ctx,
+		&number,
+		query,
+		queueID,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+
+	return number, true, nil
+}
+
+// CountWaitingBefore: jumlah tiket waiting di queue ini dengan sort_key lebih kecil.
+func (r *TicketRepository) CountWaitingBefore(
+	ctx context.Context,
+	queueID,
+	sortKey int64,
+) (int, error) {
+
+	var count int
+
+	const query = `
+		SELECT COUNT(*)
+		FROM tickets
+		WHERE queue_id = $1
+			AND status = 'waiting'
+			AND sort_key < $2
+	`
+
+	err := r.db.GetContext(
+		ctx,
+		&count,
+		query,
+		queueID,
+		sortKey,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}

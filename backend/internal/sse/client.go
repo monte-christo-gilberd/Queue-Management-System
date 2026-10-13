@@ -3,13 +3,18 @@ package sse
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
 
+// DefaultHeartbeat: jeda komentar ": ping" agar koneksi idle tidak diputus proxy/load balancer.
+const DefaultHeartbeat = 25 * time.Second
+
 type Client struct {
-	hub     *Hub
-	w       http.ResponseWriter
-	send    chan []byte
-	queueID int64
+	hub       *Hub
+	w         http.ResponseWriter
+	send      chan []byte
+	queueID   int64
+	heartbeat time.Duration
 }
 
 func NewClient(
@@ -22,10 +27,32 @@ func NewClient(
 		w:       w,
 		send:    make(chan []byte, 256),
 		queueID: queueID,
+
+		heartbeat: DefaultHeartbeat,
+	}
+}
+
+// WithHeartbeat mengganti jeda heartbeat (untuk tes). Harus dipanggil sebelum Serve.
+func (c *Client) WithHeartbeat(d time.Duration) *Client {
+	c.heartbeat = d
+	return c
+}
+
+func (c *Client) flush() {
+	if flusher, ok := c.w.(http.Flusher); ok {
+		flusher.Flush()
 	}
 }
 
 func (c *Client) Serve(r *http.Request) {
+	// Komentar pembuka: memaksa header+body terkirim sehingga fetch() klien langsung resolve,
+	// bukan menunggu event pertama.
+	fmt.Fprint(c.w, ": connected\n\n")
+	c.flush()
+
+	ticker := time.NewTicker(c.heartbeat)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case message, ok := <-c.send:
@@ -33,10 +60,10 @@ func (c *Client) Serve(r *http.Request) {
 				return
 			}
 			fmt.Fprintf(c.w, "data: %s\n\n", message)
-			flusher, ok := c.w.(http.Flusher)
-			if ok {
-				flusher.Flush()
-			}
+			c.flush()
+		case <-ticker.C:
+			fmt.Fprint(c.w, ": ping\n\n")
+			c.flush()
 		case <-r.Context().Done():
 			return
 		}

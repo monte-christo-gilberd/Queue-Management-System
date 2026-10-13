@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"qms/internal/apperror"
@@ -14,6 +15,7 @@ import (
 )
 
 type stubTicketService struct {
+	status   model.QueueStatus
 	tickets  []model.Ticket
 	err      error
 	joinErr  error
@@ -28,6 +30,14 @@ func (s *stubTicketService) JoinQueue(context.Context, int64, int64) (model.Tick
 
 func (s *stubTicketService) NextTicket(context.Context, int64, int64) (model.Ticket, error) {
 	return model.Ticket{}, s.nextErr
+}
+
+func (s *stubTicketService) QueueStatus(
+	_ context.Context,
+	_, _ int64,
+) (model.QueueStatus, error) {
+	s.called = true
+	return s.status, s.err
 }
 
 func (s *stubTicketService) ListTickets(
@@ -45,6 +55,7 @@ func newListEngine(svc *stubTicketService) *gin.Engine {
 	e := gin.New()
 	h := handler.NewTicketHandler(svc)
 	e.GET("/queues/:queue_id/tickets", h.List)
+	e.GET("/queues/:queue_id/status", h.Status)
 	e.POST("/queues/:queue_id/join", h.Join)
 	e.POST("/queues/:queue_id/next", h.Next)
 	return e
@@ -135,4 +146,56 @@ func TestNext_ErrorMapping(t *testing.T) {
 		assert.Equal(t, c.status, w.Code, c.code)
 		assert.Contains(t, w.Body.String(), `"`+c.code+`"`)
 	}
+}
+
+func TestStatus_OK(t *testing.T) {
+	current, ahead := 3, 1
+	svc := &stubTicketService{status: model.QueueStatus{
+		Queue:         model.Queue{ID: 5, OwnerID: 7, QueueName: "A", Status: "active"},
+		MyTicket:      &model.Ticket{ID: 9, QueueID: 5, TicketNumber: 5, Status: "waiting"},
+		CurrentNumber: &current,
+		WaitingAhead:  &ahead,
+	}}
+
+	w := doGet(newListEngine(svc), "/queues/5/status")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var got struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Equal(t, "queue_status", got.Data["action"])
+	assert.Equal(t, float64(3), got.Data["current_number"])
+	assert.Equal(t, float64(1), got.Data["waiting_ahead"])
+	assert.Equal(t, float64(5), got.Data["my_ticket"].(map[string]interface{})["ticket_number"])
+	queue := got.Data["queue"].(map[string]interface{})
+	assert.Equal(t, "A", queue["queue_name"])
+	assert.NotContains(t, queue, "owner_id")
+}
+
+func TestStatus_NullsWhenNoTicketAndNothingServed(t *testing.T) {
+	w := doGet(newListEngine(&stubTicketService{status: model.QueueStatus{Queue: model.Queue{ID: 5}}}), "/queues/5/status")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var got struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	for _, k := range []string{"my_ticket", "current_number", "waiting_ahead"} {
+		assert.Contains(t, got.Data, k)
+		assert.Nil(t, got.Data[k], k)
+	}
+}
+
+func TestStatus_ErrorsAndBadID(t *testing.T) {
+	w := doGet(newListEngine(&stubTicketService{err: apperror.ErrNotFound}), "/queues/5/status")
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	w = doGet(newListEngine(&stubTicketService{err: assert.AnError}), "/queues/5/status")
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	svc := &stubTicketService{}
+	w = doGet(newListEngine(svc), "/queues/abc/status")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.False(t, svc.called)
 }

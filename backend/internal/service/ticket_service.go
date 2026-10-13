@@ -41,11 +41,26 @@ type TicketRepository interface {
 		queueID,
 		userID int64,
 	) (bool, error)
+	FindByUser(
+		ctx context.Context,
+		queueID,
+		userID int64,
+	) (model.Ticket, error)
+	LastCompletedNumber(
+		ctx context.Context,
+		queueID int64,
+	) (number int, ok bool, err error)
+	CountWaitingBefore(
+		ctx context.Context,
+		queueID,
+		sortKey int64,
+	) (int, error)
 }
 
 // QueueGuard dipenuhi *QueueService.
 //   - GetQueue: requester harus owner; selain itu apperror.ErrNotFound.
 //   - GetActiveQueue: queue harus ada (ErrNotFound) dan aktif (ErrQueueClosed).
+//   - ViewQueue: owner atau pemegang tiket; selain itu apperror.ErrNotFound.
 type QueueGuard interface {
 	GetQueue(
 		ctx context.Context,
@@ -56,6 +71,11 @@ type QueueGuard interface {
 		ctx context.Context,
 		queueID int64,
 	) (model.Queue, error)
+	ViewQueue(
+		ctx context.Context,
+		queueID,
+		requesterID int64,
+	) (model.Queue, model.QueueAuthz, bool, error)
 }
 
 var errNoQueueGuard = errors.New("ticket service: queue guard is not configured")
@@ -234,4 +254,65 @@ func (s *TicketService) ListTickets(
 		queueID,
 		statuses,
 	)
+}
+
+// QueueStatus mengembalikan nomor yang sedang dilayani + tiket requester untuk satu queue.
+// Boleh dipanggil owner atau pemegang tiket; selain itu apperror.ErrNotFound.
+func (s *TicketService) QueueStatus(
+	ctx context.Context,
+	queueID,
+	requesterID int64,
+) (model.QueueStatus, error) {
+	if s.guard == nil {
+		return model.QueueStatus{}, errNoQueueGuard
+	}
+
+	queue, _, _, err := s.guard.ViewQueue(
+		ctx,
+		queueID,
+		requesterID,
+	)
+	if err != nil {
+		return model.QueueStatus{}, err
+	}
+
+	status := model.QueueStatus{Queue: queue}
+
+	number, ok, err := s.repository.LastCompletedNumber(
+		ctx,
+		queueID,
+	)
+	if err != nil {
+		return model.QueueStatus{}, err
+	}
+	if ok {
+		status.CurrentNumber = &number
+	}
+
+	mine, err := s.repository.FindByUser(
+		ctx,
+		queueID,
+		requesterID,
+	)
+	if errors.Is(err, apperror.ErrNotFound) {
+		return status, nil
+	}
+	if err != nil {
+		return model.QueueStatus{}, err
+	}
+	status.MyTicket = &mine
+
+	if mine.Status == "waiting" {
+		ahead, err := s.repository.CountWaitingBefore(
+			ctx,
+			queueID,
+			mine.SortKey,
+		)
+		if err != nil {
+			return model.QueueStatus{}, err
+		}
+		status.WaitingAhead = &ahead
+	}
+
+	return status, nil
 }

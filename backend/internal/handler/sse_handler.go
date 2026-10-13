@@ -87,6 +87,8 @@ func (h *SSEHandler) ServeSSE(
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
+	// Cegah nginx/reverse proxy mem-buffer stream.
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
 
 	client := sse.NewClient(
 		h.hub,
