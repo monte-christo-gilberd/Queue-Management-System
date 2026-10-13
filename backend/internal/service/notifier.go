@@ -4,7 +4,11 @@ package service
 // (Hub.Notify(queueID, action, payload)) sehingga tidak ada import cycle:
 // service tidak import ws, ws tidak import service.
 type EventNotifier interface {
-	Notify(queueID int64, action string, payload interface{})
+	Notify(
+		queueID int64,
+		action string,
+		payload interface{},
+	)
 }
 
 // Nama event disamakan dengan internal/ws/message.go.

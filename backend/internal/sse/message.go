@@ -39,7 +39,13 @@ func MarshalEvent(
 	eventType string,
 	payload interface{},
 ) []byte {
-	msg, err := json.Marshal(NewEvent(queueID, eventType, payload))
+	msg, err := json.Marshal(
+		NewEvent(
+			queueID,
+			eventType,
+			payload,
+		),
+	)
 	if err != nil {
 		return nil
 	}
