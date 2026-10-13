@@ -27,9 +27,7 @@ export type QueueLiveScreenProps = {
   onMenuItemPress?: (item: OwnerMenuItem) => void;
 };
 
-// Pengecualian yang disengaja (lihat spesifikasi): papan display gelap + titik hijau status "live".
-// (warna papan ditulis langsung sebagai class arbitrary: #14181D, #2A3037, #8B9199, #5E656D)
-const LIVE_GREEN = '#4ADE80';
+// Pengecualian yang disengaja: papan display gelap + titik hijau status "live" (token board*, liveGreen).
 
 type LayoutProps = {
   counterName: string;
@@ -185,26 +183,26 @@ function DesktopAirportBoardLayout({
 }: LayoutProps) {
   return (
     <View className="items-center gap-5">
-      <View className="w-full max-w-[680px] gap-7 rounded-[20px] bg-[#14181D] px-12 py-10">
+      <View className="w-full max-w-[680px] gap-7 rounded-[20px] bg-board px-12 py-10">
         <View className="flex-row items-start justify-between">
           {/* TODO: backend belum mendukung ini (counter/loket) */}
-          <Text className="text-[18px] tracking-[1px] text-[#8B9199]" style={{ fontFamily: Fonts?.mono }}>{counterName.toLowerCase()}</Text>
+          <Text className="text-[18px] tracking-[1px] text-boardMuted" style={{ fontFamily: Fonts?.mono }}>{counterName.toLowerCase()}</Text>
           <View className="flex-row items-center gap-2">
             <LiveDot />
-            <Text className="text-[16px] text-[#4ADE80]" style={{ fontFamily: Fonts?.mono }}>live</Text>
+            <Text className="text-[16px] text-liveGreen" style={{ fontFamily: Fonts?.mono }}>live</Text>
           </View>
         </View>
 
-        <View className="h-px bg-[#2A3037]" />
+        <View className="h-px bg-boardLine" />
 
         <View className="items-center gap-2.5 py-2">
           <Text
             className="text-[96px] font-normal leading-[108px] tracking-[2px] text-white"
             style={{ fontFamily: Fonts?.mono }}>{currentTicket?.number ?? '---'}</Text>
-          <Text className="text-[22px] text-[#8B9199]" style={{ fontFamily: Fonts?.mono }}>{currentTicket?.name ?? 'Belum ada antrian'}</Text>
+          <Text className="text-[22px] text-boardMuted" style={{ fontFamily: Fonts?.mono }}>{currentTicket?.name ?? 'Belum ada antrian'}</Text>
         </View>
 
-        <View className="h-px bg-[#2A3037]" />
+        <View className="h-px bg-boardLine" />
 
         <View className="flex-row items-start justify-between">
           <BoardSide label="sebelumnya" ticket={previousTicket} />
@@ -231,8 +229,8 @@ function BoardSide({
 }) {
   return (
     <View className={cn('gap-1', alignRight ? 'items-end' : 'items-stretch')}>
-      <Text className="text-[18px] tracking-[1px] text-[#5E656D]" style={{ fontFamily: Fonts?.mono }}>{label}</Text>
-      <Text className="text-[22px] text-[#8B9199]" style={{ fontFamily: Fonts?.mono }}>{ticket?.number ?? '---'}</Text>
+      <Text className="text-[18px] tracking-[1px] text-boardDim" style={{ fontFamily: Fonts?.mono }}>{label}</Text>
+      <Text className="text-[22px] text-boardMuted" style={{ fontFamily: Fonts?.mono }}>{ticket?.number ?? '---'}</Text>
     </View>
   );
 }
@@ -265,7 +263,7 @@ function LiveDot() {
           },
         ]}
       />
-      <View className="h-2.5 w-2.5 rounded-full bg-[#4ADE80]" />
+      <View className="h-2.5 w-2.5 rounded-full bg-liveGreen" />
     </View>
   );
 }
@@ -277,6 +275,6 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: LIVE_GREEN,
+    backgroundColor: AppColors.liveGreen,
   },
 });

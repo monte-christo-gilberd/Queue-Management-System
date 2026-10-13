@@ -25,6 +25,12 @@ const fixedColors = {
   scrim: 'rgba(0,0,0,0.2)',
   modalBackdrop: 'rgba(0,0,0,0.3)',
   panelActive: 'rgba(255,255,255,0.45)',
+  // papan display gelap + indikator "live" di QueueLiveScreen (sengaja tidak ikut tema)
+  board: '#14181D',
+  boardLine: '#2A3037',
+  boardMuted: '#8B9199',
+  boardDim: '#5E656D',
+  liveGreen: '#4ADE80',
 };
 
 /**
