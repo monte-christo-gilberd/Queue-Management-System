@@ -101,3 +101,39 @@ func (r *UserRepository) FindByEmail(
 	}
 	return user, nil
 }
+
+// FindByLogin mengembalikan user yang email-nya ATAU username-nya sama dengan identifier.
+// Username tidak unik di schema, jadi bisa lebih dari satu baris; kecocokan email didahulukan.
+// Hasil dibatasi 10 agar input acak tidak menarik banyak baris.
+func (r *UserRepository) FindByLogin(
+	ctx context.Context,
+	identifier string,
+) ([]model.User, error) {
+
+	const query = `
+		SELECT
+			id,
+			email,
+			username,
+			password_hash,
+			google_id,
+			created_at
+		FROM users
+		WHERE email = $1 OR username = $1
+		ORDER BY (email = $1) DESC, id ASC
+		LIMIT 10
+	`
+	users := []model.User{}
+
+	err := r.db.SelectContext(
+		ctx,
+		&users,
+		query,
+		identifier,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("find user by login: %w", err)
+	}
+
+	return users, nil
+}

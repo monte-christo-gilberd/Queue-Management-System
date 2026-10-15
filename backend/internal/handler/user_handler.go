@@ -107,9 +107,20 @@ func (h *UserHandler) Login(
 		return
 	}
 
+	identifier := request.Login()
+	if identifier == "" {
+		respondError(
+			c,
+			http.StatusBadRequest,
+			"BAD_REQUEST",
+			"identifier (email or username) is required",
+		)
+		return
+	}
+
 	token, err := h.service.Login(
 		ctx,
-		request.Email,
+		identifier,
 		request.Password,
 	)
 	if err != nil {

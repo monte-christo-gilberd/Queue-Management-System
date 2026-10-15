@@ -1,6 +1,6 @@
 //go:build integration
 
-package repository_test
+package integration_test
 
 import (
 	"context"
@@ -428,4 +428,41 @@ func TestQueueStatus_AgainstPostgres(t *testing.T) {
 	// Repo langsung: FindByUser tanpa tiket -> ErrNotFound.
 	_, err = ticketRepo.FindByUser(ctx, q.ID, outsider)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
+}
+
+// Lookup login: email atau username, username ganda, dan email didahulukan.
+func TestUserRepository_FindByLogin(t *testing.T) {
+	db := newTestDB(t)
+	repo := repository.NewUserRepository(db)
+	ctx := context.Background()
+
+	a, err := repo.Create(ctx, "a@b.c", "budi", "hash-a")
+	require.NoError(t, err)
+	b, err := repo.Create(ctx, "b@b.c", "budi", "hash-b")
+	require.NoError(t, err)
+	// username "b@b.c" milik user lain: email-nya harus didahulukan saat login dengan "b@b.c".
+	c, err := repo.Create(ctx, "c@b.c", "b@b.c", "hash-c")
+	require.NoError(t, err)
+
+	byEmail, err := repo.FindByLogin(ctx, "a@b.c")
+	require.NoError(t, err)
+	require.Len(t, byEmail, 1)
+	assert.Equal(t, a.ID, byEmail[0].ID)
+
+	byUsername, err := repo.FindByLogin(ctx, "budi")
+	require.NoError(t, err)
+	require.Len(t, byUsername, 2)
+	assert.Equal(t, a.ID, byUsername[0].ID)
+	assert.Equal(t, b.ID, byUsername[1].ID)
+
+	emailFirst, err := repo.FindByLogin(ctx, "b@b.c")
+	require.NoError(t, err)
+	require.Len(t, emailFirst, 2)
+	assert.Equal(t, b.ID, emailFirst[0].ID, "kecocokan email harus di depan kecocokan username")
+	assert.Equal(t, c.ID, emailFirst[1].ID)
+
+	none, err := repo.FindByLogin(ctx, "tidak-ada")
+	require.NoError(t, err)
+	assert.NotNil(t, none)
+	assert.Empty(t, none)
 }

@@ -17,6 +17,24 @@ type fakeUserRepo struct {
 	createErr  error
 	findUser   model.User
 	findErr    error
+	// findUsers dipakai FindByLogin; bila kosong dan findErr nil, dianggap tidak ditemukan.
+	findUsers []model.User
+	// lastIdentifier merekam argumen FindByLogin terakhir.
+	lastIdentifier string
+}
+
+func (r *fakeUserRepo) FindByLogin(
+	ctx context.Context,
+	identifier string,
+) ([]model.User, error) {
+	r.lastIdentifier = identifier
+	if r.findErr != nil {
+		return nil, r.findErr
+	}
+	if r.findUsers == nil {
+		return []model.User{r.findUser}, nil
+	}
+	return r.findUsers, nil
 }
 
 func (r *fakeUserRepo) Create(
@@ -84,7 +102,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 func TestLogin_EmailNotFound(t *testing.T) {
 
 	repo := &fakeUserRepo{
-		findErr: apperror.ErrNotFound,
+		findUsers: []model.User{},
 	}
 
 	svc := service.NewUserService(repo, "test-secret")
@@ -118,6 +136,72 @@ func TestRegister_EmailAlreadyExist(t *testing.T) {
 	svc := service.NewUserService(repo, "test-secret")
 
 	token, err := svc.Register(context.Background(), "test@test.com", "budi", "password123")
+
+	assert.Error(t, err)
+	assert.Empty(t, token)
+}
+
+func hashFor(t *testing.T, password string) sql.NullString {
+	t.Helper()
+	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sql.NullString{String: string(h), Valid: true}
+}
+
+func TestLogin_PassesIdentifierThroughAsIs(t *testing.T) {
+	repo := &fakeUserRepo{findUsers: []model.User{{ID: 1, PasswordHash: hashFor(t, "pw")}}}
+	svc := service.NewUserService(repo, "test-secret")
+
+	_, err := svc.Login(context.Background(), "budi", "pw")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "budi", repo.lastIdentifier)
+}
+
+func TestLogin_ByUsernameSucceeds(t *testing.T) {
+	repo := &fakeUserRepo{findUsers: []model.User{{ID: 3, Username: "budi", PasswordHash: hashFor(t, "pw")}}}
+	svc := service.NewUserService(repo, "test-secret")
+
+	token, err := svc.Login(context.Background(), "budi", "pw")
+
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+}
+
+// Username tidak unik: dua user berbeda dengan username sama; hanya yang passwordnya cocok masuk.
+func TestLogin_SharedUsernameMatchesByPassword(t *testing.T) {
+	repo := &fakeUserRepo{findUsers: []model.User{
+		{ID: 1, PasswordHash: hashFor(t, "alpha")},
+		{ID: 2, PasswordHash: hashFor(t, "beta")},
+	}}
+	svc := service.NewUserService(repo, "test-secret")
+
+	token, err := svc.Login(context.Background(), "budi", "beta")
+
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+}
+
+func TestLogin_SharedUsernameWrongPasswordFails(t *testing.T) {
+	repo := &fakeUserRepo{findUsers: []model.User{
+		{ID: 1, PasswordHash: hashFor(t, "alpha")},
+		{ID: 2, PasswordHash: hashFor(t, "beta")},
+	}}
+	svc := service.NewUserService(repo, "test-secret")
+
+	token, err := svc.Login(context.Background(), "budi", "gamma")
+
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+	assert.Empty(t, token)
+}
+
+func TestLogin_SkipsGoogleOnlyAccounts(t *testing.T) {
+	repo := &fakeUserRepo{findUsers: []model.User{{ID: 1, PasswordHash: sql.NullString{}}}}
+	svc := service.NewUserService(repo, "test-secret")
+
+	token, err := svc.Login(context.Background(), "budi", "")
 
 	assert.Error(t, err)
 	assert.Empty(t, token)

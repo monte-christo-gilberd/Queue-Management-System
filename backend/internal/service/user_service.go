@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"qms/internal/apperror"
 	"qms/internal/model"
 	"strconv"
 	"time"
@@ -17,10 +18,10 @@ type UserRepository interface {
 		username,
 		passwordHash string,
 	) (model.User, error)
-	FindByEmail(
+	FindByLogin(
 		ctx context.Context,
-		email string,
-	) (model.User, error)
+		identifier string,
+	) ([]model.User, error)
 }
 
 type UserService struct {
@@ -73,34 +74,37 @@ func (s *UserService) Register(
 	return token, nil
 }
 
+// Login menerima email atau username. Kandidat dicocokkan satu per satu dengan password;
+// username yang sama bisa dimiliki lebih dari satu user, jadi yang cocok passwordnya yang masuk.
 func (s *UserService) Login(
 	ctx context.Context,
-	email,
+	identifier,
 	password string,
 ) (string, error) {
 
-	user, err := s.repository.FindByEmail(
+	users, err := s.repository.FindByLogin(
 		ctx,
-		email,
+		identifier,
 	)
 	if err != nil {
 		return "", err
 	}
 
-	err = bcrypt.CompareHashAndPassword(
-		[]byte(user.PasswordHash.String),
-		[]byte(password),
-	)
-	if err != nil {
-		return "", err
+	for _, user := range users {
+		if !user.PasswordHash.Valid {
+			// akun Google-only tidak punya password
+			continue
+		}
+		if bcrypt.CompareHashAndPassword(
+			[]byte(user.PasswordHash.String),
+			[]byte(password),
+		) != nil {
+			continue
+		}
+		return s.issueToken(user.ID)
 	}
 
-	token, err := s.issueToken(user.ID)
-	if err != nil {
-		return "", err
-	}
-
-	return token, nil
+	return "", apperror.ErrNotFound
 }
 
 func (s *UserService) issueToken(
