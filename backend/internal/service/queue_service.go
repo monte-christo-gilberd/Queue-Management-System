@@ -380,3 +380,20 @@ func (s *QueueService) validateOwnership(
 	}
 	return queue, queueAuthz, nil
 }
+
+// GetQueueInfo mengembalikan info publik antrian untuk user yang login (tanpa owner dan izin).
+// Dipakai halaman join agar pengunjung bisa melihat nama dan deskripsi sebelum bergabung.
+func (s *QueueService) GetQueueInfo(
+	ctx context.Context,
+	queueID int64,
+) (model.Queue, error) {
+
+	queue, _, err := s.repository.GetQueueByID(
+		ctx,
+		queueID,
+	)
+	if err != nil {
+		return model.Queue{}, err
+	}
+	return queue, nil
+}

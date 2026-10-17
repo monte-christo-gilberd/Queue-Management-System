@@ -30,7 +30,6 @@ export default function History({ shell, onMenuItemPress, items }: HistoryProps)
       userName={shell?.userName}
       onMenuItemPress={onMenuItemPress}
       activeItem="history"
-      activeTab="history"
       onBack={() => router.back()}>
 
 

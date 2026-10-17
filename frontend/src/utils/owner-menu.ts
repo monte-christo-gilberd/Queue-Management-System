@@ -21,8 +21,14 @@ export function handleOwnerMenuItemPress(item: OwnerMenuItem) {
     case 'profile':
       router.push('/profile');
       break;
-    case 'settings':
-      // TODO: layar Pengaturan belum ada di mockup.
+    case 'antrian':
+      router.navigate('/antrian');
+      break;
+    case 'riwayat-saya':
+      router.navigate('/riwayat');
+      break;
+    case 'join':
+      // dibuka oleh layout sendiri (popup masuk antrian)
       break;
     case 'logout':
       useAuthStore.getState().logout();

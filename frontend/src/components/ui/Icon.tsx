@@ -10,10 +10,12 @@ export type IconName =
   | 'refresh'
   | 'clock'
   | 'check'
-  | 'user-add';
+  | 'user-add'
+  | 'person';
 
 // TODO: ganti glyph ini dengan icon set asli (mis. @expo/vector-icons / expo-symbols) agar mirip mockup.
 const GLYPHS: Record<IconName, string> = {
+  person: '◉',
   back: '‹',
   home: '⌂',
   list: '☰',

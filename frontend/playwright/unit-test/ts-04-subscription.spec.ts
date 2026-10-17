@@ -10,6 +10,7 @@ import {
   EXPIRED_OWNER,
   hasExpiredOwner,
   loginViaApi,
+  API_URL,
 } from './support';
 
 test.describe('TS-04 Langganan owner', () => {
@@ -17,13 +18,16 @@ test.describe('TS-04 Langganan owner', () => {
     const account = await registerAccount(request, 'nosub');
     await signInWithToken(page, account.token, account.email);
 
-    await action(page, 'Buat Antrian Baru').click();
-    await field(page, 'mis. Loket Pelayanan 1').fill(uniqueName('Blokir'));
-    await action(page, 'Buat Antrian').click();
+    // Akun tanpa langganan adalah customer di UI: tombol buat antrian tidak ditampilkan.
+    await expect(action(page, 'Masuk Ke Antrian')).toBeVisible();
+    await expect(action(page, 'Buat Antrian Baru')).toHaveCount(0);
 
-    await expect(page.getByText(/Langganan Anda tidak aktif/)).toBeVisible();
-    await expect(page).toHaveURL(/\/dashboard$/);
-    await expect(page.getByText('Belum ada antrian yang aktif')).toBeVisible();
+    // Backend tetap menolak pembuatan antrian dengan 402.
+    const res = await request.post(`${API_URL}/api/v1/queues`, {
+      headers: { Authorization: `Bearer ${account.token}` },
+      data: { queue_name: uniqueName('Blokir'), queue_description: '' },
+    });
+    expect(res.status()).toBe(402);
   });
 
   test('TC-04-02 Owner tanpa langganan tetap bisa membuka daftar antrian', async ({ page, request }) => {

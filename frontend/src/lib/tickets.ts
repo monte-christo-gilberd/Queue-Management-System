@@ -1,5 +1,5 @@
 import { apiFetch } from './api';
-import type { QueueStatus, Ticket } from '@/types/api';
+import type { PublicQueue, QueueStatus, Ticket } from '@/types/api';
 
 type ListTicketsResponse = { action: 'list_tickets'; queue_id: number; tickets: Ticket[] };
 
@@ -37,16 +37,35 @@ export async function getQueueStatus(queueId: number): Promise<QueueStatus> {
     my_ticket: data.my_ticket,
     current_number: data.current_number,
     waiting_ahead: data.waiting_ahead,
+    previous_number: data.previous_number,
+    next_number: data.next_number,
   };
 }
 
 type MyTicketsResponse = { action: 'list_my_tickets'; tickets: MyTicket[] };
 
 /** Tiket saya di semua antrian, beserta nama dan status antriannya. */
-export type MyTicket = Ticket & { queue_name: string; queue_status: 'active' | 'closed' };
+export type MyTicket = Ticket & {
+  queue_name: string;
+  queue_status: 'active' | 'closed';
+  /** ticket_number yang sedang dilayani di antrian ini; null bila belum ada. */
+  current_number: number | null;
+};
+
+/** Tiket yang masih relevan di beranda: menunggu di antrian aktif, atau nomornya sedang dilayani. */
+export function isOnHome(t: MyTicket): boolean {
+  if (t.queue_status !== 'active') return false;
+  return t.status === 'waiting' || (t.status === 'completed' && t.current_number === t.ticket_number);
+}
 
 /** GET /api/v1/users/me/tickets — tiket saya (login diperlukan). */
 export async function listMyTickets(): Promise<MyTicket[]> {
   const data = await apiFetch<MyTicketsResponse>('/api/v1/users/me/tickets');
   return data.tickets;
+}
+
+/** GET /api/v1/queues/:id/info — nama, deskripsi, dan status antrian (login diperlukan, tanpa owner/izin). */
+export async function getQueueInfo(queueId: number): Promise<PublicQueue> {
+  const data = await apiFetch<{ action: 'queue_info'; queue: PublicQueue }>(`/api/v1/queues/${queueId}/info`);
+  return data.queue;
 }

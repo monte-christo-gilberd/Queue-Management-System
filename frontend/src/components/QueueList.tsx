@@ -40,7 +40,6 @@ export default function QueueList({
       userName={shell?.userName}
       onMenuItemPress={onMenuItemPress}
       activeItem="queues"
-      activeTab="queues"
       onBack={() => router.back()}
     >
       <View className="flex-row gap-2.5">

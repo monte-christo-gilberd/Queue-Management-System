@@ -25,7 +25,6 @@ export default function QueueDetailRoute() {
         userName={displayName ?? undefined}
         onMenuItemPress={handleOwnerMenuItemPress}
         activeItem="queues"
-        activeTab="queues"
         onBack={() => router.back()}
       >
         <Text className="text-[13px] text-muted">{loading ? 'Memuat antrian...' : error}</Text>

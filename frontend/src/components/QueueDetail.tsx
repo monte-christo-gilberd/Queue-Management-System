@@ -89,7 +89,6 @@ export default function QueueDetail({
       userName={shell?.userName}
       onMenuItemPress={onMenuItemPress}
       activeItem="queues"
-      activeTab="queues"
       onBack={() => router.back()}
     >
       <View className={isWide ? "flex-row items-start gap-6" : "gap-4"}>

@@ -414,7 +414,14 @@ func (r *TicketRepository) ListByUser(
 			t.completed_at,
 			t.cancelled_at,
 			q.queue_name,
-			q.status AS queue_status
+			q.status AS queue_status,
+			(
+				SELECT c.ticket_number
+				FROM tickets c
+				WHERE c.queue_id = t.queue_id AND c.status = 'completed'
+				ORDER BY c.completed_at DESC, c.id DESC
+				LIMIT 1
+			) AS current_number
 		FROM tickets t
 		JOIN queues q ON q.id = t.queue_id
 		WHERE t.user_id = $1
@@ -433,4 +440,52 @@ func (r *TicketRepository) ListByUser(
 	}
 
 	return tickets, nil
+}
+
+// RecentCompletedNumbers: ticket_number tiket completed terbaru, maksimal n, terbaru dulu.
+func (r *TicketRepository) RecentCompletedNumbers(
+	ctx context.Context,
+	queueID int64,
+	n int,
+) ([]int, error) {
+
+	numbers := []int{}
+
+	const query = `
+		SELECT ticket_number
+		FROM tickets
+		WHERE queue_id = $1 AND status = 'completed'
+		ORDER BY completed_at DESC, id DESC
+		LIMIT $2
+	`
+
+	err := r.db.SelectContext(ctx, &numbers, query, queueID, n)
+	if err != nil {
+		return nil, err
+	}
+	return numbers, nil
+}
+
+// FirstWaitingNumber: ticket_number tiket waiting dengan sort_key terkecil; ok=false bila tidak ada.
+func (r *TicketRepository) FirstWaitingNumber(
+	ctx context.Context,
+	queueID int64,
+) (number int, ok bool, err error) {
+
+	const query = `
+		SELECT ticket_number
+		FROM tickets
+		WHERE queue_id = $1 AND status = 'waiting'
+		ORDER BY sort_key ASC, id ASC
+		LIMIT 1
+	`
+
+	err = r.db.GetContext(ctx, &number, query, queueID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return number, true, nil
 }

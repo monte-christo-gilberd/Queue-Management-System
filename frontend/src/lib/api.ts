@@ -6,7 +6,21 @@
  * sehingga tidak ada siklus impor antara api.ts dan store.
  */
 
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080';
+/**
+ * Alamat backend. Urutan: EXPO_PUBLIC_API_URL (jika diisi), lalu di web host yang sedang dibuka
+ * (localhost atau IP LAN, port 8080), lalu localhost. Dengan begitu perangkat lain di jaringan
+ * otomatis memanggil backend di mesin yang sama.
+ */
+function resolveApiBase(): string {
+  const fromEnv = process.env.EXPO_PUBLIC_API_URL;
+  if (fromEnv) return fromEnv;
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:8080`;
+  }
+  return 'http://localhost:8080';
+}
+
+export const API_BASE_URL = resolveApiBase();
 
 export class ApiError extends Error {
   /** Status HTTP. 0 = gagal terhubung ke server. */

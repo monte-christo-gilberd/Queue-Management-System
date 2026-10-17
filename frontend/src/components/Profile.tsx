@@ -63,7 +63,7 @@ export default function Profile({
       title="Profil"
       userName={shell?.userName}
       onMenuItemPress={onMenuItemPress}
-      activeTab="home"
+      activeTab="profile"
       profileHighlighted
       onBack={() => router.back()}>
       <View className={isWide ? 'flex-row items-start gap-6' : 'gap-4'}>

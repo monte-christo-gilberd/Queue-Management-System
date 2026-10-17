@@ -30,6 +30,9 @@ type fakeTicketRepo struct {
 	countCalled     bool
 
 	userTickets []model.UserTicket
+
+	recentNumbers []int
+	firstWaiting  int
 }
 
 func (f *fakeTicketRepo) MaxWaitingSortKey(
@@ -106,6 +109,21 @@ func (f *fakeTicketRepo) ListByUser(
 	userID int64,
 ) ([]model.UserTicket, error) {
 	return f.userTickets, nil
+}
+
+func (f *fakeTicketRepo) RecentCompletedNumbers(
+	ctx context.Context,
+	queueID int64,
+	n int,
+) ([]int, error) {
+	return f.recentNumbers, nil
+}
+
+func (f *fakeTicketRepo) FirstWaitingNumber(
+	ctx context.Context,
+	queueID int64,
+) (int, bool, error) {
+	return f.firstWaiting, f.firstWaiting != 0, nil
 }
 
 func (f *fakeTicketRepo) CountWaitingBefore(
@@ -375,4 +393,23 @@ func TestQueueStatus_ErrorsWithoutGuard(t *testing.T) {
 	_, err := svc.QueueStatus(context.Background(), 1, 7)
 
 	assert.Error(t, err)
+}
+
+func TestQueueStatus_PreviousAndNextNumbers(t *testing.T) {
+	repo := &fakeTicketRepo{
+		myTicket:      &model.Ticket{ID: 9, TicketNumber: 5, SortKey: 327680, Status: "waiting"},
+		lastCompleted: 2, hasCompleted: true,
+		recentNumbers: []int{2, 1},
+		firstWaiting:  3,
+	}
+
+	got, err := newStatusSvc(repo).QueueStatus(context.Background(), 1, 55)
+
+	assert.NoError(t, err)
+	if assert.NotNil(t, got.PreviousNumber) {
+		assert.Equal(t, 1, *got.PreviousNumber)
+	}
+	if assert.NotNil(t, got.NextNumber) {
+		assert.Equal(t, 3, *got.NextNumber)
+	}
 }

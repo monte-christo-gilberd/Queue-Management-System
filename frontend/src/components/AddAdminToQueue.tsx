@@ -35,7 +35,6 @@ export default function AddAdminToQueue({
       userName={shell?.userName}
       onMenuItemPress={onMenuItemPress}
       activeItem="admin-contact"
-      activeTab="admins"
       onBack={() => router.back()}>
       <View className="flex-row items-center justify-between rounded-card bg-primary p-4">
         <View>

@@ -13,11 +13,26 @@ export function currentWebOrigin(): string | null {
 
 /** Menyalin teks ke clipboard. Mengembalikan false bila tidak didukung atau ditolak browser. */
 export async function copyToClipboard(text: string): Promise<boolean> {
-  if (Platform.OS !== 'web' || typeof navigator === 'undefined' || !navigator.clipboard) return false;
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return false;
+
+  // Clipboard API hanya tersedia di localhost atau HTTPS; di http://<ip-lan> pakai cara lama.
+  if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // lanjut ke fallback
+    }
   }
+
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  area.select();
+  const ok = document.execCommand('copy');
+  document.body.removeChild(area);
+  return ok;
 }

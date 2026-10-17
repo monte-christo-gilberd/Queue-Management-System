@@ -11,7 +11,9 @@ test.describe('TS-01 Authentication', () => {
     await signInThroughUi(page, account.email, account.password);
 
     await expect(page).toHaveURL(/\/dashboard$/);
-    await expect(page.getByText('Belum ada antrian yang aktif')).toBeVisible();
+    // Akun customer tidak melihat bagian owner (antrian kosong dan tombol buat antrian).
+    await expect(action(page, 'Masuk Ke Antrian')).toBeVisible();
+    await expect(action(page, 'Buat Antrian Baru')).toHaveCount(0);
   });
 
   test('TC-01-02 Login dengan username', async ({ page, request }) => {
@@ -55,7 +57,9 @@ test.describe('TS-01 Authentication', () => {
     await action(page, 'Daftar').click();
 
     await expect(page).toHaveURL(/\/dashboard$/);
-    await expect(page.getByText('Belum ada antrian yang aktif')).toBeVisible();
+    // Akun customer tidak melihat bagian owner (antrian kosong dan tombol buat antrian).
+    await expect(action(page, 'Masuk Ke Antrian')).toBeVisible();
+    await expect(action(page, 'Buat Antrian Baru')).toHaveCount(0);
   });
 
   test('TC-01-07 Email yang sudah terdaftar ditolak', async ({ page, request }) => {
@@ -106,13 +110,17 @@ test.describe('TS-01 Authentication', () => {
     await page.reload();
 
     await expect(page).toHaveURL(/\/dashboard$/);
-    await expect(page.getByText('Belum ada antrian yang aktif')).toBeVisible();
+    // Akun customer tidak melihat bagian owner (antrian kosong dan tombol buat antrian).
+    await expect(action(page, 'Masuk Ke Antrian')).toBeVisible();
+    await expect(action(page, 'Buat Antrian Baru')).toHaveCount(0);
   });
 
   test('TC-01-11 Logout menghapus sesi', async ({ page, request }) => {
     const account = await registerAccount(request, 'logout');
     await signInWithToken(page, account.token, account.email);
-    await expect(page.getByText('Belum ada antrian yang aktif')).toBeVisible();
+    // Akun customer tidak melihat bagian owner (antrian kosong dan tombol buat antrian).
+    await expect(action(page, 'Masuk Ke Antrian')).toBeVisible();
+    await expect(action(page, 'Buat Antrian Baru')).toHaveCount(0);
 
     // Ikon profil di header berada tepat setelah nama pengguna (lihat ResponsiveScreenLayout)
     await page.getByText(account.email, { exact: true }).locator('xpath=following-sibling::*[1]').click();

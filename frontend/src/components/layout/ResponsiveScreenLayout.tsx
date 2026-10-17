@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { Fragment, useState } from 'react';
+import { Fragment, useContext, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -20,8 +20,9 @@ import ResponsiveContainer from '@/components/ResponsiveContainer';
 import { Icon, PersonIcon, ScanIcon, type IconName } from '@/components/ui/Icon';
 import { JoinQueueModals } from '@/components/ui/JoinQueueModals';
 import { PageWatermark } from '@/components/ui/PageWatermark';
+import { OwnerContext } from '@/components/layout/owner-context';
 
-export type TabKey = 'home' | 'queues' | 'admins' | 'history';
+export type TabKey = 'home' | 'antrian' | 'riwayat' | 'profile';
 
 /** Item menu profil (panel profil HP dan desktop memakai item yang sama). */
 export type OwnerMenuItem =
@@ -31,7 +32,9 @@ export type OwnerMenuItem =
   | 'history'
   | 'logout'
   | 'profile'
-  | 'settings';
+  | 'antrian'
+  | 'riwayat-saya'
+  | 'join';
 
 /** Data tampilan untuk header/panel profil — diisi developer. */
 export type ShellProps = {
@@ -58,32 +61,44 @@ export type ResponsiveScreenLayoutProps = {
 };
 
 /** Link navigasi utama — hanya tampil di panel desktop (di HP sudah ada bottom tab). */
-const WIDE_NAV: { key: OwnerMenuItem; label: string }[] = [
-  { key: 'dashboard', label: 'Dashboard' },
+/** Menu khusus owner di panel profil (HP dan desktop). Customer tidak melihatnya. */
+const OWNER_MENU: { key: OwnerMenuItem; label: string }[] = [
   { key: 'admin-contact', label: 'Admin Contact' },
   { key: 'queues', label: 'Daftar Antrian' },
+  { key: 'history', label: 'Riwayat Antrian' },
 ];
 
 /** Menu panel profil — dipakai SAMA di HP dan desktop. */
-const PROFILE_MENU: { key: OwnerMenuItem; label: string }[] = [
-  { key: 'settings', label: 'Pengaturan' },
-  { key: 'history', label: 'Riwayat' },
-  { key: 'logout', label: 'Keluar' },
+const LOGOUT_ITEM: { key: OwnerMenuItem; label: string } = { key: 'logout', label: 'Keluar' };
+
+/** Item yang sama dengan navbar bawah HP. Dipakai panel desktop agar tidak ada yang hilang saat tanpa navbar. */
+const NAV_ITEMS: { key: OwnerMenuItem; label: string }[] = [
+  { key: 'dashboard', label: 'Beranda' },
+  { key: 'antrian', label: 'Antrian Saya' },
+  { key: 'join', label: 'Masuk Antrian' },
+  { key: 'riwayat-saya', label: 'Riwayat Saya' },
+  { key: 'profile', label: 'Profil' },
 ];
+
+/** Tab navbar aktif -> item yang disorot di panel desktop. */
+const TAB_TO_ITEM: Record<TabKey, OwnerMenuItem> = {
+  home: 'dashboard',
+  antrian: 'antrian',
+  riwayat: 'riwayat-saya',
+  profile: 'profile',
+};
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const LOGO_HEADER = require('../../../logo/logo-header.svg');
 
 /** Navigasi bawah HP: Beranda (kiri), tombol QR (tengah, overlay), Antrian (kanan). Admin & Riwayat ada di collapsible. */
-const TABS: { key: TabKey; label: string; icon: IconName; href: '/dashboard' | '/queues' }[] = [
+const TABS: { key: TabKey; label: string; icon: IconName; href: '/dashboard' | '/antrian' | '/riwayat' | '/profile' }[] = [
   { key: 'home', label: 'Beranda', icon: 'home', href: '/dashboard' },
-  { key: 'queues', label: 'Antrian', icon: 'list', href: '/queues' },
+  { key: 'antrian', label: 'Antrian', icon: 'list', href: '/antrian' },
+  { key: 'riwayat', label: 'Riwayat', icon: 'history', href: '/riwayat' },
+  { key: 'profile', label: 'Profil', icon: 'person', href: '/profile' },
 ];
 
-/** Item tambahan di collapsible HP (yang dulu ada di navigasi bawah). Riwayat sudah ada di PROFILE_MENU. */
-const MOBILE_NAV: { key: OwnerMenuItem; label: string }[] = [
-  { key: 'admin-contact', label: 'Admin Contact' },
-];
 
 /**
  * Kerangka semua halaman owner. Responsif secara internal:
@@ -108,6 +123,7 @@ function WideLayout({
   userName = 'Nama User',
   onMenuItemPress,
   onBack,
+  activeTab,
   activeItem,
   darkMode = false,
   onToggleDarkMode,
@@ -115,8 +131,16 @@ function WideLayout({
 }: ResponsiveScreenLayoutProps) {
   // Sama seperti HP: tombol kembali redup bila tidak ada layar sebelumnya (hindari "GO_BACK was not handled").
   const canGoBack = router.canGoBack();
+  const isOwner = useContext(OwnerContext);
+  // Tampilan mode gelap (ikon). Tema belum diterapkan ke layar: lihat catatan di ZUSTAND/UI.
+  const [dark, setDark] = useState(darkMode);
+  const toggleDark = () => {
+    setDark((v) => !v);
+    onToggleDarkMode?.();
+  };
   // State tampilan murni: dropdown terbuka atau tidak, dan tinggi header (untuk panel penuh ke bawah).
   const [menuOpen, setMenuOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const { height: windowHeight } = useWindowDimensions();
 
@@ -181,35 +205,52 @@ function WideLayout({
             <View className="absolute right-0 w-80 bg-panel px-4 pt-3" style={overlayPosition}>
               <PanelHeader
                 userName={userName}
+                darkMode={dark}
+                onToggleDarkMode={toggleDark}
                 onPress={() => {
                   setMenuOpen(false);
                   onMenuItemPress?.('profile');
                 }}
               />
-              {WIDE_NAV.map((item) => (
+              {NAV_ITEMS.map((item) => (
                 <PanelItem
                   key={item.key}
                   label={item.label}
-                  active={item.key === activeItem}
+                  active={item.key === (activeItem ?? (activeTab ? TAB_TO_ITEM[activeTab] : undefined))}
+                  onPress={() => {
+                    setMenuOpen(false);
+                    if (item.key === 'join') setJoinOpen(true);
+                    else onMenuItemPress?.(item.key);
+                  }}
+                />
+              ))}
+              {isOwner ? (
+                <>
+                  <View className="my-2 h-px bg-scrim" />
+                  {OWNER_MENU.map((item) => (
+                    <PanelItem
+                      key={item.key}
+                      label={item.label}
+                      active={item.key === activeItem}
+                      onPress={() => {
+                        setMenuOpen(false);
+                        onMenuItemPress?.(item.key);
+                      }}
+                    />
+                  ))}
+                </>
+              ) : null}
+              <View className="my-2 h-px bg-scrim" />
+              {[LOGOUT_ITEM].map((item) => (
+                <PanelItem
+                  key={item.key}
+                  label={item.label}
                   onPress={() => {
                     setMenuOpen(false);
                     onMenuItemPress?.(item.key);
                   }}
                 />
               ))}
-              <View className="my-2 h-px bg-scrim" />
-              {PROFILE_MENU.map((item) => (
-                <PanelItem
-                  key={item.key}
-                  label={item.label}
-                  onPress={() => {
-                    setMenuOpen(false);
-                    onMenuItemPress?.(item.key);
-                  }}
-                />
-              ))}
-              <View className="my-2 h-px bg-scrim" />
-              <DarkModeToggle value={darkMode} onPress={onToggleDarkMode} />
             </View>
           </>
         ) : null}
@@ -218,6 +259,8 @@ function WideLayout({
       <ScrollView className="flex-1" contentContainerClassName="items-center">
         <View className="w-full max-w-desktop gap-5 p-8">{children}</View>
       </ScrollView>
+
+      <JoinQueueModals visible={joinOpen} onClose={() => setJoinOpen(false)} />
     </View>
   );
 }
@@ -236,6 +279,15 @@ function MobileLayout({
   children,
 }: ResponsiveScreenLayoutProps) {
   const insets = useSafeAreaInsets();
+  const isOwner = useContext(OwnerContext);
+  // Tampilan mode gelap (ikon). Tema belum diterapkan ke layar: lihat catatan di ZUSTAND/UI.
+  const [dark, setDark] = useState(darkMode);
+  const toggleDark = () => {
+    setDark((v) => !v);
+    onToggleDarkMode?.();
+  };
+  // Jarak navbar mengambang dari bawah layar (di atas safe area).
+  const floatingBottom = Math.max(insets.bottom, 8) + 12;
   // State tampilan murni: panel profil sedang terbuka atau tidak, dan tinggi tab bar (untuk menaruh tombol tengah).
   const [panelOpen, setPanelOpen] = useState(false);
   const [tabBarHeight, setTabBarHeight] = useState(0);
@@ -281,14 +333,14 @@ function MobileLayout({
 
         <ScrollView
           className="flex-1"
-          contentContainerClassName={cn('gap-4 p-5', activeTab && 'pb-12')}>
+          contentContainerClassName={cn('gap-4 p-5', activeTab && 'pb-32')}>
           {children}
         </ScrollView>
 
         {activeTab ? (
           <View
-            className="flex-row border-t border-divider bg-background pt-2"
-            style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+            className="absolute left-4 right-4 flex-row rounded-3xl bg-background px-2 pt-2 shadow-lg"
+            style={{ bottom: floatingBottom, paddingBottom: 8 }}
             onLayout={(e) => setTabBarHeight(e.nativeEvent.layout.height)}>
             {TABS.map((tab, index) => {
               const active = tab.key === activeTab;
@@ -296,7 +348,7 @@ function MobileLayout({
               return (
                 <Fragment key={tab.key}>
                   {/* Ruang kosong di tengah untuk tombol melayang + labelnya. */}
-                  {index === 1 ? (
+                  {index === 2 ? (
                     <View className="w-20 items-center justify-end">
                       <Text className="text-[11px] font-semibold text-foreground">Masuk</Text>
                     </View>
@@ -324,7 +376,7 @@ function MobileLayout({
         {activeTab ? (
           <View
             className="absolute left-0 right-0 items-center"
-            style={{ bottom: tabBarHeight - 30 }}
+            style={{ bottom: floatingBottom + tabBarHeight - 30 }}
             pointerEvents="box-none">
             <Pressable
               onPress={() => setJoinOpen(true)}
@@ -350,12 +402,14 @@ function MobileLayout({
               style={{ paddingTop: insets.top + 12 }}>
               <PanelHeader
                 userName={userName}
+                darkMode={dark}
+                onToggleDarkMode={toggleDark}
                 onPress={() => {
                   setPanelOpen(false);
                   onMenuItemPress?.('profile');
                 }}
               />
-              {MOBILE_NAV.map((item) => (
+              {(isOwner ? OWNER_MENU : []).map((item) => (
                 <PanelItem
                   key={item.key}
                   label={item.label}
@@ -365,7 +419,7 @@ function MobileLayout({
                   }}
                 />
               ))}
-              {PROFILE_MENU.map((item) => (
+              {[LOGOUT_ITEM].map((item) => (
                 <PanelItem
                   key={item.key}
                   label={item.label}
@@ -375,8 +429,6 @@ function MobileLayout({
                   }}
                 />
               ))}
-              <View className="my-2 h-px bg-scrim" />
-              <DarkModeToggle value={darkMode} onPress={onToggleDarkMode} />
             </View>
           </View>
         ) : null}
@@ -387,37 +439,40 @@ function MobileLayout({
 
 /* ----------------------------------- Shared ----------------------------------- */
 
-/** Toggle "Mode Gelap" — placeholder: tampilan saja, belum mengubah tema (implementasi nanti). */
-function DarkModeToggle({ value, onPress }: { value: boolean; onPress?: () => void }) {
+/** Foto profil + nama di atas panel (ketuk untuk profil), dengan tombol mode gelap bulat di sebelahnya. */
+function PanelHeader({
+  userName,
+  onPress,
+  darkMode,
+  onToggleDarkMode,
+}: {
+  userName: string;
+  onPress: () => void;
+  darkMode: boolean;
+  onToggleDarkMode: () => void;
+}) {
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
-      accessibilityLabel="Mode gelap"
-      className="flex-row items-center justify-between px-1 py-3.5">
-      <Text className="text-[15px] font-bold text-foreground">Mode Gelap</Text>
-      <View
-        className={cn('h-6 w-11 justify-center rounded-full px-0.5', value ? 'bg-primary' : 'bg-line')}>
-        <View className={cn('h-5 w-5 rounded-full bg-white', value ? 'self-end' : 'self-start')} />
-      </View>
-    </Pressable>
-  );
-}
-
-/** Foto profil + nama di atas panel; bisa diklik untuk membuka halaman Profil. */
-function PanelHeader({ userName, onPress }: { userName: string; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel="Buka profil"
-      className="mb-4 flex-row items-center gap-3">
-      <View className="h-14 w-14 items-center justify-center rounded-full bg-dark">
-        <PersonIcon size={22} color={AppColors.white} />
-      </View>
-      <Text className="text-[18px] font-extrabold text-foreground">{userName}</Text>
-    </Pressable>
+    <View className="mb-4 flex-row items-center gap-3">
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel="Buka profil"
+        className="flex-1 flex-row items-center gap-3">
+        <View className="h-14 w-14 items-center justify-center rounded-full bg-dark">
+          <PersonIcon size={22} color={AppColors.white} />
+        </View>
+        <Text className="flex-shrink text-[18px] font-extrabold text-foreground">{userName}</Text>
+      </Pressable>
+      {/* Mode terang: ikon matahari. Mode gelap: ikon bulan sabit. */}
+      <Pressable
+        onPress={onToggleDarkMode}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: darkMode }}
+        accessibilityLabel={darkMode ? 'Mode gelap aktif' : 'Mode terang aktif'}
+        className="h-11 w-11 items-center justify-center rounded-full bg-dark">
+        <Text className="text-[20px] text-white">{darkMode ? '☾' : '☀'}</Text>
+      </Pressable>
+    </View>
   );
 }
 

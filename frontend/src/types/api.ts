@@ -97,4 +97,8 @@ export type QueueStatus = {
   current_number: number | null;
   /** Jumlah tiket waiting di depan tiket saya; null bila saya tidak sedang menunggu. */
   waiting_ahead: number | null;
+  /** ticket_number sebelum yang sedang dilayani; null bila belum ada. */
+  previous_number: number | null;
+  /** ticket_number waiting pertama; null bila tidak ada yang menunggu. */
+  next_number: number | null;
 };

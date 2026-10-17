@@ -1,11 +1,16 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { View } from 'react-native';
 
 import CreateQueueModal from '@/components/CreateQueueModal';
+import { JoinQueueModals } from '@/components/ui/JoinQueueModals';
 import Dashboard from '@/components/Dashboard';
-import { MyTicketsList } from '@/components/MyTicketsList';
+import { MySpotCard, NotQueuingCard } from '@/components/MySpotCard';
+import { useIsWide } from '@/hooks/use-is-wide';
 import { useMe } from '@/hooks/use-me';
+import { useQueueSpot } from '@/hooks/use-queue-spot';
 import { useMyTickets } from '@/hooks/use-my-tickets';
+import { isOnHome } from '@/lib/tickets';
 import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useQueueList } from '@/hooks/use-queues';
 import { describeQueueError } from '@/lib/queue-errors';
@@ -19,8 +24,31 @@ export default function DashboardRoute() {
   const { queues, error: queuesError, reload: reloadQueues } = useQueueList();
   // Bagian owner (antrian kosong + buat antrian) hanya untuk owner; sebelum profil dimuat, disembunyikan.
   const { isOwner, loaded: meLoaded } = useMe();
-  // Tiket saya (customer yang sudah bergabung) ditampilkan di bawah papan.
-  const { tickets: myTickets } = useMyTickets();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
+  const isWide = useIsWide();
+  // Tiket saya (customer). Hanya tiket waiting di antrian yang masih aktif yang tampil di beranda;
+  // antrian yang ditutup pindah ke Riwayat.
+  const { tickets: myTickets, reload: reloadTickets } = useMyTickets();
+  // Kartu hanya untuk tiket yang relevan di beranda (lihat isOnHome).
+  const activeSpots = myTickets.filter(isOnHome);
+  const topCard =
+    meLoaded && !isOwner ? (
+      activeSpots.length > 0 ? (
+        <View className="w-full gap-4">
+          {activeSpots.map((t) => (
+            <QueueSpot
+              key={t.id}
+              queueId={t.queue_id}
+              queueName={t.queue_name}
+              onChanged={() => void reloadTickets()}
+            />
+          ))}
+        </View>
+      ) : (
+        <NotQueuingCard onJoin={isWide ? () => setJoinOpen(true) : undefined} />
+      )
+    ) : null;
   const activeQueue = queues.find((q) => q.status === 'active') ?? null;
   // Antrian aktif pertama. Saat ditutup (SSE queue_closed), daftar diambil ulang dan papan kosong.
   const board = useQueueBoard(activeQueue?.id ?? null, () => {
@@ -28,7 +56,6 @@ export default function DashboardRoute() {
   });
   const { previous, current, next, upcoming } = board.view;
 
-  const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string>();
 
@@ -72,13 +99,10 @@ export default function DashboardRoute() {
         onNext={() => void board.next()}
         onCreateQueue={() => setCreateOpen(true)}
         canCreateQueue={meLoaded && isOwner}
-        footer={
-          <MyTicketsList
-            tickets={myTickets}
-            onOpen={(queueId) => router.push({ pathname: '/join/[queueId]', params: { queueId: String(queueId) } })}
-          />
-        }
+        topCard={topCard}
       />
+      <JoinQueueModals visible={joinOpen} onClose={() => setJoinOpen(false)} />
+
       <CreateQueueModal
         visible={createOpen}
         onClose={() => {
@@ -90,5 +114,27 @@ export default function DashboardRoute() {
         errorMessage={createError}
       />
     </>
+  );
+}
+
+/** Kartu satu antrian aktif milik customer. Status diambil dan diperbarui sendiri lewat SSE. */
+function QueueSpot({
+  queueId,
+  queueName,
+  onChanged,
+}: {
+  queueId: number;
+  queueName: string;
+  onChanged: () => void;
+}) {
+  const status = useQueueSpot(queueId, onChanged);
+  if (!status) return null;
+  return (
+    <MySpotCard
+      queueName={queueName}
+      currentNumber={status.current_number != null ? formatTicketNumber(status.current_number) : null}
+      previousNumber={status.previous_number != null ? formatTicketNumber(status.previous_number) : null}
+      nextNumber={status.next_number != null ? formatTicketNumber(status.next_number) : null}
+    />
   );
 }

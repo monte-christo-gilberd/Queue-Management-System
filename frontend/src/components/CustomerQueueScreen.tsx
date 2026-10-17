@@ -7,9 +7,13 @@ export type CustomerTicketStatus = 'waiting' | 'completed' | 'cancelled' | 'skip
 
 export type CustomerQueueScreenProps = {
   queueName: string;
+  /** Deskripsi antrian dari owner (opsional). */
+  queueDescription?: string | null;
   /** Nomor tiket saya yang sudah diformat (mis. "A-042"); null bila belum bergabung. */
   ticketNumber: string | null;
   ticketStatus: CustomerTicketStatus | null;
+  /** Nomor saya sedang dilayani (tiket completed yang masih nomor sekarang). */
+  servingNow?: boolean;
   /** Nomor yang sedang dilayani, sudah diformat; null bila belum ada. */
   currentNumber: string | null;
   /** Jumlah orang di depan saya; null bila tidak sedang menunggu. */
@@ -35,8 +39,10 @@ const STATUS_LABEL: Record<CustomerTicketStatus, string> = {
 /** Layar customer (presentational). Hanya menampilkan data yang diterima lewat props. */
 export function CustomerQueueScreen({
   queueName,
+  queueDescription,
   ticketNumber,
   ticketStatus,
+  servingNow = false,
   currentNumber,
   waitingAhead,
   closed,
@@ -54,6 +60,9 @@ export function CustomerQueueScreen({
         <Text className="text-center text-[24px] font-black text-foreground">
           {queueName || (loading ? 'Memuat...' : 'Antrian')}
         </Text>
+        {queueDescription ? (
+          <Text className="text-center text-[14px] text-muted">{queueDescription}</Text>
+        ) : null}
 
         {errorMessage ? (
           <Text className="text-center text-[13px] text-live">{errorMessage}</Text>
@@ -73,7 +82,7 @@ export function CustomerQueueScreen({
             <Text className="text-center text-[12px] font-semibold text-white">Nomor Anda</Text>
             <Text className="text-center text-[56px] font-black text-white">{ticketNumber}</Text>
             <Text className="text-center text-[13px] font-bold text-white">
-              {ticketStatus ? STATUS_LABEL[ticketStatus] : ''}
+              {servingNow ? 'Sedang dilayani' : ticketStatus ? STATUS_LABEL[ticketStatus] : ''}
             </Text>
           </View>
         ) : null}

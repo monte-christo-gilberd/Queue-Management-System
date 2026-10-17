@@ -64,7 +64,6 @@ export default function QueueLiveScreen({
       title={queueName}
       onMenuItemPress={onMenuItemPress}
       activeItem="queues"
-      activeTab="queues"
       onBack={() => router.back()}>
       {isWide ? <DesktopAirportBoardLayout {...shared} /> : <MobileTimelineLayout {...shared} />}
     </ResponsiveScreenLayout>

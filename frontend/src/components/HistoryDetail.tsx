@@ -39,7 +39,6 @@ export default function HistoryDetail({
       userName={shell?.userName}
       onMenuItemPress={onMenuItemPress}
       activeItem="history"
-      activeTab="history"
       onBack={() => router.back()}>
       <View>
         <Text className="text-[22px] font-black text-foreground">Semua Nomor Antrian</Text>

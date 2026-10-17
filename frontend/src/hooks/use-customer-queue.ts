@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueueEvents } from '@/hooks/use-queue-events';
 import { ApiError } from '@/lib/api';
 import { describeQueueError } from '@/lib/queue-errors';
-import { getQueueStatus, joinQueue } from '@/lib/tickets';
-import type { QueueStatus } from '@/types/api';
+import { getQueueInfo, getQueueStatus, joinQueue } from '@/lib/tickets';
+import type { PublicQueue, QueueStatus } from '@/types/api';
 
 const RELOAD_DEBOUNCE_MS = 300;
 
@@ -22,6 +22,8 @@ export function useCustomerQueue(queueId: number) {
   const [error, setError] = useState<string>();
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string>();
+  // Info publik (nama, deskripsi) tersedia sebelum bergabung.
+  const [info, setInfo] = useState<PublicQueue | null>(null);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -39,6 +41,23 @@ export function useCustomerQueue(queueId: number) {
       setLoading(false);
     }
   }, [queueId]);
+
+  // Info publik antrian. then() → setState tidak terjadi sinkron di dalam effect.
+  useEffect(() => {
+    if (invalid) return;
+    let active = true;
+    void getQueueInfo(queueId).then(
+      (data) => {
+        if (active) setInfo(data);
+      },
+      () => {
+        if (active) setInfo(null);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [invalid, queueId]);
 
   // Muat awal. then() → setState tidak terjadi sinkron di dalam effect.
   useEffect(() => {
@@ -119,12 +138,13 @@ export function useCustomerQueue(queueId: number) {
   return useMemo(
     () => ({
       status,
+      info,
       loading,
       error: invalidMessage ?? error,
       joining,
       joinError,
       join,
     }),
-    [status, loading, error, invalidMessage, joining, joinError, join],
+    [status, info, loading, error, invalidMessage, joining, joinError, join],
   );
 }

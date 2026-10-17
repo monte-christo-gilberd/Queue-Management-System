@@ -39,7 +39,6 @@ export default function AdminContact({
       userName={shell?.userName}
       onMenuItemPress={onMenuItemPress}
       activeItem="admin-contact"
-      activeTab="admins"
       onBack={() => router.back()}
     >
       <SearchBar value={search} onChangeText={onChangeSearch} />

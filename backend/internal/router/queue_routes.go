@@ -16,6 +16,7 @@ func registerQueueRoutes(
 	rg.GET("/:queue_id/status", ticketH.Status)
 
 	rg.GET("/:queue_id", queueH.Get)
+	rg.GET("/:queue_id/info", queueH.Info)
 	rg.PUT("/:queue_id", queueH.Update)
 	rg.PUT("/:queue_id/authz", queueH.UpdateAuthz)
 	rg.POST("/:queue_id/close", queueH.Close)

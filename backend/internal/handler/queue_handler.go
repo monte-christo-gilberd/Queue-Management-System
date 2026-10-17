@@ -13,6 +13,10 @@ import (
 )
 
 type QueueService interface {
+	GetQueueInfo(
+		ctx context.Context,
+		queueID int64,
+	) (model.Queue, error)
 	CreateQueue(
 		ctx context.Context,
 		ownerID int64,
@@ -451,4 +455,30 @@ func (h *QueueHandler) Close(
 			"status":   "success",
 		},
 	)
+}
+
+// Info: GET /api/v1/queues/:queue_id/info — info publik antrian (login diperlukan).
+func (h *QueueHandler) Info(
+	c *gin.Context,
+) {
+	queueID, err := strconv.ParseInt(c.Param("queue_id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
+		return
+	}
+
+	queue, err := h.service.GetQueueInfo(c.Request.Context(), queueID)
+	if errors.Is(err, apperror.ErrNotFound) {
+		respondError(c, http.StatusNotFound, "NOT_FOUND", "queue not found")
+		return
+	}
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	respondData(c, http.StatusOK, gin.H{
+		"action": "queue_info",
+		"queue":  dto.NewPublicQueueResponse(queue),
+	})
 }

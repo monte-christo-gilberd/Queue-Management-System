@@ -50,6 +50,15 @@ type TicketRepository interface {
 		ctx context.Context,
 		queueID int64,
 	) (number int, ok bool, err error)
+	RecentCompletedNumbers(
+		ctx context.Context,
+		queueID int64,
+		n int,
+	) ([]int, error)
+	FirstWaitingNumber(
+		ctx context.Context,
+		queueID int64,
+	) (number int, ok bool, err error)
 	CountWaitingBefore(
 		ctx context.Context,
 		queueID,
@@ -291,6 +300,23 @@ func (s *TicketService) QueueStatus(
 	}
 	if ok {
 		status.CurrentNumber = &number
+	}
+
+	// Sebelumnya (completed sebelum yang sedang dilayani) dan berikutnya (waiting pertama): hanya nomor.
+	recent, err := s.repository.RecentCompletedNumbers(ctx, queueID, 2)
+	if err != nil {
+		return model.QueueStatus{}, err
+	}
+	if len(recent) == 2 {
+		status.PreviousNumber = &recent[1]
+	}
+
+	next, hasNext, err := s.repository.FirstWaitingNumber(ctx, queueID)
+	if err != nil {
+		return model.QueueStatus{}, err
+	}
+	if hasNext {
+		status.NextNumber = &next
 	}
 
 	mine, err := s.repository.FindByUser(

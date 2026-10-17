@@ -77,10 +77,12 @@ func nullTimePtr(t sql.NullTime) *time.Time {
 }
 
 type QueueStatusResponse struct {
-	Queue         PublicQueueResponse `json:"queue"`
-	MyTicket      *TicketResponse     `json:"my_ticket"`
-	CurrentNumber *int                `json:"current_number"`
-	WaitingAhead  *int                `json:"waiting_ahead"`
+	Queue          PublicQueueResponse `json:"queue"`
+	MyTicket       *TicketResponse     `json:"my_ticket"`
+	CurrentNumber  *int                `json:"current_number"`
+	WaitingAhead   *int                `json:"waiting_ahead"`
+	PreviousNumber *int                `json:"previous_number"`
+	NextNumber     *int                `json:"next_number"`
 }
 
 func NewQueueStatusResponse(s model.QueueStatus) QueueStatusResponse {
@@ -90,18 +92,21 @@ func NewQueueStatusResponse(s model.QueueStatus) QueueStatusResponse {
 		mine = &t
 	}
 	return QueueStatusResponse{
-		Queue:         NewPublicQueueResponse(s.Queue),
-		MyTicket:      mine,
-		CurrentNumber: s.CurrentNumber,
-		WaitingAhead:  s.WaitingAhead,
+		Queue:          NewPublicQueueResponse(s.Queue),
+		MyTicket:       mine,
+		CurrentNumber:  s.CurrentNumber,
+		WaitingAhead:   s.WaitingAhead,
+		PreviousNumber: s.PreviousNumber,
+		NextNumber:     s.NextNumber,
 	}
 }
 
 // UserTicketResponse: tiket saya + info antriannya.
 type UserTicketResponse struct {
 	TicketResponse
-	QueueName   string `json:"queue_name"`
-	QueueStatus string `json:"queue_status"`
+	QueueName     string `json:"queue_name"`
+	QueueStatus   string `json:"queue_status"`
+	CurrentNumber *int   `json:"current_number"`
 }
 
 func NewUserTicketResponses(tickets []model.UserTicket) []UserTicketResponse {
@@ -111,6 +116,7 @@ func NewUserTicketResponses(tickets []model.UserTicket) []UserTicketResponse {
 			TicketResponse: NewTicketResponse(t.Ticket),
 			QueueName:      t.QueueName,
 			QueueStatus:    t.QueueStatus,
+			CurrentNumber:  t.CurrentNumber,
 		})
 	}
 	return out

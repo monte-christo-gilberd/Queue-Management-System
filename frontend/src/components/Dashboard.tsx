@@ -12,7 +12,6 @@ import ResponsiveScreenLayout, {
 } from "@/components/layout/ResponsiveScreenLayout";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppendNoteModal } from "@/components/ui/AppendNoteModal";
-import { JoinQueueModals } from "@/components/ui/JoinQueueModals";
 import { CurrentNumberCard } from "@/components/ui/CurrentNumberCard";
 
 export type DashboardProps = {
@@ -33,7 +32,8 @@ export type DashboardProps = {
   onSkip?: () => void;
   onNext?: () => void;
   onCreateQueue?: () => void;
-  onJoinQueue?: () => void;
+  /** Kartu di atas papan: kondisi antrian saya (customer). */
+  topCard?: React.ReactNode;
   /** TODO: backend belum mendukung ini (catatan antrian) */
   onSubmitNote?: (note: string) => void;
   /** Konten tambahan di bawah papan (mis. daftar tiket saya). */
@@ -95,7 +95,7 @@ export default function Dashboard({
   onSkip,
   onNext,
   onCreateQueue,
-  onJoinQueue,
+  topCard,
   onSubmitNote,
   footer,
   canCreateQueue = true,
@@ -103,8 +103,6 @@ export default function Dashboard({
   const isWide = useIsWide();
   // State tampilan murni: modal catatan sedang terbuka atau tidak.
   const [noteOpen, setNoteOpen] = useState(false);
-  // State tampilan murni: popup scan QR / link manual (dibuka tombol "Masuk Ke Antrian" di PC).
-  const [joinOpen, setJoinOpen] = useState(false);
 
   return (
     <ResponsiveScreenLayout
@@ -115,6 +113,8 @@ export default function Dashboard({
       activeTab="home"
       onBack={() => router.back()}
     >
+      {topCard}
+
       {activeQueue ? (
         <View className={isWide ? "flex-row items-start gap-6" : "gap-4"}>
           <View className={cn("gap-4", isWide && "flex-1")}>
@@ -206,23 +206,10 @@ export default function Dashboard({
             onPress={onCreateQueue}
           />
         ) : null}
-        {/* HP: "Masuk ke Antrian" pindah jadi tombol tengah di navigasi bawah (lihat layout). */}
-        {isWide ? (
-          <AppButton
-            label="Masuk Ke Antrian"
-            variant="dark"
-            className="flex-1"
-            onPress={() => {
-              setJoinOpen(true);
-              onJoinQueue?.();
-            }}
-          />
-        ) : null}
       </View>
 
       {footer}
 
-      <JoinQueueModals visible={joinOpen} onClose={() => setJoinOpen(false)} />
 
       <AppendNoteModal
         visible={noteOpen}

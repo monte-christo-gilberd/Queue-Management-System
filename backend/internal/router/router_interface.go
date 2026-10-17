@@ -23,6 +23,7 @@ type QueueHandler interface {
 	Update(c *gin.Context)
 	UpdateAuthz(c *gin.Context)
 	Close(c *gin.Context)
+	Info(c *gin.Context)
 }
 
 type SSEHandler interface {
