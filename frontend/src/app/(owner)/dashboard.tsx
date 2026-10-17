@@ -3,6 +3,9 @@ import { useState } from 'react';
 
 import CreateQueueModal from '@/components/CreateQueueModal';
 import Dashboard from '@/components/Dashboard';
+import { MyTicketsList } from '@/components/MyTicketsList';
+import { useMe } from '@/hooks/use-me';
+import { useMyTickets } from '@/hooks/use-my-tickets';
 import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useQueueList } from '@/hooks/use-queues';
 import { describeQueueError } from '@/lib/queue-errors';
@@ -14,6 +17,10 @@ import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 export default function DashboardRoute() {
   const displayName = useAuthStore((s) => s.displayName);
   const { queues, error: queuesError, reload: reloadQueues } = useQueueList();
+  // Bagian owner (antrian kosong + buat antrian) hanya untuk owner; sebelum profil dimuat, disembunyikan.
+  const { isOwner, loaded: meLoaded } = useMe();
+  // Tiket saya (customer yang sudah bergabung) ditampilkan di bawah papan.
+  const { tickets: myTickets } = useMyTickets();
   const activeQueue = queues.find((q) => q.status === 'active') ?? null;
   // Antrian aktif pertama. Saat ditutup (SSE queue_closed), daftar diambil ulang dan papan kosong.
   const board = useQueueBoard(activeQueue?.id ?? null, () => {
@@ -64,6 +71,13 @@ export default function DashboardRoute() {
         errorMessage={board.nextError ?? board.error ?? queuesError}
         onNext={() => void board.next()}
         onCreateQueue={() => setCreateOpen(true)}
+        canCreateQueue={meLoaded && isOwner}
+        footer={
+          <MyTicketsList
+            tickets={myTickets}
+            onOpen={(queueId) => router.push({ pathname: '/join/[queueId]', params: { queueId: String(queueId) } })}
+          />
+        }
       />
       <CreateQueueModal
         visible={createOpen}

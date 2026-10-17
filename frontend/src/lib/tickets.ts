@@ -39,3 +39,14 @@ export async function getQueueStatus(queueId: number): Promise<QueueStatus> {
     waiting_ahead: data.waiting_ahead,
   };
 }
+
+type MyTicketsResponse = { action: 'list_my_tickets'; tickets: MyTicket[] };
+
+/** Tiket saya di semua antrian, beserta nama dan status antriannya. */
+export type MyTicket = Ticket & { queue_name: string; queue_status: 'active' | 'closed' };
+
+/** GET /api/v1/users/me/tickets — tiket saya (login diperlukan). */
+export async function listMyTickets(): Promise<MyTicket[]> {
+  const data = await apiFetch<MyTicketsResponse>('/api/v1/users/me/tickets');
+  return data.tickets;
+}

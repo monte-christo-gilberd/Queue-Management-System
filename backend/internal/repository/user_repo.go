@@ -137,3 +137,48 @@ func (r *UserRepository) FindByLogin(
 
 	return users, nil
 }
+
+// FindByID mengembalikan user berdasarkan id.
+func (r *UserRepository) FindByID(
+	ctx context.Context,
+	id int64,
+) (model.User, error) {
+
+	const query = `
+		SELECT
+			id,
+			email,
+			username,
+			password_hash,
+			google_id,
+			created_at
+		FROM users
+		WHERE id = $1
+	`
+	var user model.User
+
+	err := r.db.GetContext(ctx, &user, query, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.User{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return model.User{}, fmt.Errorf("find user by id: %w", err)
+	}
+	return user, nil
+}
+
+// IsOwner: true bila user punya baris di tabel owners (berlangganan atau pernah berlangganan).
+func (r *UserRepository) IsOwner(
+	ctx context.Context,
+	userID int64,
+) (bool, error) {
+
+	const query = `SELECT EXISTS (SELECT 1 FROM owners WHERE user_id = $1)`
+	var exists bool
+
+	err := r.db.GetContext(ctx, &exists, query, userID)
+	if err != nil {
+		return false, fmt.Errorf("check owner: %w", err)
+	}
+	return exists, nil
+}

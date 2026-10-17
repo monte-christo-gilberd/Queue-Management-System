@@ -25,3 +25,11 @@ func (r LoginRequest) Login() string {
 type AuthResponse struct {
 	Token string `json:"token"`
 }
+
+// MeResponse: profil user yang sedang login. is_owner = punya baris di tabel owners.
+type MeResponse struct {
+	ID       int64  `json:"id"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	IsOwner  bool   `json:"is_owner"`
+}

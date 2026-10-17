@@ -96,3 +96,22 @@ func NewQueueStatusResponse(s model.QueueStatus) QueueStatusResponse {
 		WaitingAhead:  s.WaitingAhead,
 	}
 }
+
+// UserTicketResponse: tiket saya + info antriannya.
+type UserTicketResponse struct {
+	TicketResponse
+	QueueName   string `json:"queue_name"`
+	QueueStatus string `json:"queue_status"`
+}
+
+func NewUserTicketResponses(tickets []model.UserTicket) []UserTicketResponse {
+	out := make([]UserTicketResponse, 0, len(tickets))
+	for _, t := range tickets {
+		out = append(out, UserTicketResponse{
+			TicketResponse: NewTicketResponse(t.Ticket),
+			QueueName:      t.QueueName,
+			QueueStatus:    t.QueueStatus,
+		})
+	}
+	return out
+}

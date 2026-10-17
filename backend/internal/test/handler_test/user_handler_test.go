@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"qms/internal/apperror"
 	"qms/internal/handler"
+	"qms/internal/model"
 	noHTMLValidator "qms/internal/validator"
 	"sync"
 	"testing"
@@ -24,10 +25,16 @@ type stubUserService struct {
 	gotIdentifier string
 	token         string
 	err           error
+	isOwner       bool
+	profileErr    error
 }
 
 func (s *stubUserService) Register(context.Context, string, string, string) (string, error) {
 	return "", nil
+}
+
+func (s *stubUserService) Profile(_ context.Context, userID int64) (model.User, bool, error) {
+	return model.User{ID: userID, Email: "me@test.com", Username: "me"}, s.isOwner, s.profileErr
 }
 
 func (s *stubUserService) Login(_ context.Context, identifier, _ string) (string, error) {
@@ -99,4 +106,17 @@ func TestLogin_WrongCredentialsIsUnauthorized(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	assert.Contains(t, w.Body.String(), `"UNAUTHORIZED"`)
+}
+
+func TestMe_ReturnsProfileAndOwnerFlag(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &stubUserService{isOwner: false}
+	e := gin.New()
+	e.GET("/me", func(c *gin.Context) { c.Set("user_id", int64(9)); handler.NewUserHandler(svc).Me(c) })
+
+	w := httptest.NewRecorder()
+	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/me", nil))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":false}}`, w.Body.String())
 }

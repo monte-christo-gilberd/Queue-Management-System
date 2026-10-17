@@ -15,13 +15,14 @@ import (
 )
 
 type stubTicketService struct {
-	status   model.QueueStatus
-	tickets  []model.Ticket
-	err      error
-	joinErr  error
-	nextErr  error
-	statuses []string
-	called   bool
+	userTickets []model.UserTicket
+	status      model.QueueStatus
+	tickets     []model.Ticket
+	err         error
+	joinErr     error
+	nextErr     error
+	statuses    []string
+	called      bool
 }
 
 func (s *stubTicketService) JoinQueue(context.Context, int64, int64) (model.Ticket, error) {
@@ -30,6 +31,13 @@ func (s *stubTicketService) JoinQueue(context.Context, int64, int64) (model.Tick
 
 func (s *stubTicketService) NextTicket(context.Context, int64, int64) (model.Ticket, error) {
 	return model.Ticket{}, s.nextErr
+}
+
+func (s *stubTicketService) ListMyTickets(
+	_ context.Context,
+	_ int64,
+) ([]model.UserTicket, error) {
+	return s.userTickets, s.err
 }
 
 func (s *stubTicketService) QueueStatus(
@@ -198,4 +206,24 @@ func TestStatus_ErrorsAndBadID(t *testing.T) {
 	w = doGet(newListEngine(svc), "/queues/abc/status")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.False(t, svc.called)
+}
+
+func TestMyTickets_OK(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &stubTicketService{userTickets: []model.UserTicket{{
+		Ticket:      model.Ticket{ID: 3, QueueID: 5, TicketNumber: 1, Status: "waiting"},
+		QueueName:   "Loket A",
+		QueueStatus: "active",
+	}}}
+	e := gin.New()
+	e.GET("/users/me/tickets", handler.NewTicketHandler(svc).MyTickets)
+
+	w := httptest.NewRecorder()
+	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/users/me/tickets", nil))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"data":{"action":"list_my_tickets","tickets":[{
+		"id":3,"queue_id":5,"ticket_number":1,"sort_key":0,"user_id":0,"status":"waiting",
+		"skip_count":0,"last_notified_at":null,"created_at":"0001-01-01T00:00:00Z",
+		"completed_at":null,"cancelled_at":null,"queue_name":"Loket A","queue_status":"active"}]}}`, w.Body.String())
 }

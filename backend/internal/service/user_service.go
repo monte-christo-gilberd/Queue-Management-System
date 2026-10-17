@@ -22,6 +22,14 @@ type UserRepository interface {
 		ctx context.Context,
 		identifier string,
 	) ([]model.User, error)
+	FindByID(
+		ctx context.Context,
+		id int64,
+	) (model.User, error)
+	IsOwner(
+		ctx context.Context,
+		userID int64,
+	) (bool, error)
 }
 
 type UserService struct {
@@ -119,4 +127,23 @@ func (s *UserService) issueToken(
 		claims,
 	)
 	return token.SignedString([]byte(s.jwtSecret))
+}
+
+// Profile mengembalikan user yang sedang login dan apakah ia owner.
+func (s *UserService) Profile(
+	ctx context.Context,
+	userID int64,
+) (model.User, bool, error) {
+
+	user, err := s.repository.FindByID(ctx, userID)
+	if err != nil {
+		return model.User{}, false, err
+	}
+
+	isOwner, err := s.repository.IsOwner(ctx, userID)
+	if err != nil {
+		return model.User{}, false, err
+	}
+
+	return user, isOwner, nil
 }

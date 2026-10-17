@@ -35,6 +35,10 @@ type TicketService interface {
 		queueID,
 		requesterID int64,
 	) (model.QueueStatus, error)
+	ListMyTickets(
+		ctx context.Context,
+		userID int64,
+	) ([]model.UserTicket, error)
 }
 
 type TicketHandler struct {
@@ -339,6 +343,34 @@ func (h *TicketHandler) Status(
 			"my_ticket":      body.MyTicket,
 			"current_number": body.CurrentNumber,
 			"waiting_ahead":  body.WaitingAhead,
+		},
+	)
+}
+
+// MyTickets: GET /api/v1/users/me/tickets — tiket saya di semua antrian.
+func (h *TicketHandler) MyTickets(
+	c *gin.Context,
+) {
+	tickets, err := h.service.ListMyTickets(
+		c.Request.Context(),
+		c.GetInt64("user_id"),
+	)
+	if err != nil {
+		respondError(
+			c,
+			http.StatusInternalServerError,
+			"INTERNAL_ERROR",
+			"internal server error",
+		)
+		return
+	}
+
+	respondData(
+		c,
+		http.StatusOK,
+		gin.H{
+			"action":  "list_my_tickets",
+			"tickets": dto.NewUserTicketResponses(tickets),
 		},
 	)
 }

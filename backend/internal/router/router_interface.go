@@ -7,11 +7,13 @@ type TicketHandler interface {
 	Next(c *gin.Context)
 	List(c *gin.Context)
 	Status(c *gin.Context)
+	MyTickets(c *gin.Context)
 }
 
 type UserHandler interface {
 	Register(c *gin.Context)
 	Login(c *gin.Context)
+	Me(c *gin.Context)
 }
 
 type QueueHandler interface {

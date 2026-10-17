@@ -90,7 +90,11 @@ test.describe('TS-01 Authentication', () => {
     await page.goto(`${WEB_URL}/queues`);
     await expect(page).toHaveURL(/\/\?next=%2Fqueues/);
 
-    await signInThroughUi(page, account.email, account.password);
+    // Isi form di halaman yang sedang terbuka (jangan lewat signInThroughUi, karena itu membuka "/" lagi
+    // dan menghapus parameter next).
+    await field(page, 'EMAIL ATAU USERNAME').fill(account.email);
+    await field(page, 'PASSWORD').fill(account.password);
+    await action(page, 'Login').click();
 
     await expect(page).toHaveURL(/\/queues$/);
   });

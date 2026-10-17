@@ -1,4 +1,4 @@
-import { Redirect, usePathname, type Href } from 'expo-router';
+import { Redirect, useLocalSearchParams, usePathname, type Href } from 'expo-router';
 import { View } from 'react-native';
 
 import { useAuthHydrated } from '@/hooks/use-auth-hydrated';
@@ -22,8 +22,9 @@ export function AuthGate({ children, mode = 'required' }: AuthGateProps) {
   const hydrated = useAuthHydrated();
   const token = useAuthStore((s) => s.token);
   const path = usePathname();
+  const { next } = useLocalSearchParams<{ next?: string }>();
 
-  const decision = decideAuthGate({ mode, hydrated, token, path });
+  const decision = decideAuthGate({ mode, hydrated, token, path, next });
 
   if (decision.kind === 'wait') return <View className="flex-1 bg-background" />;
   if (decision.kind === 'redirect') return <Redirect href={decision.to as Href} />;

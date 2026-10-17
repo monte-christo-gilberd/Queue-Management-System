@@ -107,11 +107,14 @@ function WideLayout({
   title,
   userName = 'Nama User',
   onMenuItemPress,
+  onBack,
   activeItem,
   darkMode = false,
   onToggleDarkMode,
   children,
 }: ResponsiveScreenLayoutProps) {
+  // Sama seperti HP: tombol kembali redup bila tidak ada layar sebelumnya (hindari "GO_BACK was not handled").
+  const canGoBack = router.canGoBack();
   // State tampilan murni: dropdown terbuka atau tidak, dan tinggi header (untuk panel penuh ke bawah).
   const [menuOpen, setMenuOpen] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
@@ -130,15 +133,29 @@ function WideLayout({
       <PageWatermark />
       <View className="z-10" onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
         <View className="min-h-[64px] flex-row items-center justify-between bg-dark px-6 py-3">
-          {/* Logo bisa diklik untuk kembali ke dashboard. */}
-          <Pressable
-            className="flex-row items-center"
-            accessibilityRole="link"
-            accessibilityLabel="Kembali ke dashboard"
-            onPress={() => router.navigate('/dashboard')}>
-            {/* expo-image tidak dibungkus NativeWind → ukuran lewat style (rasio logo 220:56). */}
-            <Image source={LOGO_HEADER} style={styles.logo} contentFit="contain" accessibilityLabel="Antrian" />
-          </Pressable>
+          <View className="flex-row items-center gap-3">
+            {onBack ? (
+              <Pressable
+                onPress={onBack}
+                disabled={!canGoBack}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Kembali"
+                accessibilityState={{ disabled: !canGoBack }}
+                className={cn(!canGoBack && 'opacity-30')}>
+                <Icon name="back" size={32} color={AppColors.white} />
+              </Pressable>
+            ) : null}
+            {/* Logo bisa diklik untuk kembali ke dashboard. */}
+            <Pressable
+              className="flex-row items-center"
+              accessibilityRole="link"
+              accessibilityLabel="Kembali ke dashboard"
+              onPress={() => router.navigate('/dashboard')}>
+              {/* expo-image tidak dibungkus NativeWind → ukuran lewat style (rasio logo 220:56). */}
+              <Image source={LOGO_HEADER} style={styles.logo} contentFit="contain" accessibilityLabel="Antrian" />
+            </Pressable>
+          </View>
           {/* Judul ditengahkan terhadap seluruh header (tidak terpengaruh lebar logo / nama user). */}
           <View
             className="absolute bottom-0 left-0 right-0 top-0 items-center justify-center"

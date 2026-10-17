@@ -55,6 +55,10 @@ type TicketRepository interface {
 		queueID,
 		sortKey int64,
 	) (int, error)
+	ListByUser(
+		ctx context.Context,
+		userID int64,
+	) ([]model.UserTicket, error)
 }
 
 // QueueGuard dipenuhi *QueueService.
@@ -315,4 +319,12 @@ func (s *TicketService) QueueStatus(
 	}
 
 	return status, nil
+}
+
+// ListMyTickets mengembalikan tiket milik user di semua antrian (tanpa pengecekan owner: hanya milik user sendiri).
+func (s *TicketService) ListMyTickets(
+	ctx context.Context,
+	userID int64,
+) ([]model.UserTicket, error) {
+	return s.repository.ListByUser(ctx, userID)
 }

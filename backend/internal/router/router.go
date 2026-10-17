@@ -40,6 +40,16 @@ func SetupRouter(
 		router.userHandler,
 	)
 
+	// Tiket saya: butuh login, tidak ada di bawah /queues karena tidak terkait satu antrian.
+	me := v1.Group("/users/me")
+	me.Use(router.authMiddleware)
+	if router.userHandler != nil {
+		me.GET("", router.userHandler.Me)
+	}
+	if router.ticketHandler != nil {
+		me.GET("/tickets", router.ticketHandler.MyTickets)
+	}
+
 	queues := v1.Group("/queues")
 	queues.Use(router.authMiddleware)
 	registerQueueRoutes(

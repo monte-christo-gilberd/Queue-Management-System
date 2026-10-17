@@ -21,6 +21,25 @@ type fakeUserRepo struct {
 	findUsers []model.User
 	// lastIdentifier merekam argumen FindByLogin terakhir.
 	lastIdentifier string
+	isOwner        bool
+	findByIDErr    error
+}
+
+func (r *fakeUserRepo) FindByID(
+	ctx context.Context,
+	id int64,
+) (model.User, error) {
+	if r.findByIDErr != nil {
+		return model.User{}, r.findByIDErr
+	}
+	return model.User{ID: id, Email: "me@test.com", Username: "me"}, nil
+}
+
+func (r *fakeUserRepo) IsOwner(
+	ctx context.Context,
+	userID int64,
+) (bool, error) {
+	return r.isOwner, nil
 }
 
 func (r *fakeUserRepo) FindByLogin(
@@ -205,4 +224,17 @@ func TestLogin_SkipsGoogleOnlyAccounts(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Empty(t, token)
+}
+
+func TestProfile_ReportsOwnerFlag(t *testing.T) {
+	svc := service.NewUserService(&fakeUserRepo{isOwner: true}, "test-secret")
+	user, isOwner, err := svc.Profile(context.Background(), 7)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(7), user.ID)
+	assert.True(t, isOwner)
+
+	svc = service.NewUserService(&fakeUserRepo{isOwner: false}, "test-secret")
+	_, isOwner, err = svc.Profile(context.Background(), 8)
+	assert.NoError(t, err)
+	assert.False(t, isOwner)
 }

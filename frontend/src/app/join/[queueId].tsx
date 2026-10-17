@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { AuthGate } from '@/components/auth/AuthGate';
 import { CustomerQueueScreen, type CustomerTicketStatus } from '@/components/CustomerQueueScreen';
@@ -39,6 +39,7 @@ function JoinQueueContent() {
       canJoin={canJoin}
       joining={joining}
       onJoin={() => void join()}
+      onBack={() => router.replace('/dashboard')}
     />
   );
 }

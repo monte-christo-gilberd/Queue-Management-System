@@ -48,7 +48,7 @@
 | **Priority** | P0 |
 | **Sumber** | 4.2 edge case: "Customer scans the QR code while the queue is closed" |
 | **Steps** | 1. Owner menutup antrian 2. Customer baru membuka `/join/<id>` |
-| **Expected Result** | Pesan "Antrian ditutup" tampil. Tombol **Gabung Antrian** tidak tampil. Tidak ada nomor yang dibuat |
+| **Expected Result** | Customer yang belum bergabung tidak bisa melihat detail antrian. Saat menekan **Gabung Antrian**, pesan "Antrian sudah ditutup" tampil dan tidak ada nomor yang dibuat. *Catatan: selisih dengan 4.2 ("tampil saat scan") karena backend hanya memberi detail antrian ke owner dan pemegang tiket.* |
 
 ### TC-05-06 — Tautan tidak valid
 | | |

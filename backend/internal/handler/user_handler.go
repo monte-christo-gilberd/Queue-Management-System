@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"qms/internal/apperror"
 	"qms/internal/dto"
+	"qms/internal/model"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,6 +23,10 @@ type UserService interface {
 		email,
 		password string,
 	) (string, error)
+	Profile(
+		ctx context.Context,
+		userID int64,
+	) (model.User, bool, error)
 }
 
 type UserHandler struct {
@@ -140,4 +145,29 @@ func (h *UserHandler) Login(
 			Token: token,
 		},
 	)
+}
+
+// Me: GET /api/v1/users/me — profil user yang login (butuh token).
+func (h *UserHandler) Me(
+	c *gin.Context,
+) {
+	user, isOwner, err := h.service.Profile(
+		c.Request.Context(),
+		c.GetInt64("user_id"),
+	)
+	if errors.Is(err, apperror.ErrNotFound) {
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized user")
+		return
+	}
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	respondData(c, http.StatusOK, dto.MeResponse{
+		ID:       user.ID,
+		Email:    user.Email,
+		Username: user.Username,
+		IsOwner:  isOwner,
+	})
 }

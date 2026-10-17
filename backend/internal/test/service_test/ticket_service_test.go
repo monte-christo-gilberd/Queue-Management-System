@@ -28,6 +28,8 @@ type fakeTicketRepo struct {
 	waitingBefore   int
 	waitingBeforeSK int64 // sort_key yang diterima CountWaitingBefore
 	countCalled     bool
+
+	userTickets []model.UserTicket
 }
 
 func (f *fakeTicketRepo) MaxWaitingSortKey(
@@ -70,7 +72,6 @@ func (f *fakeTicketRepo) MarkCompleted(
 	return nil // tidak dipakai di test ini
 }
 
-
 func (f *fakeTicketRepo) HasTicket(
 	ctx context.Context,
 	queueID,
@@ -98,6 +99,13 @@ func (f *fakeTicketRepo) LastCompletedNumber(
 	queueID int64,
 ) (int, bool, error) {
 	return f.lastCompleted, f.hasCompleted, nil
+}
+
+func (f *fakeTicketRepo) ListByUser(
+	ctx context.Context,
+	userID int64,
+) ([]model.UserTicket, error) {
+	return f.userTickets, nil
 }
 
 func (f *fakeTicketRepo) CountWaitingBefore(

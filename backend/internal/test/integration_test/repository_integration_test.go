@@ -24,11 +24,11 @@ import (
 
 // Dijalankan: go test -tags integration ./internal/repository_test
 // Semua query berjalan di schema sementara (qmstest_<nanodetik>) yang dibuat dari
-// migrations/01_Schema.sql lalu di-DROP; data di schema asli tidak disentuh.
+// db/migrations/01_Schema.sql lalu di-DROP; data di schema asli tidak disentuh.
 func newTestDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 
-	_ = godotenv.Load("../../.env")
+	_ = godotenv.Load("../../../.env")
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		t.Skip("DATABASE_URL tidak di-set")
@@ -57,7 +57,7 @@ func newTestDB(t *testing.T) *sqlx.DB {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
-	ddl, err := os.ReadFile("../../migrations/01_Schema.sql")
+	ddl, err := os.ReadFile("../../../../db/migrations/01_Schema.sql")
 	require.NoError(t, err)
 
 	conn, err := db.Conn(ctx)
@@ -465,4 +465,58 @@ func TestUserRepository_FindByLogin(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, none)
 	assert.Empty(t, none)
+}
+
+// Tiket saya lintas antrian: hanya milik user itu, dengan nama dan status antrian.
+func TestTicketRepository_ListByUser(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "o@b.c", time.Now().Add(time.Hour))
+	me := seedUser(t, db, "me@b.c")
+	other := seedUser(t, db, "other@b.c")
+	q1, _ := createQueue(t, db, owner, "Q1")
+	q2, _ := createQueue(t, db, owner, "Q2")
+	repo := repository.NewTicketRepository(db)
+
+	joinTicket(t, db, q1.ID, me)
+	joinTicket(t, db, q2.ID, me)
+	joinTicket(t, db, q1.ID, other)
+
+	mine, err := repo.ListByUser(ctx, me)
+	require.NoError(t, err)
+	require.Len(t, mine, 2)
+	for _, tk := range mine {
+		assert.Equal(t, me, tk.UserID)
+		assert.NotEmpty(t, tk.QueueName)
+		assert.Equal(t, "active", tk.QueueStatus)
+	}
+
+	none, err := repo.ListByUser(ctx, 999999)
+	require.NoError(t, err)
+	assert.NotNil(t, none)
+	assert.Empty(t, none)
+}
+
+// IsOwner: true hanya untuk user yang punya baris di owners; FindByID mengembalikan user itu.
+func TestUserRepository_IsOwnerAndFindByID(t *testing.T) {
+	db := newTestDB(t)
+	repo := repository.NewUserRepository(db)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "own@b.c", time.Now().Add(time.Hour))
+	plain := seedUser(t, db, "plain2@b.c")
+
+	isOwner, err := repo.IsOwner(ctx, owner)
+	require.NoError(t, err)
+	assert.True(t, isOwner)
+
+	isOwner, err = repo.IsOwner(ctx, plain)
+	require.NoError(t, err)
+	assert.False(t, isOwner)
+
+	u, err := repo.FindByID(ctx, plain)
+	require.NoError(t, err)
+	assert.Equal(t, "plain2@b.c", u.Email)
+
+	_, err = repo.FindByID(ctx, 999999)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }

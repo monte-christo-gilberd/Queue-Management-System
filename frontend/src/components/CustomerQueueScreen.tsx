@@ -21,6 +21,8 @@ export type CustomerQueueScreenProps = {
   canJoin: boolean;
   joining?: boolean;
   onJoin?: () => void;
+  /** Tombol kembali ke halaman utama. Tidak tampil bila tidak diberikan. */
+  onBack?: () => void;
 };
 
 const STATUS_LABEL: Record<CustomerTicketStatus, string> = {
@@ -43,6 +45,7 @@ export function CustomerQueueScreen({
   canJoin,
   joining = false,
   onJoin,
+  onBack,
 }: CustomerQueueScreenProps) {
   return (
     <View className="flex-1 items-center bg-background px-5 py-10">
@@ -88,6 +91,8 @@ export function CustomerQueueScreen({
         {canJoin ? (
           <AppButton label="Gabung Antrian" variant="dark" loading={joining} onPress={onJoin} />
         ) : null}
+
+        {onBack ? <AppButton label="Kembali ke Halaman Utama" variant="outline" onPress={onBack} /> : null}
       </View>
     </View>
   );

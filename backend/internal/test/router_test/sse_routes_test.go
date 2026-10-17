@@ -13,15 +13,17 @@ import (
 
 type stubTicket struct{}
 
-func (stubTicket) Join(c *gin.Context) {}
-func (stubTicket) Next(c *gin.Context) {}
-func (stubTicket) List(c *gin.Context) {}
-func (stubTicket) Status(c *gin.Context) {}
+func (stubTicket) Join(c *gin.Context)      {}
+func (stubTicket) Next(c *gin.Context)      {}
+func (stubTicket) List(c *gin.Context)      {}
+func (stubTicket) Status(c *gin.Context)    {}
+func (stubTicket) MyTickets(c *gin.Context) {}
 
 type stubUser struct{}
 
 func (stubUser) Register(c *gin.Context) {}
 func (stubUser) Login(c *gin.Context)    {}
+func (stubUser) Me(c *gin.Context)       {}
 
 type stubQueue struct{}
 

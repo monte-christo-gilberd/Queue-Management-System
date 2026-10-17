@@ -391,3 +391,46 @@ func (r *TicketRepository) CountWaitingBefore(
 
 	return count, nil
 }
+
+// ListByUser mengembalikan tiket milik user di semua antrian, terbaru dulu (maks 100).
+func (r *TicketRepository) ListByUser(
+	ctx context.Context,
+	userID int64,
+) ([]model.UserTicket, error) {
+
+	tickets := []model.UserTicket{}
+
+	const query = `
+		SELECT
+			t.id,
+			t.queue_id,
+			t.ticket_number,
+			t.sort_key,
+			t.user_id,
+			t.status,
+			t.skip_count,
+			t.last_notified_at,
+			t.created_at,
+			t.completed_at,
+			t.cancelled_at,
+			q.queue_name,
+			q.status AS queue_status
+		FROM tickets t
+		JOIN queues q ON q.id = t.queue_id
+		WHERE t.user_id = $1
+		ORDER BY t.created_at DESC, t.id DESC
+		LIMIT 100
+	`
+
+	err := r.db.SelectContext(
+		ctx,
+		&tickets,
+		query,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return tickets, nil
+}

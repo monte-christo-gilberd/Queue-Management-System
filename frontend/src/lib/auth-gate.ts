@@ -5,6 +5,8 @@
  * - `render`: boleh menampilkan children.
  * - `redirect`: arahkan ke `to`.
  */
+import { sanitizeNext } from './safe-next';
+
 export type AuthGateMode = 'required' | 'guest';
 
 export type AuthGateDecision =
@@ -22,6 +24,8 @@ export function decideAuthGate(input: {
   token: string | null;
   /** Path saat ini (mis. `/dashboard`). Dipakai untuk `?next=` saat dilempar ke login. */
   path?: string;
+  /** Parameter `next` dari URL halaman guest (login/register). Dipakai bila sudah login. */
+  next?: unknown;
 }): AuthGateDecision {
   if (!input.hydrated) return { kind: 'wait' };
 
@@ -36,6 +40,6 @@ export function decideAuthGate(input: {
     }
     return { kind: 'redirect', to: LOGIN_PATH };
   }
-  // guest: halaman login/register hanya untuk yang belum masuk
-  return loggedIn ? { kind: 'redirect', to: HOME_PATH } : { kind: 'render' };
+  // guest: halaman login/register hanya untuk yang belum masuk. Yang sudah masuk diteruskan ke `next` (bila aman).
+  return loggedIn ? { kind: 'redirect', to: sanitizeNext(input.next, HOME_PATH) } : { kind: 'render' };
 }

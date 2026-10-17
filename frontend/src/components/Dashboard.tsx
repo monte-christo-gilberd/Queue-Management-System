@@ -36,6 +36,10 @@ export type DashboardProps = {
   onJoinQueue?: () => void;
   /** TODO: backend belum mendukung ini (catatan antrian) */
   onSubmitNote?: (note: string) => void;
+  /** Konten tambahan di bawah papan (mis. daftar tiket saya). */
+  footer?: React.ReactNode;
+  /** Owner: true (default). Customer: false, sehingga bagian kosong owner dan tombol buat antrian disembunyikan. */
+  canCreateQueue?: boolean;
 };
 
 function EntryRow({
@@ -93,6 +97,8 @@ export default function Dashboard({
   onCreateQueue,
   onJoinQueue,
   onSubmitNote,
+  footer,
+  canCreateQueue = true,
 }: DashboardProps) {
   const isWide = useIsWide();
   // State tampilan murni: modal catatan sedang terbuka atau tidak.
@@ -174,7 +180,7 @@ export default function Dashboard({
             ))}
           </View>
         </View>
-      ) : (
+      ) : canCreateQueue ? (
         <View className="items-center gap-2 rounded-card bg-surface p-5">
           <View className="mb-1 flex-row gap-2.5">
             <View className="h-[30px] w-[30px] rounded-full bg-live" />
@@ -188,16 +194,18 @@ export default function Dashboard({
             Buat antrian baru atau masuk ke antrian yang tersedia.
           </Text>
         </View>
-      )}
+      ) : null}
 
       {/* TODO: tidak ada mockup layar "Buat Antrian Baru" — tujuan navigasi diisi developer */}
       <View className={isWide ? "flex-row gap-3" : "gap-4"}>
-        <AppButton
-          label="Buat Antrian Baru"
-          variant="soft"
-          className={isWide ? "flex-1" : undefined}
-          onPress={onCreateQueue}
-        />
+        {canCreateQueue ? (
+          <AppButton
+            label="Buat Antrian Baru"
+            variant="soft"
+            className={isWide ? "flex-1" : undefined}
+            onPress={onCreateQueue}
+          />
+        ) : null}
         {/* HP: "Masuk ke Antrian" pindah jadi tombol tengah di navigasi bawah (lihat layout). */}
         {isWide ? (
           <AppButton
@@ -211,6 +219,8 @@ export default function Dashboard({
           />
         ) : null}
       </View>
+
+      {footer}
 
       <JoinQueueModals visible={joinOpen} onClose={() => setJoinOpen(false)} />
 

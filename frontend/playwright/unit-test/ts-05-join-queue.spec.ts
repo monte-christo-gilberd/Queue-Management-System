@@ -34,7 +34,10 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     await page.goto(`${WEB_URL}/join/${queue.id}`);
     await expect(page).toHaveURL(new RegExp(`next=%2Fjoin%2F${queue.id}`));
 
-    await signInThroughUi(page, customer.email, customer.password);
+    // Isi form di halaman yang sedang terbuka; signInThroughUi akan membuka "/" lagi dan menghapus next.
+    await field(page, 'EMAIL ATAU USERNAME').fill(customer.email);
+    await field(page, 'PASSWORD').fill(customer.password);
+    await action(page, 'Login').click();
 
     await expect(page).toHaveURL(new RegExp(`/join/${queue.id}$`));
     await expect(action(page, 'Gabung Antrian')).toBeVisible();
@@ -85,9 +88,11 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     const customer = await registerAccount(request, 'closed');
 
     await signInWithToken(page, customer.token, customer.email, `/join/${queue.id}`);
+    // Customer yang belum bergabung tidak bisa membaca detail antrian (backend), jadi penutupan
+    // baru terlihat saat mencoba bergabung.
+    await action(page, 'Gabung Antrian').click();
 
-    await expect(page.getByText('Antrian ditutup')).toBeVisible();
-    await expect(action(page, 'Gabung Antrian')).toHaveCount(0);
+    await expect(page.getByText('Antrian sudah ditutup')).toBeVisible();
     await expect(page.getByText('Nomor Anda')).toHaveCount(0);
   });
 

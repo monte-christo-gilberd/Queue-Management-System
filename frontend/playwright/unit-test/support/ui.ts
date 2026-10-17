@@ -9,12 +9,14 @@ export function ticketLabel(ticketNumber: number): string {
 
 /** Tombol atau teks berdasarkan label persis. Komponen RN-web tidak selalu punya role button. */
 export function action(page: Page, label: string) {
-  return page.getByText(label, { exact: true });
+  // Halaman di bawah tumpukan navigasi bisa punya teks yang sama; ambil yang terlihat saja.
+  return page.getByText(label, { exact: true }).filter({ visible: true });
 }
 
 /** Input berdasarkan placeholder (mengikuti yang dipakai komponen form). */
 export function field(page: Page, placeholder: string) {
-  return page.getByPlaceholder(placeholder, { exact: true });
+  // Halaman sebelumnya bisa masih ada di tumpukan navigasi (mis. login -> register), jadi ambil yang terlihat.
+  return page.getByPlaceholder(placeholder, { exact: true }).filter({ visible: true });
 }
 
 /** Login lewat form UI. */
