@@ -1,0 +1,4 @@
+# Hanya template yang dibutuhkan image. README dan berkas pemasangan host tidak ikut.
+*
+!templates/
+!templates/**

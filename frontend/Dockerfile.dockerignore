@@ -1,0 +1,18 @@
+# Dependensi dipasang ulang di dalam image; jangan ikutkan hasil lokal, cache, atau tes.
+node_modules
+dist
+.expo
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+**/*.md
+playwright/
+playwright-report/
+test-results/
+tests/
+android/
+ios/
+coverage/
+*.log
