@@ -4,13 +4,14 @@ import { useState } from 'react';
 import { AuthGate } from '@/components/auth/AuthGate';
 import LoginScreen from '@/components/LoginScreen';
 import { describeAuthError } from '@/lib/auth-errors';
-import { sanitizeNext } from '@/lib/safe-next';
+import { DEFAULT_AFTER_LOGIN, sanitizeNext } from '@/lib/safe-next';
 import { useAuthStore } from '@/store/authStore';
 
 export default function LoginRoute() {
   const login = useAuthStore((s) => s.login);
   // `next` dari AuthGate: halaman yang dituju sebelum diarahkan ke login.
   const { next } = useLocalSearchParams<{ next?: string }>();
+  const safeNext = sanitizeNext(next, '');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +26,7 @@ export default function LoginRoute() {
     setErrorMessage(undefined);
     try {
       await login(identifier.trim(), password);
-      router.replace(sanitizeNext(next) as '/dashboard');
+      router.replace((safeNext || DEFAULT_AFTER_LOGIN) as '/dashboard');
     } catch (e) {
       setErrorMessage(describeAuthError(e));
     } finally {
@@ -41,6 +42,7 @@ export default function LoginRoute() {
         onChangeIdentifier={setIdentifier}
         onChangePassword={setPassword}
         onSubmit={handleSubmit}
+        registerHref={safeNext ? `/register?next=${encodeURIComponent(safeNext)}` : '/register'}
         loading={loading}
         errorMessage={errorMessage}
       />

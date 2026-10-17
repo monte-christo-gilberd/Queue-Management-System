@@ -85,3 +85,16 @@ export type HistoryItem = {
 export type AuthResponse = {
   token: string;
 };
+
+/** Queue untuk pemegang tiket (tanpa owner_id). Dipakai oleh GET /queues/:id/status. */
+export type PublicQueue = Omit<Queue, 'owner_id'>;
+
+/** Respons GET /api/v1/queues/:id/status (owner atau pemegang tiket). */
+export type QueueStatus = {
+  queue: PublicQueue;
+  my_ticket: Ticket | null;
+  /** ticket_number terakhir yang selesai dilayani; null bila belum ada. */
+  current_number: number | null;
+  /** Jumlah tiket waiting di depan tiket saya; null bila saya tidak sedang menunggu. */
+  waiting_ahead: number | null;
+};

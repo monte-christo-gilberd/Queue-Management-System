@@ -1,13 +1,17 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 
 import { AuthGate } from '@/components/auth/AuthGate';
 import RegisterScreen from '@/components/RegisterScreen';
 import { describeAuthError } from '@/lib/auth-errors';
+import { DEFAULT_AFTER_LOGIN, sanitizeNext } from '@/lib/safe-next';
 import { useAuthStore } from '@/store/authStore';
 
 export default function RegisterRoute() {
   const register = useAuthStore((s) => s.register);
+  // `next` dari tautan join: setelah daftar, kembali ke halaman itu (bukan dashboard).
+  const { next } = useLocalSearchParams<{ next?: string }>();
+  const safeNext = sanitizeNext(next, '');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,7 +35,7 @@ export default function RegisterRoute() {
     setErrorMessage(undefined);
     try {
       await register(email.trim(), username.trim(), password);
-      router.replace('/dashboard');
+      router.replace((safeNext || DEFAULT_AFTER_LOGIN) as '/dashboard');
     } catch (e) {
       setErrorMessage(describeAuthError(e));
     } finally {
@@ -52,6 +56,7 @@ export default function RegisterRoute() {
         onChangeConfirmPassword={setConfirmPassword}
         confirmPasswordError={confirmPasswordError}
         onSubmit={handleSubmit}
+        loginHref={safeNext ? `/?next=${encodeURIComponent(safeNext)}` : '/'}
         loading={loading}
         errorMessage={errorMessage}
       />

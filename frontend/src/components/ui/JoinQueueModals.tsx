@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
@@ -5,6 +6,7 @@ import { AppColors } from '@/constants/app-theme';
 import { AppButton } from '@/components/ui/AppButton';
 import { FormField } from '@/components/ui/FormField';
 import { ModalCard } from '@/components/ui/ModalCard';
+import { parseQueueIdFromLink } from '@/lib/join-link';
 
 type JoinQueueModalsProps = {
   visible: boolean;
@@ -59,12 +61,14 @@ export function JoinQueueModals({ visible, onClose, onSubmitLink }: JoinQueueMod
   // State tampilan murni: langkah popup + isi input link sebelum di-submit.
   const [step, setStep] = useState<'scan' | 'link'>('scan');
   const [link, setLink] = useState('');
+  const [linkError, setLinkError] = useState<string>();
 
   // Setiap popup dibuka ulang, mulai dari tampilan kamera dengan input kosong.
   useEffect(() => {
     if (visible) {
       setStep('scan');
       setLink('');
+      setLinkError(undefined);
     }
   }, [visible]);
 
@@ -101,17 +105,26 @@ export function JoinQueueModals({ visible, onClose, onSubmitLink }: JoinQueueMod
             label="Link Antrian"
             placeholder="https://..."
             value={link}
-            onChangeText={setLink}
+            onChangeText={(value) => {
+              setLink(value);
+              setLinkError(undefined);
+            }}
             autoCapitalize="none"
             keyboardType="url"
           />
+          {linkError ? <Text className="text-[13px] text-live">{linkError}</Text> : null}
           <AppButton
             label="Gabung Antrian"
             variant="dark"
             onPress={() => {
-              // TODO: sambungkan ke logika bergabung antrian; sementara submit hanya menutup popup.
+              const queueId = parseQueueIdFromLink(link);
+              if (queueId === null) {
+                setLinkError('Tautan tidak valid. Tempel tautan antrian yang Anda terima.');
+                return;
+              }
               onSubmitLink?.(link);
               onClose();
+              router.push(`/join/${queueId}` as '/');
             }}
           />
           <AppButton label="Batal" variant="outline" onPress={onClose} />

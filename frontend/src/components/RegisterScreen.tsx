@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
@@ -22,6 +22,8 @@ export type RegisterScreenProps = {
   onSubmit: () => void;
   /** Placeholder visual — Google OAuth belum ada di backend. */
   onGoogleLogin?: () => void;
+  /** Tujuan tautan "Login" (mis. `/?next=…`). Default `/`. */
+  loginHref?: string;
   loading: boolean;
   errorMessage?: string;
 };
@@ -38,6 +40,7 @@ export default function RegisterScreen({
   confirmPasswordError,
   onSubmit,
   onGoogleLogin,
+  loginHref = '/',
   loading,
   errorMessage,
 }: RegisterScreenProps) {
@@ -91,7 +94,7 @@ export default function RegisterScreen({
       {/* TODO: sambungkan setelah Google OAuth backend tersedia */}
       <GoogleButton label="Daftar dengan Google" onPress={onGoogleLogin} />
 
-      <Pressable onPress={() => router.replace('/')} className="mt-2 items-center">
+      <Pressable onPress={() => router.replace(loginHref as Href)} className="mt-2 items-center">
         <Text className="text-[12px] text-placeholder">
           Sudah punya akun? <Text className="font-bold text-white">Login</Text>
         </Text>

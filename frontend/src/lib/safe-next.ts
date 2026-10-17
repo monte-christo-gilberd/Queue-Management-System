@@ -8,6 +8,7 @@
 export const DEFAULT_AFTER_LOGIN = '/dashboard';
 
 export function sanitizeNext(raw: unknown, fallback: string = DEFAULT_AFTER_LOGIN): string {
+  // fallback '' = "tidak ada next" (dipakai halaman login/register untuk meneruskan parameter)
   if (typeof raw !== 'string') return fallback;
   if (!raw.startsWith('/')) return fallback;
   if (raw.startsWith('//')) return fallback;

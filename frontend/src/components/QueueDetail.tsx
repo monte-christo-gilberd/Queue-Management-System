@@ -39,6 +39,10 @@ export type QueueDetailProps = {
   /** Tutup antrian (POST /close). Dipanggil setelah pengguna mengonfirmasi di popup. */
   onCloseQueue?: () => void;
   closing?: boolean;
+  /** Tautan join untuk dibagikan (`<origin>/join/<id>`). Null = tidak tersedia (mis. native tanpa EXPO_PUBLIC_WEB_URL). */
+  joinLink?: string | null;
+  onCopyLink?: () => void;
+  linkCopied?: boolean;
 };
 
 export default function QueueDetail({
@@ -60,6 +64,9 @@ export default function QueueDetail({
   saving = false,
   onCloseQueue,
   closing = false,
+  joinLink,
+  onCopyLink,
+  linkCopied = false,
 }: QueueDetailProps) {
   const isWide = useIsWide();
   // State tampilan murni: modal "Add Admin" + isi form sebelum di-submit.
@@ -160,6 +167,26 @@ export default function QueueDetail({
               </Pressable>
             </View>
           </View>
+
+          {joinLink !== undefined && !isClosed ? (
+            <View className="gap-2 rounded-card border border-line p-3.5">
+              <Text className="text-[12px] font-semibold text-muted">Tautan join untuk customer</Text>
+              {joinLink ? (
+                <Text selectable className="text-[13px] font-bold text-foreground">
+                  {joinLink}
+                </Text>
+              ) : (
+                <Text className="text-[13px] text-muted">Tautan tidak tersedia di perangkat ini.</Text>
+              )}
+              {joinLink && onCopyLink ? (
+                <AppButton
+                  label={linkCopied ? 'TERSALIN' : 'SALIN TAUTAN'}
+                  variant="outline"
+                  onPress={onCopyLink}
+                />
+              ) : null}
+            </View>
+          ) : null}
 
           {isClosed ? (
             <Text className="text-[13px] font-bold text-muted">Antrian ini sudah ditutup.</Text>

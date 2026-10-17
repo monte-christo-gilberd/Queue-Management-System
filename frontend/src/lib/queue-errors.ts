@@ -16,6 +16,10 @@ export function describeQueueError(error: unknown): string {
       return 'Tidak ada yang menunggu di antrian ini';
     case 'QUEUE_CLOSED':
       return 'Antrian sudah ditutup';
+    case 'ALREADY_JOINED':
+      return 'Anda sudah terdaftar di antrian ini';
+    case 'RETRY_EXHAUSTED':
+      return 'Server sedang sibuk, silakan coba lagi';
     case 'BAD_REQUEST':
       return 'Data tidak valid, periksa kembali isian Anda';
     case 'NETWORK_ERROR':

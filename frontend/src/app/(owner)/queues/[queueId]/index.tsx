@@ -6,7 +6,9 @@ import QueueDetail from '@/components/QueueDetail';
 import ResponsiveScreenLayout from '@/components/layout/ResponsiveScreenLayout';
 import { useQueueDetail } from '@/hooks/use-queues';
 import { describeQueueError } from '@/lib/queue-errors';
+import { buildJoinLink } from '@/lib/join-link';
 import { closeQueue, updateQueue } from '@/lib/queues';
+import { copyToClipboard, currentWebOrigin } from '@/lib/web-origin';
 import { useAuthStore } from '@/store/authStore';
 import type { Queue } from '@/types/api';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
@@ -57,6 +59,15 @@ function QueueDetailEditor({
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [linkCopied, setLinkCopied] = useState(false);
+  const joinLink = buildJoinLink(queue.id, currentWebOrigin());
+
+  async function copyLink() {
+    if (!joinLink) return;
+    const ok = await copyToClipboard(joinLink);
+    setLinkCopied(ok);
+    if (!ok) setErrorMessage('Tidak dapat menyalin. Salin tautan secara manual.');
+  }
 
   async function save() {
     const name = queueName.trim();
@@ -104,6 +115,9 @@ function QueueDetailEditor({
       onCloseQueue={close}
       closing={closing}
       errorMessage={errorMessage}
+      joinLink={joinLink}
+      onCopyLink={() => void copyLink()}
+      linkCopied={linkCopied}
     />
   );
 }
