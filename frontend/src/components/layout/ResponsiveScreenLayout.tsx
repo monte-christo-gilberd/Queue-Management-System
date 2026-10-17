@@ -26,6 +26,7 @@ export type TabKey = 'home' | 'antrian' | 'riwayat' | 'profile';
 
 /** Item menu profil (panel profil HP dan desktop memakai item yang sama). */
 export type OwnerMenuItem =
+  | 'create-queue'
   | 'dashboard'
   | 'admin-contact'
   | 'queues'
@@ -51,12 +52,12 @@ export type ResponsiveScreenLayoutProps = {
   onBack?: () => void;
   /** Hanya dipakai di HP: tab bawah yang aktif. */
   activeTab?: TabKey;
-  /** Hanya HP: ikon profil di header berwarna biru (halaman Edit Profil). */
-  profileHighlighted?: boolean;
   /** Status mode gelap untuk toggle di collapsible. Belum ada implementasi: toggle hanya tampilan. */
   darkMode?: boolean;
   /** Dipanggil saat toggle mode gelap ditekan. Sementara tidak dipakai (toggle tidak melakukan apa-apa). */
   onToggleDarkMode?: () => void;
+  /** Hanya desktop: isi mengisi tinggi layar dan tidak ikut scroll halaman (scroll diatur di dalam isi). */
+  fullHeight?: boolean;
   children: React.ReactNode;
 };
 
@@ -127,6 +128,7 @@ function WideLayout({
   activeItem,
   darkMode = false,
   onToggleDarkMode,
+  fullHeight = false,
   children,
 }: ResponsiveScreenLayoutProps) {
   // Sama seperti HP: tombol kembali redup bila tidak ada layar sebelumnya (hindari "GO_BACK was not handled").
@@ -227,6 +229,12 @@ function WideLayout({
               {isOwner ? (
                 <>
                   <View className="my-2 h-px bg-scrim" />
+                  <CreateQueueItem
+                    onPress={() => {
+                      setMenuOpen(false);
+                      onMenuItemPress?.('create-queue');
+                    }}
+                  />
                   {OWNER_MENU.map((item) => (
                     <PanelItem
                       key={item.key}
@@ -256,9 +264,15 @@ function WideLayout({
         ) : null}
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="items-center">
-        <View className="w-full max-w-desktop gap-5 p-8">{children}</View>
-      </ScrollView>
+      {fullHeight ? (
+        <View className="flex-1 items-center">
+          <View className="w-full max-w-desktop flex-1 p-8">{children}</View>
+        </View>
+      ) : (
+        <ScrollView className="flex-1" contentContainerClassName="items-center">
+          <View className="w-full max-w-desktop gap-5 p-8">{children}</View>
+        </ScrollView>
+      )}
 
       <JoinQueueModals visible={joinOpen} onClose={() => setJoinOpen(false)} />
     </View>
@@ -273,7 +287,6 @@ function MobileLayout({
   onMenuItemPress,
   onBack,
   activeTab,
-  profileHighlighted = false,
   darkMode = false,
   onToggleDarkMode,
   children,
@@ -323,10 +336,7 @@ function MobileLayout({
             onPress={() => setPanelOpen(true)}
             hitSlop={12}
             className="w-11 items-center justify-center">
-            <PersonIcon
-              size={32}
-              color={profileHighlighted ? AppColors.primarySoft : AppColors.white}
-            />
+            <PersonIcon size={32} color={AppColors.white} />
           </Pressable>
         </View>
         <View className="h-1 bg-primarySoft" />
@@ -409,6 +419,14 @@ function MobileLayout({
                   onMenuItemPress?.('profile');
                 }}
               />
+              {isOwner ? (
+                <CreateQueueItem
+                  onPress={() => {
+                    setPanelOpen(false);
+                    onMenuItemPress?.('create-queue');
+                  }}
+                />
+              ) : null}
               {(isOwner ? OWNER_MENU : []).map((item) => (
                 <PanelItem
                   key={item.key}
@@ -474,6 +492,11 @@ function PanelHeader({
       </Pressable>
     </View>
   );
+}
+
+/** "Buat Antrian Baru" di panel owner (selalu tampil untuk owner). */
+function CreateQueueItem({ onPress }: { onPress: () => void }) {
+  return <PanelItem label="Buat Antrian Baru" onPress={onPress} />;
 }
 
 function PanelItem({

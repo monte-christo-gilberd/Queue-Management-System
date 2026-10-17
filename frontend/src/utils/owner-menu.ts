@@ -6,6 +6,10 @@ import { useAuthStore } from '@/store/authStore';
 /** Navigasi menu profil — dipakai bersama oleh semua route owner (HP dan desktop). */
 export function handleOwnerMenuItemPress(item: OwnerMenuItem) {
   switch (item) {
+    case 'create-queue':
+      // Dashboard membuka popup buat antrian saat parameter create=1 ada.
+      router.navigate({ pathname: '/dashboard', params: { create: '1' } });
+      break;
     case 'dashboard':
       router.navigate('/dashboard');
       break;

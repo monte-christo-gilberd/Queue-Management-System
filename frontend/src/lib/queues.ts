@@ -33,6 +33,11 @@ export async function updateQueue(queueId: number, input: QueueInput): Promise<v
   await apiFetch(`/api/v1/queues/${queueId}`, { method: 'PUT', body: input });
 }
 
+/** PUT /api/v1/queues/:id/authz — ubah izin (authz) pada antrian ini. Backend menimpa semua flag sekaligus. */
+export async function updateAuthz(queueId: number, input: QueueAuthz): Promise<void> {
+  await apiFetch(`/api/v1/queues/${queueId}/authz`, { method: 'PUT', body: { ...input, queue_id: queueId } });
+}
+
 /** POST /api/v1/queues/:id/close — tutup antrian. Tidak bisa dibuka lagi. */
 export async function closeQueue(queueId: number): Promise<void> {
   await apiFetch(`/api/v1/queues/${queueId}/close`, { method: 'POST' });

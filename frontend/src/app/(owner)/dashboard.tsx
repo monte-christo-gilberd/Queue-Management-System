@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -25,6 +25,15 @@ export default function DashboardRoute() {
   // Bagian owner (antrian kosong + buat antrian) hanya untuk owner; sebelum profil dimuat, disembunyikan.
   const { isOwner, loaded: meLoaded } = useMe();
   const [createOpen, setCreateOpen] = useState(false);
+  // Dari menu panel owner ("Buat Antrian Baru") di halaman lain: parameter create=1 membuka popup.
+  const { create } = useLocalSearchParams<{ create?: string }>();
+  const createFromMenu = create === '1';
+  const createVisible = createOpen || createFromMenu;
+  function closeCreate() {
+    setCreateOpen(false);
+    setCreateError(undefined);
+    if (createFromMenu) router.setParams({ create: undefined });
+  }
   const [joinOpen, setJoinOpen] = useState(false);
   const isWide = useIsWide();
   // Tiket saya (customer). Hanya tiket waiting di antrian yang masih aktif yang tampil di beranda;
@@ -72,7 +81,7 @@ export default function DashboardRoute() {
         queue_name: trimmed,
         queue_description: description.trim(),
       });
-      setCreateOpen(false);
+      closeCreate();
       router.push({ pathname: '/queues/[queueId]', params: { queueId: String(queue.id) } });
     } catch (e) {
       setCreateError(describeQueueError(e));
@@ -91,24 +100,18 @@ export default function DashboardRoute() {
         current={current}
         next={next}
         upcoming={upcoming}
-        notificationMessage={
-          current ? `Nomor ${formatTicketNumber(current.ticket.ticket_number)} sedang dilayani` : undefined
-        }
         nextLoading={board.nextLoading}
         errorMessage={board.nextError ?? board.error ?? queuesError}
         onNext={() => void board.next()}
-        onCreateQueue={() => setCreateOpen(true)}
+        onOpenQueue={(queueId) => router.push({ pathname: '/queues/[queueId]', params: { queueId: String(queueId) } })}
         canCreateQueue={meLoaded && isOwner}
         topCard={topCard}
       />
       <JoinQueueModals visible={joinOpen} onClose={() => setJoinOpen(false)} />
 
       <CreateQueueModal
-        visible={createOpen}
-        onClose={() => {
-          setCreateOpen(false);
-          setCreateError(undefined);
-        }}
+        visible={createVisible}
+        onClose={closeCreate}
         onSubmit={handleCreate}
         loading={creating}
         errorMessage={createError}

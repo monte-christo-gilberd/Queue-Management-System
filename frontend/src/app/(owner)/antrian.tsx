@@ -2,7 +2,9 @@ import { router } from 'expo-router';
 
 import { MyTicketsList } from '@/components/MyTicketsList';
 import ResponsiveScreenLayout from '@/components/layout/ResponsiveScreenLayout';
-import { Text } from 'react-native';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Icon } from '@/components/ui/Icon';
+import { AppColors } from '@/constants/app-theme';
 import { useMyTickets } from '@/hooks/use-my-tickets';
 import { isOnHome } from '@/lib/tickets';
 import { useAuthStore } from '@/store/authStore';
@@ -22,7 +24,11 @@ export default function AntrianSayaRoute() {
       onMenuItemPress={handleOwnerMenuItemPress}
       activeTab="antrian">
       {active.length === 0 ? (
-        <Text className="text-[13px] text-muted">Anda belum mengikuti antrian apa pun.</Text>
+        <EmptyState
+          icon={<Icon name="list" size={44} color={AppColors.avatar} />}
+          title="Belum Ikut Antrian"
+          description="Masuk ke antrian dengan tautan dari penyelenggara untuk mulai mengantri."
+        />
       ) : (
         <MyTicketsList
           tickets={active}

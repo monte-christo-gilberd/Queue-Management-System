@@ -112,6 +112,7 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
 
   return {
     view,
+    tickets,
     loading,
     error,
     next,

@@ -1,4 +1,4 @@
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Fonts } from '@/constants/theme';
@@ -12,12 +12,27 @@ export type MySpotCardProps = {
   /** Nomor sebelumnya dan berikutnya, sudah diformat; null bila tidak ada. */
   previousNumber: string | null;
   nextNumber: string | null;
+  /** false = sembunyikan baris sebelumnya/berikutnya (mis. tampilan owner di detail antrian). */
+  showNeighbors?: boolean;
+  /** Ketuk kartu (mis. buka daftar tiket). Tanpa ini kartu tidak bisa ditekan. */
+  onPress?: () => void;
 };
 
 /** Kartu antrian aktif (customer). Gaya sama dengan papan layar live owner. */
-export function MySpotCard({ queueName, currentNumber, previousNumber, nextNumber }: MySpotCardProps) {
+export function MySpotCard({
+  queueName,
+  currentNumber,
+  previousNumber,
+  nextNumber,
+  showNeighbors = true,
+  onPress,
+}: MySpotCardProps) {
   return (
-    <View className="w-full gap-7 rounded-[20px] bg-board px-8 py-7">
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      className="w-full gap-7 rounded-[20px] bg-board px-8 py-7 active:opacity-80"
+    >
       <View className="flex-row items-start justify-between">
         <Text className="text-[16px] tracking-[1px] text-boardMuted" style={{ fontFamily: MONO }}>
           {queueName.toLowerCase()}
@@ -37,19 +52,29 @@ export function MySpotCard({ queueName, currentNumber, previousNumber, nextNumbe
         </Text>
       </View>
 
-      <View className="h-px bg-boardLine" />
+      {showNeighbors ? (
+        <>
+          <View className="h-px bg-boardLine" />
 
-      <View className="flex-row items-start justify-between">
-        <View className="gap-1">
-          <Text className="text-[14px] text-boardDim" style={{ fontFamily: MONO }}>sebelumnya</Text>
-          <Text className="text-[20px] text-boardMuted" style={{ fontFamily: MONO }}>{previousNumber ?? '-'}</Text>
-        </View>
-        <View className="items-end gap-1">
-          <Text className="text-[14px] text-boardDim" style={{ fontFamily: MONO }}>berikutnya</Text>
-          <Text className="text-[20px] text-boardMuted" style={{ fontFamily: MONO }}>{nextNumber ?? '-'}</Text>
-        </View>
-      </View>
-    </View>
+          <View className="flex-row items-start justify-between">
+            <View className="gap-1">
+              <Text className="text-[14px] text-boardDim" style={{ fontFamily: MONO }}>sebelumnya</Text>
+              <Text className="text-[20px] text-boardMuted" style={{ fontFamily: MONO }}>{previousNumber ?? '-'}</Text>
+            </View>
+            <View className="items-end gap-1">
+              <Text className="text-[14px] text-boardDim" style={{ fontFamily: MONO }}>berikutnya</Text>
+              <Text className="text-[20px] text-boardMuted" style={{ fontFamily: MONO }}>{nextNumber ?? '-'}</Text>
+            </View>
+          </View>
+        </>
+      ) : null}
+
+      {onPress ? (
+        <Text className="text-center text-[12px] text-boardDim" style={{ fontFamily: MONO }}>
+          ketuk untuk daftar tiket ▾
+        </Text>
+      ) : null}
+    </Pressable>
   );
 }
 

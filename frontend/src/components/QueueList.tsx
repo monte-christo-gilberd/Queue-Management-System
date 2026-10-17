@@ -9,6 +9,9 @@ import ResponsiveScreenLayout, {
   type OwnerMenuItem,
   type ShellProps,
 } from "@/components/layout/ResponsiveScreenLayout";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Icon } from "@/components/ui/Icon";
+import { AppColors } from "@/constants/app-theme";
 
 export type QueueListFilter = "all" | "active";
 
@@ -58,7 +61,11 @@ export default function QueueList({
       {errorMessage ? <Text className="text-[13px] text-live">{errorMessage}</Text> : null}
       {loading ? <Text className="text-[13px] text-muted">Memuat antrian...</Text> : null}
       {!loading && !errorMessage && items.length === 0 ? (
-        <Text className="text-[13px] text-muted">Belum ada antrian.</Text>
+        <EmptyState
+          icon={<Icon name="list" size={44} color={AppColors.avatar} />}
+          title="Belum Ada Antrian"
+          description="Buat antrian baru untuk mulai melayani customer."
+        />
       ) : null}
 
       <View className={isWide ? "flex-row flex-wrap gap-4" : "gap-4"}>
