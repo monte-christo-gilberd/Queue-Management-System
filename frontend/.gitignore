@@ -50,3 +50,8 @@ AUTH_FLOW_GUIDE.md
 QUEUE_OWNER_GUIDE.md
 REALTIME_GUIDE.md
 CUSTOMER_GUIDE.md
+
+# playwright e2e artifacts
+playwright/.results
+playwright/.report
+test-results

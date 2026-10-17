@@ -12,7 +12,7 @@ Tes ini menguji **behaviour yang diharapkan** dari `Capstone-Project/documentati
    INSERT INTO owners (user_id, subscription_expires_at)
    VALUES (<id user>, now() + interval '30 days');
    ```
-5. Dependensi Playwright di folder ini: `npm install` lalu `npx playwright install chromium`.
+5. Dependensi: `npm install` di `frontend/` (sudah memuat `@playwright/test`). Browser Chromium sudah tersedia di cache; bila belum, `npx playwright install chromium`.
 
 ## Variabel lingkungan
 
@@ -25,12 +25,15 @@ Tes ini menguji **behaviour yang diharapkan** dari `Capstone-Project/documentati
 
 ## Menjalankan
 
+Dari folder `frontend/`:
+
 ```bash
-cd playwright-template
-QMS_OWNER_EMAIL=owner@example.com QMS_OWNER_PASSWORD=... npm test
+QMS_OWNER_EMAIL=owner@example.com QMS_OWNER_PASSWORD=... npm run e2e
+npx playwright test ts-01 --headed        # satu area, tampilkan browser
+npm run e2e:report                        # buka laporan HTML
 ```
 
-Hanya folder ini yang dijalankan (`testDir` di `playwright.config.ts`). Tes POS di `tests/ts-*.spec.ts` tidak ikut.
+`testDir` di `playwright.config.ts` adalah `playwright/unit-test`. Hasil (trace, screenshot) masuk ke `playwright/.results`, laporan ke `playwright/.report` (keduanya di-ignore git).
 
 ## Catatan desain
 
@@ -42,4 +45,4 @@ Hanya folder ini yang dijalankan (`testDir` di `playwright.config.ts`). Tes POS 
 
 ## Status
 
-Tes ini sudah dikompilasi dengan TypeScript strict dan terdaftar (`playwright test --list`: 68 tes). **Belum dijalankan terhadap aplikasi yang sedang berjalan.** Jalankan dulu TS-01 untuk memastikan selektor sesuai dengan tampilan sebenarnya, lalu lanjut ke area lain.
+Terdaftar 68 tes (`npx playwright test --list`). Hasil run pertama terhadap aplikasi yang berjalan dicatat di bagian bawah file ini.
