@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"qms/internal/apperror"
 	"qms/internal/dto"
 	"qms/internal/model"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -148,8 +150,9 @@ func (s *TicketService) JoinQueue(
 		if err != nil {
 			return model.Ticket{}, err
 		}
+		// Join ulang tidak membuat nomor kedua: tiket yang sudah ada dikembalikan (spek 4.2, TC-05-04).
 		if joined {
-			return model.Ticket{}, apperror.ErrAlreadyJoined
+			return s.repository.FindByUser(ctx, queueID, userID)
 		}
 
 		if err := s.tx.WithTx(
@@ -237,6 +240,10 @@ func (s *TicketService) NextTicket(
 	if err != nil {
 		return model.Ticket{}, err
 	}
+
+	// Payload mengikuti keadaan setelah Next: nomor ini sudah selesai dilayani (spek 4.3 langkah 3).
+	ticket.Status = "completed"
+	ticket.CompletedAt = sql.NullTime{Time: time.Now(), Valid: true}
 
 	notifyEvent(s.notifier, queueID, EventTicketNext, dto.NewTicketEvent(ticket))
 

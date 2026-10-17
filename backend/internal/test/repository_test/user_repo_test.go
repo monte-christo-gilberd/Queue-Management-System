@@ -122,7 +122,7 @@ func TestUserRepository_Create(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "create user:")
-		assert.ErrorIs(t, err, context.Canceled)
+		assert.ErrorIs(t, err, dbErr)
 		assert.Equal(t, model.User{}, user)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})

@@ -306,26 +306,32 @@ func TestNextTicket_ErrorsWithoutGuard(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestJoinQueue_AlreadyJoinedIsRejectedWithoutInsert(t *testing.T) {
-	repo := &fakeTicketRepo{alreadyJoined: true}
+func TestJoinQueue_AlreadyJoinedReturnsExistingTicketWithoutInsert(t *testing.T) {
+	// Spek 4.2 / TC-05-04: join ulang menampilkan nomor yang sudah ada, tanpa tiket kedua.
+	existing := model.Ticket{ID: 5, QueueID: 1, UserID: 99, TicketNumber: 3, Status: "waiting"}
+	repo := &fakeTicketRepo{alreadyJoined: true, myTicket: &existing}
 	svc := service.NewTicketService(repo, fakeTxRunner{}).
 		WithQueueGuard(fakeQueueGuard{ownerID: 7})
 
-	_, err := svc.JoinQueue(context.Background(), 1, 99)
+	got, err := svc.JoinQueue(context.Background(), 1, 99)
 
-	assert.ErrorIs(t, err, apperror.ErrAlreadyJoined)
+	assert.NoError(t, err)
+	assert.Equal(t, existing, got)
 	assert.Equal(t, 0, repo.insertCallCount)
 }
 
-func TestJoinQueue_ConcurrentSameUserDuplicateBecomesAlreadyJoined(t *testing.T) {
-	// Insert pertama gagal duplikat karena join lain milik user yang sama baru saja commit.
-	repo := &fakeTicketRepo{failTimes: 1, joinedAfterInserts: 1}
+func TestJoinQueue_ConcurrentSameUserDuplicateReturnsWinnerTicket(t *testing.T) {
+	// Insert pertama gagal duplikat karena join lain milik user yang sama baru saja commit:
+	// hasilnya tiket pemenang, bukan error dan bukan tiket kedua.
+	winner := model.Ticket{ID: 9, QueueID: 1, UserID: 99, TicketNumber: 1, Status: "waiting"}
+	repo := &fakeTicketRepo{failTimes: 1, joinedAfterInserts: 1, myTicket: &winner}
 	svc := service.NewTicketService(repo, fakeTxRunner{}).
 		WithQueueGuard(fakeQueueGuard{ownerID: 7})
 
-	_, err := svc.JoinQueue(context.Background(), 1, 99)
+	got, err := svc.JoinQueue(context.Background(), 1, 99)
 
-	assert.ErrorIs(t, err, apperror.ErrAlreadyJoined)
+	assert.NoError(t, err)
+	assert.Equal(t, winner.ID, got.ID)
 	assert.Equal(t, 1, repo.insertCallCount)
 }
 
