@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 
-import { AppColors } from '@/constants/app-theme';
+import { useThemeColor } from '@/hooks/use-theme-mode';
 import { useIsWide } from '@/hooks/use-is-wide';
 import { cn } from '@/utils/cn';
 import type { AdminContact } from '@/types/api';
@@ -34,6 +34,7 @@ export default function AddToSavedAdmin({
   results,
   onAdd,
 }: AddToSavedAdminProps) {
+  const avatarColor = useThemeColor('avatar');
   const isWide = useIsWide();
   const notFound = results.length === 0 && search.length > 0;
 
@@ -48,7 +49,7 @@ export default function AddToSavedAdmin({
 
       {notFound ? (
         <EmptyState
-          icon={<PersonIcon size={44} color={AppColors.avatar} />}
+          icon={<PersonIcon size={44} color={avatarColor} />}
           title="No Registered User with that Username / Email"
           description="Periksa kembali username atau email yang Anda masukkan"
         />

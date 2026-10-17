@@ -1,6 +1,7 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
+import { useThemeColor } from '@/hooks/use-theme-mode';
 import { cn } from '@/utils/cn';
 
 type Variant = 'primary' | 'dark' | 'outline' | 'soft' | 'accent' | 'pill-white' | 'pill-dark';
@@ -57,6 +58,8 @@ export function AppButton({
   icon,
 }: AppButtonProps) {
   const isPill = variant === 'pill-white' || variant === 'pill-dark';
+  // Tombol outline ada di atas latar tema, jadi spinnernya ikut warna teks tema.
+  const foreground = useThemeColor('foreground');
   return (
     <Pressable
       onPress={onPress}
@@ -70,7 +73,7 @@ export function AppButton({
         className,
       )}>
       {loading ? (
-        <ActivityIndicator color={SPINNER[variant]} />
+        <ActivityIndicator color={variant === 'outline' ? foreground : SPINNER[variant]} />
       ) : (
         <View className="flex-row items-center gap-2">
           {icon}

@@ -4,7 +4,7 @@ import { MyTicketsList } from '@/components/MyTicketsList';
 import ResponsiveScreenLayout from '@/components/layout/ResponsiveScreenLayout';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Icon } from '@/components/ui/Icon';
-import { AppColors } from '@/constants/app-theme';
+import { useThemeColor } from '@/hooks/use-theme-mode';
 import { useMyTickets } from '@/hooks/use-my-tickets';
 import { isOnHome } from '@/lib/tickets';
 import { useAuthStore } from '@/store/authStore';
@@ -13,6 +13,7 @@ import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 /** Antrian saya: tiket yang masih menunggu (customer). */
 export default function AntrianSayaRoute() {
   const displayName = useAuthStore((s) => s.displayName);
+  const avatarColor = useThemeColor('avatar');
   const { tickets } = useMyTickets();
   // Sama dengan beranda: menunggu di antrian aktif, atau nomornya sedang dilayani.
   const active = tickets.filter(isOnHome);
@@ -25,7 +26,7 @@ export default function AntrianSayaRoute() {
       activeTab="antrian">
       {active.length === 0 ? (
         <EmptyState
-          icon={<Icon name="list" size={44} color={AppColors.avatar} />}
+          icon={<Icon name="list" size={44} color={avatarColor} />}
           title="Belum Ikut Antrian"
           description="Masuk ke antrian dengan tautan dari penyelenggara untuk mulai mengantri."
         />

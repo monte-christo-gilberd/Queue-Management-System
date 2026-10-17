@@ -8,9 +8,8 @@ const {
   desktopMaxWidth,
 } = require('./src/constants/tokens');
 
-// Ubah ke true setelah toggle tema (state) diimplementasikan. Selama false, hanya nilai terang yang dikirim.
-// Catatan: di native, NativeWind memakai `colorScheme.set()` — sesuaikan cara pemilihan mode saat mengaktifkan.
-const ENABLE_DARK_MODE = false;
+// Mode gelap aktif: nilai `.dark` dikirim. Toggle ada di src/hooks/use-theme-mode.ts (NativeWind colorScheme).
+const ENABLE_DARK_MODE = true;
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {

@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { Text, View } from "react-native";
 
 import { AppColors } from "@/constants/app-theme";
+import { useThemeColor } from "@/hooks/use-theme-mode";
 import { useIsWide } from "@/hooks/use-is-wide";
 import type { AdminContact as AdminContactType } from "@/types/api";
 import { cn } from "@/utils/cn";
@@ -31,6 +32,7 @@ export default function AdminContact({
   search,
   onChangeSearch,
 }: AdminContactProps) {
+  const avatarColor = useThemeColor("avatar");
   const isWide = useIsWide();
 
   return (
@@ -45,7 +47,7 @@ export default function AdminContact({
 
       {admins.length === 0 ? (
         <EmptyState
-          icon={<Icon name="users" size={44} color={AppColors.avatar} />}
+          icon={<Icon name="users" size={44} color={avatarColor} />}
           title="Tidak Ada Admin Terdaftar"
           description="Tambahkan admin untuk mulai mengelola antrian"
         />

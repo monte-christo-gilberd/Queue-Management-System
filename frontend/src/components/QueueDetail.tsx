@@ -10,6 +10,7 @@ import ResponsiveScreenLayout, {
   type ShellProps,
 } from "@/components/layout/ResponsiveScreenLayout";
 import { AppColors } from "@/constants/app-theme";
+import { useThemeColor } from "@/hooks/use-theme-mode";
 import { AppButton } from "@/components/ui/AppButton";
 import { Icon, PersonIcon } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -110,6 +111,7 @@ export default function QueueDetail({
 }: QueueDetailProps) {
   const isWide = useIsWide();
   const isClosed = queue.status === "closed";
+  const avatarColor = useThemeColor("avatar");
 
   // State tampilan murni: popup catatan, popup konfirmasi tutup, dan popup tambah admin.
   const [noteOpen, setNoteOpen] = useState(false);
@@ -294,7 +296,7 @@ export default function QueueDetail({
             </ScrollView>
             {adminNames.length === 0 ? (
               <EmptyState
-                icon={<PersonIcon size={44} color={AppColors.avatar} />}
+                icon={<PersonIcon size={44} color={avatarColor} />}
                 title="Belum Ada Admin"
                 description="Tambahkan admin untuk membantu mengelola antrian ini."
               />
@@ -313,7 +315,7 @@ export default function QueueDetail({
           </View>
         ) : (
           <EmptyState
-            icon={<Icon name="list" size={44} color={AppColors.avatar} />}
+            icon={<Icon name="list" size={44} color={avatarColor} />}
             title="Belum Ada Tiket"
             description="Tiket akan muncul di sini setelah customer bergabung ke antrian."
           />

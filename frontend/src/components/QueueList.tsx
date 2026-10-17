@@ -11,7 +11,7 @@ import ResponsiveScreenLayout, {
 } from "@/components/layout/ResponsiveScreenLayout";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Icon } from "@/components/ui/Icon";
-import { AppColors } from "@/constants/app-theme";
+import { useThemeColor } from "@/hooks/use-theme-mode";
 
 export type QueueListFilter = "all" | "active";
 
@@ -35,6 +35,7 @@ export default function QueueList({
   loading = false,
   errorMessage,
 }: QueueListProps) {
+  const avatarColor = useThemeColor("avatar");
   const isWide = useIsWide();
 
   return (
@@ -62,7 +63,7 @@ export default function QueueList({
       {loading ? <Text className="text-[13px] text-muted">Memuat antrian...</Text> : null}
       {!loading && !errorMessage && items.length === 0 ? (
         <EmptyState
-          icon={<Icon name="list" size={44} color={AppColors.avatar} />}
+          icon={<Icon name="list" size={44} color={avatarColor} />}
           title="Belum Ada Antrian"
           description="Buat antrian baru untuk mulai melayani customer."
         />

@@ -13,9 +13,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppColors } from '@/constants/app-theme';
+import { themedColors } from '@/constants/tokens';
 import { cn } from '@/utils/cn';
 import { useHydrated } from '@/hooks/use-hydrated';
 import { useIsWide } from '@/hooks/use-is-wide';
+import { useThemeMode } from '@/hooks/use-theme-mode';
 import ResponsiveContainer from '@/components/ResponsiveContainer';
 import { Icon, PersonIcon, ScanIcon, type IconName } from '@/components/ui/Icon';
 import { JoinQueueModals } from '@/components/ui/JoinQueueModals';
@@ -52,10 +54,6 @@ export type ResponsiveScreenLayoutProps = {
   onBack?: () => void;
   /** Hanya dipakai di HP: tab bawah yang aktif. */
   activeTab?: TabKey;
-  /** Status mode gelap untuk toggle di collapsible. Belum ada implementasi: toggle hanya tampilan. */
-  darkMode?: boolean;
-  /** Dipanggil saat toggle mode gelap ditekan. Sementara tidak dipakai (toggle tidak melakukan apa-apa). */
-  onToggleDarkMode?: () => void;
   /** Hanya desktop: isi mengisi tinggi layar dan tidak ikut scroll halaman (scroll diatur di dalam isi). */
   fullHeight?: boolean;
   children: React.ReactNode;
@@ -126,20 +124,13 @@ function WideLayout({
   onBack,
   activeTab,
   activeItem,
-  darkMode = false,
-  onToggleDarkMode,
   fullHeight = false,
   children,
 }: ResponsiveScreenLayoutProps) {
   // Sama seperti HP: tombol kembali redup bila tidak ada layar sebelumnya (hindari "GO_BACK was not handled").
   const canGoBack = router.canGoBack();
   const isOwner = useContext(OwnerContext);
-  // Tampilan mode gelap (ikon). Tema belum diterapkan ke layar: lihat catatan di ZUSTAND/UI.
-  const [dark, setDark] = useState(darkMode);
-  const toggleDark = () => {
-    setDark((v) => !v);
-    onToggleDarkMode?.();
-  };
+  const { dark, toggle: toggleDark } = useThemeMode();
   // State tampilan murni: dropdown terbuka atau tidak, dan tinggi header (untuk panel penuh ke bawah).
   const [menuOpen, setMenuOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
@@ -287,18 +278,11 @@ function MobileLayout({
   onMenuItemPress,
   onBack,
   activeTab,
-  darkMode = false,
-  onToggleDarkMode,
   children,
 }: ResponsiveScreenLayoutProps) {
   const insets = useSafeAreaInsets();
   const isOwner = useContext(OwnerContext);
-  // Tampilan mode gelap (ikon). Tema belum diterapkan ke layar: lihat catatan di ZUSTAND/UI.
-  const [dark, setDark] = useState(darkMode);
-  const toggleDark = () => {
-    setDark((v) => !v);
-    onToggleDarkMode?.();
-  };
+  const { dark, toggle: toggleDark } = useThemeMode();
   // Jarak navbar mengambang dari bawah layar (di atas safe area).
   const floatingBottom = Math.max(insets.bottom, 8) + 12;
   // State tampilan murni: panel profil sedang terbuka atau tidak, dan tinggi tab bar (untuk menaruh tombol tengah).
@@ -354,7 +338,10 @@ function MobileLayout({
             onLayout={(e) => setTabBarHeight(e.nativeEvent.layout.height)}>
             {TABS.map((tab, index) => {
               const active = tab.key === activeTab;
-              const color = active ? AppColors.dark : AppColors.disabled;
+              // Ikon tab mengikuti tema: gelap di terang, terang di gelap.
+              const color = active
+                ? dark ? themedColors.foreground.dark : AppColors.dark
+                : dark ? themedColors.disabled.dark : AppColors.disabled;
               return (
                 <Fragment key={tab.key}>
                   {/* Ruang kosong di tengah untuk tombol melayang + labelnya. */}
@@ -487,8 +474,8 @@ function PanelHeader({
         accessibilityRole="switch"
         accessibilityState={{ checked: darkMode }}
         accessibilityLabel={darkMode ? 'Mode gelap aktif' : 'Mode terang aktif'}
-        className="h-11 w-11 items-center justify-center rounded-full bg-dark">
-        <Text className="text-[20px] text-white">{darkMode ? '☾' : '☀'}</Text>
+        className="h-11 w-11 items-center justify-center rounded-full bg-surface">
+        <Text className="text-[20px] text-foreground">{darkMode ? '☾' : '☀'}</Text>
       </Pressable>
     </View>
   );

@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
-import { AppColors } from '@/constants/app-theme';
+import { useThemeColor } from '@/hooks/use-theme-mode';
 import { useIsWide } from '@/hooks/use-is-wide';
 import type { HistoryItem } from '@/types/api';
 import { cn } from '@/utils/cn';
@@ -21,6 +21,8 @@ export type HistoryProps = {
 };
 
 export default function History({ shell, onMenuItemPress, items }: HistoryProps) {
+  const avatarColor = useThemeColor('avatar');
+  const foreground = useThemeColor('foreground');
   const isWide = useIsWide();
   const empty = items.length === 0;
 
@@ -35,7 +37,7 @@ export default function History({ shell, onMenuItemPress, items }: HistoryProps)
 
       {empty ? (
         <EmptyState
-          icon={<Icon name="history" size={44} color={AppColors.avatar} />}
+          icon={<Icon name="history" size={44} color={avatarColor} />}
           title="Tidak Ada History"
           description="Riwayat antrian akan muncul di sini setelah Anda selesai menggunakan antrian"
         />
@@ -58,7 +60,7 @@ export default function History({ shell, onMenuItemPress, items }: HistoryProps)
                 onPress={() =>
                   router.push({ pathname: '/history/[queueId]', params: { queueId: queue.id } })
                 }>
-                <Icon name="search" size={20} color={AppColors.dark} />
+                <Icon name="search" size={20} color={foreground} />
               </Pressable>
             </View>
           ))}

@@ -4,7 +4,7 @@ import { MyTicketsList } from '@/components/MyTicketsList';
 import ResponsiveScreenLayout from '@/components/layout/ResponsiveScreenLayout';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Icon } from '@/components/ui/Icon';
-import { AppColors } from '@/constants/app-theme';
+import { useThemeColor } from '@/hooks/use-theme-mode';
 import { useMyTickets } from '@/hooks/use-my-tickets';
 import { isOnHome } from '@/lib/tickets';
 import { useAuthStore } from '@/store/authStore';
@@ -13,6 +13,7 @@ import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 /** Riwayat tiket saya: antrian yang sudah ditutup, dilewati, atau dibatalkan. */
 export default function RiwayatSayaRoute() {
   const displayName = useAuthStore((s) => s.displayName);
+  const avatarColor = useThemeColor('avatar');
   const { tickets } = useMyTickets();
   const openQueue = (queueId: number) =>
     router.push({ pathname: '/join/[queueId]', params: { queueId: String(queueId) } });
@@ -32,7 +33,7 @@ export default function RiwayatSayaRoute() {
       activeTab="riwayat">
       {empty ? (
         <EmptyState
-          icon={<Icon name="history" size={44} color={AppColors.avatar} />}
+          icon={<Icon name="history" size={44} color={avatarColor} />}
           title="Belum Ada Riwayat"
           description="Riwayat antrian akan muncul di sini setelah antrian Anda selesai atau ditutup."
         />
