@@ -48,7 +48,8 @@
     "web:lan": "expo start --web --host lan",
     "lint": "expo lint",
     "e2e": "playwright test",
-    "e2e:report": "playwright show-report playwright/.report"
+    "e2e:report": "playwright show-report playwright/.report",
+    "test:unit": "node --import ./tests/unit/register.mjs --test \"tests/unit/*.test.ts\""
   },
   "private": true
 }

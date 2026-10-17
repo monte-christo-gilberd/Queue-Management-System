@@ -1,0 +1,345 @@
+package service_test
+
+import (
+	"context"
+	"qms/internal/apperror"
+	"qms/internal/dto"
+	"qms/internal/model"
+	"qms/internal/service"
+	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	specOwnerID   int64 = 1
+	specCustomerA int64 = 101
+	specCustomerB int64 = 102
+	specCustomerC int64 = 103
+	specCustomerD int64 = 104
+)
+
+// newSpecEnv: antrian aktif milik specOwnerID (US-1: antrian baru langsung kosong dan aktif).
+func newSpecEnv(t *testing.T) *specEnv {
+	t.Helper()
+	env := &specEnv{
+		queues:  newMemQueueRepo(),
+		tickets: newMemTicketRepo(),
+		subs:    &memSubscriptions{active: map[int64]bool{specOwnerID: true}},
+		events:  &recordingNotifier{},
+		ownerID: specOwnerID,
+	}
+	env.qs = service.NewQueueService(env.queues, env.subs, fakeTxRunner{}, env.events).
+		WithTicketHolderChecker(env.tickets)
+	env.ts = service.NewTicketService(env.tickets, fakeTxRunner{}, env.events).
+		WithQueueGuard(env.qs)
+
+	q, _, err := env.qs.CreateQueue(context.Background(), specOwnerID, "Loket Utama", "Antrian harian")
+	require.NoError(t, err)
+	env.queueID = q.ID
+	return env
+}
+
+func TestSpec_Join_EmptyQueueGivesFirstNumber(t *testing.T) {
+	// TC-05-03 / US-14 AC2: antrian kosong -> nomor pertama (A-001), 0 orang di depan.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+
+	ticket, err := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	require.NoError(t, err)
+	assert.Equal(t, 1, ticket.TicketNumber)
+	assert.Equal(t, "waiting", ticket.Status)
+
+	status, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerA)
+	require.NoError(t, err)
+	require.NotNil(t, status.WaitingAhead)
+	assert.Equal(t, 0, *status.WaitingAhead)
+}
+
+func TestSpec_Join_AppendsAtEndOfQueue(t *testing.T) {
+	// US-14 AC2 / 4.2 langkah 5: pendaftar baru masuk di akhir antrian.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+
+	var joined []model.Ticket
+	for _, c := range []int64{specCustomerA, specCustomerB, specCustomerC} {
+		tk, err := env.ts.JoinQueue(ctx, env.queueID, c)
+		require.NoError(t, err)
+		joined = append(joined, tk)
+	}
+
+	assert.Less(t, joined[0].SortKey, joined[1].SortKey)
+	assert.Less(t, joined[1].SortKey, joined[2].SortKey)
+	assert.Equal(t, []int{1, 2, 3}, []int{joined[0].TicketNumber, joined[1].TicketNumber, joined[2].TicketNumber})
+}
+
+func TestSpec_Join_ClosedQueueGivesNoNumberAndNoEvent(t *testing.T) {
+	// 4.2 edge case: antrian tertutup -> "queue is currently closed", tidak ada nomor dibuat.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	require.NoError(t, env.qs.CloseQueue(ctx, env.queueID, specOwnerID))
+
+	_, err := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	assert.ErrorIs(t, err, apperror.ErrQueueClosed)
+	assert.Empty(t, env.tickets.ticketsOf(env.queueID))
+	assert.Equal(t, 0, env.events.count(service.EventTicketJoined))
+}
+
+func TestSpec_Join_UnknownQueueIsNotFound(t *testing.T) {
+	// TC-05-07: antrian tidak ada -> "Antrian tidak ditemukan", tidak ada nomor.
+	env := newSpecEnv(t)
+
+	_, err := env.ts.JoinQueue(context.Background(), env.queueID+999, specCustomerA)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+	assert.Equal(t, 0, env.tickets.inserts)
+}
+
+func TestSpec_Join_PublishesTicketJoinedOnlyOnSuccess(t *testing.T) {
+	// NFR 4: server menyiarkan perubahan saat join; join gagal tidak menyiarkan apa pun.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+
+	_, err := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	require.NoError(t, err)
+	require.Equal(t, 1, env.events.count(service.EventTicketJoined))
+
+	call := env.events.snapshot()[0]
+	assert.Equal(t, env.queueID, call.QueueID)
+	ev, ok := call.Payload.(dto.TicketEvent)
+	require.True(t, ok, "payload harus dto.TicketEvent")
+	assert.Equal(t, 1, ev.TicketNumber)
+
+	_, _ = env.ts.JoinQueue(ctx, env.queueID+999, specCustomerB) // antrian tidak ada
+	assert.Equal(t, 1, env.events.count(service.EventTicketJoined))
+}
+
+func TestSpec_Join_AlreadyJoinedShowsExistingNumber(t *testing.T) {
+	// 4.2 edge case & TC-05-04: scan/join ulang -> tampilkan nomor yang sudah ada,
+	// jangan buat nomor kedua. (Dapat gagal: implementasi mengembalikan ErrAlreadyJoined.)
+	env := newSpecEnv(t)
+	ctx := context.Background()
+
+	first, err := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	require.NoError(t, err)
+
+	again, err := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	require.NoError(t, err, "join ulang harus menampilkan nomor yang sudah ada, bukan error")
+	assert.Equal(t, first.ID, again.ID)
+	assert.Equal(t, first.TicketNumber, again.TicketNumber)
+	assert.Len(t, env.tickets.ticketsOf(env.queueID), 1, "tidak boleh ada tiket kedua")
+	assert.Equal(t, 1, env.events.count(service.EventTicketJoined))
+}
+
+func TestSpec_Join_DoubleTapCreatesSingleTicket(t *testing.T) {
+	// 4.2 / NFR 3: double-tap atau scan berulang tidak boleh membuat dua nomor.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+
+	const taps = 20
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var ids []int64
+	var errs []error
+	for i := 0; i < taps; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tk, err := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				errs = append(errs, err)
+				return
+			}
+			ids = append(ids, tk.ID)
+		}()
+	}
+	wg.Wait()
+
+	assert.Len(t, env.tickets.ticketsOf(env.queueID), 1, "tepat satu tiket untuk satu user")
+	for _, id := range ids {
+		assert.Equal(t, ids[0], id, "semua respons sukses harus menunjuk tiket yang sama")
+	}
+	for _, err := range errs {
+		assert.ErrorIs(t, err, apperror.ErrAlreadyJoined)
+	}
+}
+
+func TestSpec_Next_ServesInJoinOrder(t *testing.T) {
+	// TC-03-04 / US-8: nomor dilayani berurutan A-001, A-002, A-003.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	for _, c := range []int64{specCustomerA, specCustomerB, specCustomerC} {
+		_, err := env.ts.JoinQueue(ctx, env.queueID, c)
+		require.NoError(t, err)
+	}
+
+	var served []int
+	for i := 0; i < 3; i++ {
+		tk, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID)
+		require.NoError(t, err)
+		served = append(served, tk.TicketNumber)
+	}
+	assert.Equal(t, []int{1, 2, 3}, served)
+}
+
+func TestSpec_Next_ServesHeadAndPublishesTicketNext(t *testing.T) {
+	// TC-03-02 / 4.3 langkah 3: Next menandai nomor yang dilayani dan menyiarkan ticket_next.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
+
+	served, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, served.TicketNumber)
+	assert.Equal(t, specCustomerA, served.UserID)
+
+	require.Equal(t, 1, env.events.count(service.EventTicketNext))
+	ev, ok := env.events.snapshot()[len(env.events.snapshot())-1].Payload.(dto.TicketEvent)
+	require.True(t, ok)
+	assert.Equal(t, 1, ev.TicketNumber)
+	assert.Equal(t, "completed", ev.Status)
+}
+
+func TestSpec_Next_EmptyQueueReturnsQueueEmptyWithoutStateChange(t *testing.T) {
+	// TC-03-01 / 4.3 edge case: Next pada antrian kosong -> "tidak ada yang menunggu", tidak ada perubahan.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID)
+	assert.ErrorIs(t, err, apperror.ErrQueueEmpty)
+	assert.Equal(t, 0, env.tickets.completes)
+	assert.Equal(t, 0, env.events.count(service.EventTicketNext))
+}
+
+func TestSpec_Next_AfterLastServedIsQueueEmpty(t *testing.T) {
+	// 4.3: tidak ada nomor berikutnya -> sama seperti antrian kosong.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID)
+	require.NoError(t, err)
+
+	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID)
+	assert.ErrorIs(t, err, apperror.ErrQueueEmpty)
+	assert.Equal(t, 1, env.tickets.completes)
+}
+
+func TestSpec_Next_CustomerIsDeniedWithoutStateChange(t *testing.T) {
+	// TC-08-02 / 4.6: customer tidak boleh memanggil NEXT -> 404, tiket tetap menunggu.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+
+	_, err := env.ts.NextTicket(ctx, env.queueID, specCustomerA)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+	assert.Equal(t, 0, env.tickets.completes)
+	assert.Equal(t, 0, env.events.count(service.EventTicketNext))
+}
+
+func TestSpec_Status_CustomerSeesServingNumberAndPeopleAhead(t *testing.T) {
+	// TC-06-01 / 4.4: A-003 menunggu, belum ada yang dilayani -> "-" dan 2 orang di depan.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerC)
+
+	st, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerC)
+	require.NoError(t, err)
+	require.NotNil(t, st.MyTicket)
+	assert.Equal(t, 3, st.MyTicket.TicketNumber)
+	assert.Nil(t, st.CurrentNumber, "belum ada yang dilayani")
+	require.NotNil(t, st.WaitingAhead)
+	assert.Equal(t, 2, *st.WaitingAhead)
+}
+
+func TestSpec_Status_NextCustomerSeesUpdateWithoutRejoin(t *testing.T) {
+	// TC-07-02 / 4.4: setelah NEXT, A-002 melihat A-001 sedang dilayani dan 0 orang di depan.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID)
+	require.NoError(t, err)
+
+	st, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerB)
+	require.NoError(t, err)
+	require.NotNil(t, st.CurrentNumber)
+	assert.Equal(t, 1, *st.CurrentNumber)
+	require.NotNil(t, st.WaitingAhead)
+	assert.Equal(t, 0, *st.WaitingAhead)
+	require.NotNil(t, st.MyTicket)
+	assert.Equal(t, "waiting", st.MyTicket.Status)
+}
+
+func TestSpec_Status_ServedCustomerSeesCompleted(t *testing.T) {
+	// TC-06-02: setelah dilayani, status tiket "completed" dan nomor yang dilayani adalah miliknya.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID)
+	require.NoError(t, err)
+
+	st, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerA)
+	require.NoError(t, err)
+	require.NotNil(t, st.MyTicket)
+	assert.Equal(t, "completed", st.MyTicket.Status)
+	require.NotNil(t, st.CurrentNumber)
+	assert.Equal(t, 1, *st.CurrentNumber)
+	assert.Nil(t, st.WaitingAhead, "tiket yang sudah selesai tidak punya hitungan orang di depan")
+}
+
+func TestSpec_Status_HolderSeesClosedQueue(t *testing.T) {
+	// TC-07-03: pemegang tiket melihat antrian ditutup tanpa refresh (status antrian "closed").
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	require.NoError(t, env.qs.CloseQueue(ctx, env.queueID, specOwnerID))
+
+	st, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerA)
+	require.NoError(t, err)
+	assert.Equal(t, "closed", st.Queue.Status)
+	assert.Equal(t, 1, env.events.count(service.EventQueueClosed))
+}
+
+func TestSpec_Status_OutsiderIsNotFoundAndLearnsNothing(t *testing.T) {
+	// TC-08-01 / 4.4: pengguna tanpa tiket tidak melihat status (404, tidak bocor).
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+
+	st, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerB)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+	assert.Nil(t, st.MyTicket)
+	assert.Nil(t, st.CurrentNumber)
+	assert.Nil(t, st.WaitingAhead)
+}
+
+func TestSpec_ListTickets_OwnerSeesEveryRegisteredCustomer(t *testing.T) {
+	// US-6 / 4.1 langkah 3: owner melihat semua customer yang terdaftar.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
+
+	tickets, err := env.ts.ListTickets(ctx, env.queueID, specOwnerID, nil)
+	require.NoError(t, err)
+	require.Len(t, tickets, 2)
+	assert.Equal(t, specCustomerA, tickets[0].UserID)
+	assert.Equal(t, specCustomerB, tickets[1].UserID)
+}
+
+func TestSpec_ListTickets_CustomerCannotSeeOthersTickets(t *testing.T) {
+	// TC-08-03 / 4.1: customer (bukan owner) tidak boleh melihat daftar customer antrian.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+
+	tickets, err := env.ts.ListTickets(ctx, env.queueID, specCustomerA, nil)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+	assert.Empty(t, tickets)
+}
