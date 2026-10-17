@@ -320,7 +320,8 @@ func TestTicketRepository(t *testing.T) {
 }
 
 // Alur nyata: service + repo + constraint UNIQUE (queue_id, user_id) di Postgres.
-func TestJoinQueue_TwiceBySameUserIsAlreadyJoined(t *testing.T) {
+// Spek 4.2 / TC-05-04: join ulang menampilkan tiket yang sudah ada, tidak membuat nomor kedua.
+func TestJoinQueue_TwiceBySameUserReturnsSameTicket(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 	owner := seedOwner(t, db, "o@b.c", time.Now().Add(time.Hour))
@@ -339,14 +340,18 @@ func TestJoinQueue_TwiceBySameUserIsAlreadyJoined(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, first.TicketNumber)
 
-	_, err = svc.JoinQueue(ctx, q.ID, customer)
-	assert.ErrorIs(t, err, apperror.ErrAlreadyJoined)
+	again, err := svc.JoinQueue(ctx, q.ID, customer)
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, again.ID)
+	assert.Equal(t, 1, again.TicketNumber)
 
-	// Setelah tiket selesai pun user tetap tidak bisa join ulang (UNIQUE tidak melihat status).
+	// Setelah tiket selesai pun join ulang tidak membuat tiket baru (UNIQUE tidak melihat status).
 	_, err = svc.NextTicket(ctx, q.ID, owner)
 	require.NoError(t, err)
-	_, err = svc.JoinQueue(ctx, q.ID, customer)
-	assert.ErrorIs(t, err, apperror.ErrAlreadyJoined)
+	afterNext, err := svc.JoinQueue(ctx, q.ID, customer)
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, afterNext.ID)
+	assert.Equal(t, "completed", afterNext.Status)
 
 	// Queue closed -> ditolak sebelum menyentuh tiket.
 	require.NoError(t, repository.NewQueueRepository(db).CloseQueue(ctx, q.ID))
