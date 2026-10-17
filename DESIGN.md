@@ -196,7 +196,12 @@ Dengan nginx, `EXPO_PUBLIC_API_URL` harus diisi dengan origin nginx. Kalau tidak
 - Frontend di-export dengan `npx expo export --platform web` lalu disalin ke folder yang dibaca nginx.
 - nginx melayani frontend statis, meneruskan `/api/` ke backend, memakai rute SSE tanpa buffer, dan mengurus TLS.
   Konfigurasinya ada di `deploy/nginx/`.
-- Container (Docker) belum dipakai. Konfigurasi nginx dibuat terpisah agar bisa dimasukkan ke Dockerfile nanti.
+- Docker disiapkan sebagai jalur kedua. Setiap layanan punya Dockerfile dan `Dockerfile.dockerignore`:
+  `db/`, `backend/`, `frontend/`, dan `deploy/nginx/`. Berkas ini belum pernah di-build dan belum ada `docker-compose.yml`.
+- Pada container, frontend tidak berjalan sebagai server. Image frontend hanya berisi hasil build (`/dist`) yang diisi ke volume.
+  Container nginx membaca volume itu dan meneruskan `/api/` ke container backend (nama service `backend`, port 8080).
+- Nginx di container hanya HTTP. TLS diurus di luar container atau ditambahkan kemudian.
+- Semua variabel sensitif diisi saat container dijalankan. Tidak ada rahasia di dalam image.
 
 ## 5. Keputusan desain
 

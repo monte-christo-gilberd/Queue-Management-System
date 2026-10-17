@@ -1,6 +1,8 @@
 # Konfigurasi nginx (QMS)
 
-Folder ini berisi konfigurasi nginx sebagai reverse proxy. Ia **terpisah dari kode aplikasi** dan tidak memakai Docker, sehingga nanti bisa dipasang langsung di host atau dipindahkan ke Dockerfile tersendiri.
+Folder ini berisi konfigurasi nginx sebagai reverse proxy. Ia **terpisah dari kode aplikasi**. Ada dua jalur pemakaian:
+- **Di host** (langkah di bawah): `qms-http.conf` dan `qms.conf` dipasang ke `/etc/nginx`.
+- **Di container**: `Dockerfile` di folder ini memakai `templates/default.conf.template`. Belum di-build dan belum ada `docker-compose.yml`.
 
 ## Isi
 
@@ -8,6 +10,8 @@ Folder ini berisi konfigurasi nginx sebagai reverse proxy. Ia **terpisah dari ko
 |---|---|---|
 | `qms-http.conf` | HTTP saja | Uji awal, dan agar certbot bisa memverifikasi domain |
 | `qms.conf` | HTTPS + redirect dari HTTP | Setelah sertifikat terpasang (produksi) |
+| `templates/default.conf.template` | HTTP untuk container, variabel diisi saat start | Dipakai `Dockerfile` |
+| `Dockerfile`, `Dockerfile.dockerignore` | Image nginx | Belum di-build |
 
 Kedua berkas punya dua placeholder yang harus diganti:
 - `QMS_DOMAIN`: nama domain, mis. `qms.contoh.ac.id`.
@@ -21,6 +25,18 @@ Alamat backend ada di blok `upstream qms_backend` (default `127.0.0.1:8080`).
 - **API** `/api/...` diteruskan ke backend. Dengan begitu frontend dan API satu origin.
 - **SSE** `/api/v1/queues/:id/event` diteruskan tanpa buffer dan dengan timeout 1 jam. Tanpa ini, event `ticket_next` tertahan di nginx dan layar customer tidak berubah secara live.
 - **HTTPS** dengan redirect dari HTTP.
+
+## Variabel untuk container
+
+Dipakai hanya oleh `Dockerfile` (lewat `templates/default.conf.template`). Diisi saat `docker run`:
+
+| Variabel | Default di image | Isi |
+|---|---|---|
+| `QMS_DOMAIN` | `localhost` | Nama host untuk `server_name` |
+| `BACKEND_HOST` | `backend` | Nama service backend di jaringan Docker (port 8080) |
+| `FRONTEND_ROOT` | `/srv/qms-frontend` | Folder frontend statis di dalam container (volume yang berisi `dist`) |
+
+Container ini hanya melayani HTTP di port 80. TLS perlu diurus di luar container.
 
 ## Langkah pemasangan (host, tanpa Docker)
 

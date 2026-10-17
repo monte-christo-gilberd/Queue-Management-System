@@ -28,15 +28,15 @@ dan pembayaran langganan.
 | Backend | Go 1.27, Gin, sqlx + pgx, JWT HS256, bcrypt |
 | Database | PostgreSQL |
 | Frontend | Expo SDK 57 (Expo Router, web static), React Native, NativeWind, Zustand |
-| Deploy | nginx (reverse proxy + TLS), tanpa Docker untuk saat ini |
+| Deploy | nginx (reverse proxy), Docker (Dockerfile per layanan, belum di-build) |
 
 ## Struktur folder
 
 ```
 backend/          API Go (cmd/server, internal/{handler,service,repository,dto,sse,...})
-frontend/         Aplikasi Expo (src/app rute, src/components, src/hooks, src/lib, src/store)
-db/migrations/    Skema PostgreSQL (01_Schema.sql)
-deploy/nginx/     Konfigurasi nginx untuk pemasangan di host
+frontend/         Aplikasi Expo (src/app rute, src/components, src/hooks, src/lib, src/store), Dockerfile
+db/               Dockerfile dan skema PostgreSQL (migrations/01_Schema.sql)
+deploy/nginx/     Konfigurasi nginx untuk pemasangan di host, Dockerfile, dan template konfigurasi
 DESIGN.md         Desain sistem
 FLOW.md           Alur pengguna
 api-contract.md   Kontrak API
@@ -100,6 +100,20 @@ npm run test:unit
 ```
 
 End-to-end memakai Playwright di `frontend/playwright/` (`npm run e2e`). Tes ini butuh backend dan frontend yang berjalan.
+
+## Docker (belum di-build)
+
+Setiap layanan punya Dockerfile dan `Dockerfile.dockerignore` sendiri. Berkasnya sudah disiapkan, tetapi
+belum pernah di-build dan belum ada `docker-compose.yml` yang menghubungkan keempatnya.
+
+| Layanan | Dockerfile | Catatan |
+|---|---|---|
+| db | `db/Dockerfile` | `postgres:16-alpine`, skema dijalankan otomatis saat data directory kosong |
+| backend | `backend/Dockerfile` | Build dua tahap, binary di `alpine`, user non-root |
+| frontend | `frontend/Dockerfile` | Hanya menghasilkan folder `dist` untuk diisi ke volume, butuh build-arg `EXPO_PUBLIC_API_URL` |
+| nginx | `deploy/nginx/Dockerfile` | Konfigurasi dibuat dari template saat start (`QMS_DOMAIN`, `BACKEND_HOST`, `FRONTEND_ROOT`), HTTP saja |
+
+Kredensial (`POSTGRES_PASSWORD`, `DATABASE_URL`, `JWT_SECRET`) tidak dibakar ke image. Diisi saat container dijalankan.
 
 ## Build frontend untuk produksi
 
