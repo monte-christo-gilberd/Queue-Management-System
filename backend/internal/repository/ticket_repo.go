@@ -30,10 +30,12 @@ func (r *TicketRepository) MaxWaitingSortKey(
 ) (int64, error) {
 	var max sql.NullInt64
 
+	// Semua status, bukan hanya waiting: UNIQUE (queue_id, sort_key) berlaku untuk tiket yang sudah
+	// completed juga. Kalau hanya waiting, antrian yang sudah habis memberi kunci yang bentrok.
 	const query = `
-		SELECT MAX(sort_key) 
-		FROM tickets 
-		WHERE queue_id=$1 AND status='waiting'
+		SELECT MAX(sort_key)
+		FROM tickets
+		WHERE queue_id=$1
 	`
 
 	err := tx.GetContext(

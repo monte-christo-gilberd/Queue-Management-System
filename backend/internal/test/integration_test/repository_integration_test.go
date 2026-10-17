@@ -525,3 +525,30 @@ func TestUserRepository_IsOwnerAndFindByID(t *testing.T) {
 	_, err = repo.FindByID(ctx, 999999)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
+
+// Regresi: antrian yang sudah habis (semua tiket completed) tetap menerima join baru.
+// Sebelumnya sort_key baru bentrok dengan tiket completed (UNIQUE queue_id, sort_key) sehingga 503.
+func TestJoinQueue_AfterQueueDrainedStillAcceptsJoin(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "drain-o@b.c", time.Now().Add(time.Hour))
+	first := seedUser(t, db, "drain-1@b.c")
+	second := seedUser(t, db, "drain-2@b.c")
+	q, _ := createQueue(t, db, owner, "Drain")
+
+	queueSvc := service.NewQueueService(
+		repository.NewQueueRepository(db),
+		repository.NewSubscriptionChecker(db),
+		database.NewSqlxTxRunner(db),
+	)
+	svc := service.NewTicketService(repository.NewTicketRepository(db), database.NewSqlxTxRunner(db)).WithQueueGuard(queueSvc)
+
+	_, err := svc.JoinQueue(ctx, q.ID, first)
+	require.NoError(t, err)
+	_, err = svc.NextTicket(ctx, q.ID, owner)
+	require.NoError(t, err)
+
+	tk, err := svc.JoinQueue(ctx, q.ID, second)
+	require.NoError(t, err)
+	assert.Equal(t, "waiting", tk.Status)
+}
