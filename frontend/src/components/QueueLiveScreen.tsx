@@ -13,7 +13,8 @@ import { AppButton } from '@/components/ui/AppButton';
 import { Icon } from '@/components/ui/Icon';
 
 /** Tiket versi tampilan: nomor sudah diformat + nama customer. */
-type LiveTicket = { number: string; name: string };
+/** Nama customer belum tersedia dari backend; tanpa nama hanya nomor yang ditampilkan. */
+type LiveTicket = { number: string; name?: string };
 
 export type QueueLiveScreenProps = {
   queueName?: string;
@@ -158,7 +159,7 @@ function TimelineRow({
             current ? 'text-[18px] font-extrabold' : 'text-[13px] font-semibold',
             muted ? 'text-placeholder' : 'text-foreground',
           )}>
-          {ticket ? `${ticket.number} · ${ticket.name}` : '-'}
+          {ticket ? (ticket.name ? `${ticket.number} · ${ticket.name}` : ticket.number) : '-'}
         </Text>
         <Text className={cn(
           current ? 'font-bold text-primary' : 'font-normal text-muted',
@@ -199,7 +200,7 @@ function DesktopAirportBoardLayout({
           <Text
             className="text-[96px] font-normal leading-[108px] tracking-[2px] text-white"
             style={{ fontFamily: Fonts?.mono }}>{currentTicket?.number ?? '---'}</Text>
-          <Text className="text-[22px] text-boardMuted" style={{ fontFamily: Fonts?.mono }}>{currentTicket?.name ?? 'Belum ada antrian'}</Text>
+          <Text className="text-[22px] text-boardMuted" style={{ fontFamily: Fonts?.mono }}>{currentTicket ? (currentTicket.name ?? 'Sedang dilayani') : 'Belum ada antrian'}</Text>
         </View>
 
         <View className="h-px bg-boardLine" />

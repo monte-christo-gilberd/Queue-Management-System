@@ -41,3 +41,11 @@ example
 # generated native folders
 /ios
 /android
+
+# documentation
+ZUSTAND_GUIDE.md
+HYDRATION_GUIDE.md
+AUTH_GATE_GUIDE.md
+AUTH_FLOW_GUIDE.md
+QUEUE_OWNER_GUIDE.md
+REALTIME_GUIDE.md

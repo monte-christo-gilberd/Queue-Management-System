@@ -8,9 +8,10 @@ import { GoogleButton, OrDivider, PrimaryAuthButton } from '@/components/auth/Au
 import { LockIcon, PersonIcon } from '@/components/ui/Icon';
 
 export type LoginScreenProps = {
-  username: string;
+  /** Email atau username. Backend menerima keduanya lewat field `identifier`. */
+  identifier: string;
   password: string;
-  onChangeUsername: (value: string) => void;
+  onChangeIdentifier: (value: string) => void;
   onChangePassword: (value: string) => void;
   onSubmit: () => void;
   /** Placeholder visual — Google OAuth belum ada di backend. */
@@ -22,9 +23,9 @@ export type LoginScreenProps = {
 };
 
 export default function LoginScreen({
-  username,
+  identifier,
   password,
-  onChangeUsername,
+  onChangeIdentifier,
   onChangePassword,
   onSubmit,
   onGoogleLogin,
@@ -34,13 +35,13 @@ export default function LoginScreen({
 }: LoginScreenProps) {
   return (
     <AuthLayout title="Queue Management System" subtitle="Kelola antrian Anda dari mana saja">
-      {/* TODO: konfirmasi sumber data — backend login memakai email, mockup memakai username */}
       <AuthInput
         icon={<PersonIcon size={16} color={AppColors.white} />}
-        placeholder="USERNAME"
-        value={username}
-        onChangeText={onChangeUsername}
+        placeholder="EMAIL ATAU USERNAME"
+        value={identifier}
+        onChangeText={onChangeIdentifier}
         autoCapitalize="none"
+        autoCorrect={false}
       />
       <AuthInput
         icon={<LockIcon size={16} color={AppColors.white} />}

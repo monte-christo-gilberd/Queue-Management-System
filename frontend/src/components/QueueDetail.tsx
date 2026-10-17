@@ -33,11 +33,18 @@ export type QueueDetailProps = {
   /** TODO: backend belum mendukung ini (tambah admin by nama + email) */
   onSubmitAddAdmin?: (name: string, email: string) => void;
   errorMessage?: string;
+  /** Simpan nama dan deskripsi (PUT). Tombol hanya tampil bila diberikan. */
+  onSave?: () => void;
+  saving?: boolean;
+  /** Tutup antrian (POST /close). Dipanggil setelah pengguna mengonfirmasi di popup. */
+  onCloseQueue?: () => void;
+  closing?: boolean;
 };
 
 export default function QueueDetail({
   shell,
   onMenuItemPress,
+  queue,
   current,
   queueName,
   queueDescription,
@@ -49,12 +56,19 @@ export default function QueueDetail({
   nextLoading = false,
   onSubmitAddAdmin,
   errorMessage,
+  onSave,
+  saving = false,
+  onCloseQueue,
+  closing = false,
 }: QueueDetailProps) {
   const isWide = useIsWide();
   // State tampilan murni: modal "Add Admin" + isi form sebelum di-submit.
   const [addAdminOpen, setAddAdminOpen] = useState(false);
   const [adminName, setAdminName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
+  // State tampilan murni: popup konfirmasi tutup antrian.
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const isClosed = queue.status === "closed";
 
   const closeModal = () => {
     setAddAdminOpen(false);
@@ -119,6 +133,14 @@ export default function QueueDetail({
               value={queueDescription}
               onChangeText={onChangeQueueDescription}
             />
+            {onSave ? (
+              <AppButton
+                label="SIMPAN"
+                variant="dark"
+                loading={saving}
+                onPress={onSave}
+              />
+            ) : null}
             <View className="gap-1.5">
               <Text className="text-[12px] font-semibold text-muted">
                 Otoritas Admin (dengan centang)
@@ -138,6 +160,16 @@ export default function QueueDetail({
               </Pressable>
             </View>
           </View>
+
+          {isClosed ? (
+            <Text className="text-[13px] font-bold text-muted">Antrian ini sudah ditutup.</Text>
+          ) : onCloseQueue ? (
+            <AppButton
+              label="TUTUP ANTRIAN"
+              variant="outline"
+              onPress={() => setCloseConfirmOpen(true)}
+            />
+          ) : null}
 
           {/* TODO: backend belum mendukung ini (sistem pengulangan antrian & sistem QR) */}
           <View className="gap-3 rounded-card border border-line p-3.5">
@@ -160,6 +192,23 @@ export default function QueueDetail({
           </View>
         </View>
       </View>
+
+      <ModalCard visible={closeConfirmOpen} onRequestClose={() => setCloseConfirmOpen(false)}>
+        <Text className="text-[20px] font-extrabold text-foreground">Tutup antrian ini?</Text>
+        <Text className="text-[13px] text-muted">
+          Customer tidak bisa lagi bergabung, dan antrian tidak bisa dibuka kembali.
+        </Text>
+        <AppButton
+          label="Ya, Tutup Antrian"
+          variant="dark"
+          loading={closing}
+          onPress={() => {
+            onCloseQueue?.();
+            setCloseConfirmOpen(false);
+          }}
+        />
+        <AppButton label="Batal" variant="outline" onPress={() => setCloseConfirmOpen(false)} />
+      </ModalCard>
 
       <ModalCard visible={addAdminOpen} onRequestClose={closeModal}>
         <Text className="text-[24px] font-extrabold text-foreground">Add Admin</Text>

@@ -1,6 +1,12 @@
 import { Stack } from 'expo-router';
 
-// TODO(developer): tambahkan auth guard di sini (redirect ke /login kalau belum ada token).
+import { AuthGate } from '@/components/auth/AuthGate';
+
+// Semua route owner hanya bisa diakses setelah login. Tanpa token → halaman login.
 export default function OwnerLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <AuthGate mode="required">
+      <Stack screenOptions={{ headerShown: false }} />
+    </AuthGate>
+  );
 }

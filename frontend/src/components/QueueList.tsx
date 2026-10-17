@@ -19,6 +19,8 @@ export type QueueListProps = {
   items: QueueListItem[];
   filter: QueueListFilter;
   onChangeFilter: (filter: QueueListFilter) => void;
+  loading?: boolean;
+  errorMessage?: string;
 };
 
 export default function QueueList({
@@ -27,6 +29,8 @@ export default function QueueList({
   items,
   filter,
   onChangeFilter,
+  loading = false,
+  errorMessage,
 }: QueueListProps) {
   const isWide = useIsWide();
 
@@ -51,6 +55,12 @@ export default function QueueList({
           onPress={() => onChangeFilter("active")}
         />
       </View>
+
+      {errorMessage ? <Text className="text-[13px] text-live">{errorMessage}</Text> : null}
+      {loading ? <Text className="text-[13px] text-muted">Memuat antrian...</Text> : null}
+      {!loading && !errorMessage && items.length === 0 ? (
+        <Text className="text-[13px] text-muted">Belum ada antrian.</Text>
+      ) : null}
 
       <View className={isWide ? "flex-row flex-wrap gap-4" : "gap-4"}>
         {items.map(({ queue, currentTicketNumber, counterName }) => {

@@ -80,3 +80,8 @@ export type HistoryItem = {
   queue: Queue;
   adminNames: string[];
 };
+
+/** Respons login dan register: `{ data: { token } }`. */
+export type AuthResponse = {
+  token: string;
+};

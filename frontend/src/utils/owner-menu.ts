@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 
 import type { OwnerMenuItem } from '@/components/layout/ResponsiveScreenLayout';
+import { useAuthStore } from '@/store/authStore';
 
 /** Navigasi menu profil — dipakai bersama oleh semua route owner (HP dan desktop). */
 export function handleOwnerMenuItemPress(item: OwnerMenuItem) {
@@ -24,7 +25,7 @@ export function handleOwnerMenuItemPress(item: OwnerMenuItem) {
       // TODO: layar Pengaturan belum ada di mockup.
       break;
     case 'logout':
-      // TODO(developer): hapus token sebelum redirect.
+      useAuthStore.getState().logout();
       router.replace('/');
       break;
   }
