@@ -80,7 +80,7 @@ export function AppendNoteRow({ onNote }: { onNote?: () => void }) {
     <Pressable
       onPress={onNote}
       disabled={!onNote}
-      className="flex-row items-center justify-between rounded-[14px] bg-[#1c1c1c] px-4 py-3.5 active:opacity-80"
+      className="flex-row items-center justify-between rounded-[14px] bg-[#1c1c1c] px-4 py-3.5 dark:border dark:border-line active:opacity-80"
     >
       <View className="gap-0.5">
         <Text className="text-[14px] font-bold text-white">Append Note</Text>
@@ -102,7 +102,7 @@ export function QueueTimeline({
   nextLoading = false,
 }: QueueTimelineProps) {
   return (
-    <View className="w-full gap-5 rounded-[20px] bg-dark p-5">
+    <View className="w-full gap-5 rounded-[20px] bg-dark p-5 dark:border dark:border-line">
       <Pressable onPress={onOpen} disabled={!onOpen} className="gap-5 active:opacity-80">
         <Text className="text-[16px] font-bold text-white">{title}</Text>
         <TimelineList items={items} />

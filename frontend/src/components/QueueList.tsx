@@ -13,15 +13,11 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Icon } from "@/components/ui/Icon";
 import { useThemeColor } from "@/hooks/use-theme-mode";
 
-export type QueueListFilter = "all" | "active";
-
 export type QueueListProps = {
   shell?: ShellProps;
   onMenuItemPress?: (item: OwnerMenuItem) => void;
-  /** Daftar yang sudah difilter oleh developer; komponen render apa adanya. */
+  /** Antrian yang ditampilkan (route memberi hanya yang aktif; yang sudah ditutup ada di Riwayat). */
   items: QueueListItem[];
-  filter: QueueListFilter;
-  onChangeFilter: (filter: QueueListFilter) => void;
   loading?: boolean;
   errorMessage?: string;
 };
@@ -30,8 +26,6 @@ export default function QueueList({
   shell,
   onMenuItemPress,
   items,
-  filter,
-  onChangeFilter,
   loading = false,
   errorMessage,
 }: QueueListProps) {
@@ -40,32 +34,19 @@ export default function QueueList({
 
   return (
     <ResponsiveScreenLayout
-      title="Semua Antrian"
+      title="Daftar Antrian"
       userName={shell?.userName}
       onMenuItemPress={onMenuItemPress}
       activeItem="queues"
       onBack={() => router.back()}
     >
-      <View className="flex-row gap-2.5">
-        <Chip
-          label="Semua"
-          active={filter === "all"}
-          onPress={() => onChangeFilter("all")}
-        />
-        <Chip
-          label="Aktif"
-          active={filter === "active"}
-          onPress={() => onChangeFilter("active")}
-        />
-      </View>
-
       {errorMessage ? <Text className="text-[13px] text-live">{errorMessage}</Text> : null}
       {loading ? <Text className="text-[13px] text-muted">Memuat antrian...</Text> : null}
       {!loading && !errorMessage && items.length === 0 ? (
         <EmptyState
           icon={<Icon name="list" size={44} color={avatarColor} />}
-          title="Belum Ada Antrian"
-          description="Buat antrian baru untuk mulai melayani customer."
+          title="Belum Ada Antrian Aktif"
+          description="Antrian yang sedang berjalan akan tampil di sini. Antrian yang sudah ditutup ada di Riwayat Antrian."
         />
       ) : null}
 
@@ -109,31 +90,3 @@ export default function QueueList({
   );
 }
 
-function Chip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      className={cn(
-        "rounded-pill px-[22px] py-[9px]",
-        active ? "bg-dark" : "bg-surface",
-      )}
-    >
-      <Text
-        className={cn(
-          "text-[13px] font-bold",
-          active ? "text-white" : "text-muted",
-        )}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}

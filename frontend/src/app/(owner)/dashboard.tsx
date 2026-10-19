@@ -1,11 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import CreateQueueModal from '@/components/CreateQueueModal';
 import { JoinQueueModals } from '@/components/ui/JoinQueueModals';
 import Dashboard from '@/components/Dashboard';
 import { MySpotCard, NotQueuingCard } from '@/components/MySpotCard';
+import { QueueTimeline, type TimelineItem } from '@/components/QueueTimeline';
+import { AppendNoteModal } from '@/components/ui/AppendNoteModal';
 import { useIsWide } from '@/hooks/use-is-wide';
 import { useMe } from '@/hooks/use-me';
 import { useQueueSpot } from '@/hooks/use-queue-spot';
@@ -15,9 +17,13 @@ import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useQueueList } from '@/hooks/use-queues';
 import { describeQueueError } from '@/lib/queue-errors';
 import { createQueue } from '@/lib/queues';
+import type { Queue } from '@/types/api';
 import { useAuthStore } from '@/store/authStore';
 import { formatTicketNumber } from '@/utils/format';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
+
+/** Jumlah antrian aktif yang tampil di Dashboard owner (yang terbaru). Sisanya ada di Daftar Antrian. */
+const DASHBOARD_QUEUE_COUNT = 2;
 
 export default function DashboardRoute() {
   const displayName = useAuthStore((s) => s.displayName);
@@ -29,6 +35,8 @@ export default function DashboardRoute() {
   const { create } = useLocalSearchParams<{ create?: string }>();
   const createFromMenu = create === '1';
   const createVisible = createOpen || createFromMenu;
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string>();
   function closeCreate() {
     setCreateOpen(false);
     setCreateError(undefined);
@@ -58,15 +66,12 @@ export default function DashboardRoute() {
         <NotQueuingCard onJoin={isWide ? () => setJoinOpen(true) : undefined} />
       )
     ) : null;
-  const activeQueue = queues.find((q) => q.status === 'active') ?? null;
-  // Antrian aktif pertama. Saat ditutup (SSE queue_closed), daftar diambil ulang dan papan kosong.
-  const board = useQueueBoard(activeQueue?.id ?? null, () => {
-    void reloadQueues();
-  });
-  const { previous, current, next, upcoming } = board.view;
 
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string>();
+  // Dua antrian aktif terbaru (created_at paling baru). Antrian aktif lainnya ada di Daftar Antrian.
+  const activeQueues = queues
+    .filter((q) => q.status === 'active')
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    .slice(0, DASHBOARD_QUEUE_COUNT);
 
   async function handleCreate(name: string, description: string) {
     const trimmed = name.trim();
@@ -90,20 +95,24 @@ export default function DashboardRoute() {
     }
   }
 
+  const boards = activeQueues.map((queue) => (
+    <OwnerQueueBoard
+      key={queue.id}
+      queue={queue}
+      onOpen={() => router.push({ pathname: '/queues/[queueId]', params: { queueId: String(queue.id) } })}
+      // Antrian ditutup (SSE queue_closed): daftar diambil ulang, kartunya hilang dari Dashboard.
+      onQueueClosed={() => void reloadQueues()}
+    />
+  ));
+
   return (
     <>
       <Dashboard
         shell={{ userName: displayName ?? undefined }}
         onMenuItemPress={handleOwnerMenuItemPress}
-        activeQueue={activeQueue}
-        previous={previous}
-        current={current}
-        next={next}
-        upcoming={upcoming}
-        nextLoading={board.nextLoading}
-        errorMessage={board.nextError ?? board.error ?? queuesError}
-        onNext={() => void board.next()}
-        onOpenQueue={(queueId) => router.push({ pathname: '/queues/[queueId]', params: { queueId: String(queueId) } })}
+        boards={boards}
+        hasActiveQueue={activeQueues.length > 0}
+        errorMessage={queuesError}
         canCreateQueue={meLoaded && isOwner}
         topCard={topCard}
       />
@@ -115,6 +124,52 @@ export default function DashboardRoute() {
         onSubmit={handleCreate}
         loading={creating}
         errorMessage={createError}
+      />
+    </>
+  );
+}
+
+/** Papan satu antrian aktif milik owner. Papan dan SKIP/NEXT diurus sendiri lewat SSE. */
+function OwnerQueueBoard({
+  queue,
+  onOpen,
+  onQueueClosed,
+}: {
+  queue: Queue;
+  onOpen: () => void;
+  onQueueClosed: () => void;
+}) {
+  const board = useQueueBoard(queue.id, onQueueClosed);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const { previous, current, next, upcoming } = board.view;
+
+  const items: TimelineItem[] = [
+    ...(previous ? [{ number: formatTicketNumber(previous.ticket.ticket_number), status: 'done' as const }] : []),
+    ...(current ? [{ number: formatTicketNumber(current.ticket.ticket_number), status: 'current' as const }] : []),
+    ...(next ? [{ number: formatTicketNumber(next.ticket.ticket_number), status: 'waiting' as const }] : []),
+    ...upcoming.map((entry) => ({
+      number: formatTicketNumber(entry.ticket.ticket_number),
+      status: 'waiting' as const,
+    })),
+  ];
+  const message = board.nextError ?? board.error;
+
+  return (
+    <>
+      {message ? <Text className="text-[12px] font-normal text-live">{message}</Text> : null}
+      <QueueTimeline
+        title={queue.queue_name}
+        items={items}
+        onNext={() => void board.next()}
+        onNote={() => setNoteOpen(true)}
+        onOpen={onOpen}
+        nextLoading={board.nextLoading}
+      />
+      <AppendNoteModal
+        visible={noteOpen}
+        onCancel={() => setNoteOpen(false)}
+        // TODO: backend belum mendukung catatan antrian; isi catatan belum disimpan.
+        onSubmit={() => setNoteOpen(false)}
       />
     </>
   );

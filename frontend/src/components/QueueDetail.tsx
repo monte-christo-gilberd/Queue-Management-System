@@ -179,7 +179,7 @@ export default function QueueDetail({
             <Text className="text-[12px] font-normal text-live">{errorMessage}</Text>
           ) : null}
 
-          <View className="rounded-[20px] bg-dark p-3">
+          <View className="rounded-[20px] bg-dark p-3 dark:border dark:border-line">
             <AppendNoteRow onNote={() => setNoteOpen(true)} />
           </View>
 

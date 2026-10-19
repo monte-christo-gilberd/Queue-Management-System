@@ -40,13 +40,13 @@ const fixedColors = {
  */
 const themedColors = {
   background: { light: '#E5E7EB', dark: '#121417' }, // latar halaman
-  surface: { light: '#F3F3F3', dark: '#1E2126' }, // kartu / input terisi
+  surface: { light: '#F3F3F3', dark: '#2E343D' }, // kartu / input terisi (dark: beda jelas dari latar)
   foreground: { light: '#1C1A1B', dark: '#F3F4F6' }, // teks utama
   muted: { light: '#555555', dark: '#9CA3AF' }, // teks sekunder
-  line: { light: '#B9B9B9', dark: '#3A3F47' }, // border kartu / garis timeline
-  divider: { light: '#D1D5DB', dark: '#2A2E35' }, // garis pemisah (tab bar)
-  disabled: { light: '#C4C4C4', dark: '#4B5058' }, // elemen nonaktif / pudar
-  avatar: { light: '#C9B6B3', dark: '#6B5A57' },
+  line: { light: '#B9B9B9', dark: '#565E6A' }, // border kartu / garis timeline
+  divider: { light: '#D1D5DB', dark: '#3A414B' }, // garis pemisah (tab bar)
+  disabled: { light: '#C4C4C4', dark: '#737B87' }, // elemen nonaktif / pudar
+  avatar: { light: '#C9B6B3', dark: '#8F7B77' }, // ikon kosong & latar avatar (dark: terbaca di atas kartu)
   panel: { light: '#94AEFF', dark: '#2B3A6B' }, // latar collapsible
 };
 

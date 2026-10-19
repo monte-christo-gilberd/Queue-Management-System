@@ -122,7 +122,8 @@ function QueueDetailEditor({
     setErrorMessage(undefined);
     try {
       await closeQueue(queue.id);
-      await reload();
+      // Setelah ditutup, owner kembali ke Dashboard (antrian itu tidak lagi tampil di sana).
+      router.replace('/dashboard');
     } catch (e) {
       setErrorMessage(describeQueueError(e));
     } finally {

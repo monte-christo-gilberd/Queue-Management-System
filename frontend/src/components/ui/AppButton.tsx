@@ -69,6 +69,8 @@ export function AppButton({
         isPill && 'h-7 rounded-pill px-3.5',
         BG[variant],
         variant === 'outline' && 'border border-line',
+        // Tombol gelap tetap gelap di dark mode; tepi tipis agar bentuknya terlihat di atas kartu.
+        variant === 'dark' && 'dark:border dark:border-line',
         disabled && 'opacity-70',
         className,
       )}>

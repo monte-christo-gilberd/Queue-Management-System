@@ -28,7 +28,7 @@ export default function History({ shell, onMenuItemPress, items }: HistoryProps)
 
   return (
     <ResponsiveScreenLayout
-      title="History"
+      title="Riwayat Antrian"
       userName={shell?.userName}
       onMenuItemPress={onMenuItemPress}
       activeItem="history"
@@ -38,8 +38,8 @@ export default function History({ shell, onMenuItemPress, items }: HistoryProps)
       {empty ? (
         <EmptyState
           icon={<Icon name="history" size={44} color={avatarColor} />}
-          title="Tidak Ada History"
-          description="Riwayat antrian akan muncul di sini setelah Anda selesai menggunakan antrian"
+          title="Belum Ada Riwayat"
+          description="Antrian yang sudah ditutup akan muncul di sini."
         />
       ) : (
         <View className={isWide ? 'flex-row flex-wrap gap-4' : 'gap-4'}>

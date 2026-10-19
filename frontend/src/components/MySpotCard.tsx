@@ -31,7 +31,7 @@ export function MySpotCard({
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      className="w-full gap-7 rounded-[20px] bg-board px-8 py-7 active:opacity-80"
+      className="w-full gap-7 rounded-[20px] bg-board px-8 py-7 dark:border dark:border-line active:opacity-80"
     >
       <View className="flex-row items-start justify-between">
         <Text className="text-[16px] tracking-[1px] text-boardMuted" style={{ fontFamily: MONO }}>
