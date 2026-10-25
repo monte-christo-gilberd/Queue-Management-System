@@ -24,6 +24,8 @@ export function useCustomerQueue(queueId: number) {
   const [joinError, setJoinError] = useState<string>();
   // Info publik (nama, deskripsi) tersedia sebelum bergabung.
   const [info, setInfo] = useState<PublicQueue | null>(null);
+  // Info publik dijawab 404 = antrian tidak ada (info boleh dilihat semua user yang login).
+  const [infoMissing, setInfoMissing] = useState(false);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -50,8 +52,10 @@ export function useCustomerQueue(queueId: number) {
       (data) => {
         if (active) setInfo(data);
       },
-      () => {
-        if (active) setInfo(null);
+      (e: unknown) => {
+        if (!active) return;
+        setInfo(null);
+        if (e instanceof ApiError && e.status === 404) setInfoMissing(true);
       },
     );
     return () => {
@@ -101,7 +105,10 @@ export function useCustomerQueue(queueId: number) {
     [],
   );
 
-  useQueueEvents(invalid ? null : queueId, {
+  // SSE hanya untuk pemegang tiket: backend menolak (404) yang belum bergabung dan hook berhenti permanen.
+  // Setelah bergabung, `hasTicket` menjadi true sehingga koneksi live dibuka tanpa perlu memuat ulang halaman.
+  const hasTicket = status?.my_ticket != null;
+  useQueueEvents(invalid || !hasTicket ? null : queueId, {
     onEvent: (event) => {
       // Setiap perubahan antrian (tiket baru, nomor dilayani, ditutup) mengubah posisi saya.
       if (event.type === 'ticket_joined' || event.type === 'ticket_next' || event.type === 'queue_closed') {
@@ -134,17 +141,19 @@ export function useCustomerQueue(queueId: number) {
   }, [queueId, loadStatus]);
 
   const invalidMessage = invalid ? 'Antrian tidak ditemukan' : undefined;
+  // Antrian tidak ada dan user belum punya tiket: tampilkan pesan, bukan tombol gabung.
+  const missingMessage = infoMissing && !status ? 'Antrian tidak ditemukan' : undefined;
 
   return useMemo(
     () => ({
       status,
       info,
       loading,
-      error: invalidMessage ?? error,
+      error: invalidMessage ?? error ?? missingMessage,
       joining,
       joinError,
       join,
     }),
-    [status, info, loading, error, invalidMessage, joining, joinError, join],
+    [status, info, loading, error, invalidMessage, missingMessage, joining, joinError, join],
   );
 }

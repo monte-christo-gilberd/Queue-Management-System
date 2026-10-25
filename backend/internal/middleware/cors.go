@@ -16,17 +16,17 @@ func CORS(
 	}
 
 	return func(c *gin.Context) {
-		origin := c.GetHeader("Origin")
+		// origin := c.GetHeader("Origin")
 
-		if originMap[origin] {
-			c.Header("Access-Control-Allow-Origin", origin)
-		}
+		// if originMap[origin] {
+			c.Header("Access-Control-Allow-Origin", "*")
+		// }
 
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Requested-With")
 
 		if c.Request.Method == http.MethodOptions {
-			c.AbortWithStatus(http.StatusNoContent)
+			c.AbortWithStatus(http.StatusOK)
 			return
 		}
 
