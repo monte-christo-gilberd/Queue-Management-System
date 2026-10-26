@@ -3,37 +3,21 @@ import { useState } from "react";
 import { Pressable, ScrollView, Switch, Text, View } from "react-native";
 
 import { useIsWide } from "@/hooks/use-is-wide";
-import type { Queue, QueueAuthz } from "@/types/api";
+import type { Queue } from "@/types/api";
 import { cn } from "@/utils/cn";
 import ResponsiveScreenLayout, {
   type OwnerMenuItem,
   type ShellProps,
 } from "@/components/layout/ResponsiveScreenLayout";
-import { AppColors } from "@/constants/app-theme";
 import { useThemeColor } from "@/hooks/use-theme-mode";
 import { AppButton } from "@/components/ui/AppButton";
-import { Icon, PersonIcon } from "@/components/ui/Icon";
+import { Icon } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AppendNoteModal } from "@/components/ui/AppendNoteModal";
 import { FormField } from "@/components/ui/FormField";
 import { ModalCard } from "@/components/ui/ModalCard";
 import { MySpotCard } from "@/components/MySpotCard";
 import { AppendNoteRow, TimelineList, type TimelineItem } from "@/components/QueueTimeline";
-
-type AuthzKey = keyof Omit<QueueAuthz, "queue_id">;
-
-/** Izin admin yang tampil sebagai toggle, dengan label Indonesia. */
-const AUTHZ_ITEMS: { key: AuthzKey; label: string }[] = [
-  { key: "can_manage_queue", label: "Kelola antrian" },
-  { key: "can_view_queue", label: "Lihat antrian" },
-  { key: "can_continue_queue", label: "Lanjutkan antrian" },
-  { key: "can_manage_tickets", label: "Kelola tiket" },
-  { key: "can_manage_notes", label: "Kelola catatan" },
-  { key: "can_notify_customer", label: "Notifikasi customer" },
-  { key: "can_manage_counters", label: "Kelola counter" },
-  { key: "can_manage_display", label: "Kelola display" },
-  { key: "can_manage_qr", label: "Kelola QR" },
-];
 
 export type QueueDetailProps = {
   shell?: ShellProps;
@@ -64,17 +48,6 @@ export type QueueDetailProps = {
   onCopyLink?: () => void;
   linkCopied?: boolean;
 
-  /** Nama admin yang punya otoritas atas queue ini. TODO: backend belum mendukung ini (queue_admins) */
-  adminNames?: string[];
-  /** TODO: backend belum mendukung ini (tambah admin by nama + email) */
-  onSubmitAddAdmin?: (name: string, email: string) => void;
-
-  /** Izin (authz) pada antrian ini. Undefined = kartu izin tidak tampil. */
-  authz?: QueueAuthz;
-  onToggleAuthz?: (key: AuthzKey, value: boolean) => void;
-  onSaveAuthz?: () => void;
-  savingAuthz?: boolean;
-
   /** Tutup antrian (POST /close). Dipanggil setelah pengguna mengonfirmasi di popup. */
   onCloseQueue?: () => void;
   closing?: boolean;
@@ -100,12 +73,6 @@ export default function QueueDetail({
   joinLink,
   onCopyLink,
   linkCopied = false,
-  adminNames = [],
-  onSubmitAddAdmin,
-  authz,
-  onToggleAuthz,
-  onSaveAuthz,
-  savingAuthz = false,
   onCloseQueue,
   closing = false,
 }: QueueDetailProps) {
@@ -113,22 +80,13 @@ export default function QueueDetail({
   const isClosed = queue.status === "closed";
   const avatarColor = useThemeColor("avatar");
 
-  // State tampilan murni: popup catatan, popup konfirmasi tutup, dan popup tambah admin.
+  // State tampilan murni: popup catatan dan popup konfirmasi tutup.
   const [noteOpen, setNoteOpen] = useState(false);
   const [ticketsOpen, setTicketsOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
-  const [addAdminOpen, setAddAdminOpen] = useState(false);
-  const [adminName, setAdminName] = useState("");
-  const [adminEmail, setAdminEmail] = useState("");
   // TODO: backend belum mendukung pengaturan antrian; toggle ini hanya tampilan.
   const [loopEnabled, setLoopEnabled] = useState(false);
   const [dynamicQrEnabled, setDynamicQrEnabled] = useState(false);
-
-  const closeAddAdmin = () => {
-    setAddAdminOpen(false);
-    setAdminName("");
-    setAdminEmail("");
-  };
 
   return (
     <ResponsiveScreenLayout
@@ -213,26 +171,6 @@ export default function QueueDetail({
             ) : null}
           </View>
 
-
-          {authz ? (
-            <View className="gap-3 rounded-card border border-line p-3.5">
-              <Text className="text-[12px] font-semibold text-muted">Otoritas admin</Text>
-              {AUTHZ_ITEMS.map((item) => (
-                <View key={item.key} className="flex-row items-center justify-between">
-                  <Text className="text-[14px] text-foreground">{item.label}</Text>
-                  <Switch
-                    value={authz[item.key]}
-                    onValueChange={(value) => onToggleAuthz?.(item.key, value)}
-                    disabled={!onToggleAuthz}
-                  />
-                </View>
-              ))}
-              {onSaveAuthz ? (
-                <AppButton label="SIMPAN IZIN" variant="dark" loading={savingAuthz} onPress={onSaveAuthz} />
-              ) : null}
-            </View>
-          ) : null}
-
           {/* TODO: backend belum mendukung pengaturan antrian; toggle hanya tampilan. */}
           <View className="gap-3 rounded-card border border-line p-3.5">
             <Text className="text-[12px] font-semibold text-muted">Pengaturan antrian</Text>
@@ -269,40 +207,6 @@ export default function QueueDetail({
             </View>
           ) : null}
         </ScrollPanel>
-
-        {/* Admin di bawah panel utama (di luar kartu), seperti deretan counter pada contoh. */}
-        <View className="gap-2">
-          <Text className="text-[12px] font-semibold text-muted">Admin</Text>
-          <View className="gap-2 rounded-card border border-line bg-surface p-3">
-            <ScrollView horizontal showsHorizontalScrollIndicator contentContainerClassName="gap-3">
-              {adminNames.map((name) => (
-                <View key={name} className="w-[120px] flex-row items-center gap-2 rounded-card bg-primary p-2">
-                  <PersonIcon size={28} color={AppColors.white} />
-                  <View className="flex-1 rounded-input bg-background px-2 py-2">
-                    <Text numberOfLines={2} className="text-center text-[12px] font-bold text-foreground">
-                      {name}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-              <Pressable
-                onPress={() => setAddAdminOpen(true)}
-                accessibilityRole="button"
-                accessibilityLabel="Tambah admin"
-                className="h-[72px] w-[72px] items-center justify-center rounded-full bg-primary active:opacity-80"
-              >
-                <Text className="text-[36px] font-bold text-white">+</Text>
-              </Pressable>
-            </ScrollView>
-            {adminNames.length === 0 ? (
-              <EmptyState
-                icon={<PersonIcon size={44} color={avatarColor} />}
-                title="Belum Ada Admin"
-                description="Tambahkan admin untuk membantu mengelola antrian ini."
-              />
-            ) : null}
-          </View>
-        </View>
         </View>
       </View>
 
@@ -338,33 +242,6 @@ export default function QueueDetail({
           }}
         />
         <AppButton label="Batal" variant="outline" onPress={() => setCloseConfirmOpen(false)} />
-      </ModalCard>
-
-      <ModalCard visible={addAdminOpen} onRequestClose={closeAddAdmin}>
-        <Text className="text-[24px] font-extrabold text-foreground">Add Admin</Text>
-        <FormField
-          label="Nama User"
-          placeholder="Nama admin baru"
-          value={adminName}
-          onChangeText={setAdminName}
-        />
-        <FormField
-          label="Email User"
-          placeholder="email@mail.com"
-          value={adminEmail}
-          onChangeText={setAdminEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <AppButton
-          label="Tambah Admin"
-          variant="dark"
-          onPress={() => {
-            onSubmitAddAdmin?.(adminName, adminEmail);
-            closeAddAdmin();
-          }}
-        />
-        <AppButton label="Cancel" variant="outline" onPress={closeAddAdmin} />
       </ModalCard>
 
       <AppendNoteModal

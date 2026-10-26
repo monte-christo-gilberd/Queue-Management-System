@@ -13,9 +13,6 @@ export function handleOwnerMenuItemPress(item: OwnerMenuItem) {
     case 'dashboard':
       router.navigate('/dashboard');
       break;
-    case 'admin-contact':
-      router.navigate('/admins');
-      break;
     case 'queues':
       router.navigate('/queues');
       break;

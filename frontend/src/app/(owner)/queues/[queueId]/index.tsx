@@ -9,17 +9,17 @@ import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useQueueDetail } from '@/hooks/use-queues';
 import { describeQueueError } from '@/lib/queue-errors';
 import { buildJoinLink } from '@/lib/join-link';
-import { closeQueue, updateAuthz, updateQueue } from '@/lib/queues';
+import { closeQueue, updateQueue } from '@/lib/queues';
 import { copyToClipboard, currentWebOrigin } from '@/lib/web-origin';
 import { useAuthStore } from '@/store/authStore';
-import type { Queue, QueueAuthz } from '@/types/api';
+import type { Queue } from '@/types/api';
 import { formatTicketNumber } from '@/utils/format';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 
 export default function QueueDetailRoute() {
   const { queueId } = useLocalSearchParams<{ queueId: string }>();
   const displayName = useAuthStore((s) => s.displayName);
-  const { queue, authz, loading, error, reload } = useQueueDetail(Number(queueId));
+  const { queue, loading, error, reload } = useQueueDetail(Number(queueId));
 
   if (!queue) {
     return (
@@ -40,7 +40,6 @@ export default function QueueDetailRoute() {
     <QueueDetailEditor
       key={queue.id}
       queue={queue}
-      authz={authz}
       reload={reload}
       userName={displayName ?? undefined}
     />
@@ -50,20 +49,16 @@ export default function QueueDetailRoute() {
 /** Menyimpan isian form (state tampilan), memuat papan tiket, dan memanggil PUT/POST. Dipisah agar form ikut key antrian. */
 function QueueDetailEditor({
   queue,
-  authz,
   reload,
   userName,
 }: {
   queue: Queue;
-  authz?: QueueAuthz;
   reload: () => Promise<void>;
   userName?: string;
 }) {
   const [queueName, setQueueName] = useState(queue.queue_name);
   const [queueDescription, setQueueDescription] = useState(queue.queue_desc ?? '');
-  const [authzDraft, setAuthzDraft] = useState<QueueAuthz | undefined>(authz);
   const [saving, setSaving] = useState(false);
-  const [savingAuthz, setSavingAuthz] = useState(false);
   const [closing, setClosing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
   const [linkCopied, setLinkCopied] = useState(false);
@@ -103,20 +98,6 @@ function QueueDetailEditor({
     }
   }
 
-  async function saveAuthz() {
-    if (!authzDraft) return;
-    setSavingAuthz(true);
-    setErrorMessage(undefined);
-    try {
-      await updateAuthz(queue.id, authzDraft);
-      await reload();
-    } catch (e) {
-      setErrorMessage(describeQueueError(e));
-    } finally {
-      setSavingAuthz(false);
-    }
-  }
-
   async function close() {
     setClosing(true);
     setErrorMessage(undefined);
@@ -150,12 +131,6 @@ function QueueDetailEditor({
       joinLink={joinLink}
       onCopyLink={() => void copyLink()}
       linkCopied={linkCopied}
-      authz={authzDraft}
-      onToggleAuthz={(key, value) =>
-        setAuthzDraft((draft) => (draft ? { ...draft, [key]: value } : draft))
-      }
-      onSaveAuthz={() => void saveAuthz()}
-      savingAuthz={savingAuthz}
       onCloseQueue={close}
       closing={closing}
     />

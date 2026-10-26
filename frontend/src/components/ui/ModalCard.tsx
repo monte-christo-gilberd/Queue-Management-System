@@ -6,7 +6,7 @@ type ModalCardProps = {
   children: React.ReactNode;
 };
 
-/** Modal putih di tengah layar dengan latar gelap, seperti "Append Note" / "Add Admin". */
+/** Modal putih di tengah layar dengan latar gelap, seperti "Append Note". */
 export function ModalCard({ visible, onRequestClose, children }: ModalCardProps) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onRequestClose}>

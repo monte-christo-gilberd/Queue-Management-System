@@ -1,5 +1,5 @@
 import { apiFetch } from './api';
-import type { Queue, QueueAuthz } from '@/types/api';
+import type { Queue } from '@/types/api';
 
 /** Field yang dikirim ke backend untuk buat dan ubah antrian (kontrak: CreateQueueRequest / UpdateQueueRequest). */
 export type QueueInput = {
@@ -8,8 +8,8 @@ export type QueueInput = {
 };
 
 type ListResponse = { action: 'list_queues'; queues: Queue[] };
-type DetailResponse = { action: 'get_queue'; queue: Queue; queue_authz: QueueAuthz };
-type CreateResponse = { action: 'create_queue'; queue: Queue; queue_authz: QueueAuthz };
+type DetailResponse = { action: 'get_queue'; queue: Queue };
+type CreateResponse = { action: 'create_queue'; queue: Queue };
 
 /** GET /api/v1/queues — daftar antrian milik owner. Backend hanya mengirim yang aktif bila langganan tidak aktif. */
 export async function listQueues(): Promise<Queue[]> {
@@ -17,7 +17,7 @@ export async function listQueues(): Promise<Queue[]> {
   return data.queues;
 }
 
-/** GET /api/v1/queues/:id — detail antrian beserta izin (queue_authz). */
+/** GET /api/v1/queues/:id — detail antrian. */
 export async function getQueue(queueId: number): Promise<DetailResponse> {
   return apiFetch<DetailResponse>(`/api/v1/queues/${queueId}`);
 }
@@ -31,11 +31,6 @@ export async function createQueue(input: QueueInput): Promise<Queue> {
 /** PUT /api/v1/queues/:id — ubah nama dan deskripsi. Field kosong = tetap seperti semula (backend). */
 export async function updateQueue(queueId: number, input: QueueInput): Promise<void> {
   await apiFetch(`/api/v1/queues/${queueId}`, { method: 'PUT', body: input });
-}
-
-/** PUT /api/v1/queues/:id/authz — ubah izin (authz) pada antrian ini. Backend menimpa semua flag sekaligus. */
-export async function updateAuthz(queueId: number, input: QueueAuthz): Promise<void> {
-  await apiFetch(`/api/v1/queues/${queueId}/authz`, { method: 'PUT', body: { ...input, queue_id: queueId } });
 }
 
 /** POST /api/v1/queues/:id/close — tutup antrian. Tidak bisa dibuka lagi. */

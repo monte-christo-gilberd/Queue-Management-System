@@ -43,7 +43,7 @@ export default function History({ shell, onMenuItemPress, items }: HistoryProps)
         />
       ) : (
         <View className={isWide ? 'flex-row flex-wrap gap-4' : 'gap-4'}>
-          {items.map(({ queue, adminNames }) => (
+          {items.map(({ queue }) => (
             <View
               key={queue.id}
               className={cn(
@@ -53,7 +53,6 @@ export default function History({ shell, onMenuItemPress, items }: HistoryProps)
               <View className="flex-1 gap-[3px]">
                 <Text className="text-[15px] font-extrabold text-foreground">{queue.queue_name}</Text>
                 <Text className="text-[12px] font-normal text-muted">{formatDateTime(queue.created_at)}</Text>
-                <Text className="text-[12px] font-semibold text-foreground">{adminNames.join(', ')}</Text>
               </View>
               <Pressable
                 className="h-10 w-10 items-center justify-center rounded-[10px] bg-surface"

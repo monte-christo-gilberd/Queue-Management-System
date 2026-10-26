@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { describeQueueError } from '@/lib/queue-errors';
 import { getQueue, listQueues } from '@/lib/queues';
-import type { Queue, QueueAuthz } from '@/types/api';
+import type { Queue } from '@/types/api';
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -51,19 +51,17 @@ export function useQueueList() {
   return { queues, loading, error, reload };
 }
 
-/** Detail satu antrian beserta izinnya. Id tidak valid langsung dianggap tidak ditemukan (tanpa request). */
+/** Detail satu antrian. Id tidak valid langsung dianggap tidak ditemukan (tanpa request). */
 export function useQueueDetail(queueId: number) {
   const [queue, setQueue] = useState<Queue>();
-  const [authz, setAuthz] = useState<QueueAuthz>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
 
   const invalid = !Number.isInteger(queueId) || queueId <= 0;
 
-  const apply = useCallback((r: Result<{ queue: Queue; queue_authz: QueueAuthz }>) => {
+  const apply = useCallback((r: Result<{ queue: Queue }>) => {
     if (r.ok) {
       setQueue(r.data.queue);
-      setAuthz(r.data.queue_authz);
       setError(undefined);
     } else {
       setError(r.message);
@@ -88,7 +86,7 @@ export function useQueueDetail(queueId: number) {
   }, [apply, invalid, queueId]);
 
   if (invalid) {
-    return { queue: undefined, authz: undefined, loading: false, error: 'Antrian tidak ditemukan', reload };
+    return { queue: undefined, loading: false, error: 'Antrian tidak ditemukan', reload };
   }
-  return { queue, authz, loading, error, reload };
+  return { queue, loading, error, reload };
 }

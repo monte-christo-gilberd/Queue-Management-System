@@ -19,7 +19,7 @@
 | | |
 |---|---|
 | **Priority** | P0 |
-| **Sumber** | 4.6 / US-18: hanya owner/admin yang bisa melanjutkan antrian |
+| **Sumber** | 4.6 / US-18: hanya owner yang bisa melanjutkan antrian |
 | **Steps** | 1. Customer memanggil `POST …/next` lewat API 2. Buka halaman status customer |
 | **Expected Result** | API menolak dengan 404. Halaman customer tidak menampilkan tombol **NEXT** |
 

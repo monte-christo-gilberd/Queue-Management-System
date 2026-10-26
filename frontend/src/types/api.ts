@@ -13,19 +13,6 @@ export type Queue = {
   closed_at: string | null;
 };
 
-export type QueueAuthz = {
-  queue_id: number;
-  can_manage_queue: boolean;
-  can_manage_counters: boolean;
-  can_manage_qr: boolean;
-  can_view_queue: boolean;
-  can_manage_display: boolean;
-  can_continue_queue: boolean;
-  can_notify_customer: boolean;
-  can_manage_tickets: boolean;
-  can_manage_notes: boolean;
-};
-
 export type Ticket = {
   id: number;
   queue_id: number;
@@ -61,24 +48,11 @@ export type QueueListItem = {
 };
 
 /**
- * Admin kontak milik owner.
- * TODO: backend belum mendukung ini (belum ada endpoint queue_admins).
- */
-export type AdminContact = {
-  id: number;
-  name: string;
-  email: string;
-  /** Nama queue tempat admin aktif; kosong/undefined = tidak aktif di queue mana pun. */
-  activeQueueName?: string | null;
-};
-
-/**
  * Riwayat satu queue.
  * TODO: backend belum mendukung ini (belum ada endpoint history).
  */
 export type HistoryItem = {
   queue: Queue;
-  adminNames: string[];
 };
 
 /** Respons login dan register: `{ data: { token } }`. */

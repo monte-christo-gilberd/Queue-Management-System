@@ -30,7 +30,6 @@ export type TabKey = 'home' | 'antrian' | 'riwayat' | 'profile';
 export type OwnerMenuItem =
   | 'create-queue'
   | 'dashboard'
-  | 'admin-contact'
   | 'queues'
   | 'history'
   | 'logout'
@@ -62,7 +61,6 @@ export type ResponsiveScreenLayoutProps = {
 /** Link navigasi utama — hanya tampil di panel desktop (di HP sudah ada bottom tab). */
 /** Menu khusus owner di panel profil (HP dan desktop). Customer tidak melihatnya. */
 const OWNER_MENU: { key: OwnerMenuItem; label: string }[] = [
-  { key: 'admin-contact', label: 'Admin Contact' },
   { key: 'queues', label: 'Daftar Antrian' },
   { key: 'history', label: 'Riwayat Antrian' },
 ];
@@ -90,7 +88,7 @@ const TAB_TO_ITEM: Record<TabKey, OwnerMenuItem> = {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const LOGO_HEADER = require('../../../logo/logo-header.svg');
 
-/** Navigasi bawah HP: Beranda (kiri), tombol QR (tengah, overlay), Antrian (kanan). Admin & Riwayat ada di collapsible. */
+/** Navigasi bawah HP: Beranda (kiri), tombol QR (tengah, overlay), Antrian (kanan). Riwayat ada di collapsible. */
 const TABS: { key: TabKey; label: string; icon: IconName; href: '/dashboard' | '/antrian' | '/riwayat' | '/profile' }[] = [
   { key: 'home', label: 'Beranda', icon: 'home', href: '/dashboard' },
   { key: 'antrian', label: 'Antrian', icon: 'list', href: '/antrian' },
