@@ -36,7 +36,7 @@ func newSpecEnv(t *testing.T) *specEnv {
 	env.ts = service.NewTicketService(env.tickets, fakeTxRunner{}, env.events).
 		WithQueueGuard(env.qs)
 
-	q, _, err := env.qs.CreateQueue(context.Background(), specOwnerID, "Loket Utama", "Antrian harian")
+	q, err := env.qs.CreateQueue(context.Background(), specOwnerID, "Loket Utama", "Antrian harian")
 	require.NoError(t, err)
 	env.queueID = q.ID
 	return env

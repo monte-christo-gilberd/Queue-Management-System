@@ -7,7 +7,6 @@ type QueueHandlerInterface interface {
 	Get(c *gin.Context)
 	List(c *gin.Context)
 	Update(c *gin.Context)
-	UpdateAuthz(c *gin.Context)
 	Close(c *gin.Context)
 }
 

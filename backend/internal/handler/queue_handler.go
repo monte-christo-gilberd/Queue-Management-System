@@ -22,12 +22,12 @@ type QueueService interface {
 		ownerID int64,
 		queueName,
 		queueDescription string,
-	) (model.Queue, model.QueueAuthz, error)
+	) (model.Queue, error)
 	ViewQueue(
 		ctx context.Context,
 		queueID,
 		requesterID int64,
-	) (model.Queue, model.QueueAuthz, bool, error)
+	) (model.Queue, bool, error)
 	ListQueue(
 		ctx context.Context,
 		requesterID int64,
@@ -39,12 +39,6 @@ type QueueService interface {
 		queueName,
 		queueDescription string,
 	) error
-	UpdateAuthz(
-		ctx context.Context,
-		queueID,
-		requesterID int64,
-		queueAuthz model.QueueAuthz,
-	) (model.QueueAuthz, error)
 	CloseQueue(
 		ctx context.Context,
 		queueID,
@@ -80,7 +74,7 @@ func (h *QueueHandler) Create(
 		return
 	}
 
-	queue, queueAuthz, err := h.service.CreateQueue(
+	queue, err := h.service.CreateQueue(
 		c.Request.Context(),
 		requesterID,
 		req.QueueName,
@@ -118,9 +112,8 @@ func (h *QueueHandler) Create(
 		c,
 		http.StatusCreated,
 		gin.H{
-			"action":      "create_queue",
-			"queue":       dto.NewQueueResponse(queue),
-			"queue_authz": dto.NewQueueAuthzResponse(queueAuthz),
+			"action": "create_queue",
+			"queue":  dto.NewQueueResponse(queue),
 		},
 	)
 }
@@ -146,7 +139,7 @@ func (h *QueueHandler) Get(
 		return
 	}
 
-	queue, queueAuthz, isOwner, err := h.service.ViewQueue(
+	queue, isOwner, err := h.service.ViewQueue(
 		c.Request.Context(),
 		queueID,
 		requesterID,
@@ -187,9 +180,8 @@ func (h *QueueHandler) Get(
 		c,
 		http.StatusOK,
 		gin.H{
-			"action":      "get_queue",
-			"queue":       dto.NewQueueResponse(queue),
-			"queue_authz": dto.NewQueueAuthzResponse(queueAuthz),
+			"action": "get_queue",
+			"queue":  dto.NewQueueResponse(queue),
 		},
 	)
 }
@@ -310,97 +302,6 @@ func (h *QueueHandler) Update(
 	)
 }
 
-func (h *QueueHandler) UpdateAuthz(
-	c *gin.Context,
-) {
-	requesterID := c.GetInt64("user_id")
-	queueIDStr := c.Param("queue_id")
-
-	queueID, err := strconv.ParseInt(
-		queueIDStr,
-		10,
-		64,
-	)
-	if err != nil {
-		respondError(
-			c,
-			http.StatusBadRequest,
-			"BAD_REQUEST",
-			"invalid queue id",
-		)
-		return
-	}
-
-	var req dto.UpdateAuthzRequest
-	if err := c.BindJSON(&req); err != nil {
-		respondError(
-			c,
-			http.StatusBadRequest,
-			"BAD_REQUEST",
-			"invalid request body",
-		)
-		return
-	}
-
-	queueAuthz := model.QueueAuthz{
-		QueueID:           queueID,
-		CanManageQueue:    req.CanManageQueue,
-		CanManageCounters: req.CanManageCounters,
-		CanManageQr:       req.CanManageQr,
-		CanViewQueue:      req.CanViewQueue,
-		CanManageDisplay:  req.CanManageDisplay,
-		CanContinueQueue:  req.CanContinueQueue,
-		CanNotifyCustomer: req.CanNotifyCustomer,
-		CanManageTickets:  req.CanManageTickets,
-		CanManageNotes:    req.CanManageNotes,
-	}
-
-	freshAuthz, err := h.service.UpdateAuthz(
-		c.Request.Context(),
-		queueID,
-		requesterID,
-		queueAuthz,
-	)
-	if errors.Is(err, apperror.ErrSubscriptionInactive) {
-		respondError(
-			c,
-			http.StatusPaymentRequired,
-			"SUBSCRIPTION_INACTIVE",
-			"inactive owner subscription",
-		)
-		return
-	}
-	if errors.Is(err, apperror.ErrNotFound) {
-		respondError(
-			c,
-			http.StatusNotFound,
-			"NOT_FOUND",
-			"queue not found",
-		)
-		return
-	}
-	if err != nil {
-		respondError(
-			c,
-			http.StatusInternalServerError,
-			"INTERNAL_ERROR",
-			"internal server error",
-		)
-		return
-	}
-
-	respondData(
-		c,
-		http.StatusOK,
-		gin.H{
-			"action":      "update_authz",
-			"queue_id":    queueID,
-			"queue_authz": dto.NewQueueAuthzResponse(freshAuthz),
-			"status":      "success",
-		},
-	)
-}
-
 func (h *QueueHandler) Close(
 	c *gin.Context,
 ) {
@@ -461,24 +362,50 @@ func (h *QueueHandler) Close(
 func (h *QueueHandler) Info(
 	c *gin.Context,
 ) {
-	queueID, err := strconv.ParseInt(c.Param("queue_id"), 10, 64)
+	queueID, err := strconv.ParseInt(
+		c.Param("queue_id"),
+		10,
+		64,
+	)
 	if err != nil {
-		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
+		respondError(
+			c,
+			http.StatusBadRequest,
+			"BAD_REQUEST",
+			"invalid queue id",
+		)
 		return
 	}
 
-	queue, err := h.service.GetQueueInfo(c.Request.Context(), queueID)
+	queue, err := h.service.GetQueueInfo(
+		c.Request.Context(),
+		queueID,
+	)
 	if errors.Is(err, apperror.ErrNotFound) {
-		respondError(c, http.StatusNotFound, "NOT_FOUND", "queue not found")
+		respondError(
+			c,
+			http.StatusNotFound,
+			"NOT_FOUND",
+			"queue not found",
+		)
 		return
 	}
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		respondError(
+			c,
+			http.StatusInternalServerError,
+			"INTERNAL_ERROR",
+			"internal server error",
+		)
 		return
 	}
 
-	respondData(c, http.StatusOK, gin.H{
-		"action": "queue_info",
-		"queue":  dto.NewPublicQueueResponse(queue),
-	})
+	respondData(
+		c,
+		http.StatusOK,
+		gin.H{
+			"action": "queue_info",
+			"queue":  dto.NewPublicQueueResponse(queue),
+		},
+	)
 }

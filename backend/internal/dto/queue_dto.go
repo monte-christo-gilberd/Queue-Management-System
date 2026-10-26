@@ -15,20 +15,6 @@ type UpdateQueueRequest struct {
 	QueueDescription string `json:"queue_description" binding:"no_html_tags"`
 }
 
-type UpdateAuthzRequest struct {
-	QueueID           int64 `json:"queue_id"`
-	CanManageQueue    bool  `json:"can_manage_queue"`
-	CanManageCounters bool  `json:"can_manage_counters"`
-	CanManageQr       bool  `json:"can_manage_qr"`
-	CanViewQueue      bool  `json:"can_view_queue"`
-	CanManageDisplay  bool  `json:"can_manage_display"`
-	CanContinueQueue  bool  `json:"can_continue_queue"`
-	CanNotifyCustomer bool  `json:"can_notify_customer"`
-	CanManageTickets  bool  `json:"can_manage_tickets"`
-	CanManageNotes    bool  `json:"can_manage_notes"`
-}
-
-// QueueResponse adalah bentuk JSON queue ke klien (snake_case, field kosong = null).
 type QueueResponse struct {
 	ID        int64      `json:"id"`
 	OwnerID   int64      `json:"owner_id"`
@@ -84,30 +70,3 @@ func NewQueueResponses(queues []model.Queue) []QueueResponse {
 	return out
 }
 
-type QueueAuthzResponse struct {
-	QueueID           int64 `json:"queue_id"`
-	CanManageQueue    bool  `json:"can_manage_queue"`
-	CanManageCounters bool  `json:"can_manage_counters"`
-	CanManageQr       bool  `json:"can_manage_qr"`
-	CanViewQueue      bool  `json:"can_view_queue"`
-	CanManageDisplay  bool  `json:"can_manage_display"`
-	CanContinueQueue  bool  `json:"can_continue_queue"`
-	CanNotifyCustomer bool  `json:"can_notify_customer"`
-	CanManageTickets  bool  `json:"can_manage_tickets"`
-	CanManageNotes    bool  `json:"can_manage_notes"`
-}
-
-func NewQueueAuthzResponse(a model.QueueAuthz) QueueAuthzResponse {
-	return QueueAuthzResponse{
-		QueueID:           a.QueueID,
-		CanManageQueue:    a.CanManageQueue,
-		CanManageCounters: a.CanManageCounters,
-		CanManageQr:       a.CanManageQr,
-		CanViewQueue:      a.CanViewQueue,
-		CanManageDisplay:  a.CanManageDisplay,
-		CanContinueQueue:  a.CanContinueQueue,
-		CanNotifyCustomer: a.CanNotifyCustomer,
-		CanManageTickets:  a.CanManageTickets,
-		CanManageNotes:    a.CanManageNotes,
-	}
-}

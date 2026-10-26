@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"qms/internal/apperror"
-	"qms/internal/dto"
 	"qms/internal/model"
 
 	"github.com/jmoiron/sqlx"
@@ -16,11 +15,11 @@ type QueueRepository interface {
 		ownerID int64,
 		queueName,
 		queueDescription string,
-	) (model.Queue, model.QueueAuthz, error)
+	) (model.Queue, error)
 	GetQueueByID(
 		ctx context.Context,
 		queueID int64,
-	) (model.Queue, model.QueueAuthz, error)
+	) (model.Queue, error)
 	ListQueueByOwner(
 		ctx context.Context,
 		ownerID int64,
@@ -32,11 +31,6 @@ type QueueRepository interface {
 		queueName,
 		queueDescription string,
 	) error
-	UpdateQueueAuthz(
-		ctx context.Context,
-		queueID int64,
-		authz model.QueueAuthz,
-	) (model.QueueAuthz, error)
 	CloseQueue(
 		ctx context.Context,
 		queueID int64,
@@ -84,7 +78,9 @@ func NewQueueService(
 }
 
 // WithTicketHolderChecker mengaktifkan akses baca queue untuk pemegang tiket (lihat ViewQueue).
-func (s *QueueService) WithTicketHolderChecker(holders TicketHolderChecker) *QueueService {
+func (s *QueueService) WithTicketHolderChecker(
+	holders TicketHolderChecker,
+) *QueueService {
 	s.holders = holders
 	return s
 }
@@ -94,24 +90,22 @@ func (s *QueueService) CreateQueue(
 	ownerID int64,
 	queueName,
 	queueDescription string,
-) (model.Queue, model.QueueAuthz, error) {
+) (model.Queue, error) {
 
 	err := s.isSubscribed(
 		ctx,
 		ownerID,
 	)
 	if err != nil {
-		return model.Queue{}, model.QueueAuthz{}, err
+		return model.Queue{}, err
 	}
 
 	var queue model.Queue
-	var queueAuthz model.QueueAuthz
-
 	err = s.tx.WithTx(
 		ctx,
 		func(tx *sqlx.Tx) error {
 			var err error
-			queue, queueAuthz, err = s.repository.CreateNewQueue(
+			queue, err = s.repository.CreateNewQueue(
 				ctx,
 				tx,
 				ownerID,
@@ -126,47 +120,47 @@ func (s *QueueService) CreateQueue(
 	)
 
 	if err != nil {
-		return model.Queue{}, model.QueueAuthz{}, err
+		return model.Queue{}, err
 	}
-	return queue, queueAuthz, nil
+	return queue, nil
 }
 
 func (s *QueueService) GetQueue(
 	ctx context.Context,
 	queueID,
 	requesterID int64,
-) (model.Queue, model.QueueAuthz, error) {
+) (model.Queue, error) {
 
-	queue, queueAuthz, err := s.validateOwnership(
+	queue, err := s.validateOwnership(
 		ctx,
 		queueID,
 		requesterID,
 	)
 	if err != nil {
-		return model.Queue{}, model.QueueAuthz{}, err
+		return model.Queue{}, err
 	}
 
-	return queue, queueAuthz, nil
+	return queue, nil
 }
 
-// ViewQueue: owner mendapat queue + authz (isOwner true); pemegang tiket mendapat queue saja
-// (authz kosong, isOwner false); selain itu apperror.ErrNotFound.
+// ViewQueue: owner mendapat queue (isOwner true); pemegang tiket mendapat queue saja
+// (isOwner false); selain itu apperror.ErrNotFound.
 func (s *QueueService) ViewQueue(
 	ctx context.Context,
 	queueID,
 	requesterID int64,
-) (model.Queue, model.QueueAuthz, bool, error) {
+) (model.Queue, bool, error) {
 
-	queue, queueAuthz, err := s.repository.GetQueueByID(
+	queue, err := s.repository.GetQueueByID(
 		ctx,
 		queueID,
 	)
 	if err != nil {
-		return model.Queue{}, model.QueueAuthz{}, false, err
+		return model.Queue{}, false, err
 	}
 
 	if requesterID == queue.OwnerID {
-		return queue, queueAuthz, true, nil
+		return queue, true, nil
 	}
 
 	if s.holders != nil {
@@ -176,14 +170,14 @@ func (s *QueueService) ViewQueue(
 			requesterID,
 		)
 		if err != nil {
-			return model.Queue{}, model.QueueAuthz{}, false, err
+			return model.Queue{}, false, err
 		}
 		if isHolder {
-			return queue, model.QueueAuthz{}, false, nil
+			return queue, false, nil
 		}
 	}
 
-	return model.Queue{}, model.QueueAuthz{}, false, apperror.ErrNotFound
+	return model.Queue{}, false, apperror.ErrNotFound
 }
 
 // GetActiveQueue memastikan queue ada (ErrNotFound) dan masih aktif (ErrQueueClosed).
@@ -192,7 +186,7 @@ func (s *QueueService) GetActiveQueue(
 	queueID int64,
 ) (model.Queue, error) {
 
-	queue, _, err := s.repository.GetQueueByID(
+	queue, err := s.repository.GetQueueByID(
 		ctx,
 		queueID,
 	)
@@ -249,7 +243,7 @@ func (s *QueueService) UpdateQueue(
 		return err
 	}
 
-	_, _, err = s.validateOwnership(
+	_, err = s.validateOwnership(
 		ctx,
 		queueID,
 		requesterID,
@@ -268,49 +262,15 @@ func (s *QueueService) UpdateQueue(
 	if err != nil {
 		return err
 	}
-	notifyEvent(s.notifier, queueID, EventQueueUpdated, map[string]interface{}{
-		"queue_id": queueID,
-	})
+	notifyEvent(
+		s.notifier,
+		queueID,
+		EventQueueUpdated,
+		map[string]interface{}{
+			"queue_id": queueID,
+		},
+	)
 	return nil
-}
-
-func (s *QueueService) UpdateAuthz(
-	ctx context.Context,
-	queueID,
-	requesterID int64,
-	queueAuthz model.QueueAuthz,
-) (model.QueueAuthz, error) {
-
-	err := s.isSubscribed(
-		ctx,
-		requesterID,
-	)
-	if err != nil {
-		return model.QueueAuthz{}, err
-	}
-
-	_, _, err = s.validateOwnership(
-		ctx,
-		queueID,
-		requesterID,
-	)
-	if err != nil {
-		return model.QueueAuthz{}, err
-	}
-
-	fresh, err := s.repository.UpdateQueueAuthz(
-		ctx,
-		queueID,
-		queueAuthz,
-	)
-	if err != nil {
-		return model.QueueAuthz{}, err
-	}
-	notifyEvent(s.notifier, queueID, EventQueueUpdated, map[string]interface{}{
-		"queue_id":    queueID,
-		"queue_authz": dto.NewQueueAuthzResponse(fresh),
-	})
-	return fresh, nil
 }
 
 func (s *QueueService) CloseQueue(
@@ -319,7 +279,7 @@ func (s *QueueService) CloseQueue(
 	requesterID int64,
 ) error {
 
-	_, _, err := s.validateOwnership(
+	_, err := s.validateOwnership(
 		ctx,
 		queueID,
 		requesterID,
@@ -336,9 +296,14 @@ func (s *QueueService) CloseQueue(
 		return err
 	}
 
-	notifyEvent(s.notifier, queueID, EventQueueClosed, map[string]interface{}{
-		"queue_id": queueID,
-	})
+	notifyEvent(
+		s.notifier,
+		queueID,
+		EventQueueClosed,
+		map[string]interface{}{
+			"queue_id": queueID,
+		},
+	)
 
 	return nil
 }
@@ -367,18 +332,18 @@ func (s *QueueService) validateOwnership(
 	ctx context.Context,
 	queueID,
 	requesterID int64,
-) (model.Queue, model.QueueAuthz, error) {
-	queue, queueAuthz, err := s.repository.GetQueueByID(
+) (model.Queue, error) {
+	queue, err := s.repository.GetQueueByID(
 		ctx,
 		queueID,
 	)
 	if err != nil {
-		return model.Queue{}, model.QueueAuthz{}, err
+		return model.Queue{}, err
 	}
 	if requesterID != queue.OwnerID {
-		return model.Queue{}, model.QueueAuthz{}, apperror.ErrNotFound
+		return model.Queue{}, apperror.ErrNotFound
 	}
-	return queue, queueAuthz, nil
+	return queue, nil
 }
 
 // GetQueueInfo mengembalikan info publik antrian untuk user yang login (tanpa owner dan izin).
@@ -388,7 +353,7 @@ func (s *QueueService) GetQueueInfo(
 	queueID int64,
 ) (model.Queue, error) {
 
-	queue, _, err := s.repository.GetQueueByID(
+	queue, err := s.repository.GetQueueByID(
 		ctx,
 		queueID,
 	)

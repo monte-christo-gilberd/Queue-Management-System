@@ -25,7 +25,6 @@ func specQueueEngine(svc *specQueueSvc, userID int64) *gin.Engine {
 	e.GET("/queues/:queue_id", h.Get)
 	e.GET("/queues/:queue_id/info", h.Info)
 	e.PUT("/queues/:queue_id", h.Update)
-	e.PUT("/queues/:queue_id/authz", h.UpdateAuthz)
 	e.POST("/queues/:queue_id/close", h.Close)
 	return e
 }
@@ -45,7 +44,7 @@ func TestSpec_CreateQueue_NewQueueReturns201WithNullClosedAt(t *testing.T) {
 	// US-1 / 4.1 langkah 2: antrian baru dibuat dan terbuka; closed_at null; kunci snake_case.
 	svc := newSpecQueueSvc(t)
 	svc.On("CreateQueue", specOwner, "Loket Utama", "Pelayanan pagi").
-		Return(specOpenQueue(1), model.QueueAuthz{QueueID: 1}, nil)
+		Return(specOpenQueue(1), nil)
 	e := specQueueEngine(svc, specOwner)
 
 	w := specRequest(e, http.MethodPost, "/queues", `{"queue_name":"Loket Utama","queue_description":"Pelayanan pagi"}`)
@@ -88,7 +87,7 @@ func TestSpec_CreateQueue_InactiveSubscriptionIs402(t *testing.T) {
 	// US-21 AC1 / TC-04-01: owner tanpa langganan aktif diminta membayar (402) dan antrian tidak dibuat.
 	svc := newSpecQueueSvc(t)
 	svc.On("CreateQueue", specOwner, "Antrian", "").
-		Return(model.Queue{}, model.QueueAuthz{}, apperror.ErrSubscriptionInactive)
+		Return(model.Queue{}, apperror.ErrSubscriptionInactive)
 	e := specQueueEngine(svc, specOwner)
 
 	w := specRequest(e, http.MethodPost, "/queues", `{"queue_name":"Antrian"}`)
@@ -98,28 +97,26 @@ func TestSpec_CreateQueue_InactiveSubscriptionIs402(t *testing.T) {
 	assert.NotContains(t, w.Body.String(), `"queue":`)
 }
 
-func TestSpec_GetQueue_OwnerSeesOwnerIDAndAuthorities(t *testing.T) {
-	// 4.1 / US-3: owner melihat detail antrian beserta izin antrian.
+func TestSpec_GetQueue_OwnerSeesOwnerIDWithoutAuthorities(t *testing.T) {
+	// 4.1: owner melihat detail antrian; authz sudah dihapus dari kontrak.
 	svc := newSpecQueueSvc(t)
-	authz := model.QueueAuthz{QueueID: 1, CanContinueQueue: true}
-	svc.On("ViewQueue", int64(1), specOwner).Return(specOpenQueue(1), authz, true, nil)
+	svc.On("ViewQueue", int64(1), specOwner).Return(specOpenQueue(1), true, nil)
 	e := specQueueEngine(svc, specOwner)
 
 	w := specRequest(e, http.MethodGet, "/queues/1", "")
 
 	require.Equal(t, http.StatusOK, w.Code)
 	data := specDecode(t, w)["data"].(map[string]interface{})
-	assert.Contains(t, data, "queue_authz")
-	assert.Equal(t, true, data["queue_authz"].(map[string]interface{})["can_continue_queue"])
+	assert.NotContains(t, data, "queue_authz")
 	assert.Equal(t, float64(specOwner), data["queue"].(map[string]interface{})["owner_id"])
 }
 
 func TestSpec_GetQueue_TicketHolderSeesPublicViewOnly(t *testing.T) {
-	// 4.4 / TC-08-03: pemegang tiket hanya melihat info publik; owner_id dan izin tidak ikut.
+	// 4.4 / TC-08-03: pemegang tiket hanya melihat info publik; owner_id tidak ikut.
 	svc := newSpecQueueSvc(t)
 	q := specOpenQueue(1)
 	q.QueueDesc = sql.NullString{}
-	svc.On("ViewQueue", int64(1), int64(55)).Return(q, model.QueueAuthz{}, false, nil)
+	svc.On("ViewQueue", int64(1), int64(55)).Return(q, false, nil)
 	e := specQueueEngine(svc, 55)
 
 	w := specRequest(e, http.MethodGet, "/queues/1", "")
@@ -136,7 +133,7 @@ func TestSpec_GetQueue_TicketHolderSeesPublicViewOnly(t *testing.T) {
 func TestSpec_GetQueue_OutsiderGetsNotFoundWithoutLeakingName(t *testing.T) {
 	// TC-08-03: owner lain / orang asing -> 404 "Antrian tidak ditemukan", nama antrian tidak bocor.
 	svc := newSpecQueueSvc(t)
-	svc.On("ViewQueue", int64(1), int64(99)).Return(model.Queue{}, model.QueueAuthz{}, false, apperror.ErrNotFound)
+	svc.On("ViewQueue", int64(1), int64(99)).Return(model.Queue{}, false, apperror.ErrNotFound)
 	e := specQueueEngine(svc, 99)
 
 	w := specRequest(e, http.MethodGet, "/queues/1", "")
@@ -170,30 +167,6 @@ func TestSpec_UpdateQueue_InactiveSubscriptionIs402(t *testing.T) {
 
 	assert.Equal(t, http.StatusPaymentRequired, w.Code)
 	assert.Equal(t, "SUBSCRIPTION_INACTIVE", specErrorCode(t, w))
-}
-
-func TestSpec_UpdateAuthz_PassesFlagsAndReturnsFreshSet(t *testing.T) {
-	// US-3 AC2 / 4.6: izin dikirim sebagai satu set untuk antrian; respons memuat set terbaru.
-	svc := newSpecQueueSvc(t)
-	svc.On("UpdateAuthz", int64(1), specOwner, specMatcher(func(v interface{}) bool {
-		a := v.(model.QueueAuthz)
-		return a.QueueID == 1 && a.CanContinueQueue && a.CanNotifyCustomer && !a.CanManageQueue
-	})).Return(model.QueueAuthz{QueueID: 1, CanContinueQueue: true, CanNotifyCustomer: true}, nil)
-	e := specQueueEngine(svc, specOwner)
-
-	body := `{"queue_id":1,"can_continue_queue":true,"can_notify_customer":true}`
-	w := specRequest(e, http.MethodPut, "/queues/1/authz", body)
-
-	require.Equal(t, http.StatusOK, w.Code)
-	data := specDecode(t, w)["data"].(map[string]interface{})
-	authz := data["queue_authz"].(map[string]interface{})
-	assert.Equal(t, true, authz["can_continue_queue"])
-	assert.Equal(t, false, authz["can_manage_queue"])
-	for _, key := range []string{"can_manage_queue", "can_manage_counters", "can_manage_qr", "can_view_queue",
-		"can_manage_display", "can_continue_queue", "can_notify_customer", "can_manage_tickets", "can_manage_notes"} {
-		assert.Contains(t, authz, key)
-	}
-	svc.verify()
 }
 
 func TestSpec_CloseQueue_OwnerGetsSuccess(t *testing.T) {
@@ -230,7 +203,6 @@ func TestSpec_QueueEndpoints_NonNumericIDIs400WithoutServiceCall(t *testing.T) {
 	cases := []struct{ method, target, body string }{
 		{http.MethodGet, "/queues/abc", ""},
 		{http.MethodPut, "/queues/abc", `{"queue_name":"x"}`},
-		{http.MethodPut, "/queues/abc/authz", `{}`},
 		{http.MethodPost, "/queues/abc/close", ""},
 	}
 	for _, c := range cases {

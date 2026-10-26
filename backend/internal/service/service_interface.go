@@ -11,12 +11,12 @@ type QueueServiceInterface interface {
 		ownerID int64,
 		queueName,
 		queueDescription string,
-	) (model.Queue, model.QueueAuthz, error)
+	) (model.Queue, error)
 	ViewQueue(
 		ctx context.Context,
 		queueID,
 		requesterID int64,
-	) (model.Queue, model.QueueAuthz, bool, error)
+	) (model.Queue, bool, error)
 	ListQueue(
 		ctx context.Context,
 		requesterID int64,
@@ -28,12 +28,6 @@ type QueueServiceInterface interface {
 		queueName,
 		queueDescription string,
 	) error
-	UpdateAuthz(
-		ctx context.Context,
-		queueID,
-		requesterID int64,
-		queueAuthz model.QueueAuthz,
-	) (model.QueueAuthz, error)
 	CloseQueue(
 		ctx context.Context,
 		queueID,

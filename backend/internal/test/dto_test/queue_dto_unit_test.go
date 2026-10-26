@@ -60,19 +60,6 @@ func TestSpec_PublicQueueResponse_KeepsOwnerIDOut(t *testing.T) {
 	assert.Equal(t, "Loket", got["queue_name"])
 }
 
-func TestSpec_QueueAuthzResponse_UsesSnakeCaseKeysForAllAuthorities(t *testing.T) {
-	// US-3: set izin per antrian; kunci snake_case lengkap.
-	a := model.QueueAuthz{QueueID: 5, CanContinueQueue: true, CanManageNotes: true}
-
-	got := specMarshalMap(t, dto.NewQueueAuthzResponse(a))
-
-	assert.Equal(t, float64(5), got["queue_id"])
-	assert.Equal(t, true, got["can_continue_queue"])
-	assert.Equal(t, true, got["can_manage_notes"])
-	assert.Equal(t, false, got["can_manage_queue"])
-	assert.Len(t, got, 10) // queue_id + 9 izin
-}
-
 func TestSpec_QueueStatusResponse_NothingServedAndNoTicketAreNull(t *testing.T) {
 	// TC-06-01 / 4.4: sebelum ada yang dilayani, "sedang dilayani" null; tanpa tiket, my_ticket null.
 	s := model.QueueStatus{Queue: model.Queue{ID: 1, QueueName: "Loket", Status: "active", CreatedAt: time.Now()}}

@@ -122,14 +122,14 @@ func (m *specQueueSvc) GetQueueInfo(_ context.Context, queueID int64) (model.Que
 	return specRet(r, 0).(model.Queue), specErr(r, 1)
 }
 
-func (m *specQueueSvc) CreateQueue(_ context.Context, ownerID int64, name, desc string) (model.Queue, model.QueueAuthz, error) {
+func (m *specQueueSvc) CreateQueue(_ context.Context, ownerID int64, name, desc string) (model.Queue, error) {
 	r := m.call("CreateQueue", ownerID, name, desc)
-	return specRet(r, 0).(model.Queue), specRet(r, 1).(model.QueueAuthz), specErr(r, 2)
+	return specRet(r, 0).(model.Queue), specErr(r, 1)
 }
 
-func (m *specQueueSvc) ViewQueue(_ context.Context, queueID, requesterID int64) (model.Queue, model.QueueAuthz, bool, error) {
+func (m *specQueueSvc) ViewQueue(_ context.Context, queueID, requesterID int64) (model.Queue, bool, error) {
 	r := m.call("ViewQueue", queueID, requesterID)
-	return specRet(r, 0).(model.Queue), specRet(r, 1).(model.QueueAuthz), specRet(r, 2).(bool), specErr(r, 3)
+	return specRet(r, 0).(model.Queue), specRet(r, 1).(bool), specErr(r, 2)
 }
 
 func (m *specQueueSvc) ListQueue(_ context.Context, requesterID int64) ([]model.Queue, error) {
@@ -141,11 +141,6 @@ func (m *specQueueSvc) ListQueue(_ context.Context, requesterID int64) ([]model.
 func (m *specQueueSvc) UpdateQueue(_ context.Context, queueID, requesterID int64, name, desc string) error {
 	r := m.call("UpdateQueue", queueID, requesterID, name, desc)
 	return specErr(r, 0)
-}
-
-func (m *specQueueSvc) UpdateAuthz(_ context.Context, queueID, requesterID int64, authz model.QueueAuthz) (model.QueueAuthz, error) {
-	r := m.call("UpdateAuthz", queueID, requesterID, authz)
-	return specRet(r, 0).(model.QueueAuthz), specErr(r, 1)
 }
 
 func (m *specQueueSvc) CloseQueue(_ context.Context, queueID, requesterID int64) error {

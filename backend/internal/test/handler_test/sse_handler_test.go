@@ -25,8 +25,8 @@ func (s stubQueueValidator) ViewQueue(
 	_ context.Context,
 	queueID,
 	requesterID int64,
-) (model.Queue, model.QueueAuthz, bool, error) {
-	return model.Queue{ID: queueID}, model.QueueAuthz{}, false, s.err
+) (model.Queue, bool, error) {
+	return model.Queue{ID: queueID}, false, s.err
 }
 
 type lockedRecorder struct {

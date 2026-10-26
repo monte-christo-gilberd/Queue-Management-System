@@ -249,14 +249,13 @@ type memQueueRepo struct {
 	nextID int64
 	order  []int64
 	queues map[int64]model.Queue
-	authz  map[int64]model.QueueAuthz
 }
 
 func newMemQueueRepo() *memQueueRepo {
-	return &memQueueRepo{queues: map[int64]model.Queue{}, authz: map[int64]model.QueueAuthz{}}
+	return &memQueueRepo{queues: map[int64]model.Queue{}}
 }
 
-func (m *memQueueRepo) CreateNewQueue(_ context.Context, _ *sqlx.Tx, ownerID int64, name, desc string) (model.Queue, model.QueueAuthz, error) {
+func (m *memQueueRepo) CreateNewQueue(_ context.Context, _ *sqlx.Tx, ownerID int64, name, desc string) (model.Queue, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.nextID++
@@ -268,21 +267,19 @@ func (m *memQueueRepo) CreateNewQueue(_ context.Context, _ *sqlx.Tx, ownerID int
 		Status:    "active",
 		CreatedAt: time.Now(),
 	}
-	a := model.QueueAuthz{QueueID: q.ID}
 	m.queues[q.ID] = q
-	m.authz[q.ID] = a
 	m.order = append(m.order, q.ID)
-	return q, a, nil
+	return q, nil
 }
 
-func (m *memQueueRepo) GetQueueByID(_ context.Context, queueID int64) (model.Queue, model.QueueAuthz, error) {
+func (m *memQueueRepo) GetQueueByID(_ context.Context, queueID int64) (model.Queue, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	q, ok := m.queues[queueID]
 	if !ok {
-		return model.Queue{}, model.QueueAuthz{}, apperror.ErrNotFound
+		return model.Queue{}, apperror.ErrNotFound
 	}
-	return q, m.authz[queueID], nil
+	return q, nil
 }
 
 func (m *memQueueRepo) ListQueueByOwner(_ context.Context, ownerID int64, activeOnly bool) ([]model.Queue, error) {
@@ -313,17 +310,6 @@ func (m *memQueueRepo) UpdateQueueDetails(_ context.Context, queueID int64, name
 	q.QueueDesc = sql.NullString{String: desc, Valid: desc != ""}
 	m.queues[queueID] = q
 	return nil
-}
-
-func (m *memQueueRepo) UpdateQueueAuthz(_ context.Context, queueID int64, authz model.QueueAuthz) (model.QueueAuthz, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, ok := m.queues[queueID]; !ok {
-		return model.QueueAuthz{}, apperror.ErrNotFound
-	}
-	authz.QueueID = queueID
-	m.authz[queueID] = authz
-	return authz, nil
 }
 
 func (m *memQueueRepo) CloseQueue(_ context.Context, queueID int64) error {

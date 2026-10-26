@@ -27,7 +27,7 @@ func setupTestDB(t *testing.T) (*sqlx.DB, sqlmock.Sqlmock) {
 }
 
 const (
-	createQueryPattern      = `^INSERT INTO users\(email, username, password_hash\) VALUES \(\$1, \$2, \$3\) RETURNING id, email, username, password_hash, google_id, created_at$`
+	createQueryPattern      = `^INSERT INTO users\(\s*email,\s*username,\s*password_hash\s*\)\s*VALUES\s*\(\$1,\s*\$2,\s*\$3\)\s*RETURNING\s*id,\s*email,\s*username,\s*password_hash,\s*google_id,\s*created_at\s*$`
 	findByEmailQueryPattern = `^SELECT id, email, username, password_hash, google_id, created_at FROM users WHERE email=\$1$`
 )
 

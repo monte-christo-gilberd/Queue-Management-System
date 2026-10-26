@@ -31,35 +31,32 @@ type memQueues struct {
 	mu     sync.Mutex
 	nextID int64
 	rows   map[int64]model.Queue
-	authz  map[int64]model.QueueAuthz
 	order  []int64
 }
 
 func newMemQueues() *memQueues {
-	return &memQueues{rows: map[int64]model.Queue{}, authz: map[int64]model.QueueAuthz{}}
+	return &memQueues{rows: map[int64]model.Queue{}}
 }
 
-func (m *memQueues) CreateNewQueue(_ context.Context, _ *sqlx.Tx, ownerID int64, name, desc string) (model.Queue, model.QueueAuthz, error) {
+func (m *memQueues) CreateNewQueue(_ context.Context, _ *sqlx.Tx, ownerID int64, name, desc string) (model.Queue, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.nextID++
 	q := model.Queue{ID: m.nextID, OwnerID: ownerID, QueueName: name,
 		QueueDesc: sql.NullString{String: desc, Valid: desc != ""}, Status: "active", CreatedAt: time.Now()}
-	a := model.QueueAuthz{QueueID: q.ID}
 	m.rows[q.ID] = q
-	m.authz[q.ID] = a
 	m.order = append(m.order, q.ID)
-	return q, a, nil
+	return q, nil
 }
 
-func (m *memQueues) GetQueueByID(_ context.Context, id int64) (model.Queue, model.QueueAuthz, error) {
+func (m *memQueues) GetQueueByID(_ context.Context, id int64) (model.Queue, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	q, ok := m.rows[id]
 	if !ok {
-		return model.Queue{}, model.QueueAuthz{}, apperror.ErrNotFound
+		return model.Queue{}, apperror.ErrNotFound
 	}
-	return q, m.authz[id], nil
+	return q, nil
 }
 
 func (m *memQueues) ListQueueByOwner(_ context.Context, ownerID int64, activeOnly bool) ([]model.Queue, error) {
@@ -86,17 +83,6 @@ func (m *memQueues) UpdateQueueDetails(_ context.Context, id int64, name, desc s
 	q.QueueDesc = sql.NullString{String: desc, Valid: desc != ""}
 	m.rows[id] = q
 	return nil
-}
-
-func (m *memQueues) UpdateQueueAuthz(_ context.Context, id int64, a model.QueueAuthz) (model.QueueAuthz, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, ok := m.rows[id]; !ok {
-		return model.QueueAuthz{}, apperror.ErrNotFound
-	}
-	a.QueueID = id
-	m.authz[id] = a
-	return a, nil
 }
 
 func (m *memQueues) CloseQueue(_ context.Context, id int64) error {
@@ -229,15 +215,15 @@ func TestRepoFake_QueueLifecycleCreateCloseAndListFilter(t *testing.T) {
 	ctx := context.Background()
 	repo := newMemQueues()
 
-	q1, _, err := repo.CreateNewQueue(ctx, nil, 7, "Loket 1", "")
+	q1, err := repo.CreateNewQueue(ctx, nil, 7, "Loket 1", "")
 	require.NoError(t, err)
-	q2, _, err := repo.CreateNewQueue(ctx, nil, 7, "Loket 2", "")
+	q2, err := repo.CreateNewQueue(ctx, nil, 7, "Loket 2", "")
 	require.NoError(t, err)
 	assert.Equal(t, "active", q1.Status)
 	assert.False(t, q1.QueueDesc.Valid, "deskripsi kosong disimpan sebagai NULL")
 
 	require.NoError(t, repo.CloseQueue(ctx, q1.ID))
-	closed, _, err := repo.GetQueueByID(ctx, q1.ID)
+	closed, err := repo.GetQueueByID(ctx, q1.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "closed", closed.Status)
 	assert.True(t, closed.ClosedAt.Valid)
@@ -256,29 +242,10 @@ func TestRepoFake_QueueMissingRowsAreNotFound(t *testing.T) {
 	ctx := context.Background()
 	repo := newMemQueues()
 
-	_, _, err := repo.GetQueueByID(ctx, 404)
+	_, err := repo.GetQueueByID(ctx, 404)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 	assert.ErrorIs(t, repo.CloseQueue(ctx, 404), apperror.ErrNotFound)
 	assert.ErrorIs(t, repo.UpdateQueueDetails(ctx, 404, "x", ""), apperror.ErrNotFound)
-	_, err = repo.UpdateQueueAuthz(ctx, 404, model.QueueAuthz{})
-	assert.ErrorIs(t, err, apperror.ErrNotFound)
-}
-
-func TestRepoFake_AuthzIsStoredPerQueue(t *testing.T) {
-	// 4.6 edge case: konfigurasi izin tiap antrian independen.
-	ctx := context.Background()
-	repo := newMemQueues()
-	a, _, _ := repo.CreateNewQueue(ctx, nil, 7, "A", "")
-	b, _, _ := repo.CreateNewQueue(ctx, nil, 7, "B", "")
-
-	_, err := repo.UpdateQueueAuthz(ctx, a.ID, model.QueueAuthz{CanContinueQueue: true})
-	require.NoError(t, err)
-
-	_, authzA, _ := repo.GetQueueByID(ctx, a.ID)
-	_, authzB, _ := repo.GetQueueByID(ctx, b.ID)
-	assert.True(t, authzA.CanContinueQueue)
-	assert.False(t, authzB.CanContinueQueue)
-	assert.Equal(t, a.ID, authzA.QueueID)
 }
 
 func TestRepoFake_SubscriptionActiveOnlyBeforeExpiry(t *testing.T) {

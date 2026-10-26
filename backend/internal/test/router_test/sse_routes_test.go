@@ -27,13 +27,12 @@ func (stubUser) Me(c *gin.Context)       {}
 
 type stubQueue struct{}
 
-func (stubQueue) Create(c *gin.Context)      {}
-func (stubQueue) Get(c *gin.Context)         {}
-func (stubQueue) List(c *gin.Context)        {}
-func (stubQueue) Update(c *gin.Context)      {}
-func (stubQueue) UpdateAuthz(c *gin.Context) {}
-func (stubQueue) Close(c *gin.Context)       {}
-func (stubQueue) Info(c *gin.Context)        {}
+func (stubQueue) Create(c *gin.Context) {}
+func (stubQueue) Get(c *gin.Context)    {}
+func (stubQueue) List(c *gin.Context)   {}
+func (stubQueue) Update(c *gin.Context) {}
+func (stubQueue) Close(c *gin.Context)  {}
+func (stubQueue) Info(c *gin.Context)   {}
 
 type stubValidator struct{}
 
@@ -41,8 +40,8 @@ func (stubValidator) ViewQueue(
 	ctx context.Context,
 	queueID,
 	requesterID int64,
-) (model.Queue, model.QueueAuthz, bool, error) {
-	return model.Queue{ID: queueID, OwnerID: requesterID}, model.QueueAuthz{}, true, nil
+) (model.Queue, bool, error) {
+	return model.Queue{ID: queueID, OwnerID: requesterID}, true, nil
 }
 
 func issueTestToken(secret string, userID int64) string {

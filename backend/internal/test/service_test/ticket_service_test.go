@@ -157,14 +157,14 @@ func (g fakeQueueGuard) ViewQueue(
 	ctx context.Context,
 	queueID,
 	requesterID int64,
-) (model.Queue, model.QueueAuthz, bool, error) {
+) (model.Queue, bool, error) {
 	if requesterID == g.ownerID {
-		return model.Queue{ID: queueID, OwnerID: g.ownerID}, model.QueueAuthz{}, true, nil
+		return model.Queue{ID: queueID, OwnerID: g.ownerID}, true, nil
 	}
 	if requesterID == 55 {
-		return model.Queue{ID: queueID, OwnerID: g.ownerID}, model.QueueAuthz{}, false, nil
+		return model.Queue{ID: queueID, OwnerID: g.ownerID}, false, nil
 	}
-	return model.Queue{}, model.QueueAuthz{}, false, apperror.ErrNotFound
+	return model.Queue{}, false, apperror.ErrNotFound
 }
 
 func (g fakeQueueGuard) GetActiveQueue(
@@ -184,11 +184,11 @@ func (g fakeQueueGuard) GetQueue(
 	ctx context.Context,
 	queueID,
 	requesterID int64,
-) (model.Queue, model.QueueAuthz, error) {
+) (model.Queue, error) {
 	if requesterID != g.ownerID {
-		return model.Queue{}, model.QueueAuthz{}, apperror.ErrNotFound
+		return model.Queue{}, apperror.ErrNotFound
 	}
-	return model.Queue{ID: queueID, OwnerID: g.ownerID}, model.QueueAuthz{}, nil
+	return model.Queue{ID: queueID, OwnerID: g.ownerID}, nil
 }
 
 func TestListTickets_OwnerGetsTicketsFromRepo(t *testing.T) {

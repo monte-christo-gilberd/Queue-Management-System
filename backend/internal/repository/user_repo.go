@@ -31,7 +31,21 @@ func (r *UserRepository) Create(
 	passwordHash string,
 ) (model.User, error) {
 
-	const query = `INSERT INTO users(email, username, password_hash) VALUES ($1, $2, $3) RETURNING id, email, username, password_hash, google_id, created_at`
+	const query = `
+		INSERT INTO users(
+			email, 
+			username, 
+			password_hash
+			) 
+		VALUES ($1, $2, $3) 
+		RETURNING 
+			id, 
+			email, 
+			username, 
+			password_hash, 
+			google_id, 
+			created_at
+	`
 	var user model.User
 
 	err := r.db.GetContext(

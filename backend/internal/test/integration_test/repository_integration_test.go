@@ -89,18 +89,17 @@ func seedOwner(t *testing.T, db *sqlx.DB, email string, expires time.Time) int64
 	return id
 }
 
-func createQueue(t *testing.T, db *sqlx.DB, ownerID int64, name string) (model.Queue, model.QueueAuthz) {
+func createQueue(t *testing.T, db *sqlx.DB, ownerID int64, name string) model.Queue {
 	t.Helper()
 	repo := repository.NewQueueRepository(db)
 	var q model.Queue
-	var a model.QueueAuthz
 	err := database.WithTx(context.Background(), db, func(tx *sqlx.Tx) error {
 		var err error
-		q, a, err = repo.CreateNewQueue(context.Background(), tx, ownerID, name, "desc")
+		q, err = repo.CreateNewQueue(context.Background(), tx, ownerID, name, "desc")
 		return err
 	})
 	require.NoError(t, err)
-	return q, a
+	return q
 }
 
 func joinTicket(t *testing.T, db *sqlx.DB, queueID, userID int64) model.Ticket {
@@ -163,47 +162,27 @@ func TestQueueRepository(t *testing.T) {
 	ctx := context.Background()
 	owner := seedOwner(t, db, "o@b.c", time.Now().Add(time.Hour))
 
-	q1, authz := createQueue(t, db, owner, "Q1")
+	q1 := createQueue(t, db, owner, "Q1")
 	assert.Equal(t, "active", q1.Status)
-	assert.Equal(t, q1.ID, authz.QueueID)
-	assert.True(t, authz.CanViewQueue)
-	assert.False(t, authz.CanManageQueue)
 
-	got, gotAuthz, err := repo.GetQueueByID(ctx, q1.ID)
+	got, err := repo.GetQueueByID(ctx, q1.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Q1", got.QueueName)
 	assert.Equal(t, "desc", got.QueueDesc.String)
 	assert.False(t, got.ClosedAt.Valid)
-	assert.Equal(t, authz, gotAuthz)
 
-	_, _, err = repo.GetQueueByID(ctx, 999999)
+	_, err = repo.GetQueueByID(ctx, 999999)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 
 	// UpdateQueueDetails: string kosong = pertahankan nilai lama.
 	require.NoError(t, repo.UpdateQueueDetails(ctx, q1.ID, "Q1 baru", ""))
-	got, _, _ = repo.GetQueueByID(ctx, q1.ID)
+	got, _ = repo.GetQueueByID(ctx, q1.ID)
 	assert.Equal(t, "Q1 baru", got.QueueName)
 	assert.Equal(t, "desc", got.QueueDesc.String)
 	assert.ErrorIs(t, repo.UpdateQueueDetails(ctx, 999999, "x", "y"), apperror.ErrNotFound)
 
-	// UpdateQueueAuthz: semantik toggle.
-	fresh, err := repo.UpdateQueueAuthz(ctx, q1.ID, model.QueueAuthz{CanManageQueue: true, CanViewQueue: true})
-	require.NoError(t, err)
-	assert.True(t, fresh.CanManageQueue)
-	assert.False(t, fresh.CanViewQueue) // true -> dibalik jadi false
-	fresh, err = repo.UpdateQueueAuthz(ctx, q1.ID, model.QueueAuthz{CanManageQueue: true})
-	require.NoError(t, err)
-	assert.False(t, fresh.CanManageQueue)
-	noop, err := repo.UpdateQueueAuthz(ctx, q1.ID, model.QueueAuthz{})
-	require.NoError(t, err)
-	assert.Equal(t, fresh, noop)
-	_, err = repo.UpdateQueueAuthz(ctx, 999999, model.QueueAuthz{CanManageQr: true})
-	assert.ErrorIs(t, err, apperror.ErrNotFound)
-	_, err = repo.UpdateQueueAuthz(ctx, 999999, model.QueueAuthz{})
-	assert.ErrorIs(t, err, apperror.ErrNotFound)
-
 	// ListQueueByOwner + CloseQueue.
-	q2, _ := createQueue(t, db, owner, "Q2")
+	q2 := createQueue(t, db, owner, "Q2")
 	require.NoError(t, repo.CloseQueue(ctx, q1.ID))
 	assert.ErrorIs(t, repo.CloseQueue(ctx, q1.ID), apperror.ErrNotFound) // sudah closed
 	assert.ErrorIs(t, repo.CloseQueue(ctx, 999999), apperror.ErrNotFound)
@@ -228,8 +207,8 @@ func TestTicketRepository(t *testing.T) {
 	repo := repository.NewTicketRepository(db)
 	ctx := context.Background()
 	owner := seedOwner(t, db, "o@b.c", time.Now().Add(time.Hour))
-	q, _ := createQueue(t, db, owner, "Q")
-	other, _ := createQueue(t, db, owner, "Other")
+	q := createQueue(t, db, owner, "Q")
+	other := createQueue(t, db, owner, "Other")
 	u1, u2, u3 := seedUser(t, db, "1@b.c"), seedUser(t, db, "2@b.c"), seedUser(t, db, "3@b.c")
 
 	// MaxWaitingSortKey: queue kosong = 0.
@@ -326,7 +305,7 @@ func TestJoinQueue_TwiceBySameUserReturnsSameTicket(t *testing.T) {
 	ctx := context.Background()
 	owner := seedOwner(t, db, "o@b.c", time.Now().Add(time.Hour))
 	customer := seedUser(t, db, "c@b.c")
-	q, _ := createQueue(t, db, owner, "Q")
+	q := createQueue(t, db, owner, "Q")
 
 	ticketRepo := repository.NewTicketRepository(db)
 	queueSvc := service.NewQueueService(
@@ -360,7 +339,7 @@ func TestJoinQueue_TwiceBySameUserReturnsSameTicket(t *testing.T) {
 	assert.ErrorIs(t, err, apperror.ErrQueueClosed)
 
 	// Non-owner tidak boleh Next.
-	q2, _ := createQueue(t, db, owner, "Q2")
+	q2 := createQueue(t, db, owner, "Q2")
 	_, err = svc.JoinQueue(ctx, q2.ID, customer)
 	require.NoError(t, err)
 	_, err = svc.NextTicket(ctx, q2.ID, customer)
@@ -373,7 +352,7 @@ func TestQueueStatus_AgainstPostgres(t *testing.T) {
 	owner := seedOwner(t, db, "o@b.c", time.Now().Add(time.Hour))
 	u1, u2, u3 := seedUser(t, db, "1@b.c"), seedUser(t, db, "2@b.c"), seedUser(t, db, "3@b.c")
 	outsider := seedUser(t, db, "x@b.c")
-	q, _ := createQueue(t, db, owner, "Q")
+	q := createQueue(t, db, owner, "Q")
 
 	ticketRepo := repository.NewTicketRepository(db)
 	txRunner := database.NewSqlxTxRunner(db)
@@ -479,8 +458,8 @@ func TestTicketRepository_ListByUser(t *testing.T) {
 	owner := seedOwner(t, db, "o@b.c", time.Now().Add(time.Hour))
 	me := seedUser(t, db, "me@b.c")
 	other := seedUser(t, db, "other@b.c")
-	q1, _ := createQueue(t, db, owner, "Q1")
-	q2, _ := createQueue(t, db, owner, "Q2")
+	q1 := createQueue(t, db, owner, "Q1")
+	q2 := createQueue(t, db, owner, "Q2")
 	repo := repository.NewTicketRepository(db)
 
 	joinTicket(t, db, q1.ID, me)
@@ -534,7 +513,7 @@ func TestJoinQueue_AfterQueueDrainedStillAcceptsJoin(t *testing.T) {
 	owner := seedOwner(t, db, "drain-o@b.c", time.Now().Add(time.Hour))
 	first := seedUser(t, db, "drain-1@b.c")
 	second := seedUser(t, db, "drain-2@b.c")
-	q, _ := createQueue(t, db, owner, "Drain")
+	q := createQueue(t, db, owner, "Drain")
 
 	queueSvc := service.NewQueueService(
 		repository.NewQueueRepository(db),

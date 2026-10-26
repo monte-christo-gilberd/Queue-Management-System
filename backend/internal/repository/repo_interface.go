@@ -14,11 +14,11 @@ type QueueRepositoryInterface interface {
 		ownerID int64,
 		queueName,
 		queueDescription string,
-	) (model.Queue, model.QueueAuthz, error)
+	) (model.Queue, error)
 	GetQueueByID(
 		ctx context.Context,
 		queueID int64,
-	) (model.Queue, model.QueueAuthz, error)
+	) (model.Queue, error)
 	ListQueueByOwner(
 		ctx context.Context,
 		ownerID int64,
@@ -30,11 +30,6 @@ type QueueRepositoryInterface interface {
 		queueName,
 		queueDescription string,
 	) error
-	UpdateQueueAuthz(
-		ctx context.Context,
-		queueID int64,
-		authz model.QueueAuthz,
-	) (model.QueueAuthz, error)
 	CloseQueue(
 		ctx context.Context,
 		queueID int64,

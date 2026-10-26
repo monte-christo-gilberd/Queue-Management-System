@@ -4,10 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"qms/internal/apperror"
 	"qms/internal/model"
-	"strings"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -30,7 +28,7 @@ func (r *QueueRepository) CreateNewQueue(
 	ownerID int64,
 	queueName,
 	queueDescription string,
-) (model.Queue, model.QueueAuthz, error) {
+) (model.Queue, error) {
 
 	var queue model.Queue
 	const queueQuery = `
@@ -66,43 +64,15 @@ func (r *QueueRepository) CreateNewQueue(
 		queueDescription,
 	)
 	if err != nil {
-		return model.Queue{}, model.QueueAuthz{}, err
+		return model.Queue{}, err
 	}
-
-	var queueAuthz model.QueueAuthz
-	const authzQuery = `
-		INSERT INTO queue_authz(queue_id)
-		VALUES ($1)
-		RETURNING 
-			queue_id,
-			can_manage_queue,
-			can_manage_counters,
-			can_manage_qr,
-			can_view_queue,
-			can_manage_display,
-			can_continue_queue,
-			can_notify_customer,
-			can_manage_tickets,
-			can_manage_notes
-	`
-
-	err = tx.GetContext(
-		ctx,
-		&queueAuthz,
-		authzQuery,
-		queue.ID,
-	)
-	if err != nil {
-		return model.Queue{}, model.QueueAuthz{}, err
-	}
-
-	return queue, queueAuthz, nil
+	return queue, nil
 }
 
 func (r *QueueRepository) GetQueueByID(
 	ctx context.Context,
 	queueID int64,
-) (model.Queue, model.QueueAuthz, error) {
+) (model.Queue, error) {
 
 	var queue model.Queue
 	const queueQuery = `
@@ -125,43 +95,13 @@ func (r *QueueRepository) GetQueueByID(
 		queueID,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return model.Queue{}, model.QueueAuthz{}, apperror.ErrNotFound
+		return model.Queue{}, apperror.ErrNotFound
 	}
 	if err != nil {
-		return model.Queue{}, model.QueueAuthz{}, err
+		return model.Queue{}, err
 	}
 
-	var queueAuthz model.QueueAuthz
-	const authzQuery = `
-		SELECT
-			queue_id,
-			can_manage_queue,
-			can_manage_counters,
-			can_manage_qr,
-			can_view_queue,
-			can_manage_display,
-			can_continue_queue,
-			can_notify_customer,
-			can_manage_tickets,
-			can_manage_notes
-		FROM queue_authz
-		WHERE queue_id = $1
-	`
-
-	err = r.db.GetContext(
-		ctx,
-		&queueAuthz,
-		authzQuery,
-		queue.ID,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return model.Queue{}, model.QueueAuthz{}, apperror.ErrNotFound
-	}
-	if err != nil {
-		return model.Queue{}, model.QueueAuthz{}, err
-	}
-
-	return queue, queueAuthz, nil
+	return queue, nil
 }
 
 func (r *QueueRepository) ListQueueByOwner(
@@ -235,108 +175,6 @@ func (r *QueueRepository) UpdateQueueDetails(
 	}
 
 	return nil
-}
-
-func (r *QueueRepository) UpdateQueueAuthz(
-	ctx context.Context,
-	queueID int64,
-	authz model.QueueAuthz,
-) (model.QueueAuthz, error) {
-
-	var updates []string
-
-	if authz.CanManageQueue {
-		updates = append(updates, "can_manage_queue = NOT can_manage_queue")
-	}
-	if authz.CanManageCounters {
-		updates = append(updates, "can_manage_counters = NOT can_manage_counters")
-	}
-	if authz.CanManageQr {
-		updates = append(updates, "can_manage_qr = NOT can_manage_qr")
-	}
-	if authz.CanViewQueue {
-		updates = append(updates, "can_view_queue = NOT can_view_queue")
-	}
-	if authz.CanManageDisplay {
-		updates = append(updates, "can_manage_display = NOT can_manage_display")
-	}
-	if authz.CanContinueQueue {
-		updates = append(updates, "can_continue_queue = NOT can_continue_queue")
-	}
-	if authz.CanNotifyCustomer {
-		updates = append(updates, "can_notify_customer = NOT can_notify_customer")
-	}
-	if authz.CanManageTickets {
-		updates = append(updates, "can_manage_tickets = NOT can_manage_tickets")
-	}
-	if authz.CanManageNotes {
-		updates = append(updates, "can_manage_notes = NOT can_manage_notes")
-	}
-
-	if len(updates) == 0 {
-		var current model.QueueAuthz
-		const selectQuery = `
-			SELECT
-				queue_id,
-				can_manage_queue,
-				can_manage_counters,
-				can_manage_qr,
-				can_view_queue,
-				can_manage_display,
-				can_continue_queue,
-				can_notify_customer,
-				can_manage_tickets,
-				can_manage_notes
-			FROM queue_authz
-			WHERE queue_id = $1
-		`
-		err := r.db.GetContext(
-			ctx,
-			&current,
-			selectQuery,
-			queueID,
-		)
-		if errors.Is(err, sql.ErrNoRows) {
-			return model.QueueAuthz{}, apperror.ErrNotFound
-		}
-		if err != nil {
-			return model.QueueAuthz{}, err
-		}
-		return current, nil
-	}
-
-	authzInjectQuery := fmt.Sprintf(`
-    UPDATE queue_authz
-    SET %s
-    WHERE queue_id = $1
-    RETURNING
-        queue_id,
-        can_manage_queue,
-        can_manage_counters,
-        can_manage_qr,
-        can_view_queue,
-        can_manage_display,
-        can_continue_queue,
-        can_notify_customer,
-        can_manage_tickets,
-        can_manage_notes
-`, strings.Join(updates, ", "))
-
-	var fresh model.QueueAuthz
-	err := r.db.GetContext(
-		ctx,
-		&fresh,
-		authzInjectQuery,
-		queueID,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return model.QueueAuthz{}, apperror.ErrNotFound
-	}
-	if err != nil {
-		return model.QueueAuthz{}, err
-	}
-
-	return fresh, nil
 }
 
 func (r *QueueRepository) CloseQueue(

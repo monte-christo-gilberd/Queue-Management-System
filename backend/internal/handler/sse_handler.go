@@ -18,7 +18,7 @@ type QueueValidator interface {
 		ctx context.Context,
 		queueID,
 		requesterID int64,
-	) (model.Queue, model.QueueAuthz, bool, error)
+	) (model.Queue, bool, error)
 }
 
 type SSEHandler struct {
@@ -60,7 +60,7 @@ func (h *SSEHandler) ServeSSE(
 
 	if h.queues != nil {
 		
-		if _, _, _, err := h.queues.ViewQueue(
+		if _, _, err := h.queues.ViewQueue(
 			c.Request.Context(),
 			queueID,
 			requesterID,

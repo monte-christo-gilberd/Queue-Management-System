@@ -2,13 +2,11 @@
 -- 01_Schema.sql — Queue Management System
 -- Versi final, mencakup semua revisi sepanjang pengembangan:
 --   - Google Authentication (users.google_id)
---   - Otorisasi admin per-queue (queue_authz keyed by queue_id saja)
 --   - Notes edit-in-place (ticket_notes.ticket_id sebagai PK)
 --   - Gap-based sort_key untuk urutan tiket (fractional indexing)
 --   - Customer wajib login (tickets.user_id, bukan device_token)
 --   - Owner subscription & payment (owners.subscription_expires_at + payments)
 --   - Registration limit per-instance queue (bukan daily limit)
---   - Roster admin tersimpan (owner_saved_admins)
 --   - History sebagai arsip terpisah (queue_history), tanpa FK ke tabel live
 --   - ON DELETE CASCADE di semua FK anak queues/tickets
 -- ============================================================================
@@ -27,7 +25,7 @@ CREATE TABLE users (
 
 -- Shared primary key / Class Table Inheritance: owners itu 1:1 dengan users,
 -- jadi user_id LANGSUNG jadi PK (bukan id surrogate + user_id FK terpisah) —
--- pola yang sama dengan queue_settings/queue_authz/ticket_notes di bawah.
+-- pola yang sama dengan queue_settings/ticket_notes di bawah.
 -- Ini juga yang mencegah satu user terdaftar sebagai owner lebih dari sekali.
 CREATE TABLE owners (
     user_id                  BIGINT PRIMARY KEY REFERENCES users(id),
@@ -106,47 +104,17 @@ CREATE TABLE queue_settings (
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- One-to-one authz per queue (PK = queue_id, bukan queue_id+admin_id):
--- otorisasi berlaku sama untuk semua admin yang ditugaskan ke queue ini,
--- bukan didelegasikan berbeda-beda per admin. Ini keputusan desain yang
--- disengaja, lihat product-overview.md FR 4.6.
-CREATE TABLE queue_authz (
-    queue_id             BIGINT PRIMARY KEY REFERENCES queues(id) ON DELETE CASCADE,
-
-    can_manage_queue     BOOLEAN NOT NULL DEFAULT false,
-    can_manage_counters  BOOLEAN NOT NULL DEFAULT false,
-    can_manage_qr        BOOLEAN NOT NULL DEFAULT false,
-    can_view_queue       BOOLEAN NOT NULL DEFAULT true,
-    can_manage_display   BOOLEAN NOT NULL DEFAULT false,
-    can_continue_queue   BOOLEAN NOT NULL DEFAULT false,
-    can_notify_customer  BOOLEAN NOT NULL DEFAULT false,
-    can_manage_tickets   BOOLEAN NOT NULL DEFAULT false,
-    can_manage_notes     BOOLEAN NOT NULL DEFAULT false
-);
-
--- Admin mana saja yang ditugaskan ke queue mana (penugasan AKTIF)
-CREATE TABLE queue_admins (
+-- counters dideklarasikan sebelum tickets karena tickets.called_counter_id
+-- mereferensikannya. Counter tidak menyimpan admin atau tiket yang sedang
+-- dilayani: siapa pun yang login sebagai owner boleh memakai counter mana pun,
+-- dan tiket sendiri yang mencatat counter pemanggilnya.
+CREATE TABLE counters (
+    id         BIGSERIAL PRIMARY KEY,
     queue_id   BIGINT NOT NULL REFERENCES queues(id) ON DELETE CASCADE,
-    admin_id   BIGINT NOT NULL REFERENCES users(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (queue_id, admin_id)
+    name       TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Roster admin yang DISIMPAN owner secara umum — beda dari queue_admins di
--- atas (yang mencatat penugasan AKTIF ke 1 queue tertentu). Ini supaya owner
--- tidak perlu cari/ketik ulang email orang yang sama tiap kali bikin queue
--- baru. Menyimpan seseorang di sini TIDAK otomatis memberi akses ke queue
--- apa pun — itu baru terjadi kalau juga ada baris di queue_admins.
-CREATE TABLE owner_saved_admins (
-    owner_id   BIGINT NOT NULL REFERENCES owners(user_id),
-    admin_id   BIGINT NOT NULL REFERENCES users(id),
-    label      TEXT,                 -- catatan owner sendiri, mis. "Kasir shift pagi"
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (owner_id, admin_id)
-);
-
--- tickets dideklarasikan sebelum counters karena counters mereferensikannya,
--- tapi didefinisikan lebih dulu di bawah agar forward reference tidak error.
 CREATE TABLE tickets (
     id               BIGSERIAL PRIMARY KEY,
     queue_id         BIGINT NOT NULL REFERENCES queues(id) ON DELETE CASCADE,
@@ -173,6 +141,10 @@ CREATE TABLE tickets (
         CHECK (status IN ('waiting', 'completed', 'cancelled', 'skipped')),
     skip_count       INT NOT NULL DEFAULT 0,
 
+    -- counter yang memanggil tiket ini (diisi saat Next); NULL selama belum dipanggil
+    called_counter_id BIGINT REFERENCES counters(id) ON DELETE SET NULL,
+    called_at         TIMESTAMPTZ,
+
     last_notified_at TIMESTAMPTZ,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at     TIMESTAMPTZ,
@@ -193,15 +165,6 @@ CREATE TABLE tickets (
 -- index yang sering dipakai ini.
 CREATE INDEX idx_tickets_queue_waiting_sort_key
     ON tickets (queue_id, sort_key) WHERE status = 'waiting';
-
-CREATE TABLE counters (
-    id                  BIGSERIAL PRIMARY KEY,
-    queue_id            BIGINT NOT NULL REFERENCES queues(id) ON DELETE CASCADE,
-    name                TEXT NOT NULL,
-    attending_admin_id  BIGINT REFERENCES users(id),
-    attended_ticket_id  BIGINT UNIQUE REFERENCES tickets(id) ON DELETE SET NULL,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
-);
 
 -- Satu note per tiket: ticket_id sebagai PK, bukan surrogate id + FK biasa.
 -- Menyimpan note kedua untuk tiket yang sama berarti UPDATE baris ini

@@ -81,7 +81,7 @@ type QueueGuard interface {
 		ctx context.Context,
 		queueID,
 		requesterID int64,
-	) (model.Queue, model.QueueAuthz, error)
+	) (model.Queue, error)
 	GetActiveQueue(
 		ctx context.Context,
 		queueID int64,
@@ -90,10 +90,11 @@ type QueueGuard interface {
 		ctx context.Context,
 		queueID,
 		requesterID int64,
-	) (model.Queue, model.QueueAuthz, bool, error)
+	) (model.Queue, bool, error)
 }
 
-var errNoQueueGuard = errors.New("ticket service: queue guard is not configured")
+var errNoQueueGuard = errors.
+	New("ticket service: queue guard is not configured")
 
 type TicketService struct {
 	repository TicketRepository
@@ -118,7 +119,9 @@ func NewTicketService(
 }
 
 // WithQueueGuard memasang pengecekan queue. Tanpa guard, JoinQueue/NextTicket/ListTickets gagal (fail closed).
-func (s *TicketService) WithQueueGuard(guard QueueGuard) *TicketService {
+func (s *TicketService) WithQueueGuard(
+	guard QueueGuard,
+) *TicketService {
 	s.guard = guard
 	return s
 }
@@ -134,7 +137,10 @@ func (s *TicketService) JoinQueue(
 	if s.guard == nil {
 		return model.Ticket{}, errNoQueueGuard
 	}
-	if _, err := s.guard.GetActiveQueue(ctx, queueID); err != nil {
+	if _, err := s.guard.GetActiveQueue(
+		ctx,
+		queueID,
+	); err != nil {
 		return model.Ticket{}, err
 	}
 
@@ -146,13 +152,21 @@ func (s *TicketService) JoinQueue(
 		// Tabel tickets membatasi 1 tiket per (queue, user), jadi tabrakan UNIQUE bisa berarti
 		// "sudah join" (bukan tabrakan nomor). Dicek di tiap percobaan: kalau dua join user yang
 		// sama berebut, percobaan ulang akan menemukan tiket yang sudah dibuat pemenangnya.
-		joined, err := s.repository.HasTicket(ctx, queueID, userID)
+		joined, err := s.repository.HasTicket(
+			ctx,
+			queueID,
+			userID,
+		)
 		if err != nil {
 			return model.Ticket{}, err
 		}
 		// Join ulang tidak membuat nomor kedua: tiket yang sudah ada dikembalikan (spek 4.2, TC-05-04).
 		if joined {
-			return s.repository.FindByUser(ctx, queueID, userID)
+			return s.repository.FindByUser(
+				ctx,
+				queueID,
+				userID,
+			)
 		}
 
 		if err := s.tx.WithTx(
@@ -196,7 +210,12 @@ func (s *TicketService) JoinQueue(
 		return model.Ticket{}, apperror.ErrRetryExhausted
 	}
 
-	notifyEvent(s.notifier, queueID, EventTicketJoined, dto.NewTicketEvent(ticket))
+	notifyEvent(
+		s.notifier,
+		queueID,
+		EventTicketJoined,
+		dto.NewTicketEvent(ticket),
+	)
 
 	return ticket, nil
 }
@@ -209,7 +228,11 @@ func (s *TicketService) NextTicket(
 	if s.guard == nil {
 		return model.Ticket{}, errNoQueueGuard
 	}
-	if _, _, err := s.guard.GetQueue(ctx, queueID, requesterID); err != nil {
+	if _, err := s.guard.GetQueue(
+		ctx,
+		queueID,
+		requesterID,
+	); err != nil {
 		return model.Ticket{}, err
 	}
 
@@ -243,9 +266,17 @@ func (s *TicketService) NextTicket(
 
 	// Payload mengikuti keadaan setelah Next: nomor ini sudah selesai dilayani (spek 4.3 langkah 3).
 	ticket.Status = "completed"
-	ticket.CompletedAt = sql.NullTime{Time: time.Now(), Valid: true}
+	ticket.CompletedAt = sql.NullTime{
+		Time:  time.Now(),
+		Valid: true,
+	}
 
-	notifyEvent(s.notifier, queueID, EventTicketNext, dto.NewTicketEvent(ticket))
+	notifyEvent(
+		s.notifier,
+		queueID,
+		EventTicketNext,
+		dto.NewTicketEvent(ticket),
+	)
 
 	return ticket, nil
 }
@@ -261,7 +292,7 @@ func (s *TicketService) ListTickets(
 		return nil, errNoQueueGuard
 	}
 
-	if _, _, err := s.guard.GetQueue(
+	if _, err := s.guard.GetQueue(
 		ctx,
 		queueID,
 		requesterID,
@@ -287,7 +318,7 @@ func (s *TicketService) QueueStatus(
 		return model.QueueStatus{}, errNoQueueGuard
 	}
 
-	queue, _, _, err := s.guard.ViewQueue(
+	queue, _, err := s.guard.ViewQueue(
 		ctx,
 		queueID,
 		requesterID,
@@ -310,7 +341,11 @@ func (s *TicketService) QueueStatus(
 	}
 
 	// Sebelumnya (completed sebelum yang sedang dilayani) dan berikutnya (waiting pertama): hanya nomor.
-	recent, err := s.repository.RecentCompletedNumbers(ctx, queueID, 2)
+	recent, err := s.repository.RecentCompletedNumbers(
+		ctx,
+		queueID,
+		2,
+	)
 	if err != nil {
 		return model.QueueStatus{}, err
 	}
@@ -318,7 +353,10 @@ func (s *TicketService) QueueStatus(
 		status.PreviousNumber = &recent[1]
 	}
 
-	next, hasNext, err := s.repository.FirstWaitingNumber(ctx, queueID)
+	next, hasNext, err := s.repository.FirstWaitingNumber(
+		ctx,
+		queueID,
+	)
 	if err != nil {
 		return model.QueueStatus{}, err
 	}
