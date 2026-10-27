@@ -13,12 +13,13 @@ Dokumen lain:
 
 - Daftar, masuk, dan keluar. Masuk dengan email atau username.
 - Owner: buat antrian (perlu langganan aktif), ubah nama dan deskripsi, atur izin, panggil Next, tutup antrian.
-- Customer: bergabung lewat tautan, melihat nomor yang sedang dilayani dan posisi di depan, serta riwayat tiket.
-- Pembaruan real-time lewat Server-Sent Events.
+- Owner: QR antrian statis/dinamis (gambar dirender `qr-service`), penggantian kode statis, salin tautan join.
+- Customer: bergabung lewat tautan/QR bertoken, melihat nomor yang sedang dilayani dan posisi di depan, serta riwayat tiket.
+- Pembaruan real-time lewat Server-Sent Events (termasuk `queue_qr_updated`).
 - Mode terang dan gelap.
 
 Yang belum tersedia (lihat [DESIGN.md](DESIGN.md#7-batasan-dan-yang-belum-dibangun)): skip, notifikasi,
-pembatalan oleh customer, counter, admin per counter, QR dinamis, catatan, riwayat ekspor, login Google,
+pembatalan oleh customer, counter, admin per counter, catatan, riwayat ekspor, login Google,
 dan pembayaran langganan.
 
 ## Teknologi
@@ -26,17 +27,21 @@ dan pembayaran langganan.
 | Bagian | Teknologi |
 |---|---|
 | Backend | Go 1.27, Gin, sqlx + pgx, JWT HS256, bcrypt |
+| qr-service | Go 1.25, token join HMAC + render PNG (`skip2/go-qrcode`) |
 | Database | PostgreSQL |
 | Frontend | Expo SDK 57 (Expo Router, web static), React Native, NativeWind, Zustand |
-| Deploy | nginx (reverse proxy), Docker (Dockerfile per layanan, belum di-build) |
+| Deploy | Docker Compose, nginx (reverse proxy + rate limit `/qr/`) |
 
 ## Struktur folder
 
 ```
-backend/          API Go (cmd/server, internal/{handler,service,repository,dto,sse,...})
+backend/          API Go (cmd/server, internal/{handler,service,repository,dto,sse,qrclient,...})
+qr-service/       Microservice QR (cmd/qr-service, internal/{config,joinlink,httpapi,qr}), Dockerfile
 frontend/         Aplikasi Expo (src/app rute, src/components, src/hooks, src/lib, src/store), Dockerfile
 db/               Dockerfile dan skema PostgreSQL (migrations/01_Schema.sql)
 deploy/nginx/     Konfigurasi nginx untuk pemasangan di host, Dockerfile, dan template konfigurasi
+docker-compose.yml  Stack db + qr-service + backend + frontend + nginx
+.env.example      Variabel untuk docker compose (secret, origin publik)
 DESIGN.md         Desain sistem
 FLOW.md           Alur pengguna
 api-contract.md   Kontrak API
@@ -53,11 +58,22 @@ createdb qms_db
 psql -d qms_db -f db/migrations/01_Schema.sql
 ```
 
-### 2. Backend
+### 2. qr-service
+
+```bash
+cd qr-service
+cp .env.example .env     # isi JOIN_LINK_SECRET (>=32 byte) + QR_SERVICE_TOKEN
+go run ./cmd/qr-service  # http://localhost:8090
+```
+
+`JOIN_LINK_SECRET` hanya dipegang qr-service. Backend memanggil endpoint internal
+`/internal/v1/join-token` dan `/internal/v1/join-token/verify` dengan header `X-Service-Token`.
+
+### 3. Backend
 
 ```bash
 cd backend
-cp .env.example .env     # isi DATABASE_URL, JWT_SECRET, PORT, ALLOWED_ORIGINS
+cp .env.example .env     # isi DATABASE_URL, JWT_SECRET, PORT, ALLOWED_ORIGINS + variabel QR
 go run ./cmd/server
 ```
 
@@ -70,9 +86,16 @@ Variabel penting:
 | `DATABASE_URL` | DSN PostgreSQL, mis. `postgres://user:pass@localhost:5432/qms_db?sslmode=disable` |
 | `JWT_SECRET` | Rahasia penandatanganan token. Ganti untuk produksi |
 | `PORT` | Port HTTP backend |
-| `ALLOWED_ORIGINS` | Origin frontend yang diizinkan (dipisah koma). Tidak perlu jika frontend dan API satu origin |
+| `ALLOWED_ORIGINS` | Origin frontend yang diizinkan (dipisah koma) |
+| `PUBLIC_APP_URL` | Origin frontend untuk `join_url`, mis. `http://192.168.1.11:8081` |
+| `PUBLIC_QR_URL` | Basis `image_url`; di produksi sama dengan `PUBLIC_APP_URL` |
+| `QR_SERVICE_URL` | Alamat qr-service, mis. `http://localhost:8090` |
+| `QR_SERVICE_TOKEN` | Sama dengan `QR_SERVICE_TOKEN` milik qr-service |
+| `QR_HTTP_TIMEOUT` | Timeout panggilan internal (detik, default 1) |
 
-### 3. Frontend
+Catatan: `PUBLIC_APP_URL` harus bisa dibuka dari HP yang memindai QR (jangan `localhost` untuk uji perangkat).
+
+### 4. Frontend
 
 ```bash
 cd frontend
@@ -94,6 +117,10 @@ go test ./internal/test/service_test/ ./internal/test/handler_test/ ./internal/t
 # Integration backend (butuh DATABASE_URL yang bisa diakses; memakai schema sementara)
 go test -tags integration ./internal/test/integration_test/ -count=1 -v
 
+# qr-service
+cd qr-service
+go test ./...
+
 # Unit frontend
 cd frontend
 npm run test:unit
@@ -101,19 +128,29 @@ npm run test:unit
 
 End-to-end memakai Playwright di `frontend/playwright/` (`npm run e2e`). Tes ini butuh backend dan frontend yang berjalan.
 
-## Docker (belum di-build)
+## Docker Compose
 
-Setiap layanan punya Dockerfile dan `Dockerfile.dockerignore` sendiri. Berkasnya sudah disiapkan, tetapi
-belum pernah di-build dan belum ada `docker-compose.yml` yang menghubungkan keempatnya.
+```bash
+cp .env.example .env     # isi secret + QMS_PUBLIC_ORIGIN (origin yang dibuka dari HP)
+docker compose up --build
+```
+
+Buka `http://localhost:8080` (atau `QMS_PUBLIC_ORIGIN`). Hanya nginx yang membuka port ke host;
+`qr-service` tidak punya `ports:` sehingga `/internal/v1/*` hanya bisa diakses dari jaringan Docker.
 
 | Layanan | Dockerfile | Catatan |
 |---|---|---|
 | db | `db/Dockerfile` | `postgres:16-alpine`, skema dijalankan otomatis saat data directory kosong |
+| qr-service | `qr-service/Dockerfile` | Stateless, healthcheck `/health`, hanya di jaringan internal |
 | backend | `backend/Dockerfile` | Build dua tahap, binary di `alpine`, user non-root |
-| frontend | `frontend/Dockerfile` | Hanya menghasilkan folder `dist` untuk diisi ke volume, butuh build-arg `EXPO_PUBLIC_API_URL` |
-| nginx | `deploy/nginx/Dockerfile` | Konfigurasi dibuat dari template saat start (`QMS_DOMAIN`, `BACKEND_HOST`, `FRONTEND_ROOT`), HTTP saja |
+| frontend | `frontend/Dockerfile` | Hanya menghasilkan folder `dist`; compose menyalinnya ke volume nginx |
+| nginx | `deploy/nginx/Dockerfile` | Template start (`QMS_DOMAIN`, `BACKEND_HOST`, `QR_SERVICE_HOST`, `FRONTEND_ROOT`) |
 
-Kredensial (`POSTGRES_PASSWORD`, `DATABASE_URL`, `JWT_SECRET`) tidak dibakar ke image. Diisi saat container dijalankan.
+Kredensial (`POSTGRES_PASSWORD`, `JWT_SECRET`, `JOIN_LINK_SECRET`, `QR_SERVICE_TOKEN`) tidak dibakar ke image.
+`QMS_PUBLIC_ORIGIN` ikut dibakar ke bundle frontend saat build — ganti nilai itu berarti `docker compose build frontend`.
+
+Untuk uji dari HP di LAN, set `QMS_PUBLIC_ORIGIN=http://<ip-lan>:8080` **sebelum** build. QR berisi alamat itu,
+jadi jangan memakai `localhost`.
 
 ## Build frontend untuk produksi
 
@@ -126,5 +163,6 @@ Hasilnya ada di `frontend/dist/`. Salin ke folder yang dibaca nginx, lalu ikuti 
 
 ## Status
 
-Proyek capstone, masih dalam pengembangan. Sebagian alur sudah terverifikasi dari dua perangkat lewat nginx
-(join, Next, dan event SSE). Lihat [DESIGN.md](DESIGN.md) untuk batasan teknis, terutama hub SSE yang masih di memori satu proses.
+Proyek capstone, masih dalam pengembangan. Alur join berbasis token QR, QR statis/dinamis, penggantian kode,
+Next, dan event SSE sudah diimplementasikan. Lihat [DESIGN.md](DESIGN.md) untuk batasan teknis,
+terutama hub SSE yang masih di memori satu proses.

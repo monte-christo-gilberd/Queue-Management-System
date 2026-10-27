@@ -66,6 +66,17 @@ func (r *QueueRepository) CreateNewQueue(
 	if err != nil {
 		return model.Queue{}, err
 	}
+
+	// Setiap antrian baru wajib punya baris queue_settings (default: static, token null).
+	// Sama tx dengan pembuatan antrian.
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO queue_settings (queue_id) VALUES ($1) ON CONFLICT (queue_id) DO NOTHING`,
+		queue.ID,
+	); err != nil {
+		return model.Queue{}, err
+	}
+
 	return queue, nil
 }
 
@@ -206,5 +217,103 @@ func (r *QueueRepository) CloseQueue(
 		return apperror.ErrNotFound
 	}
 
+	return nil
+}
+
+func (r *QueueRepository) GetQueueSettings(
+	ctx context.Context,
+	queueID int64,
+) (model.QueueSettings, error) {
+
+	var settings model.QueueSettings
+	const query = `
+		SELECT
+			queue_id,
+			qr_type,
+			qr_current_code
+		FROM queue_settings
+		WHERE queue_id = $1
+	`
+
+	err := r.db.GetContext(
+		ctx,
+		&settings,
+		query,
+		queueID,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.QueueSettings{}, apperror.ErrNotFound
+		}
+		return model.QueueSettings{}, err
+	}
+
+	return settings, nil
+}
+
+func (r *QueueRepository) CreateQueueSettingsIfMissing(
+	ctx context.Context,
+	queueID int64,
+) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`INSERT INTO queue_settings (queue_id) VALUES ($1) ON CONFLICT (queue_id) DO NOTHING`,
+		queueID,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *QueueRepository) UpdateQRType(
+	ctx context.Context,
+	queueID int64,
+	qrType string,
+) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE queue_settings SET qr_type = $2 WHERE queue_id = $1`,
+		queueID,
+		qrType,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
+}
+
+func (r *QueueRepository) UpdateQRCurrentCode(
+	ctx context.Context,
+	queueID int64,
+	token string,
+) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE queue_settings SET qr_current_code = $2 WHERE queue_id = $1`,
+		queueID,
+		token,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return apperror.ErrNotFound
+	}
 	return nil
 }

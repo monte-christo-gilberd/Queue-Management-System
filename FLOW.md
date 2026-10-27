@@ -78,7 +78,8 @@ Dibuka dari Dashboard (ketuk judul antrian) atau dari Daftar Antrian. Layout dua
 
 | Bagian | Fungsi |
 |---|---|
-| Tautan join | Salin tautan `<origin>/join/<id>` untuk dibagikan |
+| QR antrian | Gambar QR dari qr-service, mode statis/dinamis, hitung mundur, salin tautan, ganti kode (statis) |
+| Tautan join | Tautan `<origin>/join?t=<token>` berasal dari backend (tombol salin di kartu QR) |
 | SKIP / NEXT | NEXT berfungsi. SKIP belum tersedia di backend |
 | Append Note | Popup catatan. Belum tersambung ke backend |
 | Tampilan customer | Nomor yang sedang dilayani (tanpa posisi sebelum/sesudah) |
@@ -86,7 +87,7 @@ Dibuka dari Dashboard (ketuk judul antrian) atau dari Daftar Antrian. Layout dua
 | Nama dan deskripsi | Ubah lalu SIMPAN (PUT) |
 | Admin | Daftar admin dan tombol tambah admin. Belum tersambung ke backend |
 | Otoritas admin | Ubah izin antrian lalu SIMPAN IZIN (PUT `/authz`) |
-| Pengaturan antrian | Toggle pengulangan dan QR. Hanya tampilan, belum tersambung |
+| Pengaturan antrian | Toggle pengulangan. Hanya tampilan, belum tersambung |
 | Tutup antrian | Konfirmasi dulu, lalu POST `/close` |
 
 Tutup antrian:
@@ -102,27 +103,34 @@ sequenceDiagram
     actor C as Customer
     participant FE as Frontend
     participant BE as Backend
-    C->>FE: Buka tautan /join/:id (dari owner)
+    C->>FE: Scan QR / buka /join?t=<token>
     alt belum login
-        FE-->>C: Halaman masuk (next = /join/:id)
+        FE-->>C: Halaman masuk (next = /join?t=<token>)
         C->>FE: Masuk
-        FE-->>C: Kembali ke /join/:id
+        FE-->>C: Kembali ke /join?t=<token>
     end
-    FE->>BE: POST /api/v1/queues/:id/join
-    alt antrian aktif, belum punya tiket
+    FE->>BE: GET /api/v1/join/preview?t=<token>
+    BE->>QR: POST /internal/v1/join-token/verify
+    QR-->>BE: queue_id + type (+ exp)
+    BE-->>FE: 200 info publik antrian
+    FE->>BE: POST /api/v1/join {t}
+    alt token valid, antrian aktif, belum punya tiket
         BE-->>FE: 200 tiket waiting baru
     else sudah punya tiket
         BE-->>FE: 200 tiket yang sudah ada
     else antrian ditutup
         BE-->>FE: 409 QUEUE_CLOSED
+    else token diganti/kedaluwarsa
+        BE-->>FE: 404 QR_INVALID / 410 QR_EXPIRED
     end
     FE->>BE: GET /queues/:id/status
     FE-->>C: Nomor saya, sedang dilayani, dan posisi di depan
 ```
 
-- Customer harus login sebelum bisa bergabung. Setelah login, halaman join langsung dibuka lagi.
+- Customer harus login sebelum bisa bergabung. Setelah login, halaman join dibuka lagi dengan token utuh.
 - Scan atau tekan Gabung berulang kali tidak membuat tiket kedua. Layar hanya menampilkan nomor yang sudah ada.
-- Gabung di PC bisa lewat tombol "Masuk Ke Antrian" di Beranda. Di HP, lewat tombol QR di tengah navbar.
+- Join hanya lewat token QR; `POST /queues/:id/join` sudah dihapus. Token statis yang sudah diganti ditolak.
+- Gabung di PC bisa lewat tombol "Masuk Ke Antrian" di Beranda (scan placeholder). Di HP, lewat tombol QR di tengah navbar.
 
 ## 6. Customer: memantau antrian
 
@@ -155,4 +163,4 @@ lalu mengambil ulang status.
 
 Fitur di bawah ini ada di product overview tetapi belum punya endpoint, sehingga alurnya belum bisa dijalankan:
 skip tiket, notifikasi ke customer berikutnya, pembatalan oleh customer, hapus customer, counter, admin per counter,
-penyisipan posisi, antrian ulang, QR dinamis, riwayat dan ekspor, catatan antrian, login Google, dan pembayaran langganan.
+penyisipan posisi, antrian ulang, batas harian QR, riwayat dan ekspor, catatan antrian, login Google, dan pembayaran langganan.

@@ -9,4 +9,3 @@ func registerUserRoutes(
 	rg.POST("/register", userH.Register)
 	rg.POST("/login", userH.Login)
 }
-

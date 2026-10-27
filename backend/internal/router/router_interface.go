@@ -4,6 +4,7 @@ import "github.com/gin-gonic/gin"
 
 type TicketHandler interface {
 	Join(c *gin.Context)
+	Preview(c *gin.Context)
 	Next(c *gin.Context)
 	List(c *gin.Context)
 	Status(c *gin.Context)
@@ -23,6 +24,9 @@ type QueueHandler interface {
 	Update(c *gin.Context)
 	Close(c *gin.Context)
 	Info(c *gin.Context)
+	GetQR(c *gin.Context)
+	SetQRType(c *gin.Context)
+	ReplaceQR(c *gin.Context)
 }
 
 type SSEHandler interface {

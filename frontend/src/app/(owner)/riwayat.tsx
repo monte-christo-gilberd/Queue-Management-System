@@ -16,7 +16,7 @@ export default function RiwayatSayaRoute() {
   const avatarColor = useThemeColor('avatar');
   const { tickets } = useMyTickets();
   const openQueue = (queueId: number) =>
-    router.push({ pathname: '/join/[queueId]', params: { queueId: String(queueId) } });
+    router.push({ pathname: '/ticket/[queueId]', params: { queueId: String(queueId) } });
 
   const closedOrEnded = tickets.filter(
     (t) => t.queue_status === 'closed' || t.status === 'skipped' || t.status === 'cancelled',

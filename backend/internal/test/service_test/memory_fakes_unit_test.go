@@ -245,14 +245,18 @@ func contains(list []string, v string) bool {
 
 // memQueueRepo: fake service.QueueRepository.
 type memQueueRepo struct {
-	mu     sync.Mutex
-	nextID int64
-	order  []int64
-	queues map[int64]model.Queue
+	mu       sync.Mutex
+	nextID   int64
+	order    []int64
+	queues   map[int64]model.Queue
+	settings map[int64]model.QueueSettings
 }
 
 func newMemQueueRepo() *memQueueRepo {
-	return &memQueueRepo{queues: map[int64]model.Queue{}}
+	return &memQueueRepo{
+		queues:   map[int64]model.Queue{},
+		settings: map[int64]model.QueueSettings{},
+	}
 }
 
 func (m *memQueueRepo) CreateNewQueue(_ context.Context, _ *sqlx.Tx, ownerID int64, name, desc string) (model.Queue, error) {
@@ -269,6 +273,8 @@ func (m *memQueueRepo) CreateNewQueue(_ context.Context, _ *sqlx.Tx, ownerID int
 	}
 	m.queues[q.ID] = q
 	m.order = append(m.order, q.ID)
+	// Sama dengan repository nyata: satu baris queue_settings ikut dibuat dalam tx.
+	m.settings[q.ID] = model.QueueSettings{QueueID: q.ID, QRType: model.QueueQRTypeStatic}
 	return q, nil
 }
 
@@ -323,6 +329,84 @@ func (m *memQueueRepo) CloseQueue(_ context.Context, queueID int64) error {
 	q.ClosedAt = sql.NullTime{Time: time.Now(), Valid: true}
 	m.queues[queueID] = q
 	return nil
+}
+
+func (m *memQueueRepo) GetQueueSettings(_ context.Context, queueID int64) (model.QueueSettings, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	settings, ok := m.settings[queueID]
+	if !ok {
+		return model.QueueSettings{}, apperror.ErrNotFound
+	}
+	return settings, nil
+}
+
+func (m *memQueueRepo) CreateQueueSettingsIfMissing(_ context.Context, queueID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.queues[queueID]; !ok {
+		return apperror.ErrNotFound
+	}
+	if _, ok := m.settings[queueID]; !ok {
+		m.settings[queueID] = model.QueueSettings{QueueID: queueID, QRType: model.QueueQRTypeStatic}
+	}
+	return nil
+}
+
+func (m *memQueueRepo) UpdateQRType(_ context.Context, queueID int64, qrType string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	settings, ok := m.settings[queueID]
+	if !ok {
+		return apperror.ErrNotFound
+	}
+	settings.QRType = qrType
+	m.settings[queueID] = settings
+	return nil
+}
+
+func (m *memQueueRepo) UpdateQRCurrentCode(_ context.Context, queueID int64, token string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	settings, ok := m.settings[queueID]
+	if !ok {
+		return apperror.ErrNotFound
+	}
+	settings.QRCurrentCode = sql.NullString{String: token, Valid: token != ""}
+	m.settings[queueID] = settings
+	return nil
+}
+
+// dropSettings mensimulasikan antrian lama yang belum punya baris queue_settings
+// (dibuat sebelum fitur QR ada), untuk menguji backfill lazy.
+func (m *memQueueRepo) dropSettings(queueID int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.settings, queueID)
+}
+
+// setQRType menyiapkan mode QR tanpa lewat service (mis. antrian sudah dinamis).
+func (m *memQueueRepo) setQRType(queueID int64, qrType string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	settings := m.settings[queueID]
+	settings.QueueID = queueID
+	settings.QRType = qrType
+	m.settings[queueID] = settings
+}
+
+// currentQRCode membaca token statis yang tersimpan (untuk assertion).
+func (m *memQueueRepo) currentQRCode(queueID int64) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.settings[queueID].QRCurrentCode.String
+}
+
+// qrType membaca mode QR yang tersimpan (untuk assertion).
+func (m *memQueueRepo) qrType(queueID int64) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.settings[queueID].QRType
 }
 
 // memSubscriptions: fake service.SubscriptionChecker.

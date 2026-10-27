@@ -98,6 +98,28 @@ func (m *memQueues) CloseQueue(_ context.Context, id int64) error {
 	return nil
 }
 
+func (m *memQueues) GetQueueSettings(_ context.Context, id int64) (model.QueueSettings, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	q, ok := m.rows[id]
+	if !ok {
+		return model.QueueSettings{}, apperror.ErrNotFound
+	}
+	return model.QueueSettings{QueueID: q.ID, QRType: "static"}, nil
+}
+
+func (m *memQueues) CreateQueueSettingsIfMissing(_ context.Context, id int64) error {
+	return nil
+}
+
+func (m *memQueues) UpdateQRType(_ context.Context, id int64, qrType string) error {
+	return nil
+}
+
+func (m *memQueues) UpdateQRCurrentCode(_ context.Context, id int64, token string) error {
+	return nil
+}
+
 // memSubs: langganan owner. Aktif bila expiry masa depan (data model 4.18).
 type memSubs struct {
 	expiry map[int64]time.Time

@@ -8,7 +8,12 @@
 export type SseMessage = { event?: string; data: string };
 
 /** Event dari `GET /api/v1/queues/:id/event`. `payload` bentuknya bergantung pada `type`. */
-export type QueueEventType = 'ticket_joined' | 'ticket_next' | 'queue_updated' | 'queue_closed';
+export type QueueEventType =
+  | 'ticket_joined'
+  | 'ticket_next'
+  | 'queue_updated'
+  | 'queue_closed'
+  | 'queue_qr_updated';
 
 export type QueueEvent = {
   type: QueueEventType;
@@ -17,7 +22,13 @@ export type QueueEvent = {
   ts?: string;
 };
 
-const EVENT_TYPES: readonly QueueEventType[] = ['ticket_joined', 'ticket_next', 'queue_updated', 'queue_closed'];
+const EVENT_TYPES: readonly QueueEventType[] = [
+  'ticket_joined',
+  'ticket_next',
+  'queue_updated',
+  'queue_closed',
+  'queue_qr_updated',
+];
 
 /**
  * Membangun parser incremental. `push` menerima potongan teks apa pun (potongan bisa terpotong di tengah baris).

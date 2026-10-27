@@ -8,8 +8,10 @@ import { DEFAULT_AFTER_LOGIN, sanitizeNext } from '@/lib/safe-next';
 
 test('path internal dikembalikan apa adanya (kembali ke halaman asal, TC-01-09)', () => {
   assert.equal(sanitizeNext('/queues'), '/queues');
-  assert.equal(sanitizeNext('/join/12'), '/join/12');
+  assert.equal(sanitizeNext('/ticket/12'), '/ticket/12');
   assert.equal(sanitizeNext('/queues/7?tab=tickets'), '/queues/7?tab=tickets');
+  assert.equal(sanitizeNext('/join?t=v1.abc.def'), '/join?t=v1.abc.def');
+  assert.equal(sanitizeNext('/join?t=v1.abc.def&x=1'), '/join?t=v1.abc.def&x=1');
 });
 
 test('URL absolut ke situs lain ditolak (open redirect, TC-01-12)', () => {
@@ -44,7 +46,7 @@ test('beranda dan parameter login tidak dipakai sebagai tujuan (hindari loop log
 });
 
 test('fallback yang diberikan pemanggil dipakai, termasuk string kosong', () => {
-  assert.equal(sanitizeNext('https://evil.example', '/join/5'), '/join/5');
+  assert.equal(sanitizeNext('https://evil.example', '/ticket/5'), '/ticket/5');
   assert.equal(sanitizeNext(undefined, ''), '');
   assert.equal(sanitizeNext('/queues', ''), '/queues');
 });

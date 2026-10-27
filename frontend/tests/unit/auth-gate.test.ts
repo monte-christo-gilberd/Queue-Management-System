@@ -8,7 +8,9 @@ import { decideAuthGate, HOME_PATH, LOGIN_PATH } from '@/lib/auth-gate';
 
 test('selama storage belum selesai dibaca tidak ada keputusan (cegah redirect sekilas)', () => {
   assert.deepEqual(decideAuthGate({ mode: 'required', hydrated: false, token: null, path: '/queues' }), { kind: 'wait' });
-  assert.deepEqual(decideAuthGate({ mode: 'guest', hydrated: false, token: 'abc', next: '/join/1' }), { kind: 'wait' });
+  assert.deepEqual(decideAuthGate({ mode: 'guest', hydrated: false, token: 'abc', next: '/join?t=v1.abc.def' }), {
+    kind: 'wait',
+  });
 });
 
 test('halaman terlindungi tanpa login diarahkan ke login dengan ?next= halaman asal', () => {
@@ -16,9 +18,28 @@ test('halaman terlindungi tanpa login diarahkan ke login dengan ?next= halaman a
   assert.deepEqual(decision, { kind: 'redirect', to: '/?next=%2Fqueues' });
 });
 
-test('tautan join tanpa login meminta login dan menyimpan /join/<id> sebagai tujuan (US-14 AC1)', () => {
-  const decision = decideAuthGate({ mode: 'required', hydrated: true, token: null, path: '/join/12' });
-  assert.deepEqual(decision, { kind: 'redirect', to: '/?next=%2Fjoin%2F12' });
+test('tautan join tanpa login meminta login dan menyimpan /join?t=... sebagai tujuan (US-14 AC1)', () => {
+  const decision = decideAuthGate({
+    mode: 'required',
+    hydrated: true,
+    token: null,
+    path: '/join',
+    nextPath: '/join?t=v1.abc.def',
+  });
+  assert.deepEqual(decision, { kind: 'redirect', to: '/?next=%2Fjoin%3Ft%3Dv1.abc.def' });
+});
+
+test('nextPath eksplisit dipakai agar query token tidak hilang (usePathname tanpa query)', () => {
+  const decision = decideAuthGate({ mode: 'required', hydrated: true, token: null, path: '/join' });
+  assert.deepEqual(decision, { kind: 'redirect', to: '/?next=%2Fjoin' });
+  const withToken = decideAuthGate({
+    mode: 'required',
+    hydrated: true,
+    token: null,
+    path: '/join',
+    nextPath: '/join?t=token-123',
+  });
+  assert.deepEqual(withToken, { kind: 'redirect', to: '/?next=%2Fjoin%3Ft%3Dtoken-123' });
 });
 
 test('halaman terlindungi dengan token boleh dirender', () => {
@@ -42,7 +63,7 @@ test('dari halaman login (/) tidak menambahkan ?next= (sudah di login)', () => {
 });
 
 test('parameter next dari halaman login/register dikembalikan dengan benar setelah login (round trip)', () => {
-  const original = '/join/42';
+  const original = '/join?t=v1.abc.def';
   const toLogin = decideAuthGate({ mode: 'required', hydrated: true, token: null, path: original });
   assert.equal(toLogin.kind, 'redirect');
   const encoded = new URL(toLogin.kind === 'redirect' ? toLogin.to : '', 'http://x').searchParams.get('next');
@@ -50,13 +71,15 @@ test('parameter next dari halaman login/register dikembalikan dengan benar setel
 });
 
 test('halaman login tanpa token dirender', () => {
-  assert.deepEqual(decideAuthGate({ mode: 'guest', hydrated: true, token: null, next: '/join/1' }), { kind: 'render' });
+  assert.deepEqual(decideAuthGate({ mode: 'guest', hydrated: true, token: null, next: '/join?t=v1.abc.def' }), {
+    kind: 'render',
+  });
 });
 
 test('pengguna yang sudah login dari halaman login dilanjutkan ke next yang aman (US-14 kembali ke join)', () => {
-  assert.deepEqual(decideAuthGate({ mode: 'guest', hydrated: true, token: 'tok', next: '/join/12' }), {
+  assert.deepEqual(decideAuthGate({ mode: 'guest', hydrated: true, token: 'tok', next: '/join?t=v1.abc.def' }), {
     kind: 'redirect',
-    to: '/join/12',
+    to: '/join?t=v1.abc.def',
   });
 });
 

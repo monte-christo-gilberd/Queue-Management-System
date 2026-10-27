@@ -3,77 +3,81 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueueEvents } from '@/hooks/use-queue-events';
 import { ApiError } from '@/lib/api';
 import { describeQueueError } from '@/lib/queue-errors';
-import { getQueueInfo, getQueueStatus, joinQueue } from '@/lib/tickets';
-import type { PublicQueue, QueueStatus } from '@/types/api';
+import { joinByToken, previewJoin } from '@/lib/qr';
+import { getQueueStatus } from '@/lib/tickets';
+import type { PublicQueue, QueueStatus, Ticket } from '@/types/api';
 
 const RELOAD_DEBOUNCE_MS = 300;
 
 /**
- * Sisi customer untuk satu antrian: status tiket saya + gabung antrian + update lewat SSE.
+ * Sisi customer untuk satu token join: preview token -> info antrian -> status tiket -> SSE.
  *
+ * `token` adalah token join dari QR (`/join?t=<token>`); tanpa token antrian tidak valid.
  * `status` null dan tanpa error = belum bergabung (backend membalas 404 untuk non-pemegang tiket).
- * Id tidak valid langsung dianggap tidak ditemukan tanpa request.
  */
-export function useCustomerQueue(queueId: number) {
-  const invalid = !Number.isInteger(queueId) || queueId <= 0;
+export function useCustomerQueue(token: string | null) {
+  const invalid = !token;
 
   const [status, setStatus] = useState<QueueStatus | null>(null);
   const [loading, setLoading] = useState(!invalid);
   const [error, setError] = useState<string>();
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string>();
-  // Info publik (nama, deskripsi) tersedia sebelum bergabung.
   const [info, setInfo] = useState<PublicQueue | null>(null);
-  // Info publik dijawab 404 = antrian tidak ada (info boleh dilihat semua user yang login).
-  const [infoMissing, setInfoMissing] = useState(false);
+  const [infoMissing, setInfoMissing] = useState(invalid);
+  const [queueId, setQueueId] = useState<number | null>(null);
 
-  const loadStatus = useCallback(async () => {
+  const loadStatus = useCallback(async (id: number) => {
     try {
-      const data = await getQueueStatus(queueId);
+      const data = await getQueueStatus(id);
       setStatus(data);
       setError(undefined);
+      return data;
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
         setStatus(null);
         setError(undefined);
-      } else {
-        setError(describeQueueError(e));
+        return null;
       }
-    } finally {
-      setLoading(false);
+      setError(describeQueueError(e));
+      return null;
     }
-  }, [queueId]);
+  }, []);
 
-  // Info publik antrian. then() → setState tidak terjadi sinkron di dalam effect.
+  // Preview token -> info publik antrian.
   useEffect(() => {
     if (invalid) return;
     let active = true;
-    void getQueueInfo(queueId).then(
-      (data) => {
-        if (active) setInfo(data);
-      },
-      (e: unknown) => {
+    void previewJoin(token as string)
+      .then((data) => {
+        if (!active) return;
+        setInfo(data);
+        setInfoMissing(false);
+        setQueueId(data.id);
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
         if (!active) return;
         setInfo(null);
-        if (e instanceof ApiError && e.status === 404) setInfoMissing(true);
-      },
-    );
+        setInfoMissing(true);
+        setError(describeQueueError(e));
+        setLoading(false);
+      });
     return () => {
       active = false;
     };
-  }, [invalid, queueId]);
+  }, [invalid, token]);
 
-  // Muat awal. then() → setState tidak terjadi sinkron di dalam effect.
+  // Status antrian per queueId dari preview. `.then()` agar setState tidak sinkron di effect.
   useEffect(() => {
-    if (invalid) return;
+    if (queueId == null) return;
     let active = true;
     void getQueueStatus(queueId).then(
       (data) => {
-        if (active) {
-          setStatus(data);
-          setError(undefined);
-          setLoading(false);
-        }
+        if (!active) return;
+        setStatus(data);
+        setError(undefined);
+        setLoading(false);
       },
       (e: unknown) => {
         if (!active) return;
@@ -89,15 +93,13 @@ export function useCustomerQueue(queueId: number) {
     return () => {
       active = false;
     };
-  }, [invalid, queueId]);
+  }, [queueId]);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const scheduleReload = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      void loadStatus();
-    }, RELOAD_DEBOUNCE_MS);
-  }, [loadStatus]);
+    timerRef.current = setTimeout(() => void loadStatus(queueId as number), RELOAD_DEBOUNCE_MS);
+  }, [loadStatus, queueId]);
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -105,12 +107,9 @@ export function useCustomerQueue(queueId: number) {
     [],
   );
 
-  // SSE hanya untuk pemegang tiket: backend menolak (404) yang belum bergabung dan hook berhenti permanen.
-  // Setelah bergabung, `hasTicket` menjadi true sehingga koneksi live dibuka tanpa perlu memuat ulang halaman.
   const hasTicket = status?.my_ticket != null;
-  useQueueEvents(invalid || !hasTicket ? null : queueId, {
+  useQueueEvents(invalid || !hasTicket ? null : (queueId as number), {
     onEvent: (event) => {
-      // Setiap perubahan antrian (tiket baru, nomor dilayani, ditutup) mengubah posisi saya.
       if (event.type === 'ticket_joined' || event.type === 'ticket_next' || event.type === 'queue_closed') {
         scheduleReload();
       }
@@ -120,29 +119,45 @@ export function useCustomerQueue(queueId: number) {
     },
   });
 
-  const join = useCallback(async () => {
-    setJoining(true);
-    setJoinError(undefined);
-    try {
-      await joinQueue(queueId);
-      await loadStatus();
-    } catch (e) {
-      if (e instanceof ApiError && e.code === 'ALREADY_JOINED') {
-        // sudah terdaftar (mis. klik ganda): cukup tampilkan statusnya
-        await loadStatus();
-      } else if (e instanceof ApiError && e.status === 404) {
-        setJoinError('Antrian tidak ditemukan');
-      } else {
-        setJoinError(describeQueueError(e));
+  const join = useCallback(
+    async () => {
+      if (!token) return;
+      setJoining(true);
+      setJoinError(undefined);
+      try {
+        const ticket: Ticket = await joinByToken(token);
+        // Setelah join, status lengkap (nomor dilayani, orang di depan) baru tersedia.
+        const data = queueId != null ? await loadStatus(queueId) : null;
+        if (data) {
+          setStatus(data);
+        } else if (info) {
+          // Fallback bila status belum bisa dibaca: tampilkan tiket yang baru didapat.
+          setStatus({
+            queue: info,
+            my_ticket: ticket,
+            current_number: null,
+            waiting_ahead: null,
+            previous_number: null,
+            next_number: null,
+          });
+        }
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409 && e.code === 'ALREADY_JOINED') {
+          // Sudah terdaftar (mis. klik ganda): cukup tampilkan statusnya.
+          const data = queueId != null ? await loadStatus(queueId) : null;
+          if (data) setStatus(data);
+        } else {
+          setJoinError(describeQueueError(e));
+        }
+      } finally {
+        setJoining(false);
       }
-    } finally {
-      setJoining(false);
-    }
-  }, [queueId, loadStatus]);
+    },
+    [token, queueId, info, loadStatus],
+  );
 
-  const invalidMessage = invalid ? 'Antrian tidak ditemukan' : undefined;
-  // Antrian tidak ada dan user belum punya tiket: tampilkan pesan, bukan tombol gabung.
-  const missingMessage = infoMissing && !status ? 'Antrian tidak ditemukan' : undefined;
+  const invalidMessage = invalid ? 'Tautan tidak valid' : undefined;
+  const missingMessage = !invalid && infoMissing && !status ? 'Antrian tidak ditemukan' : undefined;
 
   return useMemo(
     () => ({

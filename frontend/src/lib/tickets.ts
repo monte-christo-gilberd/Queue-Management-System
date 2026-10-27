@@ -19,14 +19,6 @@ export async function nextTicket(queueId: number): Promise<Ticket> {
 }
 
 /**
- * POST /api/v1/queues/:id/join — customer bergabung ke antrian. Respons langsung objek tiket.
- * 409 ALREADY_JOINED / QUEUE_CLOSED, 404 bila antrian tidak ada, 503 RETRY_EXHAUSTED bila sibuk.
- */
-export async function joinQueue(queueId: number): Promise<Ticket> {
-  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/join`, { method: 'POST' });
-}
-
-/**
  * GET /api/v1/queues/:id/status — status untuk pemegang tiket. Untuk yang belum punya tiket backend
  * membalas 404 (sama dengan antrian tidak ada); pemanggil memperlakukannya sebagai "belum bergabung".
  */

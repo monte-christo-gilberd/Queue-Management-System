@@ -7,6 +7,7 @@ import (
 	"qms/internal/database"
 	"qms/internal/handler"
 	"qms/internal/middleware"
+	"qms/internal/qrclient"
 	"qms/internal/repository"
 	"qms/internal/router"
 	"qms/internal/service"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
+	"time"
 )
 
 func main() {
@@ -58,14 +60,35 @@ func main() {
 			hub,
 		).
 		WithTicketHolderChecker(ticketRepo)
+
+	qrService := service.
+		NewQRService(
+			queueRepo,
+			qrclient.New(
+				cfg.QRServiceURL,
+				cfg.QRServiceToken,
+				cfg.QRHTTPTimeout,
+			),
+			cfg.PublicAppURL,
+			cfg.PublicQRURL,
+			hub,
+		).
+		WithDynamicTTL(120 * time.Second)
+
 	queueHandler := handler.
-		NewQueueHandler(queueService)
+		NewQueueHandlerWithQR(
+			queueService,
+			qrService,
+		)
 
 	ticketService := service.
 		NewTicketService(ticketRepo, txRunner, hub).
 		WithQueueGuard(queueService)
 	ticketHandler := handler.
-		NewTicketHandler(ticketService)
+		NewTicketHandlerWithQR(
+			ticketService,
+			qrService,
+		)
 
 	sseHandler := handler.
 		NewSSEHandler(hub, queueService)

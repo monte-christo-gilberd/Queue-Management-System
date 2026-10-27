@@ -11,7 +11,7 @@ Folder ini berisi konfigurasi nginx sebagai reverse proxy. Ia **terpisah dari ko
 | `qms-http.conf` | HTTP saja | Uji awal, dan agar certbot bisa memverifikasi domain |
 | `qms.conf` | HTTPS + redirect dari HTTP | Setelah sertifikat terpasang (produksi) |
 | `templates/default.conf.template` | HTTP untuk container, variabel diisi saat start | Dipakai `Dockerfile` |
-| `Dockerfile`, `Dockerfile.dockerignore` | Image nginx | Belum di-build |
+| `Dockerfile`, `Dockerfile.dockerignore` | Image nginx | Dipakai `docker compose` (lihat `docker-compose.yml` di root) |
 
 Kedua berkas punya dua placeholder yang harus diganti:
 - `QMS_DOMAIN`: nama domain, mis. `qms.contoh.ac.id`.
@@ -24,6 +24,9 @@ Alamat backend ada di blok `upstream qms_backend` (default `127.0.0.1:8080`).
 - **Frontend statis** dilayani dari `QMS_FRONTEND_DIR`. Rute Expo (`/dashboard`, `/queues/12`, dst.) jatuh kembali ke `index.html`.
 - **API** `/api/...` diteruskan ke backend. Dengan begitu frontend dan API satu origin.
 - **SSE** `/api/v1/queues/:id/event` diteruskan tanpa buffer dan dengan timeout 1 jam. Tanpa ini, event `ticket_next` tertahan di nginx dan layar customer tidak berubah secara live.
+- **QR publik** `/qr/` diteruskan ke qr-service (port 8090) dengan rate limit 20 r/s per IP (burst 40).
+  Cache header (`immutable` untuk statis, `no-store` untuk dinamis) datang dari qr-service.
+- **Endpoint internal** `/internal/` selalu `404` dari luar; endpoint qr-service hanya untuk jaringan internal.
 - **HTTPS** dengan redirect dari HTTP.
 
 ## Variabel untuk container
@@ -34,6 +37,7 @@ Dipakai hanya oleh `Dockerfile` (lewat `templates/default.conf.template`). Diisi
 |---|---|---|
 | `QMS_DOMAIN` | `localhost` | Nama host untuk `server_name` |
 | `BACKEND_HOST` | `backend` | Nama service backend di jaringan Docker (port 8080) |
+| `QR_SERVICE_HOST` | `qr-service` | Nama service qr-service di jaringan Docker (port 8090) |
 | `FRONTEND_ROOT` | `/srv/qms-frontend` | Folder frontend statis di dalam container (volume yang berisi `dist`) |
 
 Container ini hanya melayani HTTP di port 80. TLS perlu diurus di luar container.
@@ -46,7 +50,10 @@ Container ini hanya melayani HTTP di port 80. TLS perlu diurus di luar container
    EXPO_PUBLIC_API_URL=https://QMS_DOMAIN npx expo export --platform web
    ```
    Salin folder `dist/` ke server, mis. `/var/www/qms/frontend`.
-2. Jalankan backend sebagai service di `127.0.0.1:8080` dengan `.env` produksi. Tambahkan origin produksi ke `ALLOWED_ORIGINS` (mis. `https://qms.contoh.ac.id`).
+2. Jalankan backend sebagai service di `127.0.0.1:8080` dan qr-service di `127.0.0.1:8090`
+   dengan `.env` produksi. Samakan `QR_SERVICE_TOKEN` di keduanya; `JOIN_LINK_SECRET` hanya di qr-service.
+   Tambahkan origin produksi ke `ALLOWED_ORIGINS` (mis. `https://qms.contoh.ac.id`), dan set
+   `PUBLIC_APP_URL`/`PUBLIC_QR_URL` ke origin nginx agar QR bisa dipindai.
 3. Salin `qms-http.conf` ke `/etc/nginx/sites-available/qms`, ganti placeholder, aktifkan, lalu cek:
    ```bash
    sudo ln -s /etc/nginx/sites-available/qms /etc/nginx/sites-enabled/qms
@@ -62,6 +69,8 @@ Container ini hanya melayani HTTP di port 80. TLS perlu diurus di luar container
 
 - `https://QMS_DOMAIN/` menampilkan halaman login.
 - `https://QMS_DOMAIN/api/v1/queues` tanpa token membalas 401 (bukan 502). 502 berarti backend tidak jalan.
+- `https://QMS_DOMAIN/qr/join.png?token=...` membalas PNG; token rusak membalas 401 `QR_INVALID`.
+- `https://QMS_DOMAIN/internal/v1/join-token` membalas 404 (tidak boleh diekspos).
 - Buka dua browser, owner dan customer. Saat owner menekan Next, layar customer berubah tanpa refresh. Kalau tidak berubah, periksa blok SSE.
 
 ## Catatan
@@ -69,3 +78,4 @@ Container ini hanya melayani HTTP di port 80. TLS perlu diurus di luar container
 - Karena lewat proxy, frontend dan API berada di satu origin. CORS hanya dibutuhkan kalau frontend diakses dari origin lain, tetapi menambahkan origin produksi ke `ALLOWED_ORIGINS` tetap aman.
 - Sertifikat diperpanjang otomatis oleh certbot. Blok `/.well-known/acme-challenge/` di `qms.conf` harus tetap ada agar perpanjangan berhasil.
 - Backend memakai `engine.Run(port)`, jadi jangan membuka port 8080 ke publik. Biarkan hanya nginx yang terbuka (80 dan 443).
+- qr-service tidak boleh diberi `ports:` di Compose dan tidak boleh diproksikan `/internal/`. Hanya `/qr/` yang publik.

@@ -6,6 +6,14 @@ upstream qms_backend {
     keepalive 16;
 }
 
+upstream qr_service {
+    server ${QR_SERVICE_HOST}:8090;
+    keepalive 8;
+}
+
+# Batasi scan/render QR publik (20 r/s per IP, burst 40).
+limit_req_zone $binary_remote_addr zone=qr_join:10m rate=20r/s;
+
 server {
     listen 80;
     listen [::]:80;
@@ -14,6 +22,25 @@ server {
     # Sertifikat ACME (certbot webroot) jika TLS dipasang di sini kelak.
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
+    }
+
+    # Endpoint internal qr-service tidak boleh dijangkau dari luar (defense in depth).
+    location /internal/ {
+        return 404;
+    }
+
+    # QR join dirender qr-service. Cache header (immutable/no-store) datang dari service.
+    location /qr/ {
+        limit_req zone=qr_join burst=40 nodelay;
+        proxy_pass http://qr_service;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache off;
+        proxy_read_timeout 30s;
     }
 
     # SSE: stream diteruskan tanpa buffer dan dengan timeout panjang. Lokasi regex diperiksa sebelum prefix.

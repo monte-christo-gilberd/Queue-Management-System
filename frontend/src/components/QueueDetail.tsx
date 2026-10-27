@@ -43,10 +43,8 @@ export type QueueDetailProps = {
   /** TODO: backend belum mendukung ini (catatan antrian) */
   onSubmitNote?: (note: string) => void;
 
-  /** Tautan join untuk dibagikan (`<origin>/join/<id>`). Null = tidak tersedia (mis. native tanpa EXPO_PUBLIC_WEB_URL). */
-  joinLink?: string | null;
-  onCopyLink?: () => void;
-  linkCopied?: boolean;
+  /** Slot kartu QR (dirender route dari `useQueueQR`). */
+  qrCard?: React.ReactNode;
 
   /** Tutup antrian (POST /close). Dipanggil setelah pengguna mengonfirmasi di popup. */
   onCloseQueue?: () => void;
@@ -70,9 +68,7 @@ export default function QueueDetail({
   onNext,
   nextLoading = false,
   onSubmitNote,
-  joinLink,
-  onCopyLink,
-  linkCopied = false,
+  qrCard,
   onCloseQueue,
   closing = false,
 }: QueueDetailProps) {
@@ -86,7 +82,6 @@ export default function QueueDetail({
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   // TODO: backend belum mendukung pengaturan antrian; toggle ini hanya tampilan.
   const [loopEnabled, setLoopEnabled] = useState(false);
-  const [dynamicQrEnabled, setDynamicQrEnabled] = useState(false);
 
   return (
     <ResponsiveScreenLayout
@@ -98,27 +93,9 @@ export default function QueueDetail({
       fullHeight={isWide}
     >
       <View className={isWide ? "flex-1 flex-row gap-6" : "gap-4"}>
-        {/* Kolom kiri: tautan, papan antrian, dan tampilan customer. Di desktop tidak di-scroll. */}
+        {/* Kolom kiri: QR, papan antrian, dan tampilan customer. Di desktop tidak di-scroll. */}
         <View className={cn("gap-4", isWide && "w-[38%]")}>
-          {joinLink !== undefined && !isClosed ? (
-            <View className="gap-2 rounded-card border border-line p-3.5">
-              <Text className="text-[12px] font-semibold text-muted">Tautan join untuk customer</Text>
-              {joinLink ? (
-                <Text selectable className="text-[13px] font-bold text-foreground">
-                  {joinLink}
-                </Text>
-              ) : (
-                <Text className="text-[13px] text-muted">Tautan tidak tersedia di perangkat ini.</Text>
-              )}
-              {joinLink && onCopyLink ? (
-                <AppButton
-                  label={linkCopied ? "TERSALIN" : "SALIN TAUTAN"}
-                  variant="outline"
-                  onPress={onCopyLink}
-                />
-              ) : null}
-            </View>
-          ) : null}
+          {qrCard}
 
           {!isClosed ? (
             <View className="flex-row gap-3">
@@ -180,13 +157,6 @@ export default function QueueDetail({
                 <Text className="text-[12px] text-muted">mundur 2 kali · ke belakang · langsung batal</Text>
               </View>
               <Switch value={loopEnabled} onValueChange={setLoopEnabled} />
-            </View>
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1 gap-0.5 pr-3">
-                <Text className="text-[14px] font-bold text-foreground">Sistem QR</Text>
-                <Text className="text-[12px] text-muted">static · dynamic</Text>
-              </View>
-              <Switch value={dynamicQrEnabled} onValueChange={setDynamicQrEnabled} />
             </View>
           </View>
 

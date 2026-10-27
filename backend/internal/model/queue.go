@@ -14,4 +14,3 @@ type Queue struct {
 	CreatedAt time.Time      `db:"created_at"`
 	ClosedAt  sql.NullTime   `db:"closed_at"`
 }
-

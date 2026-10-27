@@ -3,14 +3,14 @@ import { useState } from 'react';
 import { Text } from 'react-native';
 
 import QueueDetail from '@/components/QueueDetail';
+import { QueueQRCard } from '@/components/QueueQRCard';
 import type { TimelineItem } from '@/components/QueueTimeline';
 import ResponsiveScreenLayout from '@/components/layout/ResponsiveScreenLayout';
 import { useQueueBoard } from '@/hooks/use-queue-board';
+import { useQueueQR } from '@/hooks/use-queue-qr';
 import { useQueueDetail } from '@/hooks/use-queues';
 import { describeQueueError } from '@/lib/queue-errors';
-import { buildJoinLink } from '@/lib/join-link';
 import { closeQueue, updateQueue } from '@/lib/queues';
-import { copyToClipboard, currentWebOrigin } from '@/lib/web-origin';
 import { useAuthStore } from '@/store/authStore';
 import type { Queue } from '@/types/api';
 import { formatTicketNumber } from '@/utils/format';
@@ -61,8 +61,9 @@ function QueueDetailEditor({
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
-  const [linkCopied, setLinkCopied] = useState(false);
-  const joinLink = buildJoinLink(queue.id, currentWebOrigin());
+
+  // QR antrian: token statis/dinamis + countdown + penggantian kode (qr-service lewat backend).
+  const qr = useQueueQR(queue.id);
 
   // Papan tiket: daftar tiket + SKIP/NEXT. Antrian ditutup dari sini memuat ulang detail.
   const board = useQueueBoard(queue.id, () => void reload());
@@ -72,13 +73,6 @@ function QueueDetailEditor({
     status: t.id === currentId ? 'current' : t.status === 'completed' ? 'done' : t.status,
   }));
   const currentNumber = board.view.current ? formatTicketNumber(board.view.current.ticket.ticket_number) : null;
-
-  async function copyLink() {
-    if (!joinLink) return;
-    const ok = await copyToClipboard(joinLink);
-    setLinkCopied(ok);
-    if (!ok) setErrorMessage('Tidak dapat menyalin. Salin tautan secara manual.');
-  }
 
   async function save() {
     const name = queueName.trim();
@@ -128,9 +122,19 @@ function QueueDetailEditor({
       currentNumber={currentNumber}
       onNext={() => void board.next()}
       nextLoading={board.nextLoading}
-      joinLink={joinLink}
-      onCopyLink={() => void copyLink()}
-      linkCopied={linkCopied}
+      qrCard={
+        <QueueQRCard
+          qr={qr.qr}
+          loading={qr.loading}
+          error={qr.error}
+          toggling={qr.toggling}
+          replacing={qr.replacing}
+          countdown={qr.countdown}
+          onToggle={(type) => void qr.toggle(type)}
+          onReplace={() => void qr.replace()}
+          onRetry={qr.refresh}
+        />
+      }
       onCloseQueue={close}
       closing={closing}
     />

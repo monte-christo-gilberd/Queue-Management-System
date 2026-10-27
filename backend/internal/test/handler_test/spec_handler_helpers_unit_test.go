@@ -152,14 +152,18 @@ func (m *specQueueSvc) CloseQueue(_ context.Context, queueID, requesterID int64)
 type specTicketSvc struct {
 	mu sync.Mutex
 
-	ticket    model.Ticket
-	status    model.QueueStatus
-	tickets   []model.Ticket
-	err       error
-	gotQueue  int64
-	gotUser   int64
-	gotStatus []string
-	calls     int
+	ticket     model.Ticket
+	status     model.QueueStatus
+	tickets    []model.Ticket
+	err        error
+	gotQueue   int64
+	gotUser    int64
+	gotStatus  []string
+	calls      int
+	gotToken   string
+	joinQueue  model.Queue
+	resolveErr error
+	joinErr    error
 }
 
 func (s *specTicketSvc) record(queueID, requesterID int64) {
@@ -172,7 +176,7 @@ func (s *specTicketSvc) record(queueID, requesterID int64) {
 
 func (s *specTicketSvc) JoinQueue(_ context.Context, queueID, userID int64) (model.Ticket, error) {
 	s.record(queueID, userID)
-	return s.ticket, s.err
+	return s.ticket, s.joinErr
 }
 
 func (s *specTicketSvc) NextTicket(_ context.Context, queueID, requesterID int64) (model.Ticket, error) {
@@ -194,6 +198,12 @@ func (s *specTicketSvc) QueueStatus(_ context.Context, queueID, requesterID int6
 func (s *specTicketSvc) ListMyTickets(_ context.Context, userID int64) ([]model.UserTicket, error) {
 	s.record(0, userID)
 	return nil, s.err
+}
+
+// ResolveJoinToken: stub verifikasi token join (token -> antrian).
+func (s *specTicketSvc) ResolveJoinToken(_ context.Context, token string) (model.Queue, error) {
+	s.gotToken = token
+	return s.joinQueue, s.resolveErr
 }
 
 // specUserSvc: stub untuk handler.UserService.

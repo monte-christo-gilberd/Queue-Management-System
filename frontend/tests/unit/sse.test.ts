@@ -100,7 +100,7 @@ test('queue_id harus bilangan bulat', () => {
 });
 
 test('semua jenis event dari backend dikenali', () => {
-  for (const type of ['ticket_joined', 'ticket_next', 'queue_updated', 'queue_closed']) {
+  for (const type of ['ticket_joined', 'ticket_next', 'queue_updated', 'queue_closed', 'queue_qr_updated']) {
     assert.equal(parseQueueEvent(`{"type":"${type}","queue_id":1}`)?.type, type);
   }
 });
