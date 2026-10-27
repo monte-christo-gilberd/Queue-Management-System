@@ -76,3 +76,22 @@ export type QueueStatus = {
   /** ticket_number waiting pertama; null bila tidak ada yang menunggu. */
   next_number: number | null;
 };
+
+/** Respons QR owner: `{ action, queue_id, type, join_url, image_url, expires_at }`. */
+export type QueueQR = {
+  action: 'queue_qr';
+  queue_id: number;
+  type: 'static' | 'dynamic';
+  join_url: string;
+  image_url: string;
+  /** Token dinamis kedaluwarsa; null untuk token statis. */
+  expires_at: number | null;
+};
+
+/** Error QR dari backend. */
+export type QueueQRErrorCode =
+  | 'QR_INVALID'
+  | 'QR_EXPIRED'
+  | 'QR_TYPE_INVALID'
+  | 'QR_UNAVAILABLE'
+  | 'QR_REPLACE_NOT_ALLOWED';

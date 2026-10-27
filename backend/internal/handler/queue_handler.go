@@ -46,8 +46,28 @@ type QueueService interface {
 	) error
 }
 
+type QueueQRService interface {
+	GetQR(
+		ctx context.Context,
+		queueID int64,
+		requesterID int64,
+	) (dto.QueueQRResponse, error)
+	SetQRType(
+		ctx context.Context,
+		queueID int64,
+		requesterID int64,
+		qrType string,
+	) (dto.QueueQRResponse, error)
+	ReplaceQR(
+		ctx context.Context,
+		queueID int64,
+		requesterID int64,
+	) (dto.QueueQRResponse, error)
+}
+
 type QueueHandler struct {
 	service QueueService
+	qr      QueueQRService
 }
 
 func NewQueueHandler(
@@ -55,6 +75,16 @@ func NewQueueHandler(
 ) *QueueHandler {
 	return &QueueHandler{
 		service: service,
+	}
+}
+
+func NewQueueHandlerWithQR(
+	service QueueService,
+	qr QueueQRService,
+) *QueueHandler {
+	return &QueueHandler{
+		service: service,
+		qr:      qr,
 	}
 }
 
@@ -408,4 +438,101 @@ func (h *QueueHandler) Info(
 			"queue":  dto.NewPublicQueueResponse(queue),
 		},
 	)
+}
+
+// GetQR: GET /api/v1/queues/:queue_id/qr — status QR operator untuk satu antrian.
+func (h *QueueHandler) GetQR(
+	c *gin.Context,
+) {
+	requesterID := c.GetInt64("user_id")
+	queueID, err := strconv.ParseInt(c.Param("queue_id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
+		return
+	}
+
+	qr, err := h.qr.GetQR(c.Request.Context(), queueID, requesterID)
+	if err != nil {
+		h.respondQRError(c, err)
+		return
+	}
+
+	respondData(c, http.StatusOK, qr)
+}
+
+// SetQRType: PUT /api/v1/queues/:queue_id/qr/type — set mode statis/dinamik.
+func (h *QueueHandler) SetQRType(
+	c *gin.Context,
+) {
+	requesterID := c.GetInt64("user_id")
+	queueID, err := strconv.ParseInt(c.Param("queue_id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
+		return
+	}
+
+	var req dto.SetQRTypeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+		return
+	}
+
+	qr, err := h.qr.SetQRType(c.Request.Context(), queueID, requesterID, req.Type)
+	if err != nil {
+		h.respondQRError(c, err)
+		return
+	}
+
+	respondData(c, http.StatusOK, qr)
+}
+
+// ReplaceQR: POST /api/v1/queues/:queue_id/qr/replace — mengganti kode statis.
+func (h *QueueHandler) ReplaceQR(
+	c *gin.Context,
+) {
+	requesterID := c.GetInt64("user_id")
+	queueID, err := strconv.ParseInt(c.Param("queue_id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
+		return
+	}
+
+	qr, err := h.qr.ReplaceQR(c.Request.Context(), queueID, requesterID)
+	if err != nil {
+		h.respondQRError(c, err)
+		return
+	}
+
+	respondData(c, http.StatusOK, qr)
+}
+
+// respondQRError memetakan error QR ke response API.
+func (h *QueueHandler) respondQRError(
+	c *gin.Context,
+	err error,
+) {
+	switch {
+	case errors.Is(err, apperror.ErrQRInvalid):
+		respondError(c, http.StatusNotFound, "QR_INVALID", "invalid or revoked qr token")
+		return
+	case errors.Is(err, apperror.ErrQRExpired):
+		respondError(c, http.StatusGone, "QR_EXPIRED", "qr token expired")
+		return
+	case errors.Is(err, apperror.ErrQRTypeInvalid):
+		respondError(c, http.StatusBadRequest, "QR_TYPE_INVALID", "invalid qr type")
+		return
+	case errors.Is(err, apperror.ErrQRReplaceNotAllowed):
+		respondError(c, http.StatusConflict, "QR_REPLACE_NOT_ALLOWED", "qr replacement is only allowed for static qr")
+		return
+	case errors.Is(err, apperror.ErrQRUnavailable):
+		respondError(c, http.StatusServiceUnavailable, "QR_UNAVAILABLE", "qr service is unavailable")
+		return
+	case errors.Is(err, apperror.ErrNotFound):
+		respondError(c, http.StatusNotFound, "NOT_FOUND", "queue not found")
+		return
+	}
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
 }

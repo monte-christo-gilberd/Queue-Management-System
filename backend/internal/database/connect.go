@@ -15,7 +15,7 @@ type Config struct {
 func Connect(cfg Config) (*sqlx.DB, error) {
 
 	db, err := sqlx.Connect(
-		"pgx", 
+		"pgx",
 		cfg.DSN,
 	)
 	if err != nil {
@@ -23,7 +23,7 @@ func Connect(cfg Config) (*sqlx.DB, error) {
 	}
 
 	ctx, cancel := context.WithTimeout(
-		context.Background(), 
+		context.Background(),
 		5*time.Second,
 	)
 	defer cancel()

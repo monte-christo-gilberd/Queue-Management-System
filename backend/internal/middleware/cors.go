@@ -19,7 +19,7 @@ func CORS(
 		// origin := c.GetHeader("Origin")
 
 		// if originMap[origin] {
-			c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Origin", "*")
 		// }
 
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")

@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -23,10 +24,18 @@ type stubTicketService struct {
 	nextErr     error
 	statuses    []string
 	called      bool
+	token       string
+	joinQueue   model.Queue
+	resolveErr  error
 }
 
 func (s *stubTicketService) JoinQueue(context.Context, int64, int64) (model.Ticket, error) {
 	return model.Ticket{}, s.joinErr
+}
+
+func (s *stubTicketService) ResolveJoinToken(_ context.Context, token string) (model.Queue, error) {
+	s.token = token
+	return s.joinQueue, s.resolveErr
 }
 
 func (s *stubTicketService) NextTicket(context.Context, int64, int64) (model.Ticket, error) {
@@ -61,10 +70,10 @@ func (s *stubTicketService) ListTickets(
 func newListEngine(svc *stubTicketService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	h := handler.NewTicketHandler(svc)
+	h := handler.NewTicketHandlerWithQR(svc, svc)
 	e.GET("/queues/:queue_id/tickets", h.List)
 	e.GET("/queues/:queue_id/status", h.Status)
-	e.POST("/queues/:queue_id/join", h.Join)
+	e.POST("/join", h.Join)
 	e.POST("/queues/:queue_id/next", h.Next)
 	return e
 }
@@ -116,25 +125,29 @@ func TestListTickets_NotFoundAndInternal(t *testing.T) {
 
 func doPost(e *gin.Engine, target string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	e.ServeHTTP(w, httptest.NewRequest(http.MethodPost, target, nil))
+	e.ServeHTTP(w, httptest.NewRequest(http.MethodPost, target, bytes.NewBufferString(`{"t":"token-abc"}`)))
 	return w
 }
 
 func TestJoin_ErrorMapping(t *testing.T) {
 	cases := []struct {
-		err    error
+		name   string
+		svc    *stubTicketService
 		status int
 		code   string
 	}{
-		{apperror.ErrNotFound, http.StatusNotFound, "NOT_FOUND"},
-		{apperror.ErrQueueClosed, http.StatusConflict, "QUEUE_CLOSED"},
-		{apperror.ErrAlreadyJoined, http.StatusConflict, "ALREADY_JOINED"},
-		{apperror.ErrRetryExhausted, http.StatusServiceUnavailable, "RETRY_EXHAUSTED"},
+		{"qr_invalid", &stubTicketService{resolveErr: apperror.ErrQRInvalid}, http.StatusNotFound, "QR_INVALID"},
+		{"qr_expired", &stubTicketService{resolveErr: apperror.ErrQRExpired}, http.StatusGone, "QR_EXPIRED"},
+		{"qr_unavailable", &stubTicketService{resolveErr: apperror.ErrQRUnavailable}, http.StatusServiceUnavailable, "QR_UNAVAILABLE"},
+		{"not_found", &stubTicketService{resolveErr: apperror.ErrNotFound}, http.StatusNotFound, "NOT_FOUND"},
+		{"queue_closed", &stubTicketService{joinErr: apperror.ErrQueueClosed}, http.StatusConflict, "QUEUE_CLOSED"},
+		{"already_joined", &stubTicketService{joinErr: apperror.ErrAlreadyJoined}, http.StatusConflict, "ALREADY_JOINED"},
+		{"retry_exhausted", &stubTicketService{joinErr: apperror.ErrRetryExhausted}, http.StatusServiceUnavailable, "RETRY_EXHAUSTED"},
 	}
 	for _, c := range cases {
-		w := doPost(newListEngine(&stubTicketService{joinErr: c.err}), "/queues/5/join")
+		w := doPost(newListEngine(c.svc), "/join")
 
-		assert.Equal(t, c.status, w.Code, c.code)
+		assert.Equal(t, c.status, w.Code, c.name)
 		assert.Contains(t, w.Body.String(), `"`+c.code+`"`)
 	}
 }

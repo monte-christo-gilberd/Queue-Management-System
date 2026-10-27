@@ -59,7 +59,7 @@ func (h *SSEHandler) ServeSSE(
 	}
 
 	if h.queues != nil {
-		
+
 		if _, _, err := h.queues.ViewQueue(
 			c.Request.Context(),
 			queueID,

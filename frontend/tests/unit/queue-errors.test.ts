@@ -45,6 +45,29 @@ test('input tidak valid meminta pengguna memeriksa isian (TC-08-06, TC-02-02)', 
   assert.equal(describeQueueError(apiError('BAD_REQUEST')), 'Data tidak valid, periksa kembali isian Anda');
 });
 
+test('token QR tidak valid / sudah diganti: minta pindai QR terbaru (4.2 penggantian)', () => {
+  assert.equal(
+    describeQueueError(apiError('QR_INVALID')),
+    'Tautan QR tidak valid atau sudah tidak berlaku. Pindai QR terbaru dari pemilik antrian.',
+  );
+});
+
+test('token QR dinamis kedaluwarsa: minta pindai ulang (4.2 dinamis)', () => {
+  assert.equal(describeQueueError(apiError('QR_EXPIRED')), 'Tautan QR sudah kedaluwarsa. Pindai ulang QR terbaru.');
+});
+
+test('qr-service tidak tersedia: pesan layanan QR sedang down (4.2)', () => {
+  assert.equal(describeQueueError(apiError('QR_UNAVAILABLE')), 'Layanan QR sedang tidak tersedia, coba lagi');
+});
+
+test('mode QR tidak valid dan penggantian dinamis ditolak dengan pesan jelas (4.2)', () => {
+  assert.equal(describeQueueError(apiError('QR_TYPE_INVALID')), 'Mode QR tidak dikenal. Pilih statis atau dinamis.');
+  assert.equal(
+    describeQueueError(apiError('QR_REPLACE_NOT_ALLOWED')),
+    'QR dinamis tidak bisa diganti; biarkan kedaluwarsa dan diperbarui otomatis.',
+  );
+});
+
 test('gagal terhubung ke server menampilkan pesan koneksi dari ApiError (4.2 offline)', () => {
   const error = new ApiError(0, 'NETWORK_ERROR', 'Tidak dapat terhubung ke server');
   assert.equal(describeQueueError(error), 'Tidak dapat terhubung ke server');

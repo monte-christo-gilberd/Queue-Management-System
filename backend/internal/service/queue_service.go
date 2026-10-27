@@ -35,6 +35,24 @@ type QueueRepository interface {
 		ctx context.Context,
 		queueID int64,
 	) error
+	GetQueueSettings(
+		ctx context.Context,
+		queueID int64,
+	) (model.QueueSettings, error)
+	CreateQueueSettingsIfMissing(
+		ctx context.Context,
+		queueID int64,
+	) error
+	UpdateQRType(
+		ctx context.Context,
+		queueID int64,
+		qrType string,
+	) error
+	UpdateQRCurrentCode(
+		ctx context.Context,
+		queueID int64,
+		token string,
+	) error
 }
 type SubscriptionChecker interface {
 	IsActive(

@@ -62,5 +62,14 @@ func SetupRouter(
 		router.sseHandler,
 	)
 
+	// Join berbasis token: customer yang sudah login membuka /join?t=<token>.
+	// Preview dan join diberi auth middleware; token sendiri ditahan service.
+	join := v1.Group("/join")
+	join.Use(router.authMiddleware)
+	if router.ticketHandler != nil {
+		join.GET("/preview", router.ticketHandler.Preview)
+		join.POST("", router.ticketHandler.Join)
+	}
+
 	return engine
 }

@@ -202,6 +202,53 @@ func TestQueueRepository(t *testing.T) {
 	assert.Empty(t, none)
 }
 
+func TestQueueSettingsRepository(t *testing.T) {
+	db := newTestDB(t)
+	repo := repository.NewQueueRepository(db)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "qr@b.c", time.Now().Add(time.Hour))
+
+	q := createQueue(t, db, owner, "QR")
+
+	// CreateNewQueue wajib membuat baris queue_settings dalam transaksi yang sama.
+	settings, err := repo.GetQueueSettings(ctx, q.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.QueueQRTypeStatic, settings.QRType)
+	assert.False(t, settings.QRCurrentCode.Valid)
+
+	// Token statis disimpan dan tetap sama sampai diganti.
+	require.NoError(t, repo.UpdateQRCurrentCode(ctx, q.ID, "v1.token.sig"))
+	settings, err = repo.GetQueueSettings(ctx, q.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "v1.token.sig", settings.QRCurrentCode.String)
+
+	// Beralih ke dinamis tidak menghapus token statis (QR cetak lama berlaku lagi bila kembali statis).
+	require.NoError(t, repo.UpdateQRType(ctx, q.ID, model.QueueQRTypeDynamic))
+	settings, err = repo.GetQueueSettings(ctx, q.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.QueueQRTypeDynamic, settings.QRType)
+	assert.Equal(t, "v1.token.sig", settings.QRCurrentCode.String)
+
+	// Antrian lama tanpa baris queue_settings: lazy backfill harus idempotent.
+	legacy := createQueue(t, db, owner, "Legacy")
+	_, err = db.ExecContext(ctx, `DELETE FROM queue_settings WHERE queue_id = $1`, legacy.ID)
+	require.NoError(t, err)
+	_, err = repo.GetQueueSettings(ctx, legacy.ID)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+
+	require.NoError(t, repo.CreateQueueSettingsIfMissing(ctx, legacy.ID))
+	require.NoError(t, repo.CreateQueueSettingsIfMissing(ctx, legacy.ID))
+	settings, err = repo.GetQueueSettings(ctx, legacy.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.QueueQRTypeStatic, settings.QRType)
+
+	// Update tanpa baris settings = ErrNotFound (bukan panic / update diam-diam).
+	_, err = db.ExecContext(ctx, `DELETE FROM queue_settings WHERE queue_id = $1`, legacy.ID)
+	require.NoError(t, err)
+	assert.ErrorIs(t, repo.UpdateQRType(ctx, legacy.ID, model.QueueQRTypeDynamic), apperror.ErrNotFound)
+	assert.ErrorIs(t, repo.UpdateQRCurrentCode(ctx, legacy.ID, "x"), apperror.ErrNotFound)
+}
+
 func TestTicketRepository(t *testing.T) {
 	db := newTestDB(t)
 	repo := repository.NewTicketRepository(db)

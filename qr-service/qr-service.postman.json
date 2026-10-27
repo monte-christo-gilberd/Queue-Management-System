@@ -1,0 +1,120 @@
+{
+  "info": {
+    "name": "QR Service",
+    "description": "Koleksi endpoint qr-service. Isi variabel baseUrl, serviceToken, dan staticToken sebelum menjalankan request internal. Jalankan 'Issue Join Token - Static' lebih dulu; token disimpan ke staticToken.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8090" },
+    { "key": "serviceToken", "value": "dev-only-service-token-0123456789abcdef" },
+    { "key": "staticToken", "value": "" },
+    { "key": "dynamicToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "Readiness",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/ready"
+      }
+    },
+    {
+      "name": "Issue Join Token - Static",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+              "pm.collectionVariables.set('staticToken', pm.response.json().token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "X-Service-Token", "value": "{{serviceToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"queue_id\":1,\"type\":\"static\"}"
+        },
+        "url": "{{baseUrl}}/internal/v1/join-token"
+      }
+    },
+    {
+      "name": "Issue Join Token - Dynamic",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+              "pm.collectionVariables.set('dynamicToken', pm.response.json().token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "X-Service-Token", "value": "{{serviceToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"queue_id\":1,\"type\":\"dynamic\",\"ttl_seconds\":120}"
+        },
+        "url": "{{baseUrl}}/internal/v1/join-token"
+      }
+    },
+    {
+      "name": "Verify Join Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "X-Service-Token", "value": "{{serviceToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"token\":\"{{staticToken}}\"}"
+        },
+        "url": "{{baseUrl}}/internal/v1/join-token/verify"
+      }
+    },
+    {
+      "name": "Render Join QR",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/qr/join.png?token={{staticToken}}&size=512"
+      }
+    },
+    {
+      "name": "Render Generic QR",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "X-Service-Token", "value": "{{serviceToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"data\":\"PAY-123\",\"size\":512,\"level\":\"M\"}"
+        },
+        "url": "{{baseUrl}}/internal/v1/qr/render"
+      }
+    }
+  ]
+}

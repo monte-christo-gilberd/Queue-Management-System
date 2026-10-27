@@ -24,6 +24,11 @@ export function decideAuthGate(input: {
   token: string | null;
   /** Path saat ini (mis. `/dashboard`). Dipakai untuk `?next=` saat dilempar ke login. */
   path?: string;
+  /**
+   * Tujuan eksplisit setelah login, mis. `/join?t=<token>`. `usePathname()` tidak membawa
+   * query string, jadi halaman yang punya query penting (token join) mengirimkannya sendiri.
+   */
+  nextPath?: string;
   /** Parameter `next` dari URL halaman guest (login/register). Dipakai bila sudah login. */
   next?: unknown;
 }): AuthGateDecision {
@@ -33,7 +38,8 @@ export function decideAuthGate(input: {
 
   if (input.mode === 'required') {
     if (loggedIn) return { kind: 'render' };
-    const path = input.path;
+    // nextPath eksplisit menang agar query (mis. `?t=<token>`) tidak hilang.
+    const path = input.nextPath || input.path;
     // Simpan halaman asal supaya bisa kembali setelah login. Tidak untuk `/` (sudah di login).
     if (path && path !== LOGIN_PATH) {
       return { kind: 'redirect', to: `${LOGIN_PATH}?next=${encodeURIComponent(path)}` };

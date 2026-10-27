@@ -67,6 +67,36 @@ func (f *fakeQueueRepo) CloseQueue(
 	return f.closeErr
 }
 
+func (f *fakeQueueRepo) GetQueueSettings(
+	ctx context.Context,
+	queueID int64,
+) (model.QueueSettings, error) {
+	return model.QueueSettings{}, nil
+}
+
+func (f *fakeQueueRepo) CreateQueueSettingsIfMissing(
+	ctx context.Context,
+	queueID int64,
+) error {
+	return nil
+}
+
+func (f *fakeQueueRepo) UpdateQRType(
+	ctx context.Context,
+	queueID int64,
+	qrType string,
+) error {
+	return nil
+}
+
+func (f *fakeQueueRepo) UpdateQRCurrentCode(
+	ctx context.Context,
+	queueID int64,
+	token string,
+) error {
+	return nil
+}
+
 type fakeSubscription struct {
 	active bool
 	err    error

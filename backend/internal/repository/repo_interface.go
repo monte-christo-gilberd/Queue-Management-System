@@ -12,7 +12,7 @@ type QueueRepositoryInterface interface {
 		ctx context.Context,
 		tx *sqlx.Tx,
 		ownerID int64,
-		queueName,
+		queueName string,
 		queueDescription string,
 	) (model.Queue, error)
 	GetQueueByID(
@@ -27,12 +27,30 @@ type QueueRepositoryInterface interface {
 	UpdateQueueDetails(
 		ctx context.Context,
 		queueID int64,
-		queueName,
+		queueName string,
 		queueDescription string,
 	) error
 	CloseQueue(
 		ctx context.Context,
 		queueID int64,
+	) error
+	GetQueueSettings(
+		ctx context.Context,
+		queueID int64,
+	) (model.QueueSettings, error)
+	CreateQueueSettingsIfMissing(
+		ctx context.Context,
+		queueID int64,
+	) error
+	UpdateQRType(
+		ctx context.Context,
+		queueID int64,
+		qrType string,
+	) error
+	UpdateQRCurrentCode(
+		ctx context.Context,
+		queueID int64,
+		token string,
 	) error
 }
 
@@ -52,7 +70,9 @@ type TicketRepositoryInterface interface {
 	Insert(
 		ctx context.Context,
 		tx *sqlx.Tx,
-		queueID, userID, sortKey int64,
+		queueID int64,
+		userID int64,
+		sortKey int64,
 	) (model.Ticket, error)
 	NextWaiting(
 		ctx context.Context,
@@ -69,8 +89,8 @@ type TicketRepositoryInterface interface {
 type UserRepositoryInterface interface {
 	Create(
 		ctx context.Context,
-		email,
-		username,
+		email string,
+		username string,
 		passwordHash string,
 	) (model.User, error)
 	FindByEmail(

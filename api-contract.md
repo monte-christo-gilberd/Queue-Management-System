@@ -43,7 +43,12 @@ Beberapa endpoint (join, next) membalas objek tiket langsung di dalam `data`, ta
 | 409 | `QUEUE_CLOSED` | Antrian sudah ditutup (join) |
 | 409 | `QUEUE_EMPTY` | Tidak ada tiket yang menunggu (next) |
 | 409 | `ALREADY_JOINED` | Dicadangkan. Join ulang saat ini mengembalikan tiket yang sudah ada dengan 200 |
+| 409 | `QR_REPLACE_NOT_ALLOWED` | Penggantian kode QR hanya untuk mode statis |
+| 400 | `QR_TYPE_INVALID` | `type` QR bukan `static`/`dynamic` |
+| 404 | `QR_INVALID` | Token join tidak valid, sudah diganti, atau antrian tidak ada |
+| 410 | `QR_EXPIRED` | Token join dinamis sudah kedaluwarsa |
 | 500 | `INTERNAL_ERROR` | Kesalahan server |
+| 503 | `QR_UNAVAILABLE` | qr-service tidak bisa dihubungi/timeout |
 | 503 | `RETRY_EXHAUSTED` | Join gagal setelah beberapa percobaan karena banyak permintaan bersamaan |
 
 Catatan: 404 dipakai juga untuk "bukan milik kamu". Ini disengaja agar keberadaan antrian orang lain tidak bocor.
@@ -185,6 +190,38 @@ Query opsional: `status` (`waiting`, `completed`, `cancelled`, `skipped`), boleh
 ```
 Error: 400, 404.
 
+### GET /api/v1/queues/:queue_id/qr
+Status QR antrian untuk owner. Token statis dibuat lazy saat pertama kali diminta.
+
+200:
+```json
+{
+  "data": {
+    "action": "queue_qr",
+    "queue_id": 122,
+    "type": "static",
+    "join_url": "https://qms.example.com/join?t=v1...",
+    "image_url": "https://qms.example.com/qr/join.png?token=v1...",
+    "expires_at": null
+  }
+}
+```
+`type` = `static` | `dynamic`. `expires_at` hanya untuk dinamis (detik Unix).
+
+Error: 404 `NOT_FOUND` (bukan owner), 503 `QR_UNAVAILABLE`.
+
+### PUT /api/v1/queues/:queue_id/qr/type
+Mengubah mode QR. Body `{ "type": "static" | "dynamic" }`. Respons sama dengan `GET /qr`.
+Token statis tetap disimpan saat beralih ke dinamis (QR cetak lama berlaku lagi bila kembali ke statis).
+
+Error: 400 `QR_TYPE_INVALID`, 404 `NOT_FOUND`, 503 `QR_UNAVAILABLE`.
+
+### POST /api/v1/queues/:queue_id/qr/replace
+Mengganti token statis dengan kode baru. Token lama langsung ditolak saat join. Hanya untuk mode statis.
+
+200: respons yang sama dengan `GET /qr` (`type` = `static`).
+Error: 404 `NOT_FOUND`, 409 `QR_REPLACE_NOT_ALLOWED` (mode dinamis), 503 `QR_UNAVAILABLE`.
+
 ## Antrian (customer)
 
 ### GET /api/v1/queues/:queue_id/info
@@ -193,9 +230,17 @@ Info publik antrian untuk pengguna yang sudah login. Tanpa `queue_authz` dan tan
 200: `{ "data": { "action": "queue_info", "queue": PublicQueueResponse } }`
 Error: 404 `NOT_FOUND`.
 
-### POST /api/v1/queues/:queue_id/join
-Customer bergabung ke antrian dan mendapat satu tiket.
+### GET /api/v1/join/preview?t=<token>
+Info publik antrian dari token QR (login diperlukan). Backend memverifikasi token ke qr-service;
+untuk token statis, token juga harus sama dengan `queue_settings.qr_current_code` (penggantian mencabut token lama).
 
+200: `{ "data": { "action": "join_preview", "queue": PublicQueueResponse } }`
+Error: 400 `BAD_REQUEST` (token kosong), 404 `QR_INVALID`, 410 `QR_EXPIRED`, 503 `QR_UNAVAILABLE`.
+
+### POST /api/v1/join
+Customer bergabung lewat token QR. Body `{ "t": "v1..." }`.
+
+- Token diverifikasi ulang (jangan percaya `queue_id` dari klien).
 - Antrian belum punya tiket untuk user ini: tiket baru dibuat dengan `status` = `waiting`.
 - Sudah punya tiket: **tiket yang sudah ada dikembalikan** (bukan error, bukan tiket kedua). Ini juga berlaku setelah tiket itu `completed`.
 - Antrian ditutup: 409 `QUEUE_CLOSED`.
@@ -204,7 +249,10 @@ Customer bergabung ke antrian dan mendapat satu tiket.
 ```json
 { "data": { "id": 121, "queue_id": 122, "ticket_number": 2, "sort_key": 131072, "user_id": 3, "status": "waiting", ... } }
 ```
-Error: 404 `NOT_FOUND` (antrian tidak ada), 409 `QUEUE_CLOSED`, 500, 503 `RETRY_EXHAUSTED`.
+Error: 400 `BAD_REQUEST` (token kosong), 404 `QR_INVALID` / `NOT_FOUND`, 409 `QUEUE_CLOSED`,
+410 `QR_EXPIRED`, 503 `QR_UNAVAILABLE` / `RETRY_EXHAUSTED`.
+
+Endpoint lama `POST /api/v1/queues/:queue_id/join` **dihapus** (join hanya lewat token QR).
 
 ### GET /api/v1/queues/:queue_id/status
 Status antrian untuk owner atau pemegang tiket. Pengguna lain mendapat 404.
@@ -287,6 +335,7 @@ data: {"type":"ticket_next","queue_id":122,"payload":{...},"ts":"2026-10-17T09:2
 | `ticket_next` | Owner menekan Next | TicketEvent dengan `status` = `completed` |
 | `queue_updated` | Nama, deskripsi, atau izin antrian diubah | `{ "queue_id": 122 }` (saat izin diubah, ditambah `queue_authz`) |
 | `queue_closed` | Antrian ditutup | `{ "queue_id": 122 }` |
+| `queue_qr_updated` | Mode QR diubah atau token statis diganti | `{ "queue_id": 122 }` |
 
 Catatan: `queue_updated` dan `queue_closed` memakai payload objek biasa, bukan TicketEvent. Klien hanya perlu `queue_id` untuk mengambil ulang status.
 
@@ -301,3 +350,5 @@ Klien harus mengambil ulang daftar tiket (atau status) setelah menerima event, d
 - Join ulang mengembalikan 200 dengan tiket yang sama. Klien lama yang masih menangani 409 `ALREADY_JOINED` tetap aman,
   karena jalur itu tidak lagi dipanggil.
 - `POST /join` dan `POST /next` mengembalikan objek tiket langsung (tanpa `action`). Endpoint lain memakai `action`.
+- Join berbasis id (`POST /api/v1/queues/:id/join`) dihapus. Klien harus memakai token dari QR
+  (`GET /join/preview?t=...` lalu `POST /join {t}`). Token statis yang sudah diganti ditolak dengan 404 `QR_INVALID`.

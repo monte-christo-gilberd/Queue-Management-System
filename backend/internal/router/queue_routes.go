@@ -10,7 +10,12 @@ func registerQueueRoutes(
 	rg.POST("", queueH.Create)
 	rg.GET("", queueH.List)
 
-	rg.POST("/:queue_id/join", ticketH.Join)
+	// QR operator: status, mode, dan penggantian kode statis.
+	rg.GET("/:queue_id/qr", queueH.GetQR)
+	rg.PUT("/:queue_id/qr/type", queueH.SetQRType)
+	rg.POST("/:queue_id/qr/replace", queueH.ReplaceQR)
+
+	// Join berbasis token: nomor id tidak dipakai lagi dari URL.
 	rg.POST("/:queue_id/next", ticketH.Next)
 	rg.GET("/:queue_id/tickets", ticketH.List)
 	rg.GET("/:queue_id/status", ticketH.Status)

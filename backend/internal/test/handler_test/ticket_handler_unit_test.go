@@ -16,8 +16,9 @@ import (
 
 func specTicketEngine(svc *specTicketSvc, userID int64) *gin.Engine {
 	e := specEngine(userID)
-	h := handler.NewTicketHandler(svc)
-	e.POST("/queues/:queue_id/join", h.Join)
+	h := handler.NewTicketHandlerWithQR(svc, svc)
+	e.POST("/join", h.Join)
+	e.GET("/join/preview", h.Preview)
 	e.POST("/queues/:queue_id/next", h.Next)
 	e.GET("/queues/:queue_id/tickets", h.List)
 	e.GET("/queues/:queue_id/status", h.Status)
@@ -28,13 +29,16 @@ func specTicketEngine(svc *specTicketSvc, userID int64) *gin.Engine {
 func TestSpec_Join_ReturnsAssignedNumberWithNullTimestamps(t *testing.T) {
 	// 4.2 langkah 6 / US-14: konfirmasi memuat nomor yang diberikan; timestamp kosong = null.
 	created := time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)
-	svc := &specTicketSvc{ticket: model.Ticket{
-		ID: 9, QueueID: 1, TicketNumber: 1, SortKey: 65536, UserID: 42,
-		Status: "waiting", CreatedAt: created,
-	}}
+	svc := &specTicketSvc{
+		ticket: model.Ticket{
+			ID: 9, QueueID: 1, TicketNumber: 1, SortKey: 65536, UserID: 42,
+			Status: "waiting", CreatedAt: created,
+		},
+		joinQueue: model.Queue{ID: 1, OwnerID: 7, QueueName: "Loket Utama", Status: "active", CreatedAt: created},
+	}
 	e := specTicketEngine(svc, 42)
 
-	w := specRequest(e, http.MethodPost, "/queues/1/join", "")
+	w := specRequest(e, http.MethodPost, "/join", `{"t":"token-abc"}`)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	ticket := specDecode(t, w)["data"].(map[string]interface{})
@@ -45,16 +49,20 @@ func TestSpec_Join_ReturnsAssignedNumberWithNullTimestamps(t *testing.T) {
 		assert.Contains(t, ticket, key)
 		assert.Nil(t, ticket[key], key)
 	}
+	assert.Equal(t, "token-abc", svc.gotToken)
 	assert.Equal(t, int64(42), svc.gotUser)
 	assert.Equal(t, int64(1), svc.gotQueue)
 }
 
 func TestSpec_Join_QueueClosedIs409WithoutTicket(t *testing.T) {
 	// 4.2 edge case: antrian tertutup -> pesan "queue is currently closed", tidak ada nomor.
-	svc := &specTicketSvc{err: apperror.ErrQueueClosed}
+	svc := &specTicketSvc{
+		joinQueue: model.Queue{ID: 1, OwnerID: 7, QueueName: "Loket Utama", Status: "closed", CreatedAt: time.Now()},
+		joinErr:   apperror.ErrQueueClosed,
+	}
 	e := specTicketEngine(svc, 42)
 
-	w := specRequest(e, http.MethodPost, "/queues/1/join", "")
+	w := specRequest(e, http.MethodPost, "/join", `{"t":"token-abc"}`)
 
 	assert.Equal(t, http.StatusConflict, w.Code)
 	assert.Equal(t, "QUEUE_CLOSED", specErrorCode(t, w))
@@ -63,13 +71,30 @@ func TestSpec_Join_QueueClosedIs409WithoutTicket(t *testing.T) {
 
 func TestSpec_Join_UnknownQueueIs404(t *testing.T) {
 	// TC-05-07: antrian tidak ada -> 404.
-	svc := &specTicketSvc{err: apperror.ErrNotFound}
+	svc := &specTicketSvc{resolveErr: apperror.ErrNotFound}
 	e := specTicketEngine(svc, 42)
 
-	w := specRequest(e, http.MethodPost, "/queues/1/join", "")
+	w := specRequest(e, http.MethodPost, "/join", `{"t":"token-abc"}`)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Equal(t, "NOT_FOUND", specErrorCode(t, w))
+}
+
+func TestSpec_Preview_ReturnsPublicQueue(t *testing.T) {
+	// Join flow: preview memverifikasi token lalu mengembalikan info publik antrian.
+	svc := &specTicketSvc{
+		joinQueue: model.Queue{ID: 3, OwnerID: 7, QueueName: "Loket 3", QueueDesc: sql.NullString{String: "Pelayanan", Valid: true}, Status: "active", CreatedAt: time.Now()},
+	}
+	e := specTicketEngine(svc, 42)
+
+	w := specRequest(e, http.MethodGet, "/join/preview?t=token-xyz", "")
+
+	require.Equal(t, http.StatusOK, w.Code)
+	data := specDecode(t, w)["data"].(map[string]interface{})
+	assert.Equal(t, "join_preview", data["action"])
+	queue := data["queue"].(map[string]interface{})
+	assert.Equal(t, float64(3), queue["id"])
+	assert.Equal(t, "Loket 3", queue["queue_name"])
 }
 
 func TestSpec_Next_EmptyQueueIs409QueueEmpty(t *testing.T) {

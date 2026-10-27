@@ -41,8 +41,17 @@ type TicketService interface {
 	) ([]model.UserTicket, error)
 }
 
+type JoinQRService interface {
+	// ResolveJoinToken memverifikasi token join lalu mengembalikan antrian-nya.
+	ResolveJoinToken(
+		ctx context.Context,
+		token string,
+	) (model.Queue, error)
+}
+
 type TicketHandler struct {
 	service TicketService
+	qr      JoinQRService
 }
 
 func NewTicketHandler(
@@ -53,77 +62,47 @@ func NewTicketHandler(
 	}
 }
 
+// NewTicketHandlerWithQR membangun handler tiket dengan layanan QR yang
+// menyediakan verifikasi token join.
+func NewTicketHandlerWithQR(
+	service TicketService,
+	qr JoinQRService,
+) *TicketHandler {
+	return &TicketHandler{
+		service: service,
+		qr:      qr,
+	}
+}
+
 func (h *TicketHandler) Join(
 	c *gin.Context,
 ) {
 
 	ctx := c.Request.Context()
-	queueIDStr := c.Param("queue_id")
-	queueID, err := strconv.ParseInt(
-		queueIDStr,
-		10,
-		64,
-	)
-	if err != nil {
-		respondError(
-			c,
-			http.StatusBadRequest,
-			"BAD_REQUEST",
-			"invalid queue id",
-		)
+	userID := c.GetInt64("user_id")
+
+	token := tokenFrom(c)
+	if token == "" {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
-	userID := c.GetInt64("user_id")
+	queue, err := h.qr.ResolveJoinToken(
+		ctx,
+		token,
+	)
+	if err != nil {
+		h.respondJoinTokenError(c, err)
+		return
+	}
 
 	ticket, err := h.service.JoinQueue(
 		ctx,
-		queueID,
+		queue.ID,
 		userID,
 	)
 	if err != nil {
-		if errors.Is(err, apperror.ErrNotFound) {
-			respondError(
-				c,
-				http.StatusNotFound,
-				"NOT_FOUND",
-				"queue not found",
-			)
-			return
-		}
-		if errors.Is(err, apperror.ErrAlreadyJoined) {
-			respondError(
-				c,
-				http.StatusConflict,
-				"ALREADY_JOINED",
-				"you have already joined this queue",
-			)
-			return
-		}
-		if errors.Is(err, apperror.ErrQueueClosed) {
-			respondError(
-				c,
-				http.StatusConflict,
-				"QUEUE_CLOSED",
-				"queue is closed",
-			)
-			return
-		}
-		if errors.Is(err, apperror.ErrRetryExhausted) {
-			respondError(
-				c,
-				http.StatusServiceUnavailable,
-				"RETRY_EXHAUSTED",
-				"failed to join queue after exhauting all retries",
-			)
-			return
-		}
-		respondError(
-			c,
-			http.StatusInternalServerError,
-			"INTERNAL_ERROR",
-			"internal server error",
-		)
+		h.respondJoinError(c, err)
 		return
 	}
 
@@ -132,6 +111,100 @@ func (h *TicketHandler) Join(
 		http.StatusOK,
 		dto.NewTicketResponse(ticket),
 	)
+}
+
+// tokenFrom: token join dari query `t` (mis. GET /api/v1/join/preview?t=...) atau JSON body (POST /api/v1/join {t}).
+func tokenFrom(c *gin.Context) string {
+	if t := c.Query("t"); t != "" {
+		return t
+	}
+	var req dto.JoinByTokenRequest
+	if err := c.ShouldBindJSON(&req); err == nil {
+		return req.Token
+	}
+	return ""
+}
+
+// Preview: GET /api/v1/join/preview?t=... — info publik antrian dari token join.
+func (h *TicketHandler) Preview(
+	c *gin.Context,
+) {
+
+	ctx := c.Request.Context()
+
+	token := tokenFrom(c)
+	if token == "" {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+		return
+	}
+
+	queue, err := h.qr.ResolveJoinToken(
+		ctx,
+		token,
+	)
+	if err != nil {
+		h.respondJoinTokenError(c, err)
+		return
+	}
+
+	respondData(
+		c,
+		http.StatusOK,
+		gin.H{
+			"action": "join_preview",
+			"queue":  dto.NewPublicQueueResponse(queue),
+		},
+	)
+}
+
+// respondJoinTokenError memetakan error verifikasi token join ke response API.
+func (h *TicketHandler) respondJoinTokenError(
+	c *gin.Context,
+	err error,
+) {
+	switch {
+	case errors.Is(err, apperror.ErrNotFound):
+		respondError(c, http.StatusNotFound, "NOT_FOUND", "queue not found")
+		return
+	case errors.Is(err, apperror.ErrQRInvalid):
+		respondError(c, http.StatusNotFound, "QR_INVALID", "invalid or revoked qr token")
+		return
+	case errors.Is(err, apperror.ErrQRExpired):
+		respondError(c, http.StatusGone, "QR_EXPIRED", "qr token expired")
+		return
+	case errors.Is(err, apperror.ErrQRUnavailable):
+		respondError(c, http.StatusServiceUnavailable, "QR_UNAVAILABLE", "qr service is unavailable")
+		return
+	}
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+}
+
+// respondJoinError memetakan error join (token sudah divalidasi di atas).
+func (h *TicketHandler) respondJoinError(
+	c *gin.Context,
+	err error,
+) {
+	switch {
+	case errors.Is(err, apperror.ErrNotFound):
+		respondError(c, http.StatusNotFound, "NOT_FOUND", "queue not found")
+		return
+	case errors.Is(err, apperror.ErrAlreadyJoined):
+		respondError(c, http.StatusConflict, "ALREADY_JOINED", "you have already joined this queue")
+		return
+	case errors.Is(err, apperror.ErrQueueClosed):
+		respondError(c, http.StatusConflict, "QUEUE_CLOSED", "queue is closed")
+		return
+	case errors.Is(err, apperror.ErrRetryExhausted):
+		respondError(c, http.StatusServiceUnavailable, "RETRY_EXHAUSTED", "failed to join queue after exhausting all retries")
+		return
+	}
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
 }
 
 func (h *TicketHandler) Next(

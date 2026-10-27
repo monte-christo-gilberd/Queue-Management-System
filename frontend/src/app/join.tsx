@@ -6,25 +6,31 @@ import { useCustomerQueue } from '@/hooks/use-customer-queue';
 import { formatTicketNumber } from '@/utils/format';
 
 /**
- * Halaman join customer: `/join/<queueId>`. Harus login; belum login → `/?next=/join/<id>`.
+ * Halaman join customer berbasis token: `/join?t=<token>`.
+ *
+ * Token berasal dari QR statis/dinamik (dibuat qr-service, disimpan backend). Wajib login;
+ * bila belum, AuthGate mengarahkan ke `/?next=%2Fjoin%3Ft%3D...` sehingga token tetap utuh.
  */
 export default function JoinQueueRoute() {
+  const { t } = useLocalSearchParams<{ t?: string }>();
+  const token = typeof t === 'string' ? t : Array.isArray(t) ? t[0] : '';
+  // usePathname() membuang query, jadi tujuan setelah login dikirim eksplisit.
+  const nextPath = token ? `/join?t=${encodeURIComponent(token)}` : '/join';
+
   return (
-    <AuthGate mode="required">
-      <JoinQueueContent />
+    <AuthGate mode="required" nextPath={nextPath}>
+      <JoinQueueContent token={token} />
     </AuthGate>
   );
 }
 
-function JoinQueueContent() {
-  const { queueId } = useLocalSearchParams<{ queueId: string }>();
-  const id = Number(queueId);
-  const { status, info, loading, error, joining, joinError, join } = useCustomerQueue(id);
+function JoinQueueContent({ token }: { token: string }) {
+  const { status, info, loading, error, joining, joinError, join } = useCustomerQueue(token);
 
   const queue = status?.queue ?? info;
   const ticket = status?.my_ticket ?? null;
   const closed = queue?.status === 'closed';
-  const canJoin = !ticket && !closed && !loading && !error;
+  const canJoin = !!token && !ticket && !closed && !loading && !error;
 
   return (
     <CustomerQueueScreen

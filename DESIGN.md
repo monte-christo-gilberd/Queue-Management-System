@@ -163,7 +163,9 @@ dan dirombak tanpa menyentuh data.
 ### 3.3 Routing dan penjagaan
 
 - `(owner)/` dijaga `AuthGate` mode `required`. Tanpa token, user diarahkan ke login dengan parameter `next`.
-- `join/[queueId]` juga memakai `required`: user harus login sebelum bergabung.
+- `join` (`/join?t=<token>`) juga memakai `required`: user harus login sebelum bergabung. `AuthGate`
+  menerima `nextPath` eksplisit agar query token tidak hilang saat diarahkan ke login.
+- `ticket/[queueId]` menampilkan status tiket yang sudah dimiliki (dibuka dari Antrian Saya/Riwayat).
 - Login dan register memakai `guest`: user yang sudah login langsung dibawa ke `next` atau dashboard.
 - `next` diperiksa dengan `sanitizeNext` agar tidak bisa dipakai untuk membuka situs lain (open redirect).
 - Respons 401 dari API menghapus sesi lokal dan mengarahkan ke login.
@@ -233,7 +235,7 @@ Ekspektasi tes diturunkan dari product overview (`documentation/docs/product-ove
 Yang belum ada di backend (lihat product overview):
 - Skip tiket, notifikasi ke customer berikutnya, pembatalan oleh customer, hapus customer oleh owner.
 - Counter dan admin per counter, penyisipan di posisi tertentu, antrian ulang (requeue).
-- QR dinamis dan batas harian, riwayat dan ekspor, catatan antrian, Google login.
+- Batas harian/fallback QR, riwayat dan ekspor, catatan antrian, Google login.
 - Pengelolaan admin antrian dan pembayaran langganan.
 
 Di frontend, tombol dan layar untuk fitur di atas sudah ada tetapi belum tersambung (TODO di kode).

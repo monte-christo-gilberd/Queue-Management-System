@@ -33,7 +33,7 @@ export default function AntrianSayaRoute() {
       ) : (
         <MyTicketsList
           tickets={active}
-          onOpen={(queueId) => router.push({ pathname: '/join/[queueId]', params: { queueId: String(queueId) } })}
+          onOpen={(queueId) => router.push({ pathname: '/ticket/[queueId]', params: { queueId: String(queueId) } })}
         />
       )}
     </ResponsiveScreenLayout>

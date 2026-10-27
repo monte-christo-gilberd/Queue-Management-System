@@ -11,7 +11,7 @@ type CreateQueueRequest struct {
 }
 
 type UpdateQueueRequest struct {
-	QueueName        string `json:"queue_name" binding:"no_html_tags"`
+	QueueName        string `json:"queue_name" binding:"required,no_html_tags"`
 	QueueDescription string `json:"queue_description" binding:"no_html_tags"`
 }
 
@@ -70,3 +70,40 @@ func NewQueueResponses(queues []model.Queue) []QueueResponse {
 	return out
 }
 
+// QueueQRResponse: respons endpoint QR owner.
+// `action` memakai nama yang sama pola action lain ("queue_qr").
+type QueueQRResponse struct {
+	Action    string `json:"action"`
+	QueueID   int64  `json:"queue_id"`
+	Type      string `json:"type"`
+	JoinURL   string `json:"join_url"`
+	ImageURL  string `json:"image_url"`
+	ExpiresAt *int64 `json:"expires_at"`
+}
+
+func NewQueueQRResponse(
+	action string,
+	queueID int64,
+	qrType string,
+	joinURL string,
+	imageURL string,
+	expiresAt *int64,
+) QueueQRResponse {
+	return QueueQRResponse{
+		Action:    action,
+		QueueID:   queueID,
+		Type:      qrType,
+		JoinURL:   joinURL,
+		ImageURL:  imageURL,
+		ExpiresAt: expiresAt,
+	}
+}
+
+type JoinByTokenRequest struct {
+	// Token join dari QR: format `v1.<payload>.<sig>`; JSON key-nya `t` (tautan `/join?t=...`).
+	Token string `json:"t" binding:"required"`
+}
+
+type SetQRTypeRequest struct {
+	Type string `json:"type" binding:"required"`
+}
