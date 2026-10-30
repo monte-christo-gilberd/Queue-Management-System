@@ -17,3 +17,16 @@ CREATE INDEX IF NOT EXISTS idx_tickets_queue_waiting_sort_key
 -- lewat 10 belum" sebelum decide perlu DELETE atau tidak.
 CREATE INDEX IF NOT EXISTS idx_queue_history_owner_closed
     ON queue_history (owner_id, queue_closed_at);
+
+-- Daftar antrian owner, urut terbaru.
+CREATE INDEX IF NOT EXISTS idx_queues_owner_created_at
+    ON queues (owner_id, created_at DESC);
+
+-- Riwayat tiket customer (ListByUser), urut terbaru.
+CREATE INDEX IF NOT EXISTS idx_tickets_user_created_at
+    ON tickets (user_id, created_at DESC);
+
+-- Nomor yang sedang dilayani / terakhir dipanggil (LastCompletedNumber,
+-- RecentCompletedNumbers): hanya tiket completed, urut terbaru.
+CREATE INDEX IF NOT EXISTS idx_tickets_queue_completed
+    ON tickets (queue_id, completed_at DESC, id DESC) WHERE status = 'completed';

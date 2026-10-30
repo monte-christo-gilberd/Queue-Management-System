@@ -7,6 +7,7 @@
 -- Akun seed:
 --   owner1@test.com  (username owner1)  owner, langganan aktif 30 hari
 --   owner2@test.com  (username owner2)  owner, langganan aktif 30 hari
+--   owner3@test.com  (username owner3)  owner, langganan kedaluwarsa, 1 antrian aktif (TC-04-03)
 --   user1@test.com … user10@test.com    (username user1 … user10)  customer
 --
 -- PERINGATAN: ini menghapus SEMUA akun dan data. Jangan dijalankan di database produksi.
@@ -35,10 +36,11 @@ TRUNCATE TABLE
     users
 RESTART IDENTITY;
 
--- Akun user. id: owner1=1, owner2=2, user1..user10=3..12.
+-- Akun user. id: owner1=1, owner2=2, owner3=3, user1..user10=4..13.
 INSERT INTO users (email, username, password_hash) VALUES
     ('owner1@test.com', 'owner1', :'pw'),
     ('owner2@test.com', 'owner2', :'pw'),
+    ('owner3@test.com', 'owner3', :'pw'),
     ('user1@test.com',  'user1',  :'pw'),
     ('user2@test.com',  'user2',  :'pw'),
     ('user3@test.com',  'user3',  :'pw'),
@@ -55,6 +57,19 @@ INSERT INTO owners (user_id, subscription_expires_at)
 SELECT id, now() + interval '30 days'
 FROM users
 WHERE username IN ('owner1', 'owner2');
+
+-- owner3: langganan sudah kedaluwarsa, tetapi antrian lamanya masih aktif.
+INSERT INTO owners (user_id, subscription_expires_at)
+SELECT id, now() - interval '1 day' FROM users WHERE username = 'owner3';
+
+INSERT INTO queues (owner_id, queue_name, queue_desc)
+SELECT id, 'Antrian Lama', 'Dibuat sebelum langganan berakhir' FROM users WHERE username = 'owner3';
+
+INSERT INTO counters (queue_id, name, created_at, is_default)
+SELECT id, 'Default', now(), TRUE FROM queues WHERE queue_name = 'Antrian Lama';
+
+INSERT INTO queue_settings (queue_id)
+SELECT id FROM queues WHERE queue_name = 'Antrian Lama';
 
 -- Ringkasan sebelum commit.
 SELECT
