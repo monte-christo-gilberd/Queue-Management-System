@@ -3,7 +3,6 @@ import { expect, test, type APIRequestContext, type Browser } from '@playwright/
 import {
   action,
   createQueueViaApi,
-  joinPathViaApi,
   joinQueueViaApi,
   nextViaApi,
   registerAccount,
@@ -37,7 +36,7 @@ test.describe('TS-06 Status antrian (customer)', () => {
     const { queue, customers } = await queueWithCustomers(request, 3);
     const third = customers[2];
 
-    await signInWithToken(page, third.token, third.email, await joinPathViaApi(request, queue.id));
+    await signInWithToken(page, third.token, third.email, `/ticket/${queue.id}`);
 
     await expect(page.getByText('A-003', { exact: true })).toBeVisible();
     await expect(page.getByText('Orang di depan Anda')).toBeVisible();
@@ -49,7 +48,7 @@ test.describe('TS-06 Status antrian (customer)', () => {
     const { queue, ownerToken, customers } = await queueWithCustomers(request, 2);
     expect((await nextViaApi(request, ownerToken, queue.id)).status()).toBe(200);
 
-    await signInWithToken(page, customers[0].token, customers[0].email, await joinPathViaApi(request, queue.id));
+    await signInWithToken(page, customers[0].token, customers[0].email, `/ticket/${queue.id}`);
 
     await expect(page.getByText('Sudah dilayani')).toBeVisible();
     await expect(page.getByText('A-001', { exact: true }).first()).toBeVisible();
@@ -64,7 +63,7 @@ test.describe('TS-06 Status antrian (customer)', () => {
     const otherDevice = await context.newPage();
     try {
       await signInThroughUi(otherDevice, customer.email, customer.password);
-      await otherDevice.goto(`${WEB_URL}${await joinPathViaApi(request, queue.id)}`);
+      await otherDevice.goto(`${WEB_URL}/ticket/${queue.id}`);
 
       await expect(otherDevice.getByText('A-001', { exact: true })).toBeVisible();
       await expect(action(otherDevice, 'Gabung Antrian')).toHaveCount(0);
@@ -76,7 +75,7 @@ test.describe('TS-06 Status antrian (customer)', () => {
   test('TC-06-04 Status tetap tampil setelah dibuka ulang', async ({ page, request }) => {
     const { queue, customers } = await queueWithCustomers(request, 1);
     const customer = customers[0];
-    await signInWithToken(page, customer.token, customer.email, await joinPathViaApi(request, queue.id));
+    await signInWithToken(page, customer.token, customer.email, `/ticket/${queue.id}`);
     await expect(page.getByText('A-001', { exact: true })).toBeVisible();
 
     await page.reload();

@@ -64,12 +64,21 @@ async function joinPath(request: APIRequestContext, queueId: number): Promise<st
   return joinPathA;
 }
 
-/** Customer membuka tautan join (belum login → login → kembali ke halaman join). */
-async function openJoinLink(page: Page, path: string, identifier: string) {
-  await page.goto(`${WEB_URL}${path}`);
-  await expect(field(page, 'EMAIL ATAU USERNAME')).toBeVisible();
+/**
+ * Customer login lalu bergabung. Pemindaian kamera tidak bisa dijalankan di tes, jadi join
+ * dikirim ke POST /join dengan token QR (yang sama dengan hasil scan), lalu halaman tiket dibuka.
+ */
+async function joinAs(page: Page, request: APIRequestContext, queueId: number, identifier: string) {
+  await page.goto(`${WEB_URL}/`);
   await submitLogin(page, identifier);
-  await expect(page).toHaveURL(/\/join\?t=/);
+  await expect(page).toHaveURL(/\/dashboard/);
+  const token = await loginViaApi(request, identifier, PASSWORD);
+  const res = await request.post(`${API_URL}/api/v1/join`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { t: joinTokenOf(await joinPath(request, queueId)) },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  await page.goto(`${WEB_URL}/ticket/${queueId}`);
 }
 
 async function createViaUi(page: Page, ownerName: string, queueName: string): Promise<number> {
@@ -165,21 +174,20 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
 
   /* ----------------------------- Customer: bergabung ----------------------------- */
 
-  test('TC-10-09 user1 login dari tautan lalu bergabung: nomor A-001 menunggu, 0 orang di depan', async ({ browser, request }) => {
+  test('TC-10-09 user1 login lalu bergabung lewat token: nomor A-001 menunggu, 0 orang di depan', async ({ browser, request }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
     u1 = { context, page };
-    await openJoinLink(page, await joinPath(request, queueA), user(1));
+    await joinAs(page, request, queueA, user(1));
     await expect(page.getByText(NAME_A, { exact: true })).toBeVisible();
-    await action(page, 'Gabung Antrian').click();
     await expect(ticketCard(page)).toContainText('A-001');
     await expect(ticketCard(page)).toContainText('Menunggu');
     await expect(rowValue(page, 'Orang di depan Anda')).toHaveText('0');
     await expect(rowValue(page, 'Sedang dilayani')).toHaveText('-');
   });
 
-  test('TC-10-10 Buka ulang tautan: nomor yang sama, tombol gabung tidak muncul, tidak ada tiket ganda', async ({ request }) => {
-    await u1.page.goto(`${WEB_URL}${await joinPath(request, queueA)}`);
+  test('TC-10-10 Buka ulang tiket: nomor yang sama, tombol gabung tidak muncul, tidak ada tiket ganda', async ({ request }) => {
+    await u1.page.goto(`${WEB_URL}/ticket/${queueA}`);
     await expect(ticketCard(u1.page)).toContainText('A-001');
     await expect(action(u1.page, 'Gabung Antrian')).toHaveCount(0);
 
@@ -206,8 +214,7 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
       const page = await context.newPage();
       if (n === 2) u2 = { context, page };
       else u3 = { context, page };
-      await openJoinLink(page, await joinPath(request, queueA), user(n));
-      await action(page, 'Gabung Antrian').click();
+      await joinAs(page, request, queueA, user(n));
       await expect(ticketCard(page)).toContainText(label);
       await expect(rowValue(page, 'Orang di depan Anda')).toHaveText(ahead);
     }
@@ -242,10 +249,10 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
     await expect(action(u1.page, 'Riwayat Antrian')).toHaveCount(0);
   });
 
-  test('TC-10-15 Join dengan token tidak valid: pesan QR, tanpa tombol gabung', async ({ browser }) => {
+  test('TC-10-15 Halaman /join?t= hanya menampilkan petunjuk, tanpa tombol gabung', async ({ browser }) => {
     const { context, page } = await loginPage(browser, user(4));
     await page.goto(`${WEB_URL}/join?t=bukan-token`);
-    await expect(page.getByText(/QR link is invalid/)).toBeVisible();
+    await expect(page.getByText('Pindai QR di aplikasi')).toBeVisible();
     await expect(action(page, 'Gabung Antrian')).toHaveCount(0);
     await context.close();
   });
@@ -254,7 +261,7 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
 
   test('TC-10-16 Next pertama: A-001 dilayani, customer melihatnya tanpa refresh', async ({ request }) => {
     // user1 kembali ke halaman join (tes sebelumnya memindahkannya) agar koneksi live-nya aktif.
-    await u1.page.goto(`${WEB_URL}${await joinPath(request, queueA)}`);
+    await u1.page.goto(`${WEB_URL}/ticket/${queueA}`);
     await expect(ticketCard(u1.page)).toContainText('A-001');
 
     await owner.page.goto(`${WEB_URL}/dashboard`);
@@ -327,12 +334,6 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
   });
 
   test('TC-10-22 Antrian ditutup: customer baru tidak bisa bergabung (UI dan API)', async ({ browser, request }) => {
-    const { context, page } = await loginPage(browser, user(4));
-    await page.goto(`${WEB_URL}${await joinPath(request, queueA)}`);
-    await expect(page.getByText('Antrian ditutup', { exact: true })).toBeVisible();
-    await expect(action(page, 'Gabung Antrian')).toHaveCount(0);
-    await context.close();
-
     const token = await loginViaApi(request, user(4), PASSWORD);
     const res = await request.post(`${API_URL}/api/v1/join`, {
       headers: { Authorization: `Bearer ${token}` },

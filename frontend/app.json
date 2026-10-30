@@ -25,6 +25,7 @@
     },
     "plugins": [
       "expo-router",
+      ["expo-camera", { "cameraPermission": "Izinkan $(PRODUCT_NAME) memakai kamera untuk memindai QR antrian" }],
       [
         "expo-splash-screen",
         {

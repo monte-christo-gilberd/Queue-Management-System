@@ -4,7 +4,6 @@ import {
   action,
   closeQueueViaApi,
   createQueueViaApi,
-  joinPathViaApi,
   joinQueueViaApi,
   nextViaApi,
   registerAccount,
@@ -49,7 +48,7 @@ test.describe('TS-07 Pembaruan real-time', () => {
   test('TC-07-02 Status customer diperbarui saat owner menekan NEXT', async ({ page, request }) => {
     const { session, queue, accounts } = await setup(request, 2);
     const second = accounts[1];
-    await signInWithToken(page, second.token, second.email, await joinPathViaApi(request, queue.id));
+    await signInWithToken(page, second.token, second.email, `/ticket/${queue.id}`);
     await expect(page.getByText('A-002', { exact: true })).toBeVisible();
 
     expect((await nextViaApi(request, session.token, queue.id)).status()).toBe(200);
@@ -61,7 +60,7 @@ test.describe('TS-07 Pembaruan real-time', () => {
 
   test('TC-07-03 Customer melihat antrian ditutup tanpa refresh', async ({ page, request }) => {
     const { session, queue, accounts } = await setup(request, 1);
-    await signInWithToken(page, accounts[0].token, accounts[0].email, await joinPathViaApi(request, queue.id));
+    await signInWithToken(page, accounts[0].token, accounts[0].email, `/ticket/${queue.id}`);
     await expect(page.getByText('A-001', { exact: true })).toBeVisible();
 
     await closeQueueViaApi(request, session.token, queue.id);
@@ -72,7 +71,7 @@ test.describe('TS-07 Pembaruan real-time', () => {
   test('TC-07-04 Setelah koneksi pulih, status disinkronkan ulang', async ({ page, request }) => {
     const { session, queue, accounts } = await setup(request, 2);
     const second = accounts[1];
-    await signInWithToken(page, second.token, second.email, await joinPathViaApi(request, queue.id));
+    await signInWithToken(page, second.token, second.email, `/ticket/${queue.id}`);
     await expect(page.getByText('A-002', { exact: true })).toBeVisible();
 
     // Putuskan stream event: permintaan SSE dibatalkan sampai rute dibuka kembali.

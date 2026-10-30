@@ -6,7 +6,7 @@
 > - Customer: akun baru
 > - Sumber behaviour: `product-overview.md` — US-14, 4.2 (Join Queue via QR Code), edge case 4.2
 
-> **Catatan implementasi**: customer memindai QR dengan kamera HP, yang membuka tautan `…/join?t=<token>`. Di tes, token diambil dari `GET /queues/:id/qr` milik owner. Popup "Masuk ke Antrian" hanya berisi petunjuk kamera.
+> **Catatan implementasi**: join hanya lewat popup "Masuk ke Antrian" yang memindai QR dengan kamera dan langsung memanggil `POST /api/v1/join`. Halaman `/join?t=` hanya menampilkan petunjuk. Kamera tidak bisa dijalankan di tes, jadi join disiapkan lewat API dengan token dari `GET /queues/:id/qr`.
 
 ---
 

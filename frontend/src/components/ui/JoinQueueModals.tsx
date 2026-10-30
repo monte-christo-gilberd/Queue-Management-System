@@ -1,70 +1,96 @@
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { router } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { AppColors } from '@/constants/app-theme';
+import { AppButton } from '@/components/ui/AppButton';
 import { ModalCard } from '@/components/ui/ModalCard';
+import { AppColors } from '@/constants/app-theme';
+import { describeQueueError } from '@/lib/queue-errors';
+import { joinByToken } from '@/lib/qr';
+import { parseJoinToken } from '@/lib/qr-scan';
 
 type JoinQueueModalsProps = {
   visible: boolean;
   onClose: () => void;
 };
 
-// Pola 13x13 untuk placeholder QR: 3 penanda sudut (5x5) + data semu.
-const GRID = 13;
-const FINDER = 5;
-
-function isFilled(r: number, c: number): boolean {
-  const finders: [number, number][] = [
-    [0, 0],
-    [0, GRID - FINDER],
-    [GRID - FINDER, 0],
-  ];
-  for (const [fr, fc] of finders) {
-    if (r >= fr - 1 && r <= fr + FINDER && c >= fc - 1 && c <= fc + FINDER) {
-      const rr = r - fr;
-      const cc = c - fc;
-      if (rr < 0 || cc < 0 || rr >= FINDER || cc >= FINDER) return false; // jarak kosong di sekeliling
-      const ring = rr === 0 || cc === 0 || rr === FINDER - 1 || cc === FINDER - 1;
-      const center = rr === 2 && cc === 2;
-      return ring || center;
-    }
-  }
-  return (r * 7 + c * 3 + r * c) % 3 === 0;
-}
-
-/** Ilustrasi QR code (bukan QR sungguhan). */
-function QrPlaceholder() {
-  return (
-    <View className="rounded-lg bg-white p-3">
-      {Array.from({ length: GRID }, (_, r) => (
-        <View key={r} className="flex-row">
-          {Array.from({ length: GRID }, (_, c) => (
-            <View key={c} className={isFilled(r, c) ? 'h-2.5 w-2.5 bg-dark' : 'h-2.5 w-2.5 bg-white'} />
-          ))}
-        </View>
-      ))}
-    </View>
-  );
-}
-
 /**
- * Popup "Masuk ke Antrian": petunjuk memindai QR memakai kamera bawaan HP (tanpa pemindai di dalam
- * aplikasi dan tanpa input tautan manual). QR antrian berisi `<PUBLIC_APP_URL>/join?t=<token>`.
+ * Popup "Masuk ke Antrian": memindai QR antrian dengan kamera perangkat. Begitu QR terbaca,
+ * `POST /join` dipanggil otomatis tanpa klik. Halaman `/join?t=` tidak melakukan join, jadi
+ * ini satu-satunya jalur join dari UI.
  */
 export function JoinQueueModals({ visible, onClose }: JoinQueueModalsProps) {
   return (
     <ModalCard visible={visible} onRequestClose={onClose}>
+      {/* Dipasang hanya saat terbuka: state scan dan kamera ter-reset tiap dibuka. */}
+      {visible ? <ScannerBody onClose={onClose} /> : null}
+    </ModalCard>
+  );
+}
+
+function ScannerBody({ onClose }: { onClose: () => void }) {
+  const [permission, requestPermission] = useCameraPermissions();
+  const [message, setMessage] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  // Kunci sinkron: onBarcodeScanned bisa terpanggil berkali-kali sebelum state sempat berubah.
+  const lockRef = useRef(false);
+
+  const handleScanned = useCallback(
+    async ({ data }: { data: string }) => {
+      if (lockRef.current) return;
+      lockRef.current = true;
+      const token = parseJoinToken(data);
+      if (!token) {
+        setMessage('QR ini bukan QR antrian.');
+        setTimeout(() => (lockRef.current = false), 1500);
+        return;
+      }
+      setBusy(true);
+      setMessage(undefined);
+      try {
+        const ticket = await joinByToken(token);
+        onClose();
+        router.replace({ pathname: '/ticket/[queueId]', params: { queueId: String(ticket.queue_id) } });
+      } catch (e) {
+        setMessage(describeQueueError(e));
+        setBusy(false);
+        setTimeout(() => (lockRef.current = false), 1500);
+      }
+    },
+    [onClose],
+  );
+
+  const granted = permission?.granted === true;
+
+  return (
+    <>
       <Text className="text-[24px] font-extrabold text-foreground">Masuk ke Antrian</Text>
 
       <View className="h-64 w-full items-center justify-center overflow-hidden rounded-card bg-dark">
-        <QrPlaceholder />
-        {/* Bingkai pemindai: 4 sudut. */}
-        <View className="absolute left-5 top-5 h-7 w-7 rounded-tl-lg border-l-[3px] border-t-[3px] border-white" />
-        <View className="absolute right-5 top-5 h-7 w-7 rounded-tr-lg border-r-[3px] border-t-[3px] border-white" />
-        <View className="absolute bottom-5 left-5 h-7 w-7 rounded-bl-lg border-b-[3px] border-l-[3px] border-white" />
-        <View className="absolute bottom-5 right-5 h-7 w-7 rounded-br-lg border-b-[3px] border-r-[3px] border-white" />
+        {granted ? (
+          <CameraView
+            style={{ width: '100%', height: '100%' }}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={busy ? undefined : handleScanned}
+          />
+        ) : (
+          <View className="items-center gap-3 px-4">
+            <Text className="text-center text-[13px] text-white">
+              {permission?.canAskAgain === false
+                ? 'Izin kamera ditolak. Aktifkan izin kamera di pengaturan browser atau perangkat.'
+                : 'Izinkan akses kamera untuk memindai QR antrian.'}
+            </Text>
+            {permission?.canAskAgain !== false ? (
+              <AppButton label="Izinkan Kamera" variant="outline" onPress={() => void requestPermission()} />
+            ) : null}
+          </View>
+        )}
       </View>
+
       <Text className="text-center text-[12px] text-muted">
-        Pindai dengan kamera HP: arahkan kamera bawaan HP ke QR code antrian, lalu buka tautan yang muncul.
+        {busy ? 'Bergabung ke antrian...' : message ?? 'Arahkan kamera ke QR code antrian.'}
       </Text>
 
       <Pressable onPress={onClose} className="items-center py-1" accessibilityRole="button">
@@ -72,6 +98,6 @@ export function JoinQueueModals({ visible, onClose }: JoinQueueModalsProps) {
           Tutup
         </Text>
       </Pressable>
-    </ModalCard>
+    </>
   );
 }
