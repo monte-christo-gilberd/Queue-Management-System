@@ -17,7 +17,6 @@ Nama host di config adalah nama service di `docker-compose.yml`: `backend:8080`,
 | `/api/v1/users/login`, `/register` | `backend` | Rate limit 10 r/s per IP (burst 20), lewat batas dibalas 429 |
 | `/api/v1/join`, `/join/preview` | `backend` | Rate limit 10 r/s per IP (burst 20) |
 | `/api/` | `backend` | Timeout 60s |
-| `/qr/` | `qr-service` | Rate limit 20 r/s per IP (burst 40) |
 | `/internal/` | - | Selalu 404 (endpoint internal qr-service) |
 | `/` | `frontend:80` | Aplikasi web |
 

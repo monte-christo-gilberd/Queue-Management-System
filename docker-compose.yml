@@ -37,7 +37,6 @@ services:
       target: dev
     environment:
       PORT: "8090"
-      PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
       JOIN_LINK_SECRET: ${JOIN_LINK_SECRET:?set JOIN_LINK_SECRET in .env}
       QR_DYNAMIC_TTL_SECONDS: ${QR_DYNAMIC_TTL_SECONDS:-120}
       QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
@@ -67,7 +66,6 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       ALLOWED_ORIGINS: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
       PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
-      PUBLIC_QR_URL: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
       # Hanya nginx di jaringan internal yang boleh menentukan IP klien (X-Forwarded-For).
       TRUSTED_PROXIES: 172.28.0.0/16
       QR_SERVICE_URL: http://qr-service:8090
