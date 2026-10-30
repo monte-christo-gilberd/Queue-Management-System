@@ -37,7 +37,7 @@ sequenceDiagram
     O->>FE: Isi nama dan deskripsi → Simpan
     FE->>BE: POST /api/v1/queues
     alt langganan aktif
-        BE-->>FE: 201 { queue, queue_authz }
+        BE-->>FE: 201 { queue }
         FE-->>O: Buka detail antrian baru
     else langganan tidak aktif
         BE-->>FE: 402 SUBSCRIPTION_INACTIVE
@@ -78,15 +78,13 @@ Dibuka dari Dashboard (ketuk judul antrian) atau dari Daftar Antrian. Layout dua
 
 | Bagian | Fungsi |
 |---|---|
-| QR antrian | Gambar QR dari qr-service, mode statis/dinamis, hitung mundur, salin tautan, ganti kode (statis) |
+| QR antrian | QR digambar di frontend dari `join_url`, mode statis/dinamis, hitung mundur, salin tautan, ganti kode (statis) |
 | Tautan join | Tautan `<origin>/join?t=<token>` berasal dari backend (tombol salin di kartu QR) |
-| SKIP / NEXT | NEXT berfungsi. SKIP belum tersedia di backend |
+| SKIP / NEXT | NEXT berfungsi. SKIP ditunda (backlog) |
 | Append Note | Popup catatan. Belum tersambung ke backend |
 | Tampilan customer | Nomor yang sedang dilayani (tanpa posisi sebelum/sesudah) |
 | Daftar tiket | Ketuk kartu tampilan customer untuk membuka semua tiket antrian |
 | Nama dan deskripsi | Ubah lalu SIMPAN (PUT) |
-| Admin | Daftar admin dan tombol tambah admin. Belum tersambung ke backend |
-| Otoritas admin | Ubah izin antrian lalu SIMPAN IZIN (PUT `/authz`) |
 | Pengaturan antrian | Toggle pengulangan. Hanya tampilan, belum tersambung |
 | Tutup antrian | Konfirmasi dulu, lalu POST `/close` |
 
@@ -162,5 +160,5 @@ lalu mengambil ulang status.
 ## 8. Yang belum punya alur
 
 Fitur di bawah ini ada di product overview tetapi belum punya endpoint, sehingga alurnya belum bisa dijalankan:
-skip tiket, notifikasi ke customer berikutnya, pembatalan oleh customer, hapus customer, counter, admin per counter,
+skip tiket, notifikasi ke customer berikutnya, pembatalan oleh customer, hapus customer, counter,
 penyisipan posisi, antrian ulang, batas harian QR, riwayat dan ekspor, catatan antrian, login Google, dan pembayaran langganan.

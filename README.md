@@ -12,14 +12,14 @@ Dokumen lain:
 ## Fitur yang sudah berjalan
 
 - Daftar, masuk, dan keluar. Masuk dengan email atau username.
-- Owner: buat antrian (perlu langganan aktif), ubah nama dan deskripsi, atur izin, panggil Next, tutup antrian.
-- Owner: QR antrian statis/dinamis (gambar dirender `qr-service`), penggantian kode statis, salin tautan join.
+- Owner: buat antrian (perlu langganan aktif), ubah nama dan deskripsi, panggil Next, tutup antrian.
+- Owner: QR antrian statis/dinamis (token dibuat `qr-service`, gambar digambar di frontend dari `join_url`), penggantian kode statis, salin tautan join.
 - Customer: bergabung lewat tautan/QR bertoken, melihat nomor yang sedang dilayani dan posisi di depan, serta riwayat tiket.
 - Pembaruan real-time lewat Server-Sent Events (termasuk `queue_qr_updated`).
 - Mode terang dan gelap.
 
-Yang belum tersedia (lihat [DESIGN.md](DESIGN.md#7-batasan-dan-yang-belum-dibangun)): skip, notifikasi,
-pembatalan oleh customer, counter, admin per counter, catatan, riwayat ekspor, login Google,
+Yang belum tersedia (lihat [DESIGN.md](DESIGN.md#7-batasan-dan-yang-belum-dibangun)): skip, notifikasi/email,
+pembatalan oleh customer, counter kustom, catatan, riwayat ekspor, login Google,
 dan pembayaran langganan.
 
 ## Teknologi
@@ -27,10 +27,10 @@ dan pembayaran langganan.
 | Bagian | Teknologi |
 |---|---|
 | Backend | Go 1.27, Gin, sqlx + pgx, JWT HS256, bcrypt |
-| qr-service | Go 1.25, token join HMAC + render PNG (`skip2/go-qrcode`) |
+| qr-service | Go 1.25, token join HMAC (internal, tidak dipublikasikan nginx) |
 | Database | PostgreSQL |
 | Frontend | Expo SDK 57 (Expo Router, web static), React Native, NativeWind, Zustand |
-| Deploy | Docker Compose, nginx (reverse proxy + rate limit `/qr/`) |
+| Deploy | Docker Compose, nginx (reverse proxy + rate limit login dan `/join`) |
 
 ## Struktur folder
 
@@ -88,8 +88,7 @@ Variabel penting:
 | `JWT_SECRET` | Rahasia penandatanganan token. Ganti untuk produksi |
 | `PORT` | Port HTTP backend |
 | `ALLOWED_ORIGINS` | Origin frontend yang diizinkan (dipisah koma) |
-| `PUBLIC_APP_URL` | Origin frontend untuk `join_url`, mis. `http://192.168.1.11:8081` |
-| `PUBLIC_QR_URL` | Basis `image_url`; di produksi sama dengan `PUBLIC_APP_URL` |
+| `PUBLIC_APP_URL` | Origin frontend untuk `join_url`, mis. `http://localhost:8080` (lewat nginx) |
 | `QR_SERVICE_URL` | Alamat qr-service, mis. `http://localhost:8090` |
 | `QR_SERVICE_TOKEN` | Sama dengan `QR_SERVICE_TOKEN` milik qr-service |
 | `QR_HTTP_TIMEOUT` | Timeout panggilan internal (detik, default 1) |

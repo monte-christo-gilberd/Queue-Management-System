@@ -74,11 +74,9 @@ Tabel yang sudah dipakai backend:
 | `users` | Akun (email, username, password hash) |
 | `owners` | Penanda owner dan masa berlaku langganan (`subscription_expires_at`) |
 | `queues` | Antrian (nama, deskripsi, status, pemilik) |
-| `queue_authz` | Izin per antrian (flag `can_*`) |
 | `tickets` | Tiket: nomor, `sort_key`, status, waktu selesai |
 
-Tabel yang sudah ada di skema tetapi belum dipakai backend: `payments`, `queue_settings`, `queue_admins`,
-`owner_saved_admins`, `counters`, `ticket_notes`, `queue_history`. Tabel-tabel ini disiapkan untuk fitur
+Tabel yang sudah ada di skema tetapi belum dipakai backend: `payments`, `queue_settings`, `counters`, `ticket_notes`, `queue_history`. Tabel-tabel ini disiapkan untuk fitur
 yang belum dibangun (lihat bagian 7).
 
 Batasan penting di `tickets`:
@@ -234,9 +232,9 @@ Ekspektasi tes diturunkan dari product overview (`documentation/docs/product-ove
 
 Yang belum ada di backend (lihat product overview):
 - Skip tiket, notifikasi ke customer berikutnya, pembatalan oleh customer, hapus customer oleh owner.
-- Counter dan admin per counter, penyisipan di posisi tertentu, antrian ulang (requeue).
+- Counter kustom (kini satu counter default otomatis per antrian, disembunyikan di UI), penyisipan di posisi tertentu, antrian ulang (requeue).
 - Batas harian/fallback QR, riwayat dan ekspor, catatan antrian, Google login.
-- Pengelolaan admin antrian dan pembayaran langganan.
+- Pembayaran langganan, verifikasi email, lupa password, `notify-service` (Tier 2).
 
 Di frontend, tombol dan layar untuk fitur di atas sudah ada tetapi belum tersambung (TODO di kode).
 

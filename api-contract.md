@@ -127,7 +127,7 @@ Request:
 
 201:
 ```json
-{ "data": { "action": "create_queue", "queue": { ...QueueResponse }, "queue_authz": { ...QueueAuthzResponse } } }
+{ "data": { "action": "create_queue", "queue": { ...QueueResponse }esponse } } }
 ```
 Error: 400 `BAD_REQUEST`, 402 `SUBSCRIPTION_INACTIVE`, 500.
 
@@ -139,7 +139,7 @@ Daftar antrian milik owner. Bila langganan tidak aktif, hanya antrian yang masih
 ### GET /api/v1/queues/:queue_id
 Detail antrian beserta izin requester. Hanya owner.
 
-200: `{ "data": { "action": "get_queue", "queue": {...}, "queue_authz": {...} } }`
+200: `{ "data": { "action": "get_queue", "queue": {...} } }`
 Error: 400, 404 `NOT_FOUND`.
 
 ### PUT /api/v1/queues/:queue_id
@@ -148,21 +148,6 @@ Ubah nama dan deskripsi. Butuh langganan aktif dan hak owner.
 Request: `{ "queue_name": "Loket B", "queue_description": "..." }`
 200: `{ "data": { "action": "update_queue", ... } }`
 Error: 400, 402 `SUBSCRIPTION_INACTIVE`, 404.
-
-### PUT /api/v1/queues/:queue_id/authz
-Ubah izin (authz) untuk antrian ini. Butuh langganan aktif dan hak owner. Backend menimpa semua flag sekaligus.
-
-Request:
-```json
-{
-  "queue_id": 122,
-  "can_manage_queue": true, "can_manage_counters": false, "can_manage_qr": false,
-  "can_view_queue": true, "can_manage_display": false, "can_continue_queue": true,
-  "can_notify_customer": false, "can_manage_tickets": true, "can_manage_notes": true
-}
-```
-200: `{ "data": { "action": "update_authz", ... } }`
-Error: 400, 402, 404.
 
 ### POST /api/v1/queues/:queue_id/close
 Menutup antrian. Tidak bisa dibuka lagi. Customer tidak bisa join setelah ditutup.
@@ -201,7 +186,6 @@ Status QR antrian untuk owner. Token statis dibuat lazy saat pertama kali dimint
     "queue_id": 122,
     "type": "static",
     "join_url": "https://qms.example.com/join?t=v1...",
-    "image_url": "https://qms.example.com/qr/join.png?token=v1...",
     "expires_at": null
   }
 }
@@ -225,7 +209,7 @@ Error: 404 `NOT_FOUND`, 409 `QR_REPLACE_NOT_ALLOWED` (mode dinamis), 503 `QR_UNA
 ## Antrian (customer)
 
 ### GET /api/v1/queues/:queue_id/info
-Info publik antrian untuk pengguna yang sudah login. Tanpa `queue_authz` dan tanpa daftar tiket.
+Info publik antrian untuk pengguna yang sudah login. Tanpa daftar tiket.
 
 200: `{ "data": { "action": "queue_info", "queue": PublicQueueResponse } }`
 Error: 404 `NOT_FOUND`.
@@ -288,13 +272,6 @@ Status antrian untuk owner atau pemegang tiket. Pengguna lain mendapat 404.
 ### PublicQueueResponse
 Sama seperti QueueResponse tanpa `owner_id`.
 
-### QueueAuthzResponse
-```json
-{ "queue_id": 122, "can_manage_queue": true, "can_manage_counters": false, "can_manage_qr": false,
-  "can_view_queue": true, "can_manage_display": false, "can_continue_queue": true,
-  "can_notify_customer": false, "can_manage_tickets": true, "can_manage_notes": true }
-```
-
 ### TicketResponse
 ```json
 { "id": 121, "queue_id": 122, "ticket_number": 2, "sort_key": 131072, "user_id": 3,
@@ -333,7 +310,7 @@ data: {"type":"ticket_next","queue_id":122,"payload":{...},"ts":"2026-10-17T09:2
 |---|---|---|
 | `ticket_joined` | Customer berhasil join (tiket baru) | TicketEvent |
 | `ticket_next` | Owner menekan Next | TicketEvent dengan `status` = `completed` |
-| `queue_updated` | Nama, deskripsi, atau izin antrian diubah | `{ "queue_id": 122 }` (saat izin diubah, ditambah `queue_authz`) |
+| `queue_updated` | Nama atau deskripsi antrian diubah | `{ "queue_id": 122 }` |
 | `queue_closed` | Antrian ditutup | `{ "queue_id": 122 }` |
 | `queue_qr_updated` | Mode QR diubah atau token statis diganti | `{ "queue_id": 122 }` |
 
