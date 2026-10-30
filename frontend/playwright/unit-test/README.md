@@ -4,13 +4,10 @@ Tes ini menguji **behaviour yang diharapkan** dari `Capstone-Project/documentati
 
 ## Prasyarat
 
-1. Database `qms_db` berjalan, dengan schema dari `migrations/01_Schema.sql`.
-2. Backend: `cd backend && go run ./cmd/server` (port 8080).
-3. Frontend: `cd frontend && npx expo start --web` (port 8081).
-4. Akun owner berlangganan (belum ada endpoint untuk ini). Buat akun lewat register, lalu di database:
-   ```sql
-   INSERT INTO owners (user_id, subscription_expires_at)
-   VALUES (<id user>, now() + interval '30 days');
+1. Jalankan stack: `docker compose up -d`. Semua dijangkau lewat nginx di `http://localhost:8080`.
+2. Seed ulang sebelum tiap run (owner1/owner2, user1..user10, password `password`):
+   ```bash
+   docker compose exec -T db psql -U qms -d qms_db < db/scripts/reset_seed_dev.sql
    ```
 5. Dependensi: `npm install` di `frontend/` (sudah memuat `@playwright/test`). Browser Chromium sudah tersedia di cache; bila belum, `npx playwright install chromium`.
 
@@ -18,17 +15,18 @@ Tes ini menguji **behaviour yang diharapkan** dari `Capstone-Project/documentati
 
 | Variabel | Default | Keterangan |
 |---|---|---|
-| `QMS_WEB_URL` | `http://localhost:8081` | Alamat frontend |
+| `QMS_WEB_URL` | `http://localhost:8080` | Alamat frontend (lewat nginx) |
 | `QMS_API_URL` | `http://localhost:8080` | Alamat backend |
 | `QMS_OWNER_EMAIL` / `QMS_OWNER_PASSWORD` | — | Owner berlangganan. Tanpa ini, tes owner/customer di-skip |
-| `QMS_EXPIRED_OWNER_EMAIL` / `QMS_EXPIRED_OWNER_PASSWORD` | — | Owner dengan langganan kedaluwarsa (opsional, untuk TC-04-03) |
+| `QMS_EXPIRED_OWNER_EMAIL` / `QMS_EXPIRED_OWNER_PASSWORD` | `owner3@test.com` / `password` | Owner kedaluwarsa dari seed (untuk TC-04-03) |
 
 ## Menjalankan
 
 Dari folder `frontend/`:
 
 ```bash
-QMS_OWNER_EMAIL=owner@example.com QMS_OWNER_PASSWORD=... npm run e2e
+QMS_WEB_URL=http://localhost:8080 QMS_API_URL=http://localhost:8080 \
+QMS_OWNER_EMAIL=owner1@test.com QMS_OWNER_PASSWORD=password npm run e2e
 npx playwright test ts-01 --headed        # satu area, tampilkan browser
 npm run e2e:report                        # buka laporan HTML
 ```
@@ -41,8 +39,10 @@ npm run e2e:report                        # buka laporan HTML
 - **Setup lewat API**: akun, antrian, dan join disiapkan lewat API (`support/api.ts`), supaya tes yang diuji hanya langkah yang relevan.
 - **Sesi lewat penyimpanan browser**: `signInWithToken` menanamkan token ke `localStorage` (`qms-auth`) untuk setup. Alur login yang sebenarnya diuji di TS-01.
 - **Backlog**: `ts-09` berstatus `fixme`. Ubah ke tes biasa saat fitur selesai.
-- **Real-time**: TC-07-04 memutus stream SSE dengan `page.route` lalu membukanya lagi.
+- **Real-time**: TC-07-04 memutus stream SSE dengan `page.route` lalu membukanya lagi. TC-07-05 memblokir SSE dan memajukan jam (`page.clock.fastForward`) untuk menguji resinkron.
+- **Join dua kali**: oleh user yang sama mengembalikan 200 dengan tiket yang sama (TC-05-04).
+- **TC-04-03**: memakai `owner3` dari seed (langganan kedaluwarsa, satu antrian aktif).
 
 ## Status
 
-Terdaftar 68 tes (`npx playwright test --list`). Hasil run pertama terhadap aplikasi yang berjalan dicatat di bagian bawah file ini.
+Run dari seed bersih: 76 lulus, 0 gagal, 16 di-skip (backlog), TC-04-03 ikut berjalan.

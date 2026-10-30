@@ -22,8 +22,8 @@ export const AUTH_STORAGE_KEY = 'qms-auth';
  * Dipakai TC-04-03; tes di-skip bila kosong.
  */
 export const EXPIRED_OWNER = {
-  email: process.env.QMS_EXPIRED_OWNER_EMAIL ?? '',
-  password: process.env.QMS_EXPIRED_OWNER_PASSWORD ?? '',
+  email: process.env.QMS_EXPIRED_OWNER_EMAIL ?? 'owner3@test.com',
+  password: process.env.QMS_EXPIRED_OWNER_PASSWORD ?? 'password',
 };
 
 export const hasExpiredOwner = EXPIRED_OWNER.email !== '' && EXPIRED_OWNER.password !== '';
