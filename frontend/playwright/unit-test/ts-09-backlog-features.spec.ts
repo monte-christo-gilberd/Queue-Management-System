@@ -5,6 +5,8 @@ import { test } from '@playwright/test';
  * sampai fitur dikerjakan. Lihat test-cases/queue-management/backlog/ts-09-backlog-features.md.
  */
 const BACKLOG: Array<[title: string, source: string]> = [
+  // Catatan status: TC-09-02 dikerjakan di Fase 4a; TC-09-06 hanya counter default (CRUD di Tier 2);
+  // TC-09-08 QR dinamis sudah ada (batas harian belum); TC-09-16 sudah ada tetapi kamera tidak bisa diotomasi.
   ['TC-09-01 Papan tampilan publik', '4.5, US-7'],
   ['TC-09-02 Skip nomor', '4.7, US-8 skip'],
   ['TC-09-03 Notifikasi customer berikutnya', '4.8, US-9'],

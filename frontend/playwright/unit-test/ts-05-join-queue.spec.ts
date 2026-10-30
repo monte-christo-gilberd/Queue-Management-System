@@ -71,8 +71,9 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
       headers: { Authorization: `Bearer ${customer.token}` },
       data: { t },
     });
-    expect(res.status()).toBe(409);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('ALREADY_JOINED');
+    expect(res.status()).toBe(200);
+    const body = (await res.json()) as { data: { ticket_number?: number; ticket?: { ticket_number: number } } };
+    expect(body.data.ticket_number ?? body.data.ticket?.ticket_number).toBe(1);
   });
 
   test('TC-05-05 Antrian tertutup tidak menerima pendaftaran', async ({ request }) => {

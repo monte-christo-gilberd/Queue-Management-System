@@ -52,3 +52,14 @@ export async function expectLoginScreen(page: Page) {
 export function inputWithValue(page: Page, value: string) {
   return page.locator(`input[value="${value.replace(/"/g, '\\"')}"]`);
 }
+
+/** Membuka popup "Buat Antrian Baru" lewat panel profil (tombolnya hanya ada di panel). */
+export async function openCreateQueue(page: Page) {
+  await page
+    .getByText(/@/)
+    .filter({ visible: true })
+    .first()
+    .locator('xpath=following-sibling::*[1]')
+    .click();
+  await action(page, 'Buat Antrian Baru').click();
+}

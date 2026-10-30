@@ -34,7 +34,7 @@ test.describe('TS-04 Langganan owner', () => {
     const account = await registerAccount(request, 'list');
     await signInWithToken(page, account.token, account.email, '/queues');
 
-    await expect(page.getByText('Semua Antrian')).toBeVisible();
+    await expect(page.getByText('Daftar Antrian', { exact: true }).first()).toBeVisible();
     await expect(page.getByText(/Langganan Anda tidak aktif/)).toHaveCount(0);
   });
 
@@ -45,7 +45,7 @@ test.describe('TS-04 Langganan owner', () => {
     await signInWithToken(page, token, EXPIRED_OWNER.email);
 
     await expect(page.getByText('Belum ada antrian yang aktif')).toHaveCount(0);
-    await expect(action(page, 'NEXT')).toBeVisible();
+    await expect(action(page, 'Next').first()).toBeVisible();
   });
 
   test('TC-04-04 Opsi paket dan pembayaran tampil saat diblokir', async () => {

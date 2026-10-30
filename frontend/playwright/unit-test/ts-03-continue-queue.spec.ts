@@ -25,8 +25,16 @@ async function openOwnerDashboardWithNewQueue(page: Page, request: APIRequestCon
 
   await signInWithToken(page, session.token, session.displayName);
   // Dashboard hanya menampilkan papan tiket (dengan tombol NEXT) ketika ada antrian aktif.
-  await expect(action(page, 'NEXT')).toBeVisible();
+  await expect(action(page, 'Next').first()).toBeVisible();
   return queue;
+}
+
+/** Penanda "sedang dilayani" tepat di bawah nomor tiket pada timeline. */
+function servingMarker(page: import('@playwright/test').Page, n: number) {
+  return page
+    .getByText(ticketLabel(n), { exact: true })
+    .locator('xpath=following-sibling::*[1][normalize-space()="sedang dilayani"]')
+    .first();
 }
 
 test.describe('TS-03 Melanjutkan antrian (owner)', () => {
@@ -38,7 +46,7 @@ test.describe('TS-03 Melanjutkan antrian (owner)', () => {
   test('TC-03-01 Next pada antrian kosong', async ({ page, request }) => {
     await openOwnerDashboardWithNewQueue(page, request, 0);
 
-    await action(page, 'NEXT').click();
+    await action(page, 'Next').first().click();
 
     await expect(page.getByText('Tidak ada yang menunggu di antrian ini')).toBeVisible();
     await expect(page.getByText(/sedang dilayani/)).toHaveCount(0);
@@ -47,28 +55,28 @@ test.describe('TS-03 Melanjutkan antrian (owner)', () => {
   test('TC-03-02 Next memajukan nomor yang dilayani', async ({ page, request }) => {
     await openOwnerDashboardWithNewQueue(page, request, 2);
 
-    await action(page, 'NEXT').click();
+    await action(page, 'Next').first().click();
 
-    await expect(page.getByText(`Nomor ${ticketLabel(1)} sedang dilayani`)).toBeVisible();
+    await expect(servingMarker(page, 1)).toBeVisible();
     await expect(page.getByText(ticketLabel(2), { exact: true }).first()).toBeVisible();
   });
 
   test('TC-03-03 Klik ganda tidak memajukan dua nomor', async ({ page, request }) => {
     await openOwnerDashboardWithNewQueue(page, request, 3);
 
-    await action(page, 'NEXT').dblclick();
+    await action(page, 'Next').first().dblclick();
 
-    await expect(page.getByText(`Nomor ${ticketLabel(1)} sedang dilayani`)).toBeVisible();
+    await expect(servingMarker(page, 1)).toBeVisible();
     await page.waitForTimeout(1000);
-    await expect(page.getByText(`Nomor ${ticketLabel(2)} sedang dilayani`)).toHaveCount(0);
+    await expect(servingMarker(page, 2)).toHaveCount(0);
   });
 
   test('TC-03-04 Next berurutan mengikuti urutan bergabung', async ({ page, request }) => {
     await openOwnerDashboardWithNewQueue(page, request, 3);
 
     for (const n of [1, 2, 3]) {
-      await action(page, 'NEXT').click();
-      await expect(page.getByText(`Nomor ${ticketLabel(n)} sedang dilayani`)).toBeVisible();
+      await action(page, 'Next').first().click();
+      await expect(servingMarker(page, n)).toBeVisible();
     }
   });
 });

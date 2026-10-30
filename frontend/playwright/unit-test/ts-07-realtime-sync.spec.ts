@@ -36,7 +36,7 @@ test.describe('TS-07 Pembaruan real-time', () => {
     if (!session) throw new Error('owner berlangganan tidak tersedia');
     const queue = await createQueueViaApi(request, session.token, uniqueName('Live'));
     await signInWithToken(page, session.token, session.displayName);
-    await expect(action(page, 'NEXT')).toBeVisible();
+    await expect(action(page, 'Next').first()).toBeVisible();
 
     const customer = await registerAccount(request, 'newcomer');
     await joinQueueViaApi(request, customer.token, queue.id);

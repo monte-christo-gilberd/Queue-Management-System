@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
-import { action, API_URL, createQueueViaApi, field, joinPathViaApi, joinTokenOf, loginViaApi, WEB_URL } from './support';
+import { action, API_URL, closeQueueViaApi, openCreateQueue, createQueueViaApi, field, joinPathViaApi, joinTokenOf, loginViaApi, WEB_URL } from './support';
 
 /**
  * TS-10 — Skenario antrian end-to-end dengan akun seed (db/scripts/reset_seed_dev.sql).
@@ -82,8 +82,7 @@ async function joinAs(page: Page, request: APIRequestContext, queueId: number, i
 }
 
 async function createViaUi(page: Page, ownerName: string, queueName: string): Promise<number> {
-  await openPanel(page, ownerName);
-  await action(page, 'Buat Antrian Baru').click();
+  await openCreateQueue(page);
   await field(page, 'mis. Loket Pelayanan 1').fill(queueName);
   await action(page, 'Buat Antrian').click();
   await page.waitForURL(/\/queues\/\d+/);
@@ -97,6 +96,16 @@ async function closeViaUi(page: Page, queueId: number) {
 }
 
 test.describe.configure({ mode: 'serial' });
+
+// Skenario ini mengandaikan owner1 belum punya antrian aktif; tutup sisa dari tes lain.
+test.beforeAll(async ({ request }) => {
+  const token = await loginViaApi(request, OWNER1, 'password');
+  const res = await request.get(`${API_URL}/api/v1/queues`, { headers: { Authorization: `Bearer ${token}` } });
+  const body = (await res.json()) as { data: { queues: { id: number; status: string }[] } };
+  for (const q of body.data.queues.filter((x) => x.status === 'active')) {
+    await closeQueueViaApi(request, token, q.id);
+  }
+});
 
 test.describe('TS-10 Skenario antrian dengan akun seed', () => {
   let owner: { context: BrowserContext; page: Page };
@@ -150,8 +159,7 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
 
   test('TC-10-06 Buat antrian dengan nama kosong ditolak', async () => {
     await owner.page.goto(`${WEB_URL}/dashboard`);
-    await openPanel(owner.page, OWNER1);
-    await action(owner.page, 'Buat Antrian Baru').click();
+    await openCreateQueue(owner.page);
     await action(owner.page, 'Buat Antrian').click();
     await expect(owner.page.getByText('Nama antrian wajib diisi')).toBeVisible();
     await action(owner.page, 'Batal').click();

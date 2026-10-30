@@ -5,20 +5,20 @@
 | TC | Fitur | Sumber | Status di kode |
 |---|---|---|---|
 | TC-09-01 | Papan tampilan publik | 4.5, US-7 (Scope #5, P1) | Belum ada |
-| TC-09-02 | Skip nomor | 4.7, US-8 skip (Scope #7, P2) | Belum ada endpoint |
+| TC-09-02 | Skip nomor | 4.7, US-8 skip (Scope #7, P2) | Dikerjakan di Fase 4a (event Skip). Spec masih fixme sampai selesai |
 | TC-09-03 | Notifikasi customer berikutnya | 4.8, US-9 (Scope #8, P2) | Belum ada |
 | TC-09-04 | Customer membatalkan nomornya | 4.9, US-16 (Scope #9, P2) | Belum ada |
 | TC-09-05 | Owner menghapus customer dari antrian | 4.10, US-11 (Scope #10, P2) | Belum ada |
-| TC-09-06 | Counter per counter | 4.11, US-4, US-19 (Scope #11, P2) | Belum ada |
+| TC-09-06 | Counter per counter | 4.11, US-4, US-19 (Scope #11, P2) | Satu counter default per antrian sudah ada. CRUD counter dan halamannya ditunda ke Tier 2 |
 | TC-09-07 | Menyisipkan customer di posisi tertentu | 4.12, US-10 (Scope #12, P3) | Belum ada |
-| TC-09-08 | QR dinamis dan batas harian | 4.13, US-5 (Scope #13, P3) | Belum ada |
+| TC-09-08 | QR dinamis dan batas harian | 4.13, US-5 (Scope #13, P3) | QR dinamis (TTL 120 detik) sudah ada dan diuji di ts-05. Batas harian belum ada |
 | TC-09-09 | Pengembalian otomatis setelah skip | 4.14, US-17 (Scope #14, P3) | Belum ada |
 | TC-09-10 | Riwayat dan ekspor CSV/Excel | 4.15, US-13 (Scope #15, P4) | Belum ada |
 | TC-09-11 | Catatan per nomor | 4.16, US-12 (Scope #16, P4) | Belum ada |
 | TC-09-12 | Login dengan Google | 4.17, US-20 (Scope #17, P4) | Belum ada (OAuth) |
 | TC-09-13 | Batas pendaftaran per antrian | 4.1, 4.2 edge case | Belum ada (`registration_limit` tidak ditegakkan) |
 | TC-09-15 | Paket dan pembayaran langganan | 4.18, US-21 (Scope #18, P1) | Hanya pemblokiran; halaman harga belum ada |
-| TC-09-16 | Scan QR dengan kamera | 4.2 langkah 3 | Placeholder; masuk lewat tautan/input manual |
+| TC-09-16 | Scan QR dengan kamera | 4.2 langkah 3 | Sudah ada (popup kamera `expo-camera`). Tidak bisa diotomasi di Playwright, hanya jalur API (TC-05-05, TC-10-22) yang diuji. Verifikasi manual di ponsel lewat HTTPS |
 
 ---
 

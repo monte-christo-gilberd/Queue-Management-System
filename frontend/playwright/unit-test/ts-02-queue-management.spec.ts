@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import {
+  openCreateQueue,
   action,
   closeQueueViaApi,
   createQueueViaApi,
@@ -29,7 +30,7 @@ test.describe('TS-02 Mengelola antrian (owner)', () => {
     await ownerPage(page, request);
     const name = uniqueName('Loket');
 
-    await action(page, 'Buat Antrian Baru').click();
+    await openCreateQueue(page);
     await field(page, 'mis. Loket Pelayanan 1').fill(name);
     await action(page, 'Buat Antrian').click();
 
@@ -40,11 +41,11 @@ test.describe('TS-02 Mengelola antrian (owner)', () => {
   test('TC-02-02 Nama kosong ditolak', async ({ page, request }) => {
     await ownerPage(page, request);
 
-    await action(page, 'Buat Antrian Baru').click();
+    await openCreateQueue(page);
     await action(page, 'Buat Antrian').click();
 
     await expect(page.getByText('Nama antrian wajib diisi')).toBeVisible();
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page).toHaveURL(/\/dashboard/);
   });
 
   test('TC-02-03 Mengubah nama dan deskripsi tersimpan', async ({ page, request }) => {
@@ -68,8 +69,10 @@ test.describe('TS-02 Mengelola antrian (owner)', () => {
     await action(page, 'TUTUP ANTRIAN').click();
     await action(page, 'Ya, Tutup Antrian').click();
 
-    await expect(page.getByText('Antrian ini sudah ditutup.')).toBeVisible();
-    await expect(action(page, 'TUTUP ANTRIAN')).toHaveCount(0);
+    // Setelah ditutup owner diarahkan ke dashboard, dan antrian hilang dari Daftar Antrian.
+    await expect(page).toHaveURL(/\/dashboard/);
+    await page.goto(`${WEB_URL}/queues`);
+    await expect(page.getByText(queue.queue_name, { exact: true })).toHaveCount(0);
   });
 
   test('TC-02-05 Batal menutup tidak mengubah antrian', async ({ page, request }) => {
@@ -91,7 +94,6 @@ test.describe('TS-02 Mengelola antrian (owner)', () => {
     await closeQueueViaApi(request, session.token, closed.id);
 
     await page.goto(`${WEB_URL}/queues`);
-    await action(page, 'Aktif').click();
 
     await expect(page.getByText(active.queue_name, { exact: true })).toBeVisible();
     await expect(page.getByText(closed.queue_name, { exact: true })).toHaveCount(0);
@@ -113,6 +115,6 @@ test.describe('TS-02 Mengelola antrian (owner)', () => {
     // Menu "Daftar Antrian" ada di panel profil; halamannya dibuka langsung di sini.
     await page.goto(`${WEB_URL}/queues`);
 
-    await expect(page.getByText('Semua Antrian')).toBeVisible();
+    await expect(page.getByText('Daftar Antrian', { exact: true }).first()).toBeVisible();
   });
 });

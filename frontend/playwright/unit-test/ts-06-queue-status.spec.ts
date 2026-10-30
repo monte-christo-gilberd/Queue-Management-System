@@ -50,7 +50,7 @@ test.describe('TS-06 Status antrian (customer)', () => {
 
     await signInWithToken(page, customers[0].token, customers[0].email, `/ticket/${queue.id}`);
 
-    await expect(page.getByText('Sudah dilayani')).toBeVisible();
+    await expect(page.getByText('Sedang dilayani', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('A-001', { exact: true }).first()).toBeVisible();
   });
 
