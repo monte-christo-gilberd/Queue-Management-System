@@ -16,10 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	qrPublicAppURL = "https://app.example.com"
-	qrPublicQRURL  = "https://app.example.com"
-)
+const qrPublicAppURL = "https://app.example.com"
 
 // fakeQRClient: fake service.QRClient. Token berurutan agar mudah dibedakan
 // (static-1, static-2, ...). Tidak menandatangani apa pun — itu tugas qr-service.
@@ -95,7 +92,7 @@ func newQRSpecEnv(t *testing.T) (*specEnv, *fakeQRClient, *service.QRService) {
 	t.Helper()
 	env := newSpecEnv(t)
 	client := &fakeQRClient{}
-	svc := service.NewQRService(env.queues, client, qrPublicAppURL, qrPublicQRURL, env.events).
+	svc := service.NewQRService(env.queues, client, qrPublicAppURL, env.events).
 		WithDynamicTTL(90 * time.Second)
 	return env, client, svc
 }
@@ -112,12 +109,10 @@ func TestQR_GetQR_StaticTokenIssuedOnceAndPersisted(t *testing.T) {
 	assert.Equal(t, model.QueueQRTypeStatic, first.Type)
 	assert.Nil(t, first.ExpiresAt)
 	assert.Equal(t, qrPublicAppURL+"/join?t=static-1", first.JoinURL)
-	assert.Equal(t, qrPublicQRURL+"/qr/join.png?token=static-1", first.ImageURL)
 
 	second, err := svc.GetQR(ctx, env.queueID, env.ownerID)
 	require.NoError(t, err)
 	assert.Equal(t, first.JoinURL, second.JoinURL)
-	assert.Equal(t, first.ImageURL, second.ImageURL)
 
 	assert.Equal(t, 1, client.issued(), "token statis tidak boleh dibuat ulang setiap GET")
 	assert.Equal(t, "static-1", env.queues.currentQRCode(env.queueID))
@@ -316,10 +311,9 @@ func TestQR_ResolveJoinToken_UnknownQueueAndClientErrors(t *testing.T) {
 func TestQR_JoinURL_TrimsTrailingSlash(t *testing.T) {
 	env := newSpecEnv(t)
 	client := &fakeQRClient{}
-	svc := service.NewQRService(env.queues, client, qrPublicAppURL+"/", qrPublicQRURL+"/", env.events)
+	svc := service.NewQRService(env.queues, client, qrPublicAppURL+"/", env.events)
 
 	resp, err := svc.GetQR(context.Background(), env.queueID, env.ownerID)
 	require.NoError(t, err)
 	assert.Equal(t, qrPublicAppURL+"/join?t=static-1", resp.JoinURL)
-	assert.Equal(t, qrPublicQRURL+"/qr/join.png?token=static-1", resp.ImageURL)
 }

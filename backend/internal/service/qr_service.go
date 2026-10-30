@@ -41,7 +41,6 @@ type QRService struct {
 	repository   QueueRepository
 	client       QRClient
 	publicAppURL string
-	publicQRURL  string
 	notifier     EventNotifier
 	dynamicTTL   time.Duration
 }
@@ -50,14 +49,12 @@ func NewQRService(
 	repository QueueRepository,
 	client QRClient,
 	publicAppURL string,
-	publicQRURL string,
 	notifiers ...EventNotifier,
 ) *QRService {
 	svc := &QRService{
 		repository:   repository,
 		client:       client,
 		publicAppURL: publicAppURL,
-		publicQRURL:  publicQRURL,
 		dynamicTTL:   120 * time.Second,
 	}
 	if len(notifiers) > 0 {
@@ -132,7 +129,6 @@ func (s *QRService) GetQR(
 		queueID,
 		qrType,
 		s.joinURL(token),
-		s.imageURL(token),
 		expiresAt,
 	), nil
 }
@@ -196,7 +192,6 @@ func (s *QRService) SetQRType(
 		queueID,
 		qrType,
 		s.joinURL(token),
-		s.imageURL(token),
 		expiresAt,
 	), nil
 }
@@ -237,7 +232,6 @@ func (s *QRService) ReplaceQR(
 		queueID,
 		qrTypeStatic,
 		s.joinURL(issued.Token),
-		s.imageURL(issued.Token),
 		nil,
 	), nil
 }
@@ -327,10 +321,6 @@ func (s *QRService) notifyQRUpdated(
 
 func (s *QRService) joinURL(token string) string {
 	return strings.TrimRight(s.publicAppURL, "/") + "/join?t=" + token
-}
-
-func (s *QRService) imageURL(token string) string {
-	return strings.TrimRight(s.publicQRURL, "/") + "/qr/join.png?token=" + token
 }
 
 func secureEqual(a, b string) bool {

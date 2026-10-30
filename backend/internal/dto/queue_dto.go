@@ -77,7 +77,6 @@ type QueueQRResponse struct {
 	QueueID   int64  `json:"queue_id"`
 	Type      string `json:"type"`
 	JoinURL   string `json:"join_url"`
-	ImageURL  string `json:"image_url"`
 	ExpiresAt *int64 `json:"expires_at"`
 }
 
@@ -86,7 +85,6 @@ func NewQueueQRResponse(
 	queueID int64,
 	qrType string,
 	joinURL string,
-	imageURL string,
 	expiresAt *int64,
 ) QueueQRResponse {
 	return QueueQRResponse{
@@ -94,7 +92,6 @@ func NewQueueQRResponse(
 		QueueID:   queueID,
 		Type:      qrType,
 		JoinURL:   joinURL,
-		ImageURL:  imageURL,
 		ExpiresAt: expiresAt,
 	}
 }

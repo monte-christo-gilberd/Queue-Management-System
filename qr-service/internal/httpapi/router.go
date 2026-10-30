@@ -16,7 +16,6 @@ const maxRequestBodyBytes int64 = 16 << 10 // 16 KB
 // memasang signer dan TTL sendiri.
 type Config struct {
 	Signer       *joinlink.Signer
-	PublicAppURL string
 	DynamicTTL   time.Duration
 	ServiceToken string
 	Logger       *slog.Logger
@@ -24,7 +23,7 @@ type Config struct {
 
 // NewRouter membangun router publik dan internal.
 //
-// Publik: /health, /ready, /qr/join.png
+// Publik: /health, /ready
 // Internal: /internal/v1/* (wajib X-Service-Token, tidak diproksikan nginx)
 func NewRouter(cfg Config) *gin.Engine {
 	logger := cfg.Logger
@@ -39,11 +38,10 @@ func NewRouter(cfg Config) *gin.Engine {
 	engine.Use(Logger(logger))
 	engine.Use(NoStore())
 
-	handlers := NewHandlers(cfg.Signer, cfg.PublicAppURL, cfg.DynamicTTL)
+	handlers := NewHandlers(cfg.Signer, cfg.DynamicTTL)
 
 	engine.GET("/health", handlers.Health)
 	engine.GET("/ready", handlers.Ready)
-	engine.GET("/qr/join.png", handlers.JoinPNG)
 
 	internal := engine.Group("/internal/v1")
 	internal.Use(BodyLimit(maxRequestBodyBytes), ServiceToken(cfg.ServiceToken))

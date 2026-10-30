@@ -70,7 +70,6 @@ func main() {
 				cfg.QRHTTPTimeout,
 			),
 			cfg.PublicAppURL,
-			cfg.PublicQRURL,
 			hub,
 		).
 		WithDynamicTTL(120 * time.Second)

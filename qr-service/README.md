@@ -34,19 +34,8 @@ Health check: `GET http://localhost:8090/health`.
 |---|---|---|
 | GET | `/health` | Liveness, `{"status":"ok"}` |
 | GET | `/ready` | Readiness, `{"status":"ready"}` |
-| GET | `/qr/join.png` | PNG QR untuk `PUBLIC_APP_URL/join?t=<token>` |
 
-Query `/qr/join.png`:
-
-| Param | Default | Keterangan |
-|---|---|---|
-| `token` | wajib | Token join hasil endpoint internal |
-| `size` | `512` | 128–2048 px (di-clamp) |
-| `level` | `M` | `L`, `M`, `Q`, `H` |
-| `fg` | hitam | `#rrggbb` |
-| `bg` | putih | `#rrggbb` |
-
-Cache: token statis → `public, max-age=31536000, immutable`; token dinamis → `no-store`.
+Tidak ada endpoint gambar publik. QR digambar di frontend dari `join_url` yang dikembalikan backend.
 
 ### Internal (`X-Service-Token` wajib)
 
@@ -92,14 +81,11 @@ Token statis **tidak** punya `exp`. Backend wajib mencocokkannya dengan
 | Env | Wajib | Default | Keterangan |
 |---|---|---|---|
 | `PORT` | tidak | `8090` | Port HTTP |
-| `PUBLIC_APP_URL` | ya | — | Origin frontend untuk tautan join |
 | `JOIN_LINK_SECRET` | ya | — | HMAC secret, minimal 32 byte |
 | `QR_DYNAMIC_TTL_SECONDS` | tidak | `120` | TTL token dinamis (30–600) |
 | `QR_SERVICE_TOKEN` | ya | — | Token internal untuk backend |
 | `LOG_LEVEL` | tidak | `info` | `debug`/`info`/`warn`/`error` |
 
-`PUBLIC_APP_URL` harus bisa dibuka dari perangkat yang memindai QR. Saat uji di LAN,
-pakai alamat IP, bukan `localhost`.
 
 ## Kode error
 

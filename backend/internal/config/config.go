@@ -21,7 +21,6 @@ type Config struct {
 
 	// QR microservice (dipakai backend untuk memanggil /internal/v1/*).
 	PublicAppURL   string
-	PublicQRURL    string
 	QRServiceURL   string
 	QRServiceToken string
 	QRHTTPTimeout  time.Duration
@@ -38,7 +37,6 @@ func Load() (Config, error) {
 		TrustedProxies: parseOrigins(os.Getenv("TRUSTED_PROXIES")),
 
 		PublicAppURL:   strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/"),
-		PublicQRURL:    strings.TrimRight(os.Getenv("PUBLIC_QR_URL"), "/"),
 		QRServiceURL:   strings.TrimRight(os.Getenv("QR_SERVICE_URL"), "/"),
 		QRServiceToken: os.Getenv("QR_SERVICE_TOKEN"),
 	}
@@ -58,9 +56,6 @@ func Load() (Config, error) {
 
 	if cfg.PublicAppURL == "" {
 		return Config{}, fmt.Errorf("missing required env var: PUBLIC_APP_URL")
-	}
-	if cfg.PublicQRURL == "" {
-		return Config{}, fmt.Errorf("missing required env var: PUBLIC_QR_URL")
 	}
 	if cfg.QRServiceURL == "" {
 		return Config{}, fmt.Errorf("missing required env var: QR_SERVICE_URL")

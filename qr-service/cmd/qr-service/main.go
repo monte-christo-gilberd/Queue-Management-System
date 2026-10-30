@@ -43,7 +43,6 @@ func main() {
 
 	router := httpapi.NewRouter(httpapi.Config{
 		Signer:       signer,
-		PublicAppURL: cfg.PublicAppURL,
 		DynamicTTL:   cfg.DynamicTTL,
 		ServiceToken: cfg.ServiceToken,
 		Logger:       logger,
@@ -57,7 +56,6 @@ func main() {
 	go func() {
 		logger.Info("qr-service listening",
 			"port", cfg.Port,
-			"public_app_url", cfg.PublicAppURL,
 			"dynamic_ttl_seconds", int(cfg.DynamicTTL.Seconds()),
 		)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

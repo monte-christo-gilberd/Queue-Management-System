@@ -3,8 +3,6 @@ package httpapi
 import (
 	"errors"
 	"net/http"
-	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,9 +12,6 @@ import (
 )
 
 const (
-	// JoinPath adalah path frontend yang menerima token lewat query `t`.
-	JoinPath = "/join"
-
 	maxGenericDataLength = 1024
 	minCustomTTL         = 30 * time.Second
 	maxCustomTTL         = 10 * time.Minute
@@ -33,22 +28,19 @@ type errorResponse struct {
 
 // Handlers memegang dependensi endpoint publik dan internal.
 type Handlers struct {
-	signer       *joinlink.Signer
-	publicAppURL string
-	dynamicTTL   time.Duration
-	now          func() time.Time
+	signer     *joinlink.Signer
+	dynamicTTL time.Duration
+	now        func() time.Time
 }
 
 func NewHandlers(
 	signer *joinlink.Signer,
-	publicAppURL string,
 	dynamicTTL time.Duration,
 ) *Handlers {
 	return &Handlers{
-		signer:       signer,
-		publicAppURL: publicAppURL,
-		dynamicTTL:   dynamicTTL,
-		now:          time.Now,
+		signer:     signer,
+		dynamicTTL: dynamicTTL,
+		now:        time.Now,
 	}
 }
 
@@ -61,51 +53,6 @@ func (h *Handlers) Health(c *gin.Context) {
 // service yang berjalan selalu siap melayani.
 func (h *Handlers) Ready(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ready"})
-}
-
-// JoinPNG merender PNG QR untuk tautan join. Token diverifikasi lebih dulu agar
-// service tidak menjadi generator QR terbuka.
-func (h *Handlers) JoinPNG(c *gin.Context) {
-	token := c.Query("token")
-	if token == "" {
-		abortWithError(c, http.StatusBadRequest, "QR_MALFORMED", "missing token")
-		return
-	}
-
-	claims, err := h.signer.Verify(token)
-	if err != nil {
-		abortForTokenError(c, err)
-		return
-	}
-
-	size, level, fg, bg, err := renderParams(c)
-	if err != nil {
-		abortWithError(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
-		return
-	}
-
-	joinURL := h.publicAppURL + JoinPath + "?t=" + url.QueryEscape(token)
-	png, err := qr.Render(qr.Options{
-		Data:            joinURL,
-		Size:            size,
-		RecoveryLevel:   level,
-		ForegroundColor: fg,
-		BackgroundColor: bg,
-	})
-	if err != nil {
-		abortWithError(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
-		return
-	}
-
-	if claims.Type == joinlink.TypeStatic {
-		// Token statis berubah saat penggantian, jadi URL gambar boleh di-cache selamanya.
-		c.Header("Cache-Control", "public, max-age=31536000, immutable")
-	} else {
-		// Token dinamis kedaluwarsa; jangan sampai tersangkut cache browser/proxy.
-		c.Header("Cache-Control", "no-store")
-		c.Header("Pragma", "no-cache")
-	}
-	writePNG(c, png)
 }
 
 type issueTokenRequest struct {
@@ -235,19 +182,6 @@ func (h *Handlers) RenderGeneric(c *gin.Context) {
 
 	c.Header("Cache-Control", "no-store")
 	writePNG(c, png)
-}
-
-func renderParams(c *gin.Context) (size int, level, fg, bg string, err error) {
-	if raw := c.Query("size"); raw != "" {
-		size, err = strconv.Atoi(raw)
-		if err != nil {
-			return 0, "", "", "", errors.New("size must be an integer")
-		}
-	}
-	level = c.Query("level")
-	fg = c.Query("fg")
-	bg = c.Query("bg")
-	return size, level, fg, bg, nil
 }
 
 func writePNG(c *gin.Context, png []byte) {

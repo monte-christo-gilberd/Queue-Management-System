@@ -3,10 +3,8 @@ package config
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -19,10 +17,9 @@ const (
 )
 
 // Config adalah konfigurasi runtime qr-service. Service ini stateless: tidak ada
-// database, hanya secret untuk menandatangani token dan alamat publik frontend.
+// database, hanya secret untuk menandatangani token.
 type Config struct {
 	Port         string
-	PublicAppURL string
 	JoinSecret   string
 	DynamicTTL   time.Duration
 	ServiceToken string
@@ -34,18 +31,11 @@ type Config struct {
 func Load() (Config, error) {
 	cfg := Config{
 		Port:         envOr("PORT", "8090"),
-		PublicAppURL: strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/"),
 		JoinSecret:   os.Getenv("JOIN_LINK_SECRET"),
 		ServiceToken: os.Getenv("QR_SERVICE_TOKEN"),
 		LogLevel:     envOr("LOG_LEVEL", "info"),
 	}
 
-	if cfg.PublicAppURL == "" {
-		return Config{}, fmt.Errorf("missing required env var: PUBLIC_APP_URL")
-	}
-	if err := validatePublicURL(cfg.PublicAppURL); err != nil {
-		return Config{}, err
-	}
 	if cfg.JoinSecret == "" {
 		return Config{}, fmt.Errorf("missing required env var: JOIN_LINK_SECRET")
 	}
@@ -73,20 +63,6 @@ func Load() (Config, error) {
 	cfg.DynamicTTL = ttl
 
 	return cfg, nil
-}
-
-func validatePublicURL(raw string) error {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return fmt.Errorf("invalid PUBLIC_APP_URL: %w", err)
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("PUBLIC_APP_URL must use http or https")
-	}
-	if parsed.Host == "" {
-		return fmt.Errorf("PUBLIC_APP_URL must include a host")
-	}
-	return nil
 }
 
 func envOr(key, fallback string) string {

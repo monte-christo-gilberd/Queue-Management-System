@@ -66,7 +66,6 @@ func newTestEnv(t *testing.T) *testEnv {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	router := httpapi.NewRouter(httpapi.Config{
 		Signer:       signer,
-		PublicAppURL: testPublicURL,
 		DynamicTTL:   2 * time.Minute,
 		ServiceToken: testServiceToken,
 		Logger:       logger,
@@ -276,79 +275,6 @@ func TestVerifyToken_Errors(t *testing.T) {
 		if got := decodeError(t, rec).Code; got != tc.code {
 			t.Fatalf("%s: expected code %s, got %s", tc.name, tc.code, got)
 		}
-	}
-}
-
-func TestJoinPNG_StaticIsCacheable(t *testing.T) {
-	env := newTestEnv(t)
-	token, _, err := env.signer.Issue(12, joinlink.TypeStatic, 0)
-	if err != nil {
-		t.Fatalf("Issue: %v", err)
-	}
-
-	rec := env.do(t, http.MethodGet, "/qr/join.png?token="+token+"&size=256", nil, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
-		t.Fatalf("expected image/png, got %q", ct)
-	}
-	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
-		t.Fatalf("expected immutable cache header, got %q", cc)
-	}
-
-	cfg, err := png.DecodeConfig(bytes.NewReader(rec.Body.Bytes()))
-	if err != nil {
-		t.Fatalf("decode png: %v", err)
-	}
-	if cfg.Width != 256 {
-		t.Fatalf("expected 256px, got %d", cfg.Width)
-	}
-}
-
-func TestJoinPNG_DynamicIsNotCached(t *testing.T) {
-	env := newTestEnv(t)
-	token, _, err := env.signer.Issue(12, joinlink.TypeDynamic, time.Minute)
-	if err != nil {
-		t.Fatalf("Issue: %v", err)
-	}
-
-	rec := env.do(t, http.MethodGet, "/qr/join.png?token="+token, nil, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
-		t.Fatalf("expected no-store, got %q", cc)
-	}
-}
-
-func TestJoinPNG_RejectsBadTokens(t *testing.T) {
-	env := newTestEnv(t)
-
-	rec := env.do(t, http.MethodGet, "/qr/join.png", nil, nil)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("missing token: expected 400, got %d", rec.Code)
-	}
-	if got := decodeError(t, rec).Code; got != "QR_MALFORMED" {
-		t.Fatalf("missing token: expected QR_MALFORMED, got %s", got)
-	}
-
-	rec = env.do(t, http.MethodGet, "/qr/join.png?token=garbage", nil, nil)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("garbage token: expected 400, got %d", rec.Code)
-	}
-}
-
-func TestJoinPNG_RejectsBadRenderParams(t *testing.T) {
-	env := newTestEnv(t)
-	token, _, err := env.signer.Issue(1, joinlink.TypeStatic, 0)
-	if err != nil {
-		t.Fatalf("Issue: %v", err)
-	}
-
-	rec := env.do(t, http.MethodGet, "/qr/join.png?token="+token+"&size=large", nil, nil)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
 
