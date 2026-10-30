@@ -4,6 +4,7 @@ import {
   action,
   createQueueViaApi,
   field,
+  joinPathViaApi,
   joinQueueViaApi,
   queueStatusViaApi,
   registerAccount,
@@ -26,7 +27,7 @@ test.describe('TS-08 Otorisasi dan keamanan akses', () => {
     const res = await queueStatusViaApi(request, outsider.token, queue.id);
     expect(res.status()).toBe(404);
 
-    await signInWithToken(page, outsider.token, outsider.email, `/join/${queue.id}`);
+    await signInWithToken(page, outsider.token, outsider.email, await joinPathViaApi(request, queue.id));
     await expect(page.getByText('A-001', { exact: true })).toHaveCount(0);
     await expect(action(page, 'Gabung Antrian')).toBeVisible();
   });
@@ -44,7 +45,7 @@ test.describe('TS-08 Otorisasi dan keamanan akses', () => {
     });
     expect(res.status()).toBe(404);
 
-    await signInWithToken(page, customer.token, customer.email, `/join/${queue.id}`);
+    await signInWithToken(page, customer.token, customer.email, await joinPathViaApi(request, queue.id));
     await expect(page.getByText('A-001', { exact: true })).toBeVisible();
     await expect(action(page, 'NEXT')).toHaveCount(0);
   });

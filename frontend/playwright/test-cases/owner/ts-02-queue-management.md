@@ -60,7 +60,7 @@
 | **Priority** | P0 |
 | **Sumber** | 4.2 langkah 1 ("Generate QR Code" → tautan ke halaman join). Implementasi: tautan teks, QR belum ada |
 | **Steps** | 1. Buka detail antrian aktif |
-| **Expected Result** | Bagian "Tautan join untuk customer" menampilkan tautan yang berakhiran `/join/<id antrian>` dan tombol **SALIN TAUTAN** |
+| **Expected Result** | Setelah klik **LIHAT QR**, popup menampilkan QR dengan tombol **SALIN TAUTAN** dan **UNDUH PNG** |
 
 ### TC-02-08 — Daftar antrian bisa dibuka dari sidebar/menu
 | | |

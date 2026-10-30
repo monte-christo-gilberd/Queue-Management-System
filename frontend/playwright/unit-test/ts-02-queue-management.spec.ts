@@ -97,15 +97,14 @@ test.describe('TS-02 Mengelola antrian (owner)', () => {
     await expect(page.getByText(closed.queue_name, { exact: true })).toHaveCount(0);
   });
 
-  test('TC-02-07 Tautan join tampil di detail antrian', async ({ page, request }) => {
+  test('TC-02-07 QR join dan tombol salin tampil di detail antrian', async ({ page, request }) => {
     const session = await ownerPage(page, request);
     const queue = await createQueueViaApi(request, session.token, uniqueName('Link'));
     await page.goto(`${WEB_URL}/queues/${queue.id}`);
 
-    await expect(page.getByText('Tautan join untuk customer')).toBeVisible();
-    await expect(page.getByText(new RegExp(`/join/${queue.id}$`))).toBeVisible();
     await action(page, 'LIHAT QR').click();
     await expect(action(page, 'SALIN TAUTAN')).toBeVisible();
+    await expect(action(page, 'UNDUH PNG')).toBeVisible();
   });
 
   test('TC-02-08 Daftar antrian bisa dibuka dari menu profil', async ({ page, request }) => {

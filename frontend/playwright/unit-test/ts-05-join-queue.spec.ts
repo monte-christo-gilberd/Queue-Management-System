@@ -5,6 +5,7 @@ import {
   closeQueueViaApi,
   createQueueViaApi,
   field,
+  joinPathViaApi,
   joinQueueViaApi,
   registerAccount,
   signInThroughUi,
@@ -12,6 +13,7 @@ import {
   subscribedOwnerSession,
   uniqueName,
   WEB_URL,
+  API_URL,
 } from './support';
 
 async function newQueue(request: APIRequestContext) {
@@ -31,15 +33,15 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     const queue = await newQueue(request);
     const customer = await registerAccount(request, 'joinlogin');
 
-    await page.goto(`${WEB_URL}/join/${queue.id}`);
-    await expect(page).toHaveURL(new RegExp(`next=%2Fjoin%2F${queue.id}`));
+    await page.goto(`${WEB_URL}${await joinPathViaApi(request, queue.id)}`);
+    await expect(page).toHaveURL(/next=%2Fjoin%3Ft%3D/);
 
     // Isi form di halaman yang sedang terbuka; signInThroughUi akan membuka "/" lagi dan menghapus next.
     await field(page, 'EMAIL ATAU USERNAME').fill(customer.email);
     await field(page, 'PASSWORD').fill(customer.password);
     await action(page, 'Login').click();
 
-    await expect(page).toHaveURL(new RegExp(`/join/${queue.id}$`));
+    await expect(page).toHaveURL(/\/join\?t=/);
     await expect(action(page, 'Gabung Antrian')).toBeVisible();
   });
 
@@ -47,7 +49,7 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     const queue = await newQueue(request);
     const username = uniqueName('baruj');
 
-    await page.goto(`${WEB_URL}/join/${queue.id}`);
+    await page.goto(`${WEB_URL}${await joinPathViaApi(request, queue.id)}`);
     await action(page, 'Daftar').click();
     await field(page, 'USERNAME').fill(username);
     await field(page, 'EMAIL').fill(`${username}@qms-test.local`);
@@ -55,14 +57,14 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     await field(page, 'KONFIRMASI PASSWORD').fill('Password123!');
     await action(page, 'Daftar').click();
 
-    await expect(page).toHaveURL(new RegExp(`/join/${queue.id}$`));
+    await expect(page).toHaveURL(/\/join\?t=/);
     await expect(action(page, 'Gabung Antrian')).toBeVisible();
   });
 
   test('TC-05-03 Bergabung memberi nomor di akhir antrian', async ({ page, request }) => {
     const queue = await newQueue(request);
     const customer = await registerAccount(request, 'first');
-    await signInWithToken(page, customer.token, customer.email, `/join/${queue.id}`);
+    await signInWithToken(page, customer.token, customer.email, await joinPathViaApi(request, queue.id));
 
     await action(page, 'Gabung Antrian').click();
 
@@ -76,7 +78,7 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     const customer = await registerAccount(request, 'again');
     await joinQueueViaApi(request, customer.token, queue.id);
 
-    await signInWithToken(page, customer.token, customer.email, `/join/${queue.id}`);
+    await signInWithToken(page, customer.token, customer.email, await joinPathViaApi(request, queue.id));
 
     await expect(page.getByText('A-001', { exact: true })).toBeVisible();
     await expect(action(page, 'Gabung Antrian')).toHaveCount(0);
@@ -87,7 +89,7 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     await closeQueueViaApi(request, queue.ownerToken, queue.id);
     const customer = await registerAccount(request, 'closed');
 
-    await signInWithToken(page, customer.token, customer.email, `/join/${queue.id}`);
+    await signInWithToken(page, customer.token, customer.email, await joinPathViaApi(request, queue.id));
     // Customer yang belum bergabung tidak bisa membaca detail antrian (backend), jadi penutupan
     // baru terlihat saat mencoba bergabung.
     await action(page, 'Gabung Antrian').click();
@@ -96,45 +98,41 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     await expect(page.getByText('Nomor Anda')).toHaveCount(0);
   });
 
-  test('TC-05-06 Tautan tidak valid menampilkan antrian tidak ditemukan', async ({ page, request }) => {
+  test('TC-05-06 Token tidak valid ditolak dengan pesan QR', async ({ page, request }) => {
     const customer = await registerAccount(request, 'badlink');
-    await signInWithToken(page, customer.token, customer.email, '/join/abc');
+    await signInWithToken(page, customer.token, customer.email, '/join?t=bukan-token');
 
-    await expect(page.getByText('Antrian tidak ditemukan')).toBeVisible();
+    await expect(page.getByText(/QR link is invalid/)).toBeVisible();
+    await expect(action(page, 'Gabung Antrian')).toHaveCount(0);
   });
 
-  test('TC-05-07 Gabung ke antrian yang tidak ada ditolak', async ({ page, request }) => {
-    const customer = await registerAccount(request, 'missing');
-    await signInWithToken(page, customer.token, customer.email, '/join/999999999');
+  test('TC-05-07 Tanpa token halaman join tidak membuat tiket', async ({ page, request }) => {
+    const customer = await registerAccount(request, 'notoken');
+    await signInWithToken(page, customer.token, customer.email, '/join');
 
-    await action(page, 'Gabung Antrian').click();
-
-    await expect(page.getByText('Antrian tidak ditemukan')).toBeVisible();
+    await expect(page.getByText('Nomor Anda')).toHaveCount(0);
   });
 
-  test('TC-05-08 Masukkan tautan secara manual membuka halaman join', async ({ page, request }) => {
+  test('TC-05-08 Kode QR statis yang sudah diganti tidak berlaku', async ({ page, request }) => {
     const queue = await newQueue(request);
-    const customer = await registerAccount(request, 'manual');
-    await signInWithToken(page, customer.token, customer.email);
+    const oldPath = await joinPathViaApi(request, queue.id, queue.ownerToken);
+    const res = await request.post(`${API_URL}/api/v1/queues/${queue.id}/qr/replace`, {
+      headers: { Authorization: `Bearer ${queue.ownerToken}` },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    const customer = await registerAccount(request, 'oldqr');
+    await signInWithToken(page, customer.token, customer.email, oldPath);
 
-    await action(page, 'Masuk Ke Antrian').click();
-    await action(page, 'Masukkan Link Manual').click();
-    await field(page, 'https://...').fill(`${WEB_URL}/join/${queue.id}`);
-    await action(page, 'Gabung Antrian').click();
-
-    await expect(page).toHaveURL(new RegExp(`/join/${queue.id}$`));
+    await expect(page.getByText(/QR link is invalid/)).toBeVisible();
   });
 
-  test('TC-05-09 Tautan manual yang salah ditolak', async ({ page, request }) => {
-    const customer = await registerAccount(request, 'badmanual');
+  test('TC-05-09 Popup Masuk ke Antrian hanya berisi petunjuk kamera', async ({ page, request }) => {
+    const customer = await registerAccount(request, 'camera');
     await signInWithToken(page, customer.token, customer.email);
 
     await action(page, 'Masuk Ke Antrian').click();
-    await action(page, 'Masukkan Link Manual').click();
-    await field(page, 'https://...').fill('bukan-tautan');
-    await action(page, 'Gabung Antrian').click();
 
-    await expect(page.getByText(/Tautan tidak valid/)).toBeVisible();
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByText(/kamera/i).first()).toBeVisible();
+    await expect(field(page, 'https://...')).toHaveCount(0);
   });
 });

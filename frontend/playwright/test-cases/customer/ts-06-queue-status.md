@@ -28,7 +28,7 @@
 |---|---|
 | **Priority** | P0 |
 | **Sumber** | 4.4 edge case: "Customer logs in on a different device … still shows their number correctly" |
-| **Steps** | 1. Customer sudah bergabung (A-001) 2. Buka konteks browser baru (sesi bersih) 3. Login dengan akun yang sama 4. Buka `/join/<id>` |
+| **Steps** | 1. Customer sudah bergabung (A-001) 2. Buka konteks browser baru (sesi bersih) 3. Login dengan akun yang sama 4. Buka `/join?t=<token>` |
 | **Expected Result** | Nomor A-001 tampil. Tidak ada tombol **Gabung Antrian** |
 
 ### TC-06-04 — Status tetap tampil setelah browser ditutup dan dibuka lagi

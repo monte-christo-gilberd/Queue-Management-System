@@ -73,17 +73,42 @@ export async function closeQueueViaApi(request: APIRequestContext, token: string
   expect(res.status(), await res.text()).toBe(200);
 }
 
-/** Bergabung ke antrian lewat API (menyiapkan data). Mengembalikan nomor tiket. */
+/** Path join `/join?t=<token>` dari QR owner (GET /queues/:id/qr). */
+export async function joinPathViaApi(
+  request: APIRequestContext,
+  queueId: number,
+  ownerToken?: string,
+): Promise<string> {
+  const token = ownerToken ?? (await subscribedOwnerSession(request))?.token;
+  if (!token) throw new Error('owner berlangganan tidak tersedia');
+  const res = await request.get(`${API_URL}/api/v1/queues/${queueId}/qr`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  const body = (await res.json()) as { data: { join_url: string } };
+  const url = new URL(body.data.join_url);
+  return `${url.pathname}${url.search}`;
+}
+
+/** Token `t` dari path join. */
+export function joinTokenOf(joinPath: string): string {
+  return new URL(joinPath, 'http://x').searchParams.get('t') ?? '';
+}
+
+/** Bergabung lewat token QR (POST /join). Mengembalikan data tiket. */
 export async function joinQueueViaApi(
   request: APIRequestContext,
   token: string,
   queueId: number,
-): Promise<{ ticket_number: number; status: string }> {
-  const res = await request.post(`${API_URL}/api/v1/queues/${queueId}/join`, {
+  ownerToken?: string,
+): Promise<Record<string, unknown>> {
+  const t = joinTokenOf(await joinPathViaApi(request, queueId, ownerToken));
+  const res = await request.post(`${API_URL}/api/v1/join`, {
     headers: { Authorization: `Bearer ${token}` },
+    data: { t },
   });
   expect(res.status(), await res.text()).toBe(200);
-  return (await res.json()) as { ticket_number: number; status: string };
+  return (await res.json()) as Record<string, unknown>;
 }
 
 /** Status antrian untuk pemegang tiket (menyiapkan/memeriksa data). */
