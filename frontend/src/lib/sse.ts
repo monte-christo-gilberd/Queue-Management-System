@@ -111,12 +111,29 @@ export function nextBackoff(currentMs: number): number {
 
 export const RESYNC_INTERVAL_MS = 45000;
 
+/** SSE tidak hidup (mis. proxy/tunnel menahan stream): ambil ulang lebih sering. */
+export const FALLBACK_POLL_MS = 3000;
+
+/** Stream dianggap tidak hidup bila belum ada satu byte pun setelah selama ini. */
+export const SSE_LIVE_GRACE_MS = 3000;
+
+/** Interval resinkron: cepat selama SSE tidak hidup, normal bila hidup. */
+export function resyncInterval(live: boolean, since: number, now: number): number {
+  return !live && now - since >= SSE_LIVE_GRACE_MS ? FALLBACK_POLL_MS : RESYNC_INTERVAL_MS;
+}
+
 /**
  * Perlu resinkron? Event SSE bisa terbuang (channel hub penuh) atau tertunda saat tab di latar belakang.
  * Kembali aktif selalu memicu; saat aktif, memicu bila sudah `RESYNC_INTERVAL_MS` sejak sinkron terakhir.
  */
-export function shouldResync(active: boolean, becameActive: boolean, lastSyncAt: number, now: number): boolean {
+export function shouldResync(
+  active: boolean,
+  becameActive: boolean,
+  lastSyncAt: number,
+  now: number,
+  interval: number = RESYNC_INTERVAL_MS,
+): boolean {
   if (!active) return false;
   if (becameActive) return true;
-  return now - lastSyncAt >= RESYNC_INTERVAL_MS;
+  return now - lastSyncAt >= interval;
 }

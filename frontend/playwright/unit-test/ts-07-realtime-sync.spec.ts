@@ -105,4 +105,16 @@ test.describe('TS-07 Pembaruan real-time', () => {
 
     await expect(page.getByText('A-001', { exact: true }).first()).toBeVisible();
   });
+
+  test('TC-07-06 SSE tidak mengirim apa pun (mis. tunnel): status tetap diperbarui dalam hitungan detik', async ({ page, request }) => {
+    const { session, queue, accounts } = await setup(request, 2);
+    const second = accounts[1];
+    await page.route('**/event', (route) => route.abort());
+    await signInWithToken(page, second.token, second.email, `/ticket/${queue.id}`);
+    await expect(page.getByText('A-002', { exact: true })).toBeVisible();
+
+    expect((await nextViaApi(request, session.token, queue.id)).status()).toBe(200);
+
+    await expect(page.getByText('A-001', { exact: true }).first()).toBeVisible({ timeout: 12_000 });
+  });
 });

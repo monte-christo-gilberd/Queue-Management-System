@@ -10,7 +10,10 @@ import {
   BACKOFF_START_MS,
   createSseParser,
   nextBackoff,
+  FALLBACK_POLL_MS,
   RESYNC_INTERVAL_MS,
+  resyncInterval,
+  SSE_LIVE_GRACE_MS,
   shouldResync,
   parseQueueEvent,
   type SseMessage,
@@ -131,4 +134,15 @@ test('resinkron: kembali aktif selalu memicu', () => {
 test('resinkron: aktif memicu hanya setelah interval berlalu', () => {
   assert.equal(shouldResync(true, false, 0, RESYNC_INTERVAL_MS - 1), false);
   assert.equal(shouldResync(true, false, 0, RESYNC_INTERVAL_MS), true);
+});
+
+test('resyncInterval: cepat hanya bila SSE belum hidup melewati masa tunggu', () => {
+  assert.equal(resyncInterval(true, 0, 60_000), RESYNC_INTERVAL_MS);
+  assert.equal(resyncInterval(false, 0, SSE_LIVE_GRACE_MS - 1), RESYNC_INTERVAL_MS);
+  assert.equal(resyncInterval(false, 0, SSE_LIVE_GRACE_MS), FALLBACK_POLL_MS);
+});
+
+test('shouldResync memakai interval kustom', () => {
+  assert.equal(shouldResync(true, false, 0, FALLBACK_POLL_MS, FALLBACK_POLL_MS), true);
+  assert.equal(shouldResync(true, false, 0, FALLBACK_POLL_MS - 1, FALLBACK_POLL_MS), false);
 });

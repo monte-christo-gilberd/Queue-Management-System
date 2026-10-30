@@ -8,11 +8,14 @@ import {
   createSseParser,
   nextBackoff,
   parseQueueEvent,
-  RESYNC_INTERVAL_MS,
+  resyncInterval,
   shouldResync,
   type QueueEvent,
 } from '@/lib/sse';
 import { useAuthStore } from '@/store/authStore';
+
+/** Kesehatan stream: `live` jadi true setelah byte pertama diterima; `since` = awal percobaan/putus terakhir. */
+type StreamHealth = { live: boolean; since: number };
 
 type Handlers = {
   /** Event yang sudah tervalidasi. */
@@ -28,7 +31,8 @@ type Handlers = {
  *
  * - Reconnect dengan backoff (1s → 30s). Reset setelah koneksi berhasil.
  * - 401 → sesi habis, logout. 403/404 → berhenti (bukan milik user / tidak ada).
- * - Resinkron (`onResync`) saat tab/app kembali aktif dan tiap 45 detik selama aktif.
+ * - Resinkron (`onResync`) saat tab/app kembali aktif dan tiap 45 detik selama aktif; tiap 3 detik bila SSE
+ *   tidak mengirim apa pun (mis. quick tunnel menahan stream).
  * - Dihentikan saat `queueId` berubah atau komponen unmount.
  */
 export function useQueueEvents(queueId: number | null, handlers: Handlers) {
@@ -40,10 +44,13 @@ export function useQueueEvents(queueId: number | null, handlers: Handlers) {
     handlersRef.current = handlers;
   });
 
+  const healthRef = useRef<StreamHealth>({ live: false, since: Date.now() });
+
   useEffect(() => {
     if (queueId === null || !token) return;
     const controller = new AbortController();
-    void streamLoop(queueId, token, controller.signal, handlersRef);
+    healthRef.current = { live: false, since: Date.now() };
+    void streamLoop(queueId, token, controller.signal, handlersRef, healthRef);
     return () => controller.abort();
   }, [queueId, token]);
 
@@ -54,12 +61,13 @@ export function useQueueEvents(queueId: number | null, handlers: Handlers) {
 
     function check(becameActive: boolean) {
       const now = Date.now();
-      if (!shouldResync(active, becameActive, lastSyncAt, now)) return;
+      const { live, since } = healthRef.current;
+      if (!shouldResync(active, becameActive, lastSyncAt, now, resyncInterval(live, since, now))) return;
       lastSyncAt = now;
       handlersRef.current.onResync();
     }
 
-    const timer = setInterval(() => check(false), RESYNC_INTERVAL_MS / 3);
+    const timer = setInterval(() => check(false), 1000);
     const stop = onForegroundChange((nowActive) => {
       const becameActive = nowActive && !active;
       active = nowActive;
@@ -93,6 +101,7 @@ async function streamLoop(
   token: string,
   signal: AbortSignal,
   handlersRef: { current: Handlers },
+  healthRef: { current: StreamHealth },
 ) {
   let delay = BACKOFF_START_MS;
   let disconnected = false;
@@ -125,6 +134,7 @@ async function streamLoop(
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
+        healthRef.current.live = true;
         parser.push(decoder.decode(value, { stream: true }));
       }
     } catch {
@@ -132,6 +142,7 @@ async function streamLoop(
     }
 
     if (signal.aborted) return;
+    healthRef.current = { live: false, since: Date.now() };
     disconnected = true;
     await sleep(delay, signal);
     delay = nextBackoff(delay);
