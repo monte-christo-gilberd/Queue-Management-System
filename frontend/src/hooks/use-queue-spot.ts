@@ -54,6 +54,7 @@ export function useQueueSpot(queueId: number, onChanged?: () => void) {
       }
     },
     onReconnect: scheduleReload,
+    onResync: scheduleReload,
   });
 
   return status;

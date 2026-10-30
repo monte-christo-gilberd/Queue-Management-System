@@ -88,6 +88,7 @@ export function useTicketQueue(queueId: number) {
       }
     },
     onReconnect: () => scheduleReload(),
+    onResync: () => scheduleReload(),
   });
 
   return { status, loading, error };

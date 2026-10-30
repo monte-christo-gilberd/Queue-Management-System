@@ -85,13 +85,12 @@ export type QueueStatus = {
   next_number: number | null;
 };
 
-/** Respons QR owner. QR digambar frontend dari `join_url`; `image_url` hanya dari backend lama. */
+/** Respons QR owner. QR digambar frontend dari `join_url`. */
 export type QueueQR = {
   action: 'queue_qr';
   queue_id: number;
   type: 'static' | 'dynamic';
   join_url: string;
-  image_url?: string;
   /** Token dinamis kedaluwarsa; null untuk token statis. */
   expires_at: number | null;
 };

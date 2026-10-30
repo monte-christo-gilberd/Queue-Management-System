@@ -93,6 +93,9 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     onReconnect: () => {
       if (queueId !== null) scheduleReload(queueId);
     },
+    onResync: () => {
+      if (queueId !== null) scheduleReload(queueId);
+    },
   });
 
   const next = useCallback(async (counterId = 0) => {

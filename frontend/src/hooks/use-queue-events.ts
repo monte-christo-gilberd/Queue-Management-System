@@ -1,8 +1,17 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { useEffect, useRef } from 'react';
+import { AppState, Platform } from 'react-native';
 
 import { API_BASE_URL } from '@/lib/api';
-import { BACKOFF_START_MS, createSseParser, nextBackoff, parseQueueEvent, type QueueEvent } from '@/lib/sse';
+import {
+  BACKOFF_START_MS,
+  createSseParser,
+  nextBackoff,
+  parseQueueEvent,
+  RESYNC_INTERVAL_MS,
+  shouldResync,
+  type QueueEvent,
+} from '@/lib/sse';
 import { useAuthStore } from '@/store/authStore';
 
 type Handlers = {
@@ -10,6 +19,8 @@ type Handlers = {
   onEvent: (event: QueueEvent) => void;
   /** Dipanggil setelah koneksi pulih dari putus: event yang terlewat harus diambil ulang oleh pemanggil. */
   onReconnect: () => void;
+  /** Jaring pengaman: event SSE bisa terbuang. Dipanggil saat tab aktif kembali dan tiap 45 detik selama aktif. */
+  onResync: () => void;
 };
 
 /**
@@ -17,6 +28,7 @@ type Handlers = {
  *
  * - Reconnect dengan backoff (1s → 30s). Reset setelah koneksi berhasil.
  * - 401 → sesi habis, logout. 403/404 → berhenti (bukan milik user / tidak ada).
+ * - Resinkron (`onResync`) saat tab/app kembali aktif dan tiap 45 detik selama aktif.
  * - Dihentikan saat `queueId` berubah atau komponen unmount.
  */
 export function useQueueEvents(queueId: number | null, handlers: Handlers) {
@@ -34,6 +46,46 @@ export function useQueueEvents(queueId: number | null, handlers: Handlers) {
     void streamLoop(queueId, token, controller.signal, handlersRef);
     return () => controller.abort();
   }, [queueId, token]);
+
+  useEffect(() => {
+    if (queueId === null || !token) return;
+    let lastSyncAt = Date.now();
+    let active = isForeground();
+
+    function check(becameActive: boolean) {
+      const now = Date.now();
+      if (!shouldResync(active, becameActive, lastSyncAt, now)) return;
+      lastSyncAt = now;
+      handlersRef.current.onResync();
+    }
+
+    const timer = setInterval(() => check(false), RESYNC_INTERVAL_MS / 3);
+    const stop = onForegroundChange((nowActive) => {
+      const becameActive = nowActive && !active;
+      active = nowActive;
+      check(becameActive);
+    });
+    return () => {
+      clearInterval(timer);
+      stop();
+    };
+  }, [queueId, token]);
+}
+
+function isForeground(): boolean {
+  if (Platform.OS === 'web' && typeof document !== 'undefined') return document.visibilityState === 'visible';
+  return AppState.currentState === 'active';
+}
+
+/** Web: `visibilitychange`. Native: `AppState`. Mengembalikan fungsi untuk berhenti. */
+function onForegroundChange(listener: (active: boolean) => void): () => void {
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    const handler = () => listener(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }
+  const sub = AppState.addEventListener('change', (state) => listener(state === 'active'));
+  return () => sub.remove();
 }
 
 async function streamLoop(

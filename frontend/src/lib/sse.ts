@@ -108,3 +108,15 @@ export const BACKOFF_MAX_MS = 30000;
 export function nextBackoff(currentMs: number): number {
   return Math.min(Math.max(currentMs, BACKOFF_START_MS) * 2, BACKOFF_MAX_MS);
 }
+
+export const RESYNC_INTERVAL_MS = 45000;
+
+/**
+ * Perlu resinkron? Event SSE bisa terbuang (channel hub penuh) atau tertunda saat tab di latar belakang.
+ * Kembali aktif selalu memicu; saat aktif, memicu bila sudah `RESYNC_INTERVAL_MS` sejak sinkron terakhir.
+ */
+export function shouldResync(active: boolean, becameActive: boolean, lastSyncAt: number, now: number): boolean {
+  if (!active) return false;
+  if (becameActive) return true;
+  return now - lastSyncAt >= RESYNC_INTERVAL_MS;
+}

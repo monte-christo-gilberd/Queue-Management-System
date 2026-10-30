@@ -86,4 +86,23 @@ test.describe('TS-07 Pembaruan real-time', () => {
     await expect(page.getByText('Sedang dilayani')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('A-001', { exact: true }).first()).toBeVisible();
   });
+
+  test('TC-07-05 Event SSE terlewat: status disinkronkan ulang tiap 45 detik', async ({ page, request }) => {
+    const { session, queue, accounts } = await setup(request, 2);
+    const second = accounts[1];
+    await page.clock.install();
+    // Stream SSE diblokir sejak awal (stream yang sudah terbuka tidak bisa diputus lewat route),
+    // sehingga tidak ada event yang sampai, seperti event yang terbuang di hub.
+    await page.route('**/event', (route) => route.abort());
+    await signInWithToken(page, second.token, second.email, `/ticket/${queue.id}`);
+    await expect(page.getByText('A-002', { exact: true })).toBeVisible();
+
+    expect((await nextViaApi(request, session.token, queue.id)).status()).toBe(200);
+    // Baris "Sedang dilayani" selalu ada; yang berubah adalah nilainya (A-001 baru ada setelah Next).
+    await expect(page.getByText('A-001', { exact: true })).toHaveCount(0);
+
+    await page.clock.fastForward(50_000);
+
+    await expect(page.getByText('A-001', { exact: true }).first()).toBeVisible();
+  });
 });

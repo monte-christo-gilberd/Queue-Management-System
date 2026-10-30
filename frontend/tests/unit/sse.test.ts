@@ -10,6 +10,8 @@ import {
   BACKOFF_START_MS,
   createSseParser,
   nextBackoff,
+  RESYNC_INTERVAL_MS,
+  shouldResync,
   parseQueueEvent,
   type SseMessage,
 } from '@/lib/sse';
@@ -115,4 +117,18 @@ test('backoff reconnect menggandakan jeda dan dibatasi maksimum', () => {
 
 test('backoff awal yang lebih kecil dari jeda awal dinaikkan dulu ke jeda awal', () => {
   assert.equal(nextBackoff(0), 2000);
+});
+
+test('resinkron: tab tersembunyi tidak memicu', () => {
+  assert.equal(shouldResync(false, false, 0, RESYNC_INTERVAL_MS * 3), false);
+  assert.equal(shouldResync(false, true, 0, 0), false);
+});
+
+test('resinkron: kembali aktif selalu memicu', () => {
+  assert.equal(shouldResync(true, true, 1000, 1001), true);
+});
+
+test('resinkron: aktif memicu hanya setelah interval berlalu', () => {
+  assert.equal(shouldResync(true, false, 0, RESYNC_INTERVAL_MS - 1), false);
+  assert.equal(shouldResync(true, false, 0, RESYNC_INTERVAL_MS), true);
 });
