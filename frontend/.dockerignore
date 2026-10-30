@@ -9,3 +9,7 @@ dist
 playwright/.report
 **/*.md
 *.log
+
+playwright
+tests
+.results

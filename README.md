@@ -38,9 +38,9 @@ dan pembayaran langganan.
 backend/          API Go (cmd/server, internal/{handler,service,repository,dto,sse,qrclient,...})
 qr-service/       Microservice QR (cmd/qr-service, internal/{config,joinlink,httpapi,qr}), Dockerfile
 frontend/         Aplikasi Expo (src/app rute, src/components, src/hooks, src/lib, src/store), Dockerfile
-db/               Dockerfile dan skema PostgreSQL (migrations/01_Schema.sql)
+db/               Dockerfile dan skema PostgreSQL (migrations/01_Schema.sql, 02_Indexes.sql)
 deploy/nginx/     Konfigurasi nginx untuk pemasangan di host, Dockerfile, dan template konfigurasi
-docker-compose.yml  Stack db + qr-service + backend + frontend + nginx
+docker-compose.yml  Stack development (hot reload): db, qr-service, backend, frontend; hanya nginx yang membuka port
 .env.example      Variabel untuk docker compose (secret, origin publik)
 DESIGN.md         Desain sistem
 FLOW.md           Alur pengguna
@@ -56,6 +56,7 @@ Buat database, lalu terapkan skema:
 ```bash
 createdb qms_db
 psql -d qms_db -f db/migrations/01_Schema.sql
+psql -d qms_db -f db/migrations/02_Indexes.sql
 ```
 
 ### 2. qr-service
@@ -131,7 +132,7 @@ End-to-end memakai Playwright di `frontend/playwright/` (`npm run e2e`). Tes ini
 ## Docker Compose
 
 ```bash
-cp .env.example .env     # isi secret + QMS_PUBLIC_ORIGIN (origin yang dibuka dari HP)
+cp .env.example .env     # isi secret (QMS_PUBLIC_ORIGIN = origin yang dibuka dari HP)
 docker compose up --build
 ```
 
@@ -140,17 +141,17 @@ Buka `http://localhost:8080` (atau `QMS_PUBLIC_ORIGIN`). Hanya nginx yang membuk
 
 | Layanan | Dockerfile | Catatan |
 |---|---|---|
-| db | `db/Dockerfile` | `postgres:16-alpine`, skema dijalankan otomatis saat data directory kosong |
-| qr-service | `qr-service/Dockerfile` | Stateless, healthcheck `/health`, hanya di jaringan internal |
-| backend | `backend/Dockerfile` | Build dua tahap, binary di `alpine`, user non-root |
-| frontend | `frontend/Dockerfile` | Hanya menghasilkan folder `dist`; compose menyalinnya ke volume nginx |
-| nginx | `deploy/nginx/Dockerfile` | Template start (`QMS_DOMAIN`, `BACKEND_HOST`, `QR_SERVICE_HOST`, `FRONTEND_ROOT`) |
+| db | `db/Dockerfile` | `postgres:16-alpine`, skema dan index dijalankan otomatis saat data directory kosong |
+| qr-service | `qr-service/Dockerfile` | Target `dev` (`go run`, restart manual), hanya di jaringan internal |
+| backend | `backend/Dockerfile` | Target `dev` (`go run`, restart manual), healthcheck `/health`, hanya di jaringan internal |
+| frontend | `frontend/Dockerfile` | Target `dev` (Metro, hot reload) di port 80 internal |
+| nginx | `deploy/nginx/Dockerfile` | Reverse proxy, satu-satunya yang membuka port (80, dan 443 bila ada sertifikat) |
 
+Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot reload; Go perlu `docker compose restart backend` (atau `qr-service`) setelah ubah kode. Target `prod` tersedia di tiap Dockerfile untuk nanti.
 Kredensial (`POSTGRES_PASSWORD`, `JWT_SECRET`, `JOIN_LINK_SECRET`, `QR_SERVICE_TOKEN`) tidak dibakar ke image.
-`QMS_PUBLIC_ORIGIN` ikut dibakar ke bundle frontend saat build — ganti nilai itu berarti `docker compose build frontend`.
+Frontend memanggil API di origin halaman (`EXPO_PUBLIC_API_URL=origin`), jadi mengganti `QMS_PUBLIC_ORIGIN` tidak butuh build ulang frontend.
 
-Untuk uji dari HP di LAN, set `QMS_PUBLIC_ORIGIN=http://<ip-lan>:8080` **sebelum** build. QR berisi alamat itu,
-jadi jangan memakai `localhost`.
+Untuk uji dari HP: `scripts/tunnel-dev.sh` (HTTPS publik, tanpa konfigurasi di HP) atau `scripts/mkcert-dev.sh` (LAN, CA dipasang di HP). Lihat `deploy/nginx/README.md`.
 
 ## Build frontend untuk produksi
 

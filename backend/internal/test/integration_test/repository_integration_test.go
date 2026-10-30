@@ -24,7 +24,7 @@ import (
 
 // Dijalankan: go test -tags integration ./internal/repository_test
 // Semua query berjalan di schema sementara (qmstest_<nanodetik>) yang dibuat dari
-// db/migrations/01_Schema.sql lalu di-DROP; data di schema asli tidak disentuh.
+// db/migrations/01_Schema.sql dan 02_Indexes.sql lalu di-DROP; data di schema asli tidak disentuh.
 func newTestDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 
@@ -57,15 +57,18 @@ func newTestDB(t *testing.T) *sqlx.DB {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
-	ddl, err := os.ReadFile("../../../../db/migrations/01_Schema.sql")
+	schemaSQL, err := os.ReadFile("../../../../db/migrations/01_Schema.sql")
 	require.NoError(t, err)
+	indexes, err := os.ReadFile("../../../../db/migrations/02_Indexes.sql")
+	require.NoError(t, err)
+	ddl := string(schemaSQL) + "\n" + string(indexes)
 
 	conn, err := db.Conn(ctx)
 	require.NoError(t, err)
 	defer conn.Close()
 	// Exec pgx tanpa argumen memakai simple protocol, jadi file multi-statement boleh.
 	err = conn.Raw(func(driverConn interface{}) error {
-		_, err := driverConn.(*stdlib.Conn).Conn().Exec(ctx, string(ddl))
+		_, err := driverConn.(*stdlib.Conn).Conn().Exec(ctx, ddl)
 		return err
 	})
 	require.NoError(t, err)

@@ -7,5 +7,5 @@
 **/*.md
 internal/test/
 **/*_test.go
-tmp/
+
 *.log

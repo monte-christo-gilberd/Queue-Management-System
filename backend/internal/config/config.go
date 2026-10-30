@@ -16,6 +16,8 @@ type Config struct {
 	JWTSecret      string
 	Port           string
 	AllowedOrigins []string
+	// TrustedProxies: IP/CIDR proxy yang boleh menentukan IP klien (X-Forwarded-For). Kosong = tidak ada.
+	TrustedProxies []string
 
 	// QR microservice (dipakai backend untuk memanggil /internal/v1/*).
 	PublicAppURL   string
@@ -33,6 +35,7 @@ func Load() (Config, error) {
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		Port:           os.Getenv("PORT"),
 		AllowedOrigins: (parseOrigins(os.Getenv("ALLOWED_ORIGINS"))),
+		TrustedProxies: parseOrigins(os.Getenv("TRUSTED_PROXIES")),
 
 		PublicAppURL:   strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/"),
 		PublicQRURL:    strings.TrimRight(os.Getenv("PUBLIC_QR_URL"), "/"),

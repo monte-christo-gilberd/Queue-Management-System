@@ -115,6 +115,11 @@ func main() {
 		)
 	}
 
+	// Tanpa daftar, header X-Forwarded-For dari klien tidak dipercaya (IP klien = alamat koneksi).
+	if err := engine.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
+
 	port := fmt.Sprintf(":%s", cfg.Port)
 	engine.Run(port)
 }

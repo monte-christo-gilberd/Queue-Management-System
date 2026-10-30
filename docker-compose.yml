@@ -1,10 +1,17 @@
-# Stack QMS: db + qr-service + backend + frontend (build) + nginx.
+# Stack QMS untuk DEVELOPMENT. Hanya nginx reverse proxy yang membuka port ke host;
+# db, backend, qr-service, dan frontend hanya bisa dijangkau lewat jaringan Docker.
 #
-#   cp .env.example .env   # isi secret + origin publik
+#   cp .env.example .env     # isi secret
 #   docker compose up --build
+#   -> http://localhost:${QMS_HTTP_PORT:-8080}   (/ frontend, /api backend, /qr qr-service)
 #
-# Hanya nginx yang membuka port ke host. qr-service tidak punya `ports:` sehingga
-# endpoint /internal/v1/* hanya bisa diakses dari jaringan Docker.
+# Kode di-mount. Frontend hot reload (Metro). Go (backend, qr-service) memakai `go run`: setelah ubah kode,
+#   docker compose restart backend      # atau qr-service; cache build di volume, jadi hanya beberapa detik
+# HTTPS: scripts/mkcert-dev.sh (LAN) atau scripts/tunnel-dev.sh (publik, tanpa konfigurasi di HP).
+# Akses db/psql lewat kontainer:
+#   docker compose exec db psql -U qms -d qms_db
+#   docker compose exec -T db psql -U qms -d qms_db < db/scripts/reset_seed_dev.sql
+# Build produksi: gunakan `target: prod` pada Dockerfile masing-masing service.
 name: qms
 
 services:
@@ -25,31 +32,58 @@ services:
       - internal
 
   qr-service:
-    build: ./qr-service
+    build:
+      context: ./qr-service
+      target: dev
     environment:
       PORT: "8090"
-      PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN in .env}
+      PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
       JOIN_LINK_SECRET: ${JOIN_LINK_SECRET:?set JOIN_LINK_SECRET in .env}
       QR_DYNAMIC_TTL_SECONDS: ${QR_DYNAMIC_TTL_SECONDS:-120}
       QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-    # Tanpa ports: hanya di jaringan internal. Healthcheck ada di Dockerfile.
+    volumes:
+      - ./qr-service:/src
+      - go_build_cache:/root/.cache/go-build
+      - go_mod_cache:/go/pkg/mod
+    # `go run` tidak selalu meneruskan SIGTERM ke proses anak; jangan tunggu 10 detik.
+    stop_grace_period: 3s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
     networks:
       - internal
     restart: unless-stopped
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      target: dev
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-qms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
       PORT: "8080"
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
-      ALLOWED_ORIGINS: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN in .env}
-      PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN}
-      PUBLIC_QR_URL: ${QMS_PUBLIC_ORIGIN}
+      ALLOWED_ORIGINS: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
+      PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
+      PUBLIC_QR_URL: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
+      # Hanya nginx di jaringan internal yang boleh menentukan IP klien (X-Forwarded-For).
+      TRUSTED_PROXIES: 172.28.0.0/16
       QR_SERVICE_URL: http://qr-service:8090
       QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
       QR_HTTP_TIMEOUT: ${QR_HTTP_TIMEOUT:-1}
+    volumes:
+      - ./backend:/src
+      - go_build_cache:/root/.cache/go-build
+      - go_mod_cache:/go/pkg/mod
+    # `go run` tidak selalu meneruskan SIGTERM ke proses anak; jangan tunggu 10 detik.
+    stop_grace_period: 3s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
     depends_on:
       db:
         condition: service_healthy
@@ -59,45 +93,48 @@ services:
       - internal
     restart: unless-stopped
 
-  # Image build-only: menyalin hasil `expo export` ke volume yang dibaca nginx.
   frontend:
     build:
       context: ./frontend
-      args:
-        EXPO_PUBLIC_API_URL: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN in .env}
+      target: dev
+    environment:
+      # Web di belakang nginx memanggil API di origin yang sama.
+      EXPO_PUBLIC_API_URL: origin
     volumes:
-      - frontend_dist:/target
-    command: ["sh", "-c", "rm -rf /target/* && cp -r /dist/. /target/"]
-    restart: "no"
+      - ./frontend:/app
+      # Jaga node_modules dari image (jangan tertimpa folder host).
+      - /app/node_modules
     networks:
       - internal
+    restart: unless-stopped
 
+  # Satu-satunya pintu masuk. 443 aktif bila scripts/mkcert-dev.sh sudah dijalankan (deploy/nginx/https.d/).
   nginx:
     build: ./deploy/nginx
-    environment:
-      QMS_DOMAIN: ${QMS_DOMAIN:-localhost}
-      BACKEND_HOST: backend
-      QR_SERVICE_HOST: qr-service
-      FRONTEND_ROOT: /srv/qms-frontend
-    volumes:
-      - frontend_dist:/srv/qms-frontend:ro
     ports:
       - "${QMS_HTTP_PORT:-8080}:80"
+      - "${QMS_HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./deploy/nginx/https.d:/etc/nginx/https.d:ro
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
       qr-service:
         condition: service_healthy
       frontend:
-        condition: service_completed_successfully
+        condition: service_started
     networks:
       - internal
     restart: unless-stopped
 
 volumes:
   db_data:
-  frontend_dist:
+  go_build_cache:
+  go_mod_cache:
 
 networks:
   internal:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

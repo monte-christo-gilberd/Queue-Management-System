@@ -4,6 +4,7 @@ FROM postgres:16-alpine
 
 # Init script di /docker-entrypoint-initdb.d dijalankan berurutan saat container pertama kali dibuat.
 COPY migrations/01_Schema.sql /docker-entrypoint-initdb.d/01_Schema.sql
+COPY migrations/02_Indexes.sql /docker-entrypoint-initdb.d/02_Indexes.sql
 
 # Kredensial jangan dibakar ke image. Isi saat run: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB.
 EXPOSE 5432

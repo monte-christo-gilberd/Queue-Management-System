@@ -2,3 +2,4 @@
 *
 !migrations/
 !migrations/01_Schema.sql
+!migrations/02_Indexes.sql

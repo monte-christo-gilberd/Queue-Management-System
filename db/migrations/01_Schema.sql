@@ -58,9 +58,6 @@ CREATE TABLE payments (
     paid_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_payments_owner_paid_at
-    ON payments (owner_id, paid_at);
-
 CREATE TABLE queues (
     id         BIGSERIAL PRIMARY KEY,
     owner_id   BIGINT NOT NULL REFERENCES owners(user_id),
@@ -161,14 +158,6 @@ CREATE TABLE tickets (
     UNIQUE (queue_id, sort_key)
 );
 
--- Partial index: cuma indeks tiket yang masih 'waiting', karena itu satu-
--- satunya status yang di-query berulang kali per detik (status page &
--- public display, NFR #4). Tiket completed/cancelled/skipped tetap ada di
--- tabel untuk histori, tapi jarang dibaca dan tidak perlu ikut membengkakkan
--- index yang sering dipakai ini.
-CREATE INDEX idx_tickets_queue_waiting_sort_key
-    ON tickets (queue_id, sort_key) WHERE status = 'waiting';
-
 -- Satu note per tiket: ticket_id sebagai PK, bukan surrogate id + FK biasa.
 -- Menyimpan note kedua untuk tiket yang sama berarti UPDATE baris ini
 -- (mengedit note & updated_at/updated_by), bukan INSERT baris baru (append).
@@ -223,9 +212,3 @@ CREATE TABLE queue_history (
 
     archived_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
--- Dipakai Go buat 2 hal: (1) list history per owner urut terbaru,
--- (2) hitung COUNT(DISTINCT original_queue_id) per owner buat cek "sudah
--- lewat 10 belum" sebelum decide perlu DELETE atau tidak.
-CREATE INDEX idx_queue_history_owner_closed
-    ON queue_history (owner_id, queue_closed_at);
