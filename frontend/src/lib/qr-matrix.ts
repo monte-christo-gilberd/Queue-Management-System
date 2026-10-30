@@ -5,9 +5,9 @@ export const QR_QUIET_ZONE = 4;
 
 export type QrMatrix = { size: number; isDark: (row: number, col: number) => boolean };
 
-/** Matriks QR dari teks (mis. tautan join). Fungsi murni: tanpa DOM, jalan di web dan native. */
+/** Matriks QR dari teks (mis. tautan join). Level `L`: tautan join panjang, jadi modul dibuat sesedikit dan sebesar mungkin agar mudah dipindai. Layar bersih, jadi koreksi galat tinggi tidak perlu. Fungsi murni: tanpa DOM, jalan di web dan native. */
 export function buildQrMatrix(text: string): QrMatrix {
-  const { modules } = create(text, { errorCorrectionLevel: 'M' });
+  const { modules } = create(text, { errorCorrectionLevel: 'L' });
   return { size: modules.size, isDark: (row, col) => modules.get(row, col) === 1 };
 }
 

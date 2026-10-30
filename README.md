@@ -150,7 +150,7 @@ Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot r
 Kredensial (`POSTGRES_PASSWORD`, `JWT_SECRET`, `JOIN_LINK_SECRET`, `QR_SERVICE_TOKEN`) tidak dibakar ke image.
 Frontend memanggil API di origin halaman (`EXPO_PUBLIC_API_URL=origin`), jadi mengganti `QMS_PUBLIC_ORIGIN` tidak butuh build ulang frontend.
 
-Untuk uji dari HP, jalankan `scripts/up.sh` (build + stack + tunnel, mencetak URL HTTPS) sebagai pengganti `docker compose up --build`; `scripts/up.sh down` untuk berhenti. Ini membungkus `scripts/tunnel-dev.sh` (HTTPS publik, tanpa konfigurasi di HP). Lihat `deploy/nginx/README.md`.
+Untuk uji dari HP, jalankan `scripts/up.sh` (build + stack, alamat memakai IP LAN) atau `scripts/up.sh tunnel` (HTTPS publik, kamera HP jalan); `scripts/up.sh down` untuk berhenti. Tunnel memakai `scripts/tunnel-dev.sh`. Lihat `deploy/nginx/README.md`.
 
 ## Build frontend untuk produksi
 

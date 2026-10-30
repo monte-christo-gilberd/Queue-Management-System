@@ -19,7 +19,8 @@ test('tiga penanda sudut ada di kiri atas, kanan atas, dan kiri bawah', () => {
   const m = buildQrMatrix(URL_A);
   const last = m.size - 1;
   for (const [r, c] of [[0, 0], [0, last], [last, 0]]) assert.equal(m.isDark(r, c), true);
-  assert.equal(m.isDark(last, last), false);
+  // Pemisah terang (1 modul) di dalam penanda: baris 7 kolom 0..7 selalu terang.
+  for (let c = 0; c <= 7; c++) assert.equal(m.isDark(7, c), false);
 });
 
 test('teks yang sama menghasilkan QR yang sama, token berbeda menghasilkan QR berbeda', () => {

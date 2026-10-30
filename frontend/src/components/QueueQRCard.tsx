@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Icon } from '@/components/ui/Icon';
@@ -49,6 +49,7 @@ export function QueueQRCard({
   onRefresh,
   onRetry,
 }: QueueQRCardProps) {
+  const { width } = useWindowDimensions();
   const [copied, setCopied] = useState(false);
   const foreground = useThemeColor('foreground');
   const [qrOpen, setQrOpen] = useState(false);
@@ -191,7 +192,7 @@ export function QueueQRCard({
 
             <View className="items-center">
               {joinUrl ? (
-                <QrCode value={joinUrl} size={240} />
+                <QrCode value={joinUrl} size={Math.min(400, width - 80)} />
               ) : (
                 <Text className="text-[12px] text-muted">QR tidak tersedia.</Text>
               )}
