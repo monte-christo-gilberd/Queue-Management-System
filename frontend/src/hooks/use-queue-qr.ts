@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
+import { describeQrError } from '@/lib/qr-errors';
 import { getQueueQR, replaceQueueQR, setQueueQRType } from '@/lib/qr';
 import type { QueueQR } from '@/types/api';
 
-/** Refresh otomatis token dinamis ketika sisa masa berlaku < 20 detik. */
-const DYNAMIC_REFRESH_LEAD_SECONDS = 20;
+/** Jeda antar percobaan ulang saat token dinamis sudah kedaluwarsa dan belum berganti. */
+const EXPIRED_RETRY_MS = 3000;
 
 /**
  * State dan aksi QR antrian (owner): muat ulang, toggle statis/dinamis, ganti kode.
  *
  * Token dinamis membawa `expires_at`; hitung mundur berjalan saat app aktif dan QR
- * dimuat ulang otomatis sekali ketika sisa waktu di bawah 20 detik.
+ * diganti otomatis setelah kedaluwarsa (dicoba ulang tiap 3 detik sampai token baru masuk).
  */
 export function useQueueQR(queueId: number) {
   const invalid = !Number.isInteger(queueId) || queueId <= 0;
@@ -31,7 +32,7 @@ export function useQueueQR(queueId: number) {
     try {
       setQr(await getQueueQR(queueId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal memuat QR');
+      setError(describeQrError(e));
     }
   }, [invalid, queueId]);
 
@@ -48,7 +49,7 @@ export function useQueueQR(queueId: number) {
       },
       (e: unknown) => {
         if (!active) return;
-        setError(e instanceof Error ? e.message : 'Gagal memuat QR');
+        setError(describeQrError(e));
         setLoading(false);
       },
     );
@@ -89,16 +90,18 @@ export function useQueueQR(queueId: number) {
     return () => subscription.remove();
   }, [reload]);
 
-  // Token dinamis: reload otomatis sekali saat sisa masa di bawah lead.
-  const autoRefreshedFor = useRef<number | null>(null);
+  // Token diganti setelah kedaluwarsa: minta token baru, lalu coba lagi tiap beberapa detik
+  // sampai backend mengeluarkan token baru (expiresAtMs berubah).
+  const expired = secondsLeft === 0;
   useEffect(() => {
-    if (!appActive || expiresAtMs == null || secondsLeft == null) return;
-    if (secondsLeft > DYNAMIC_REFRESH_LEAD_SECONDS) return;
-    if (autoRefreshedFor.current === expiresAtMs) return;
-    autoRefreshedFor.current = expiresAtMs;
-    const timer = setTimeout(() => void reload(), 1000);
-    return () => clearTimeout(timer);
-  }, [appActive, expiresAtMs, secondsLeft, reload]);
+    if (!appActive || expiresAtMs == null || !expired) return;
+    const first = setTimeout(() => void reload(), 0);
+    const timer = setInterval(() => void reload(), EXPIRED_RETRY_MS);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [appActive, expiresAtMs, expired, reload]);
 
   const toggle = useCallback(
     async (type: 'static' | 'dynamic') => {
@@ -107,9 +110,8 @@ export function useQueueQR(queueId: number) {
       setError(undefined);
       try {
         setQr(await setQueueQRType(queueId, type));
-        autoRefreshedFor.current = null;
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Gagal mengubah mode QR');
+          } catch (e) {
+        setError(describeQrError(e));
       } finally {
         setToggling(false);
       }
@@ -123,9 +125,8 @@ export function useQueueQR(queueId: number) {
     setError(undefined);
     try {
       setQr(await replaceQueueQR(queueId));
-      autoRefreshedFor.current = null;
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal mengganti QR');
+      setError(describeQrError(e));
     } finally {
       setReplacing(false);
     }

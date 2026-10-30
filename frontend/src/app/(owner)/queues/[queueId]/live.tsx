@@ -15,11 +15,13 @@ export default function QueueLiveRoute() {
   const { queue } = useQueueDetail(id);
   const board = useQueueBoard(validId);
   const { previous, current, next } = board.view;
+  // Nama counter hanya ditampilkan bila counter non-default memanggil (default disembunyikan backend).
+  const counterName = current?.counterName ?? null;
 
   return (
     <QueueLiveScreen
       queueName={queue?.queue_name ?? 'Antrian'}
-      counterName="-"
+      counterName={counterName ?? undefined}
       previousTicket={toLive(previous)}
       currentTicket={toLive(current)}
       nextTicket={toLive(next)}

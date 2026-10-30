@@ -5,7 +5,8 @@ import { cn } from '@/utils/cn';
 type CurrentNumberCardProps = {
   /** Nomor tampilan, mis. "A-042". */
   numberLabel: string;
-  counterName?: string;
+  /** Nama counter yang memanggil; null bila counter default disembunyikan (jangan ditampilkan). */
+  counterName?: string | null;
   onPressNote?: () => void;
   /** Titik merah "live" di pojok kanan atas. */
   showLiveDot?: boolean;
@@ -39,10 +40,9 @@ export function CurrentNumberCard({
           <View className="h-[30px] w-[30px] rounded-[4px] rounded-tr-xl bg-white" />
         </Pressable>
       </View>
-      {/* TODO: backend belum mendukung ini (counter/loket) */}
-      <Text className={cn('text-[13px] text-white', compact && 'text-[12px]')}>
-        Counter yang Dituju: {counterName ?? '-'}
-      </Text>
+      {counterName ? (
+        <Text className={cn('text-[13px] text-white', compact && 'text-[12px]')}>{`Counter yang Dituju: ${counterName}`}</Text>
+      ) : null}
     </View>
   );
 }

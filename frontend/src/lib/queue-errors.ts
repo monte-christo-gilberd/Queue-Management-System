@@ -1,4 +1,5 @@
 import { ApiError } from './api';
+import { describeQrError, isQrErrorCode } from './qr-errors';
 
 /**
  * Pesan untuk aksi antrian (buat, ubah, tutup, lihat detail). Fungsi murni.
@@ -6,6 +7,8 @@ import { ApiError } from './api';
  */
 export function describeQueueError(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Terjadi kesalahan, coba lagi';
+
+  if (isQrErrorCode(error.code)) return describeQrError(error);
 
   switch (error.code) {
     case 'SUBSCRIPTION_INACTIVE':
@@ -22,16 +25,6 @@ export function describeQueueError(error: unknown): string {
       return 'Server sedang sibuk, silakan coba lagi';
     case 'BAD_REQUEST':
       return 'Data tidak valid, periksa kembali isian Anda';
-    case 'QR_INVALID':
-      return 'Tautan QR tidak valid atau sudah tidak berlaku. Pindai QR terbaru dari pemilik antrian.';
-    case 'QR_EXPIRED':
-      return 'Tautan QR sudah kedaluwarsa. Pindai ulang QR terbaru.';
-    case 'QR_UNAVAILABLE':
-      return 'Layanan QR sedang tidak tersedia, coba lagi';
-    case 'QR_TYPE_INVALID':
-      return 'Mode QR tidak dikenal. Pilih statis atau dinamis.';
-    case 'QR_REPLACE_NOT_ALLOWED':
-      return 'QR dinamis tidak bisa diganti; biarkan kedaluwarsa dan diperbarui otomatis.';
     case 'NETWORK_ERROR':
       return error.message;
     default:

@@ -14,8 +14,9 @@ export async function listTickets(queueId: number): Promise<Ticket[]> {
  * Respons join/next tidak dibungkus `action`, langsung objek tiket di dalam `data`.
  * 409 QUEUE_EMPTY bila tidak ada yang menunggu.
  */
-export async function nextTicket(queueId: number): Promise<Ticket> {
-  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/next`, { method: 'POST' });
+export async function nextTicket(queueId: number, counterId = 0): Promise<Ticket> {
+  // counter_id 0 = counter default milik queue (backend mengalaminya).
+  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/next`, { method: 'POST', body: { counter_id: counterId } });
 }
 
 /**
@@ -28,6 +29,7 @@ export async function getQueueStatus(queueId: number): Promise<QueueStatus> {
     queue: data.queue,
     my_ticket: data.my_ticket,
     current_number: data.current_number,
+    current_counter_name: data.current_counter_name,
     waiting_ahead: data.waiting_ahead,
     previous_number: data.previous_number,
     next_number: data.next_number,
@@ -56,8 +58,3 @@ export async function listMyTickets(): Promise<MyTicket[]> {
   return data.tickets;
 }
 
-/** GET /api/v1/queues/:id/info — nama, deskripsi, dan status antrian (login diperlukan, tanpa owner/izin). */
-export async function getQueueInfo(queueId: number): Promise<PublicQueue> {
-  const data = await apiFetch<{ action: 'queue_info'; queue: PublicQueue }>(`/api/v1/queues/${queueId}/info`);
-  return data.queue;
-}

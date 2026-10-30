@@ -38,7 +38,7 @@ func (s *stubTicketService) ResolveJoinToken(_ context.Context, token string) (m
 	return s.joinQueue, s.resolveErr
 }
 
-func (s *stubTicketService) NextTicket(context.Context, int64, int64) (model.Ticket, error) {
+func (s *stubTicketService) NextTicket(context.Context, int64, int64, int64) (model.Ticket, error) {
 	return model.Ticket{}, s.nextErr
 }
 
@@ -93,7 +93,7 @@ func TestListTickets_OK(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"action":"list_tickets","queue_id":5,"tickets":[{
 		"id":1,"queue_id":5,"ticket_number":1,"sort_key":0,"user_id":0,"status":"waiting",
 		"skip_count":0,"last_notified_at":null,"created_at":"0001-01-01T00:00:00Z",
-		"completed_at":null,"cancelled_at":null}]}}`, w.Body.String())
+		"completed_at":null,"cancelled_at":null,"called_counter_id":null,"called_counter_name":null,"called_at":null}]}}`, w.Body.String())
 	assert.Equal(t, []string{"waiting", "skipped", "completed"}, svc.statuses)
 }
 
@@ -238,5 +238,5 @@ func TestMyTickets_OK(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"action":"list_my_tickets","tickets":[{
 		"id":3,"queue_id":5,"ticket_number":1,"sort_key":0,"user_id":0,"status":"waiting",
 		"skip_count":0,"last_notified_at":null,"created_at":"0001-01-01T00:00:00Z",
-		"completed_at":null,"cancelled_at":null,"queue_name":"Loket A","queue_status":"active","current_number":null}]}}`, w.Body.String())
+		"completed_at":null,"cancelled_at":null,"called_counter_id":null,"called_counter_name":null,"called_at":null,"queue_name":"Loket A","queue_status":"active","current_number":null}]}}`, w.Body.String())
 }

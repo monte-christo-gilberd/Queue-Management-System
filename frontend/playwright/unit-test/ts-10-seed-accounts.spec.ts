@@ -145,6 +145,7 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
     await owner.page.goto(`${WEB_URL}/dashboard`);
     queueA = await createViaUi(owner.page, OWNER1, NAME_A);
     await expect(owner.page.locator(`input[value="${NAME_A}"]`)).toBeVisible();
+    await action(owner.page, 'LIHAT QR').click();
     await expect(action(owner.page, 'SALIN TAUTAN')).toBeVisible();
   });
 

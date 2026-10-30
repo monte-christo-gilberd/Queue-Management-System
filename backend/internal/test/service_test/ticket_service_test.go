@@ -71,6 +71,7 @@ func (f *fakeTicketRepo) MarkCompleted(
 	ctx context.Context,
 	tx *sqlx.Tx,
 	ticketID int64,
+	counterID int64,
 ) error {
 	return nil // tidak dipakai di test ini
 }
@@ -144,6 +145,13 @@ func (f *fakeTicketRepo) ListByQueue(
 	f.listCalled = true
 	f.listStatuses = statuses
 	return f.listResult, nil
+}
+
+func (f *fakeTicketRepo) GetCounterByQueue(
+	ctx context.Context,
+	queueID int64,
+) (model.Counter, error) {
+	return model.Counter{ID: 1, QueueID: queueID, Name: "Counter 1", IsDefault: true}, nil
 }
 
 type fakeQueueGuard struct {
@@ -283,7 +291,7 @@ func TestNextTicket_OwnerSucceeds(t *testing.T) {
 	svc := service.NewTicketService(repo, fakeTxRunner{}).
 		WithQueueGuard(fakeQueueGuard{ownerID: 7})
 
-	_, err := svc.NextTicket(context.Background(), 1, 7)
+	_, err := svc.NextTicket(context.Background(), 1, 7, 0)
 
 	assert.NoError(t, err)
 }
@@ -293,7 +301,7 @@ func TestNextTicket_NonOwnerIsNotFound(t *testing.T) {
 	svc := service.NewTicketService(repo, fakeTxRunner{}).
 		WithQueueGuard(fakeQueueGuard{ownerID: 7})
 
-	_, err := svc.NextTicket(context.Background(), 1, 8)
+	_, err := svc.NextTicket(context.Background(), 1, 8, 0)
 
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
@@ -301,7 +309,7 @@ func TestNextTicket_NonOwnerIsNotFound(t *testing.T) {
 func TestNextTicket_ErrorsWithoutGuard(t *testing.T) {
 	svc := service.NewTicketService(&fakeTicketRepo{}, fakeTxRunner{})
 
-	_, err := svc.NextTicket(context.Background(), 1, 7)
+	_, err := svc.NextTicket(context.Background(), 1, 7, 0)
 
 	assert.Error(t, err)
 }

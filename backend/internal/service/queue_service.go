@@ -53,6 +53,15 @@ type QueueRepository interface {
 		queueID int64,
 		token string,
 	) error
+	CreateDefaultCounter(
+		ctx context.Context,
+		queueID int64,
+		name string,
+	) (model.Counter, error)
+	GetCounterByQueue(
+		ctx context.Context,
+		queueID int64,
+	) (model.Counter, error)
 }
 type SubscriptionChecker interface {
 	IsActive(
@@ -141,6 +150,24 @@ func (s *QueueService) CreateQueue(
 		return model.Queue{}, err
 	}
 	return queue, nil
+}
+
+// CreateDefaultCounter membuat counter bernama tertentu; dipakai bila queue
+// lama (dibuat sebelum counter default otomatis) belum punya counter.
+func (s *QueueService) CreateDefaultCounter(
+	ctx context.Context,
+	queueID int64,
+	name string,
+) (model.Counter, error) {
+	return s.repository.CreateDefaultCounter(ctx, queueID, name)
+}
+
+// GetCounterByQueue mengambil counter default milik queue (is_default atau satu saja).
+func (s *QueueService) GetCounterByQueue(
+	ctx context.Context,
+	queueID int64,
+) (model.Counter, error) {
+	return s.repository.GetCounterByQueue(ctx, queueID)
 }
 
 func (s *QueueService) GetQueue(
@@ -360,23 +387,6 @@ func (s *QueueService) validateOwnership(
 	}
 	if requesterID != queue.OwnerID {
 		return model.Queue{}, apperror.ErrNotFound
-	}
-	return queue, nil
-}
-
-// GetQueueInfo mengembalikan info publik antrian untuk user yang login (tanpa owner dan izin).
-// Dipakai halaman join agar pengunjung bisa melihat nama dan deskripsi sebelum bergabung.
-func (s *QueueService) GetQueueInfo(
-	ctx context.Context,
-	queueID int64,
-) (model.Queue, error) {
-
-	queue, err := s.repository.GetQueueByID(
-		ctx,
-		queueID,
-	)
-	if err != nil {
-		return model.Queue{}, err
 	}
 	return queue, nil
 }

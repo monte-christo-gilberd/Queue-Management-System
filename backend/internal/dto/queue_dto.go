@@ -107,3 +107,8 @@ type JoinByTokenRequest struct {
 type SetQRTypeRequest struct {
 	Type string `json:"type" binding:"required"`
 }
+
+// NextTicketRequest: `counter_id` opsional; 0 = counter default milik queue.
+type NextTicketRequest struct {
+	CounterID int64 `json:"counter_id"`
+}

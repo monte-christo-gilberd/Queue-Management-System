@@ -9,4 +9,5 @@ type Counter struct {
 	QueueID   int64     `db:"queue_id"`
 	Name      string    `db:"name"`
 	CreatedAt time.Time `db:"created_at"`
+	IsDefault bool      `db:"is_default"`
 }

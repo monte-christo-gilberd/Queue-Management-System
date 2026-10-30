@@ -18,7 +18,8 @@ type LiveTicket = { number: string; name?: string };
 
 export type QueueLiveScreenProps = {
   queueName?: string;
-  counterName?: string;
+  /** Nama counter yang sedang memanggil; null/undefined = counter default disembunyikan (jangan ditampilkan). */
+  counterName?: string | null;
   previousTicket?: LiveTicket | null;
   currentTicket?: LiveTicket | null;
   nextTicket?: LiveTicket | null;
@@ -31,7 +32,7 @@ export type QueueLiveScreenProps = {
 // Pengecualian yang disengaja: papan display gelap + titik hijau status "live" (token board*, liveGreen).
 
 type LayoutProps = {
-  counterName: string;
+  counterName: string | null;
   previousTicket: LiveTicket | null;
   currentTicket: LiveTicket | null;
   nextTicket: LiveTicket | null;
@@ -41,7 +42,7 @@ type LayoutProps = {
 
 export default function QueueLiveScreen({
   queueName = 'Antrian Loket 1',
-  counterName = 'Counter 2',
+  counterName,
   previousTicket = { number: 'A-041', name: 'Budi Santoso' },
   currentTicket = { number: 'A-042', name: 'Siti Rahma' },
   nextTicket = { number: 'A-043', name: 'Andi Wijaya' },
@@ -51,7 +52,7 @@ export default function QueueLiveScreen({
 }: QueueLiveScreenProps) {
   const isWide = useIsWide();
   const shared: LayoutProps = {
-    counterName,
+    counterName: counterName ?? null,
     previousTicket,
     currentTicket,
     nextTicket,
@@ -84,10 +85,11 @@ function MobileTimelineLayout({
     <View className="gap-3 rounded-card border border-line p-4">
       <View className="flex-row items-center justify-between">
         <Text className="text-[15px] font-extrabold text-foreground">Antrean hari ini</Text>
-        {/* TODO: backend belum mendukung ini (counter/loket) */}
-        <View className="rounded-pill bg-surface px-3.5 py-1.5">
-          <Text className="text-[12px] font-extrabold text-primary">{counterName}</Text>
-        </View>
+        {counterName ? (
+          <View className="rounded-pill bg-surface px-3.5 py-1.5">
+            <Text className="text-[12px] font-extrabold text-primary">{counterName}</Text>
+          </View>
+        ) : null}
       </View>
 
       <View>
@@ -185,8 +187,9 @@ function DesktopAirportBoardLayout({
     <View className="items-center gap-5">
       <View className="w-full max-w-[680px] gap-7 rounded-[20px] bg-board px-12 py-10">
         <View className="flex-row items-start justify-between">
-          {/* TODO: backend belum mendukung ini (counter/loket) */}
-          <Text className="text-[18px] tracking-[1px] text-boardMuted" style={{ fontFamily: Fonts?.mono }}>{counterName.toLowerCase()}</Text>
+          {counterName ? (
+            <Text className="text-[18px] tracking-[1px] text-boardMuted" style={{ fontFamily: Fonts?.mono }}>{counterName.toLowerCase()}</Text>
+          ) : null}
           <View className="flex-row items-center gap-2">
             <LiveDot />
             <Text className="text-[16px] text-liveGreen" style={{ fontFamily: Fonts?.mono }}>live</Text>

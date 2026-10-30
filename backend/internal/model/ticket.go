@@ -17,4 +17,8 @@ type Ticket struct {
 	CreatedAt      time.Time    `db:"created_at"`
 	CompletedAt    sql.NullTime `db:"completed_at"`
 	CancelledAt    sql.NullTime `db:"cancelled_at"`
+	// Counter yang memanggil tiket ini (diisi saat Next); 0 = belum dipanggil.
+	CalledCounterID int64        `db:"called_counter_id"`
+	CounterName     string       `db:"-"`
+	CalledAt        sql.NullTime `db:"called_at"`
 }

@@ -23,7 +23,6 @@ func specQueueEngine(svc *specQueueSvc, userID int64) *gin.Engine {
 	e.POST("/queues", h.Create)
 	e.GET("/queues", h.List)
 	e.GET("/queues/:queue_id", h.Get)
-	e.GET("/queues/:queue_id/info", h.Info)
 	e.PUT("/queues/:queue_id", h.Update)
 	e.POST("/queues/:queue_id/close", h.Close)
 	return e
@@ -97,8 +96,8 @@ func TestSpec_CreateQueue_InactiveSubscriptionIs402(t *testing.T) {
 	assert.NotContains(t, w.Body.String(), `"queue":`)
 }
 
-func TestSpec_GetQueue_OwnerSeesOwnerIDWithoutAuthorities(t *testing.T) {
-	// 4.1: owner melihat detail antrian; authz sudah dihapus dari kontrak.
+func TestSpec_GetQueue_OwnerSeesOwnerID(t *testing.T) {
+	// 4.1: owner melihat detail antrian beserta owner_id.
 	svc := newSpecQueueSvc(t)
 	svc.On("ViewQueue", int64(1), specOwner).Return(specOpenQueue(1), true, nil)
 	e := specQueueEngine(svc, specOwner)
@@ -107,7 +106,6 @@ func TestSpec_GetQueue_OwnerSeesOwnerIDWithoutAuthorities(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	data := specDecode(t, w)["data"].(map[string]interface{})
-	assert.NotContains(t, data, "queue_authz")
 	assert.Equal(t, float64(specOwner), data["queue"].(map[string]interface{})["owner_id"])
 }
 
@@ -123,7 +121,6 @@ func TestSpec_GetQueue_TicketHolderSeesPublicViewOnly(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	data := specDecode(t, w)["data"].(map[string]interface{})
-	assert.NotContains(t, data, "queue_authz")
 	queue := data["queue"].(map[string]interface{})
 	assert.NotContains(t, queue, "owner_id")
 	assert.Nil(t, queue["queue_desc"], "deskripsi kosong harus null")
@@ -225,30 +222,4 @@ func TestSpec_ListQueues_EmptyListIsJSONArray(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	data := specDecode(t, w)["data"].(map[string]interface{})
 	assert.Equal(t, []interface{}{}, data["queues"])
-}
-
-func TestSpec_QueueInfo_UnknownQueueIs404(t *testing.T) {
-	// TC-05-06 / TC-05-07: tautan join ke antrian yang tidak ada -> 404.
-	svc := newSpecQueueSvc(t)
-	svc.On("GetQueueInfo", int64(404)).Return(model.Queue{}, apperror.ErrNotFound)
-	e := specQueueEngine(svc, 12)
-
-	w := specRequest(e, http.MethodGet, "/queues/404/info", "")
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
-	assert.Equal(t, "NOT_FOUND", specErrorCode(t, w))
-}
-
-func TestSpec_QueueInfo_ReturnsPublicShape(t *testing.T) {
-	// Halaman join menampilkan nama dan deskripsi; owner_id tidak ikut.
-	svc := newSpecQueueSvc(t)
-	svc.On("GetQueueInfo", int64(1)).Return(specOpenQueue(1), nil)
-	e := specQueueEngine(svc, 12)
-
-	w := specRequest(e, http.MethodGet, "/queues/1/info", "")
-
-	require.Equal(t, http.StatusOK, w.Code)
-	queue := specDecode(t, w)["data"].(map[string]interface{})["queue"].(map[string]interface{})
-	assert.Equal(t, "Loket Utama", queue["queue_name"])
-	assert.NotContains(t, queue, "owner_id")
 }

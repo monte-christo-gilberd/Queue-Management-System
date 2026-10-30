@@ -136,6 +136,7 @@ export function useCustomerQueue(token: string | null) {
             queue: info,
             my_ticket: ticket,
             current_number: null,
+            current_counter_name: null,
             waiting_ahead: null,
             previous_number: null,
             next_number: null,

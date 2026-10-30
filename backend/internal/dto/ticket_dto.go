@@ -7,17 +7,20 @@ import (
 )
 
 type TicketResponse struct {
-	ID             int64      `json:"id"`
-	QueueID        int64      `json:"queue_id"`
-	TicketNumber   int        `json:"ticket_number"`
-	SortKey        int64      `json:"sort_key"`
-	UserID         int64      `json:"user_id"`
-	Status         string     `json:"status"`
-	SkipCount      int        `json:"skip_count"`
-	LastNotifiedAt *time.Time `json:"last_notified_at"`
-	CreatedAt      time.Time  `json:"created_at"`
-	CompletedAt    *time.Time `json:"completed_at"`
-	CancelledAt    *time.Time `json:"cancelled_at"`
+	ID                int64      `json:"id"`
+	QueueID           int64      `json:"queue_id"`
+	TicketNumber      int        `json:"ticket_number"`
+	SortKey           int64      `json:"sort_key"`
+	UserID            int64      `json:"user_id"`
+	Status            string     `json:"status"`
+	SkipCount         int        `json:"skip_count"`
+	LastNotifiedAt    *time.Time `json:"last_notified_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	CompletedAt       *time.Time `json:"completed_at"`
+	CancelledAt       *time.Time `json:"cancelled_at"`
+	CalledCounterID   *int64     `json:"called_counter_id"`
+	CalledCounterName *string    `json:"called_counter_name"`
+	CalledAt          *time.Time `json:"called_at"`
 }
 
 func NewTicketResponse(t model.Ticket) TicketResponse {
@@ -38,14 +41,17 @@ func NewTicketResponse(t model.Ticket) TicketResponse {
 
 // Tanpa user_id & sort_key: penerima event bisa customer lain di queue yang sama.
 type TicketEvent struct {
-	ID           int64      `json:"id"`
-	QueueID      int64      `json:"queue_id"`
-	TicketNumber int        `json:"ticket_number"`
-	Status       string     `json:"status"`
-	SkipCount    int        `json:"skip_count"`
-	CreatedAt    time.Time  `json:"created_at"`
-	CompletedAt  *time.Time `json:"completed_at"`
-	CancelledAt  *time.Time `json:"cancelled_at"`
+	ID                int64      `json:"id"`
+	QueueID           int64      `json:"queue_id"`
+	TicketNumber      int        `json:"ticket_number"`
+	Status            string     `json:"status"`
+	SkipCount         int        `json:"skip_count"`
+	CreatedAt         time.Time  `json:"created_at"`
+	CompletedAt       *time.Time `json:"completed_at"`
+	CancelledAt       *time.Time `json:"cancelled_at"`
+	CalledCounterID   *int64     `json:"called_counter_id"`
+	CalledCounterName *string    `json:"called_counter_name"`
+	CalledAt          *time.Time `json:"called_at"`
 }
 
 func NewTicketEvent(t model.Ticket) TicketEvent {
@@ -58,6 +64,15 @@ func NewTicketEvent(t model.Ticket) TicketEvent {
 		CreatedAt:    t.CreatedAt,
 		CompletedAt:  nullTimePtr(t.CompletedAt),
 		CancelledAt:  nullTimePtr(t.CancelledAt),
+		CalledCounterID: func() *int64 {
+			if t.CalledCounterID == 0 {
+				return nil
+			}
+			v := t.CalledCounterID
+			return &v
+		}(),
+		CalledCounterName: counterNamePtr(t.CounterName),
+		CalledAt:          nullTimePtr(t.CalledAt),
 	}
 }
 
@@ -76,13 +91,21 @@ func nullTimePtr(t sql.NullTime) *time.Time {
 	return &t.Time
 }
 
+func counterNamePtr(name string) *string {
+	if name == "" {
+		return nil
+	}
+	return &name
+}
+
 type QueueStatusResponse struct {
-	Queue          PublicQueueResponse `json:"queue"`
-	MyTicket       *TicketResponse     `json:"my_ticket"`
-	CurrentNumber  *int                `json:"current_number"`
-	WaitingAhead   *int                `json:"waiting_ahead"`
-	PreviousNumber *int                `json:"previous_number"`
-	NextNumber     *int                `json:"next_number"`
+	Queue              PublicQueueResponse `json:"queue"`
+	MyTicket           *TicketResponse     `json:"my_ticket"`
+	CurrentNumber      *int                `json:"current_number"`
+	CurrentCounterName *string             `json:"current_counter_name"`
+	WaitingAhead       *int                `json:"waiting_ahead"`
+	PreviousNumber     *int                `json:"previous_number"`
+	NextNumber         *int                `json:"next_number"`
 }
 
 func NewQueueStatusResponse(s model.QueueStatus) QueueStatusResponse {
@@ -91,13 +114,18 @@ func NewQueueStatusResponse(s model.QueueStatus) QueueStatusResponse {
 		t := NewTicketResponse(*s.MyTicket)
 		mine = &t
 	}
+	var currentCounterName *string
+	if s.CurrentCounterName != nil {
+		currentCounterName = s.CurrentCounterName
+	}
 	return QueueStatusResponse{
-		Queue:          NewPublicQueueResponse(s.Queue),
-		MyTicket:       mine,
-		CurrentNumber:  s.CurrentNumber,
-		WaitingAhead:   s.WaitingAhead,
-		PreviousNumber: s.PreviousNumber,
-		NextNumber:     s.NextNumber,
+		Queue:              NewPublicQueueResponse(s.Queue),
+		MyTicket:           mine,
+		CurrentNumber:      s.CurrentNumber,
+		CurrentCounterName: currentCounterName,
+		WaitingAhead:       s.WaitingAhead,
+		PreviousNumber:     s.PreviousNumber,
+		NextNumber:         s.NextNumber,
 	}
 }
 

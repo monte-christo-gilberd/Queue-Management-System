@@ -77,6 +77,17 @@ func (r *QueueRepository) CreateNewQueue(
 		return model.Queue{}, err
 	}
 
+	// Setiap antrian baru otomatis punya 1 counter default; nama counter
+	// disembunyikan di UI karena nilainya otomatis.
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO counters (queue_id, name, created_at, is_default) VALUES ($1, $2, now(), TRUE)`,
+		queue.ID,
+		"Counter 1",
+	); err != nil {
+		return model.Queue{}, err
+	}
+
 	return queue, nil
 }
 
@@ -316,4 +327,39 @@ func (r *QueueRepository) UpdateQRCurrentCode(
 		return apperror.ErrNotFound
 	}
 	return nil
+}
+
+func (r *QueueRepository) CreateDefaultCounter(
+	ctx context.Context,
+	queueID int64,
+	name string,
+) (model.Counter, error) {
+	var counter model.Counter
+	const counterQuery = `
+		INSERT INTO counters (queue_id, name, created_at, is_default)
+		VALUES ($1, $2, now(), FALSE)
+		RETURNING id, queue_id, name, created_at, is_default
+	`
+	if err := r.db.GetContext(ctx, &counter, counterQuery, queueID, name); err != nil {
+		return model.Counter{}, err
+	}
+	return counter, nil
+}
+
+func (r *QueueRepository) GetCounterByQueue(
+	ctx context.Context,
+	queueID int64,
+) (model.Counter, error) {
+	var counter model.Counter
+	const counterQuery = `
+		SELECT id, queue_id, name, created_at, is_default
+		FROM counters
+		WHERE queue_id = $1
+		ORDER BY is_default DESC, created_at ASC
+		LIMIT 1
+	`
+	if err := r.db.GetContext(ctx, &counter, counterQuery, queueID); err != nil {
+		return model.Counter{}, err
+	}
+	return counter, nil
 }

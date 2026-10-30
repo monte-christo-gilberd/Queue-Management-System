@@ -117,11 +117,6 @@ func specErr(rets []interface{}, i int) error {
 	return v.(error)
 }
 
-func (m *specQueueSvc) GetQueueInfo(_ context.Context, queueID int64) (model.Queue, error) {
-	r := m.call("GetQueueInfo", queueID)
-	return specRet(r, 0).(model.Queue), specErr(r, 1)
-}
-
 func (m *specQueueSvc) CreateQueue(_ context.Context, ownerID int64, name, desc string) (model.Queue, error) {
 	r := m.call("CreateQueue", ownerID, name, desc)
 	return specRet(r, 0).(model.Queue), specErr(r, 1)
@@ -179,7 +174,7 @@ func (s *specTicketSvc) JoinQueue(_ context.Context, queueID, userID int64) (mod
 	return s.ticket, s.joinErr
 }
 
-func (s *specTicketSvc) NextTicket(_ context.Context, queueID, requesterID int64) (model.Ticket, error) {
+func (s *specTicketSvc) NextTicket(_ context.Context, queueID, requesterID int64, counterID int64) (model.Ticket, error) {
 	s.record(queueID, requesterID)
 	return s.ticket, s.err
 }

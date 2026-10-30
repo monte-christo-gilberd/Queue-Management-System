@@ -32,6 +32,7 @@ type TicketRepository interface {
 		ctx context.Context,
 		tx *sqlx.Tx,
 		ticketID int64,
+		counterID int64,
 	) error
 	ListByQueue(
 		ctx context.Context,
@@ -61,6 +62,10 @@ type TicketRepository interface {
 		ctx context.Context,
 		queueID int64,
 	) (number int, ok bool, err error)
+	GetCounterByQueue(
+		ctx context.Context,
+		queueID int64,
+	) (model.Counter, error)
 	CountWaitingBefore(
 		ctx context.Context,
 		queueID,
@@ -224,6 +229,7 @@ func (s *TicketService) NextTicket(
 	ctx context.Context,
 	queueID,
 	requesterID int64,
+	counterID int64,
 ) (model.Ticket, error) {
 	if s.guard == nil {
 		return model.Ticket{}, errNoQueueGuard
@@ -236,9 +242,19 @@ func (s *TicketService) NextTicket(
 		return model.Ticket{}, err
 	}
 
+	var counter model.Counter
 	var ticket model.Ticket
+	var err error
 
-	err := s.tx.WithTx(
+	counter, err = s.repository.GetCounterByQueue(ctx, queueID)
+	if err != nil {
+		return model.Ticket{}, err
+	}
+	if counterID == 0 {
+		counterID = counter.ID
+	}
+
+	err = s.tx.WithTx(
 		ctx,
 		func(tx *sqlx.Tx) error {
 			var err error
@@ -254,6 +270,7 @@ func (s *TicketService) NextTicket(
 				ctx,
 				tx,
 				ticket.ID,
+				counterID,
 			)
 		})
 
@@ -269,6 +286,10 @@ func (s *TicketService) NextTicket(
 	ticket.CompletedAt = sql.NullTime{
 		Time:  time.Now(),
 		Valid: true,
+	}
+	ticket.CalledCounterID = counterID
+	if !counter.IsDefault {
+		ticket.CounterName = counter.Name
 	}
 
 	notifyEvent(
@@ -338,6 +359,12 @@ func (s *TicketService) QueueStatus(
 	}
 	if ok {
 		status.CurrentNumber = &number
+		// Nama counter default disembunyikan (is_default); bila counter non-default
+		// hadir, nama-nya ikut tampil untuk customer & owner.
+		if counter, cerr := s.repository.GetCounterByQueue(ctx, queueID); cerr == nil && counter.ID != 0 && !counter.IsDefault {
+			counterName := counter.Name
+			status.CurrentCounterName = &counterName
+		}
 	}
 
 	// Sebelumnya (completed sebelum yang sedang dilayani) dan berikutnya (waiting pertama): hanya nomor.

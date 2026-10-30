@@ -300,11 +300,11 @@ func TestTicketRepository(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		return repo.MarkCompleted(ctx, tx, next.ID)
+		return repo.MarkCompleted(ctx, tx, next.ID, 1)
 	}))
 	assert.Equal(t, t1.ID, next.ID)
 	err = database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
-		return repo.MarkCompleted(ctx, tx, 999999)
+		return repo.MarkCompleted(ctx, tx, 999999, 1)
 	})
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 	err = database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
@@ -372,7 +372,7 @@ func TestJoinQueue_TwiceBySameUserReturnsSameTicket(t *testing.T) {
 	assert.Equal(t, 1, again.TicketNumber)
 
 	// Setelah tiket selesai pun join ulang tidak membuat tiket baru (UNIQUE tidak melihat status).
-	_, err = svc.NextTicket(ctx, q.ID, owner)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
 	require.NoError(t, err)
 	afterNext, err := svc.JoinQueue(ctx, q.ID, customer)
 	require.NoError(t, err)
@@ -389,7 +389,7 @@ func TestJoinQueue_TwiceBySameUserReturnsSameTicket(t *testing.T) {
 	q2 := createQueue(t, db, owner, "Q2")
 	_, err = svc.JoinQueue(ctx, q2.ID, customer)
 	require.NoError(t, err)
-	_, err = svc.NextTicket(ctx, q2.ID, customer)
+	_, err = svc.NextTicket(ctx, q2.ID, customer, 0)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
 
@@ -436,9 +436,9 @@ func TestQueueStatus_AgainstPostgres(t *testing.T) {
 	assert.Equal(t, 2, *st.WaitingAhead)
 
 	// Owner memanggil Next dua kali: nomor saat ini = tiket ke-2 (completed terbaru).
-	_, err = svc.NextTicket(ctx, q.ID, owner)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
 	require.NoError(t, err)
-	_, err = svc.NextTicket(ctx, q.ID, owner)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
 	require.NoError(t, err)
 
 	st, err = svc.QueueStatus(ctx, q.ID, u3)
@@ -571,7 +571,7 @@ func TestJoinQueue_AfterQueueDrainedStillAcceptsJoin(t *testing.T) {
 
 	_, err := svc.JoinQueue(ctx, q.ID, first)
 	require.NoError(t, err)
-	_, err = svc.NextTicket(ctx, q.ID, owner)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
 	require.NoError(t, err)
 
 	tk, err := svc.JoinQueue(ctx, q.ID, second)

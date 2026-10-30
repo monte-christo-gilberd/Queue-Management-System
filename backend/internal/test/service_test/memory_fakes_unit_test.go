@@ -92,7 +92,7 @@ func (m *memTicketRepo) NextWaiting(_ context.Context, _ *sqlx.Tx, queueID int64
 	return *w[0], nil
 }
 
-func (m *memTicketRepo) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
+func (m *memTicketRepo) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID int64, counterID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.tickets {
@@ -102,10 +102,17 @@ func (m *memTicketRepo) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID in
 			m.doneSeq[ticketID] = m.seq
 			t.Status = "completed"
 			t.CompletedAt = sql.NullTime{Time: time.Now(), Valid: true}
+			t.CalledCounterID = counterID
 			return nil
 		}
 	}
 	return apperror.ErrNotFound
+}
+
+func (m *memTicketRepo) GetCounterByQueue(_ context.Context, _ int64) (model.Counter, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return model.Counter{ID: 1, QueueID: 1, Name: "Counter 1", IsDefault: true}, nil
 }
 
 func (m *memTicketRepo) ListByQueue(_ context.Context, queueID int64, statuses []string) ([]model.Ticket, error) {
@@ -250,6 +257,7 @@ type memQueueRepo struct {
 	order    []int64
 	queues   map[int64]model.Queue
 	settings map[int64]model.QueueSettings
+	counters []model.Counter
 }
 
 func newMemQueueRepo() *memQueueRepo {
@@ -329,6 +337,25 @@ func (m *memQueueRepo) CloseQueue(_ context.Context, queueID int64) error {
 	q.ClosedAt = sql.NullTime{Time: time.Now(), Valid: true}
 	m.queues[queueID] = q
 	return nil
+}
+
+func (m *memQueueRepo) CreateDefaultCounter(
+	_ context.Context,
+	queueID int64,
+	name string,
+) (model.Counter, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	counter := model.Counter{ID: m.nextID + 1, QueueID: queueID, Name: name, IsDefault: false}
+	m.counters = append(m.counters, counter)
+	return counter, nil
+}
+
+func (m *memQueueRepo) GetCounterByQueue(
+	_ context.Context,
+	queueID int64,
+) (model.Counter, error) {
+	return model.Counter{}, apperror.ErrNotFound
 }
 
 func (m *memQueueRepo) GetQueueSettings(_ context.Context, queueID int64) (model.QueueSettings, error) {

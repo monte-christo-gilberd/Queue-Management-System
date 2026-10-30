@@ -25,6 +25,12 @@ export type Ticket = {
   created_at: string;
   completed_at: string | null;
   cancelled_at: string | null;
+  /** ID counter yang memanggil tiket ini (0 = belum dipanggil). */
+  called_counter_id?: number | null;
+  /** Nama counter yang memanggil tiket ini; null bila counter default disembunyikan. */
+  called_counter_name?: string | null;
+  /** Waktu tiket dipanggil (null bila belum dipanggil). */
+  called_at?: string | null;
 };
 
 /**
@@ -69,6 +75,8 @@ export type QueueStatus = {
   my_ticket: Ticket | null;
   /** ticket_number terakhir yang selesai dilayani; null bila belum ada. */
   current_number: number | null;
+  /** Nama counter yang memanggil nomor saat ini; null bila counter default disembunyikan / belum ada. */
+  current_counter_name: string | null;
   /** Jumlah tiket waiting di depan tiket saya; null bila saya tidak sedang menunggu. */
   waiting_ahead: number | null;
   /** ticket_number sebelum yang sedang dilayani; null bila belum ada. */

@@ -104,6 +104,7 @@ test.describe('TS-02 Mengelola antrian (owner)', () => {
 
     await expect(page.getByText('Tautan join untuk customer')).toBeVisible();
     await expect(page.getByText(new RegExp(`/join/${queue.id}$`))).toBeVisible();
+    await action(page, 'LIHAT QR').click();
     await expect(action(page, 'SALIN TAUTAN')).toBeVisible();
   });
 

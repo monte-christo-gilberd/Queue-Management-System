@@ -52,6 +52,15 @@ type QueueRepositoryInterface interface {
 		queueID int64,
 		token string,
 	) error
+	CreateDefaultCounter(
+		ctx context.Context,
+		queueID int64,
+		name string,
+	) (model.Counter, error)
+	GetCounterByQueue(
+		ctx context.Context,
+		queueID int64,
+	) (model.Counter, error)
 }
 
 type SubscriptionCheckerInterface interface {
@@ -83,6 +92,7 @@ type TicketRepositoryInterface interface {
 		ctx context.Context,
 		tx *sqlx.Tx,
 		ticketID int64,
+		counterID int64,
 	) error
 }
 

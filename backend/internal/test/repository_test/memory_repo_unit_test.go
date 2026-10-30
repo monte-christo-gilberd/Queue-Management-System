@@ -28,10 +28,11 @@ var (
 
 // memQueues: satu baris per antrian. Antrian baru selalu "active"; CloseQueue -> "closed" dan set closed_at.
 type memQueues struct {
-	mu     sync.Mutex
-	nextID int64
-	rows   map[int64]model.Queue
-	order  []int64
+	mu       sync.Mutex
+	nextID   int64
+	rows     map[int64]model.Queue
+	order    []int64
+	counters []model.Counter
 }
 
 func newMemQueues() *memQueues {
@@ -120,6 +121,27 @@ func (m *memQueues) UpdateQRCurrentCode(_ context.Context, id int64, token strin
 	return nil
 }
 
+func (m *memQueues) CreateDefaultCounter(
+	_ context.Context,
+	queueID int64,
+	name string,
+) (model.Counter, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	counter := model.Counter{ID: m.nextID + 1, QueueID: queueID, Name: name, IsDefault: true}
+	m.counters = append(m.counters, counter)
+	return counter, nil
+}
+
+func (m *memQueues) GetCounterByQueue(_ context.Context, _ int64) (model.Counter, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.counters) == 0 {
+		return model.Counter{}, apperror.ErrNotFound
+	}
+	return m.counters[0], nil
+}
+
 // memSubs: langganan owner. Aktif bila expiry masa depan (data model 4.18).
 type memSubs struct {
 	expiry map[int64]time.Time
@@ -185,7 +207,7 @@ func (m *memTickets) NextWaiting(_ context.Context, _ *sqlx.Tx, queueID int64) (
 	return *best, nil
 }
 
-func (m *memTickets) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
+func (m *memTickets) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID int64, counterID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.rows {
@@ -349,7 +371,7 @@ func TestRepoFake_NextWaitingFollowsSortKeyOrder(t *testing.T) {
 		next, err := repo.NextWaiting(ctx, nil, 1)
 		require.NoError(t, err)
 		assert.Equal(t, want, next.ID)
-		require.NoError(t, repo.MarkCompleted(ctx, nil, next.ID))
+		require.NoError(t, repo.MarkCompleted(ctx, nil, next.ID, 1))
 	}
 
 	_, err = repo.NextWaiting(ctx, nil, 1)
@@ -357,7 +379,7 @@ func TestRepoFake_NextWaitingFollowsSortKeyOrder(t *testing.T) {
 }
 
 func TestRepoFake_MarkCompletedUnknownTicketIsNotFound(t *testing.T) {
-	assert.ErrorIs(t, newMemTickets().MarkCompleted(context.Background(), nil, 999), apperror.ErrNotFound)
+	assert.ErrorIs(t, newMemTickets().MarkCompleted(context.Background(), nil, 999, 1), apperror.ErrNotFound)
 }
 
 func TestRepoFake_UserEmailIsUnique(t *testing.T) {

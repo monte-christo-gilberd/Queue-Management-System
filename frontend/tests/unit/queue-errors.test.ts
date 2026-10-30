@@ -48,23 +48,23 @@ test('input tidak valid meminta pengguna memeriksa isian (TC-08-06, TC-02-02)', 
 test('token QR tidak valid / sudah diganti: minta pindai QR terbaru (4.2 penggantian)', () => {
   assert.equal(
     describeQueueError(apiError('QR_INVALID')),
-    'Tautan QR tidak valid atau sudah tidak berlaku. Pindai QR terbaru dari pemilik antrian.',
+    'This QR link is invalid or no longer valid. Scan the latest QR from the queue owner.',
   );
 });
 
 test('token QR dinamis kedaluwarsa: minta pindai ulang (4.2 dinamis)', () => {
-  assert.equal(describeQueueError(apiError('QR_EXPIRED')), 'Tautan QR sudah kedaluwarsa. Pindai ulang QR terbaru.');
+  assert.equal(describeQueueError(apiError('QR_EXPIRED')), 'This QR link has expired. Scan the latest QR again.');
 });
 
 test('qr-service tidak tersedia: pesan layanan QR sedang down (4.2)', () => {
-  assert.equal(describeQueueError(apiError('QR_UNAVAILABLE')), 'Layanan QR sedang tidak tersedia, coba lagi');
+  assert.equal(describeQueueError(apiError('QR_UNAVAILABLE')), 'The QR service is unavailable right now. Please try again.');
 });
 
 test('mode QR tidak valid dan penggantian dinamis ditolak dengan pesan jelas (4.2)', () => {
-  assert.equal(describeQueueError(apiError('QR_TYPE_INVALID')), 'Mode QR tidak dikenal. Pilih statis atau dinamis.');
+  assert.equal(describeQueueError(apiError('QR_TYPE_INVALID')), 'Unknown QR mode. Choose static or dynamic.');
   assert.equal(
     describeQueueError(apiError('QR_REPLACE_NOT_ALLOWED')),
-    'QR dinamis tidak bisa diganti; biarkan kedaluwarsa dan diperbarui otomatis.',
+    'A dynamic QR cannot be replaced. Let it expire; it refreshes automatically.',
   );
 });
 
@@ -76,4 +76,10 @@ test('gagal terhubung ke server menampilkan pesan koneksi dari ApiError (4.2 off
 test('kode lain dari server memakai pesan kesalahan server umum', () => {
   assert.equal(describeQueueError(apiError('INTERNAL_ERROR')), 'Terjadi kesalahan di server, coba lagi');
   assert.equal(describeQueueError(apiError('SOMETHING_NEW')), 'Terjadi kesalahan di server, coba lagi');
+});
+
+test('kode QR tak dikenal dan error non-API jatuh ke pesan QR umum', async () => {
+  const { describeQrError, QR_DEFAULT_MESSAGE } = await import('@/lib/qr-errors');
+  assert.equal(describeQrError(apiError('SOMETHING_ELSE')), QR_DEFAULT_MESSAGE);
+  assert.equal(describeQrError(new Error('boom')), QR_DEFAULT_MESSAGE);
 });

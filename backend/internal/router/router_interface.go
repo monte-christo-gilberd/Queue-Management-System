@@ -23,7 +23,6 @@ type QueueHandler interface {
 	List(c *gin.Context)
 	Update(c *gin.Context)
 	Close(c *gin.Context)
-	Info(c *gin.Context)
 	GetQR(c *gin.Context)
 	SetQRType(c *gin.Context)
 	ReplaceQR(c *gin.Context)

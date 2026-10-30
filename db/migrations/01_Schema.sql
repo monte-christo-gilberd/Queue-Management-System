@@ -112,8 +112,11 @@ CREATE TABLE counters (
     id         BIGSERIAL PRIMARY KEY,
     queue_id   BIGINT NOT NULL REFERENCES queues(id) ON DELETE CASCADE,
     name       TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    is_default BOOLEAN NOT NULL DEFAULT FALSE
 );
+
+ALTER TABLE counters ADD CONSTRAINT counters_queue_id_name_key UNIQUE (queue_id, name);
 
 CREATE TABLE tickets (
     id               BIGSERIAL PRIMARY KEY,

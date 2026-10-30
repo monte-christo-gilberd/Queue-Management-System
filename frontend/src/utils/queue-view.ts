@@ -30,7 +30,7 @@ export function deriveQueueView(tickets: readonly Ticket[]): QueueView {
     .filter((t) => t.status === 'waiting')
     .sort((a, b) => a.sort_key - b.sort_key || a.id - b.id);
 
-  const entry = (ticket: Ticket): TicketEntry => ({ ticket });
+  const entry = (ticket: Ticket): TicketEntry => ({ ticket, counterName: ticket.called_counter_name ?? undefined });
 
   return {
     previous: completed[1] ? entry(completed[1]) : null,

@@ -132,6 +132,7 @@ function QueueDetailEditor({
           countdown={qr.countdown}
           onToggle={(type) => void qr.toggle(type)}
           onReplace={() => void qr.replace()}
+          onRefresh={qr.reload}
           onRetry={qr.refresh}
         />
       }

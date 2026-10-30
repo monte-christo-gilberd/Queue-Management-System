@@ -31,7 +31,7 @@ function isFilled(r: number, c: number): boolean {
   return (r * 7 + c * 3 + r * c) % 3 === 0;
 }
 
-/** Placeholder QR code (bukan QR sungguhan) — hanya untuk menampilkan perkiraan tampilan kamera. */
+/** Ilustrasi QR code (bukan QR sungguhan). */
 function QrPlaceholder() {
   return (
     <View className="rounded-lg bg-white p-3">
@@ -47,15 +47,14 @@ function QrPlaceholder() {
 }
 
 /**
- * Popup "Masuk ke Antrian": tampilan kamera (placeholder). Input tautan manual sudah dihapus —
- * customer memindai QR antrian yang berisi `<PUBLIC_APP_URL>/join?t=<token>`.
+ * Popup "Masuk ke Antrian": petunjuk memindai QR memakai kamera bawaan HP (tanpa pemindai di dalam
+ * aplikasi dan tanpa input tautan manual). QR antrian berisi `<PUBLIC_APP_URL>/join?t=<token>`.
  */
 export function JoinQueueModals({ visible, onClose }: JoinQueueModalsProps) {
   return (
     <ModalCard visible={visible} onRequestClose={onClose}>
-      <Text className="text-[24px] font-extrabold text-foreground">Scan QR Antrian</Text>
+      <Text className="text-[24px] font-extrabold text-foreground">Masuk ke Antrian</Text>
 
-      {/* TODO: implementasi kamera (mis. expo-camera) menggantikan placeholder ini. */}
       <View className="h-64 w-full items-center justify-center overflow-hidden rounded-card bg-dark">
         <QrPlaceholder />
         {/* Bingkai pemindai: 4 sudut. */}
@@ -65,7 +64,7 @@ export function JoinQueueModals({ visible, onClose }: JoinQueueModalsProps) {
         <View className="absolute bottom-5 right-5 h-7 w-7 rounded-br-lg border-b-[3px] border-r-[3px] border-white" />
       </View>
       <Text className="text-center text-[12px] text-muted">
-        Arahkan kamera ke QR code antrian
+        Pindai dengan kamera HP: arahkan kamera bawaan HP ke QR code antrian, lalu buka tautan yang muncul.
       </Text>
 
       <Pressable onPress={onClose} className="items-center py-1" accessibilityRole="button">

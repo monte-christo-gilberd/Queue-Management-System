@@ -161,13 +161,16 @@ func (r *TicketRepository) MarkCompleted(
 	ctx context.Context,
 	tx *sqlx.Tx,
 	ticketID int64,
+	counterID int64,
 ) error {
 
 	const query = `
 		UPDATE tickets 
 		SET 
 			status='completed', 
-			completed_at=now() 
+			completed_at=now(),
+			called_counter_id=$2,
+			called_at=now() 
 		WHERE id=$1
 	`
 
@@ -175,6 +178,7 @@ func (r *TicketRepository) MarkCompleted(
 		ctx,
 		query,
 		ticketID,
+		counterID,
 	)
 
 	if err != nil {
@@ -189,6 +193,24 @@ func (r *TicketRepository) MarkCompleted(
 		return apperror.ErrNotFound
 	}
 	return nil
+}
+
+func (r *TicketRepository) GetCounterByQueue(
+	ctx context.Context,
+	queueID int64,
+) (model.Counter, error) {
+	var counter model.Counter
+	const counterQuery = `
+		SELECT id, queue_id, name, created_at, is_default
+		FROM counters
+		WHERE queue_id = $1
+		ORDER BY is_default DESC, created_at ASC
+		LIMIT 1
+	`
+	if err := r.db.GetContext(ctx, &counter, counterQuery, queueID); err != nil {
+		return model.Counter{}, err
+	}
+	return counter, nil
 }
 
 func (r *TicketRepository) ListByQueue(

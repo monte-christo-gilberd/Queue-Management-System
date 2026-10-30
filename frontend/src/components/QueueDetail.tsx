@@ -92,8 +92,8 @@ export default function QueueDetail({
       onBack={() => router.back()}
       fullHeight={isWide}
     >
-      <View className={isWide ? "flex-1 flex-row gap-6" : "gap-4"}>
-        {/* Kolom kiri: QR, papan antrian, dan tampilan customer. Di desktop tidak di-scroll. */}
+      <View className={isWide ? "flex-row gap-6" : "gap-4"}>
+        {/* Kolom kiri: QR, Skip/Next, tampilan customer, dan catatan. Di desktop tidak di-scroll. */}
         <View className={cn("gap-4", isWide && "w-[38%]")}>
           {qrCard}
 
@@ -114,10 +114,6 @@ export default function QueueDetail({
             <Text className="text-[12px] font-normal text-live">{errorMessage}</Text>
           ) : null}
 
-          <View className="rounded-[20px] bg-dark p-3 dark:border dark:border-line">
-            <AppendNoteRow onNote={() => setNoteOpen(true)} />
-          </View>
-
           {/* Tampilan customer: tanpa counter, sebelumnya, dan berikutnya. Ketuk untuk membuka daftar tiket. */}
           <MySpotCard
             queueName={queueName}
@@ -127,10 +123,14 @@ export default function QueueDetail({
             showNeighbors={false}
             onPress={() => setTicketsOpen(true)}
           />
+
+          <View className="rounded-[20px] bg-dark p-3 dark:border dark:border-line">
+            <AppendNoteRow onNote={() => setNoteOpen(true)} />
+          </View>
         </View>
 
         {/* Kolom kanan: pengaturan dan kontrol antrian. Di desktop satu panel yang di-scroll sendiri. */}
-        <View className={isWide ? "flex-1 gap-4" : "gap-4"}>
+        <View className={isWide ? "min-h-0 flex-1" : "gap-4"}>
         <ScrollPanel enabled={isWide}>
           <View className="gap-3 rounded-card border border-line p-3.5">
             <FormField
@@ -226,12 +226,16 @@ export default function QueueDetail({
   );
 }
 
-/** Kolom kanan: di desktop satu panel bergaris yang di-scroll sendiri; di HP hanya tumpukan biasa. */
+/**
+ * Kolom kanan: di desktop satu panel bergaris yang di-scroll sendiri; di HP hanya tumpukan biasa.
+ * Isi panel diposisikan absolut agar tingginya mengikuti kolom kiri (tidak menambah tinggi baris),
+ * sehingga garis bawah kedua kolom selalu sejajar.
+ */
 function ScrollPanel({ enabled, children }: { enabled: boolean; children: React.ReactNode }) {
   if (!enabled) return <View className="flex-1 gap-4">{children}</View>;
   return (
-    <View className="flex-1 overflow-hidden rounded-card border border-line">
-      <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4">
+    <View className="relative flex-1 overflow-hidden rounded-card border border-line">
+      <ScrollView className="absolute bottom-0 left-0 right-0 top-0" contentContainerClassName="gap-4 p-4">
         {children}
       </ScrollView>
     </View>

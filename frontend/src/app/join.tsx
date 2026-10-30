@@ -41,6 +41,7 @@ function JoinQueueContent({ token }: { token: string }) {
       // Sedang dilayani hanya selama antrian masih buka; setelah ditutup, nomor terakhir jadi "Sudah dilayani".
       servingNow={ticket != null && !closed && status?.current_number === ticket.ticket_number}
       currentNumber={status?.current_number != null ? formatTicketNumber(status.current_number) : null}
+      counterName={status?.current_counter_name ?? null}
       waitingAhead={status?.waiting_ahead ?? null}
       closed={closed}
       loading={loading}

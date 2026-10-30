@@ -32,7 +32,6 @@ func (stubQueue) Get(c *gin.Context)    {}
 func (stubQueue) List(c *gin.Context)   {}
 func (stubQueue) Update(c *gin.Context) {}
 func (stubQueue) Close(c *gin.Context)  {}
-func (stubQueue) Info(c *gin.Context)   {}
 
 type stubValidator struct{}
 

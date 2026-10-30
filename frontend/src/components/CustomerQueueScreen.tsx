@@ -16,6 +16,8 @@ export type CustomerQueueScreenProps = {
   servingNow?: boolean;
   /** Nomor yang sedang dilayani, sudah diformat; null bila belum ada. */
   currentNumber: string | null;
+  /** Nama counter yang sedang memanggil (null bila counter default disembunyikan). */
+  counterName?: string | null;
   /** Jumlah orang di depan saya; null bila tidak sedang menunggu. */
   waitingAhead: number | null;
   closed: boolean;
@@ -44,6 +46,7 @@ export function CustomerQueueScreen({
   ticketStatus,
   servingNow = false,
   currentNumber,
+  counterName,
   waitingAhead,
   closed,
   loading = false,
@@ -90,6 +93,7 @@ export function CustomerQueueScreen({
         {ticketNumber ? (
           <View className="gap-3 rounded-card border border-line p-4">
             <Row label="Sedang dilayani" value={currentNumber ?? '-'} />
+            {counterName ? <Row label="Counter" value={counterName} /> : null}
             <Row
               label="Orang di depan Anda"
               value={waitingAhead === null ? '-' : String(waitingAhead)}

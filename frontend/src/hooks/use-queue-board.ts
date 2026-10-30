@@ -95,11 +95,11 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     },
   });
 
-  const next = useCallback(async () => {
+  const next = useCallback(async (counterId = 0) => {
     if (queueId === null) return;
     setNextLoading(true);
     setNextError(undefined);
-    const r = await run(() => nextTicket(queueId));
+    const r = await run(() => nextTicket(queueId, counterId));
     if (r.ok) {
       await reload(queueId);
     } else {

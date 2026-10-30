@@ -23,6 +23,7 @@ type TicketService interface {
 		ctx context.Context,
 		queueID,
 		requesterID int64,
+		counterID int64,
 	) (model.Ticket, error)
 	ListTickets(
 		ctx context.Context,
@@ -207,6 +208,8 @@ func (h *TicketHandler) respondJoinError(
 	}
 }
 
+// Next: POST /api/v1/queues/:queue_id/next — owner memanggil nomor berikutnya.
+// Body opsional `{ "counter_id": 0 }`; 0 = counter default milik queue.
 func (h *TicketHandler) Next(
 	c *gin.Context,
 ) {
@@ -228,10 +231,17 @@ func (h *TicketHandler) Next(
 		return
 	}
 
+	var req dto.NextTicketRequest
+	var counterID int64
+	if err := c.ShouldBindJSON(&req); err == nil {
+		counterID = req.CounterID
+	}
+
 	ticket, err := h.service.NextTicket(
 		ctx,
 		queueID,
 		c.GetInt64("user_id"),
+		counterID,
 	)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
