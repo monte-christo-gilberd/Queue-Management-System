@@ -2,8 +2,8 @@ import { apiFetch } from './api';
 import type { PublicQueue, QueueQR, Ticket } from '@/types/api';
 
 /**
- * GET /api/v1/queues/:id/qr — status QR untuk owner (static/dinamis + join_url + image_url).
- * Respons: `{ data: { action: "queue_qr", queue_id, type, join_url, image_url, expires_at } }`.
+ * GET /api/v1/queues/:id/qr — status QR untuk owner (static/dinamis + join_url).
+ * Respons: `{ data: { action: "queue_qr", queue_id, type, join_url, expires_at } }`.
  */
 export async function getQueueQR(queueId: number): Promise<QueueQR> {
   const data = await apiFetch<QueueQR>(`/api/v1/queues/${queueId}/qr`);

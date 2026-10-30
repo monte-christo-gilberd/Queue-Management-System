@@ -1,11 +1,12 @@
-import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Icon } from '@/components/ui/Icon';
 import { ModalCard } from '@/components/ui/ModalCard';
+import { QrCode } from '@/components/ui/QrCode';
 import { useThemeColor } from '@/hooks/use-theme-mode';
+import { renderQrPngDataUrl } from '@/lib/qr-matrix';
 import { copyToClipboard } from '@/lib/web-origin';
 import type { QueueQR } from '@/types/api';
 
@@ -33,8 +34,7 @@ function formatCountdown(seconds: number | null): string {
 }
 
 /**
- * Kartu QR owner: hanya tombol buka popup dan toggle statis/dinamis. QR (dari `image_url`,
- * dirender qr-service), hitung mundur token dinamis, salin tautan, unduh PNG, dan
+ * Kartu QR owner: hanya tombol buka popup dan toggle statis/dinamis. QR (digambar dari `join_url`), hitung mundur token dinamis, salin tautan, unduh PNG, dan
  * penggantian kode statis ada di popup.
  */
 export function QueueQRCard({
@@ -55,7 +55,6 @@ export function QueueQRCard({
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const imageUrl = qr?.image_url ?? null;
   const joinUrl = qr?.join_url ?? null;
   const isDynamic = qr?.type === 'dynamic';
 
@@ -64,11 +63,13 @@ export function QueueQRCard({
     setCopied(await copyToClipboard(joinUrl));
   }
 
-  // Unduh hanya di web (anchor download). Native bisa memakai share sheet nanti.
+  // Unduh hanya di web: PNG digambar dari tautan lewat canvas. Native bisa memakai share sheet nanti.
   function handleDownload() {
-    if (!imageUrl || Platform.OS !== 'web' || typeof document === 'undefined') return;
+    if (!joinUrl || Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const dataUrl = renderQrPngDataUrl(joinUrl);
+    if (!dataUrl) return;
     const link = document.createElement('a');
-    link.href = imageUrl;
+    link.href = dataUrl;
     link.download = `qr-antrian-${qr?.queue_id ?? 'qms'}.png`;
     link.rel = 'noopener';
     document.body.appendChild(link);
@@ -189,15 +190,10 @@ export function QueueQRCard({
             </View>
 
             <View className="items-center">
-              {imageUrl ? (
-                <Image
-                  source={{ uri: imageUrl }}
-                  style={{ width: 240, height: 240 }}
-                  contentFit="contain"
-                  accessibilityLabel={`QR join antrian ${qr.queue_id}`}
-                />
+              {joinUrl ? (
+                <QrCode value={joinUrl} size={240} />
               ) : (
-                <Text className="text-[12px] text-muted">Gambar QR tidak tersedia.</Text>
+                <Text className="text-[12px] text-muted">QR tidak tersedia.</Text>
               )}
             </View>
 
@@ -216,7 +212,7 @@ export function QueueQRCard({
                   onPress={() => void handleCopy()}
                 />
               ) : null}
-              {imageUrl && Platform.OS === 'web' ? (
+              {joinUrl && Platform.OS === 'web' ? (
                 <AppButton label="UNDUH PNG" variant="outline" className="flex-1" onPress={handleDownload} />
               ) : null}
             </View>
