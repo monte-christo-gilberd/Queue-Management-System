@@ -10,5 +10,3 @@ template-nginx
 plan-rombak-utama.md
 
 scripts/
-deploy/nginx/https.d/*.pem
-deploy/nginx/https.d/https.conf

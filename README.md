@@ -144,13 +144,13 @@ Buka `http://localhost:8080` (atau `QMS_PUBLIC_ORIGIN`). Hanya nginx yang membuk
 | qr-service | `qr-service/Dockerfile` | Target `dev` (`go run`, restart manual), hanya di jaringan internal |
 | backend | `backend/Dockerfile` | Target `dev` (`go run`, restart manual), healthcheck `/health`, hanya di jaringan internal |
 | frontend | `frontend/Dockerfile` | Target `dev` (Metro, hot reload) di port 80 internal |
-| nginx | `deploy/nginx/Dockerfile` | Reverse proxy, satu-satunya yang membuka port (80, dan 443 bila ada sertifikat) |
+| nginx | `deploy/nginx/Dockerfile` | Reverse proxy, satu-satunya yang membuka port (80) |
 
 Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot reload; Go perlu `docker compose restart backend` (atau `qr-service`) setelah ubah kode. Target `prod` tersedia di tiap Dockerfile untuk nanti.
 Kredensial (`POSTGRES_PASSWORD`, `JWT_SECRET`, `JOIN_LINK_SECRET`, `QR_SERVICE_TOKEN`) tidak dibakar ke image.
 Frontend memanggil API di origin halaman (`EXPO_PUBLIC_API_URL=origin`), jadi mengganti `QMS_PUBLIC_ORIGIN` tidak butuh build ulang frontend.
 
-Untuk uji dari HP: `scripts/tunnel-dev.sh` (HTTPS publik, tanpa konfigurasi di HP) atau `scripts/mkcert-dev.sh` (LAN, CA dipasang di HP). Lihat `deploy/nginx/README.md`.
+Untuk uji dari HP: `scripts/tunnel-dev.sh` (HTTPS publik, tanpa konfigurasi di HP). Lihat `deploy/nginx/README.md`.
 
 ## Build frontend untuk produksi
 

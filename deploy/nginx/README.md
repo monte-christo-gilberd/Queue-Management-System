@@ -41,23 +41,8 @@ Hanya ada satu `docker-compose.yml` (mode development, hot reload). Hanya nginx 
 
 ## Belum ada
 
-- HSTS dan sertifikat produksi. Untuk dev/LAN pakai HTTPS dengan `mkcert` (bagian di bawah).
+- HSTS dan sertifikat produksi. Untuk uji dari HP pakai tunnel (bagian di bawah).
 - Mailpit (`/mail/`) dan `notify-service`. Tambahkan saat layanannya ada.
-
-## HTTPS lokal dengan mkcert (uji dari HP)
-
-Kamera pemindai QR dan Web Push butuh HTTPS (atau `localhost`). `server.conf` dipakai bersama oleh server HTTP (`nginx.conf`) dan HTTPS (`https.conf`).
-
-```bash
-# 1. Pasang mkcert (https://github.com/FiloSottile/mkcert#installation), lalu:
-scripts/mkcert-dev.sh                 # localhost + IP LAN; atau: scripts/mkcert-dev.sh 192.168.1.11
-# 2. .env
-#    QMS_PUBLIC_ORIGIN=https://192.168.1.11:8443
-# 3. Jalankan (nginx otomatis membuka 443 bila deploy/nginx/https.d/https.conf ada)
-docker compose up -d --build --force-recreate
-```
-
-Di HP, pasang `$(mkcert -CAROOT)/rootCA.pem` sekali (iOS: pasang profil, lalu aktifkan di Pengaturan > Tentang > Kepercayaan Sertifikat). Sertifikat ada di `deploy/nginx/https.d/` dan di-gitignore; jangan bagikan `rootCA-key.pem`. Bila IP laptop berubah, jalankan ulang skripnya. Jangan pasang HSTS pada sertifikat lokal.
 
 ## HTTPS publik tanpa konfigurasi di HP (tunnel)
 
@@ -72,7 +57,6 @@ scripts/tunnel-dev.sh down   # hentikan
 - URL acak dan berganti tiap sesi. Skrip memberikannya sebagai `QMS_PUBLIC_ORIGIN` ke backend dan qr-service (yang membacanya saat start). Frontend memakai `EXPO_PUBLIC_API_URL=origin` (origin halaman), jadi tidak perlu build ulang saat URL berganti.
 - Butuh internet. Jangan dipakai untuk data nyata: siapa pun yang tahu URL-nya bisa mengakses aplikasi.
 - Jaringan yang memblokir QUIC ditangani dengan `--protocol http2`.
-- Untuk tetap memakai mkcert (LAN, tanpa internet), lihat bagian di atas.
 
 ## Uji cepat
 
