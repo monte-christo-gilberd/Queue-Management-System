@@ -21,4 +21,6 @@ type Ticket struct {
 	CalledCounterID int64        `db:"called_counter_id"`
 	CounterName     string       `db:"-"`
 	CalledAt        sql.NullTime `db:"called_at"`
+	// Kapan owner memanggil ulang nomor ini; NULL = belum (boleh sekali per pemanggilan).
+	RecalledAt sql.NullTime `db:"recalled_at"`
 }

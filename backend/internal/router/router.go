@@ -27,6 +27,12 @@ func NewAppRouter(
 	return app
 }
 
+// WithPush memasang endpoint Web Push (opsional; tanpa ini rute /push tidak ada).
+func (a *AppRouter) WithPush(h PushHandler) *AppRouter {
+	a.pushHandler = h
+	return a
+}
+
 func SetupRouter(
 	router *AppRouter,
 ) *gin.Engine {
@@ -66,6 +72,14 @@ func SetupRouter(
 		queues,
 		router.sseHandler,
 	)
+
+	if router.pushHandler != nil {
+		push := v1.Group("/push")
+		push.Use(router.authMiddleware)
+		push.GET("/public-key", router.pushHandler.PublicKey)
+		push.POST("/subscribe", router.pushHandler.Subscribe)
+		push.POST("/unsubscribe", router.pushHandler.Unsubscribe)
+	}
 
 	// Join berbasis token: customer yang sudah login membuka /join?t=<token>.
 	// Preview dan join diberi auth middleware; token sendiri ditahan service.

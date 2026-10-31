@@ -92,19 +92,23 @@ func main() {
 	sseHandler := handler.
 		NewSSEHandler(hub, queueService)
 
-	engine := router.
-		SetupRouter(
-			router.NewAppRouter(
-				ticketHandler,
-				userHandler,
-				queueHandler,
-				middleware.RequireAuth(
-					cfg.JWTSecret,
-				),
-				sseHandler,
-				cfg.AllowedOrigins,
-			),
-		)
+	appRouter := router.NewAppRouter(
+		ticketHandler,
+		userHandler,
+		queueHandler,
+		middleware.RequireAuth(
+			cfg.JWTSecret,
+		),
+		sseHandler,
+		cfg.AllowedOrigins,
+	)
+	if cfg.VAPIDPublicKey != "" {
+		appRouter.WithPush(handler.NewPushHandler(
+			repository.NewPushRepository(db),
+			cfg.VAPIDPublicKey,
+		))
+	}
+	engine := router.SetupRouter(appRouter)
 
 	if v, ok := binding.
 		Validator.Engine().(*validator.Validate); ok {

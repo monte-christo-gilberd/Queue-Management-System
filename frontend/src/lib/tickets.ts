@@ -24,6 +24,11 @@ export async function nextTicket(queueId: number, counterId = 0): Promise<Ticket
  * Mengembalikan tiket yang baru dipanggil. 409 NOTHING_TO_SKIP bila belum ada yang dilayani,
  * 409 QUEUE_EMPTY bila tidak ada yang menunggu (nomor tetap dilayani).
  */
+/** POST /api/v1/queues/:id/recall — owner memanggil ulang nomor yang sedang dilayani (push saja). */
+export async function recallTicket(queueId: number): Promise<Ticket> {
+  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/recall`, { method: 'POST' });
+}
+
 export async function skipTicket(queueId: number): Promise<Ticket> {
   return apiFetch<Ticket>(`/api/v1/queues/${queueId}/skip`, { method: 'POST' });
 }

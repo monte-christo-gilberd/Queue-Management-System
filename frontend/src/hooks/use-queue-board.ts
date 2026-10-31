@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useQueueEvents } from '@/hooks/use-queue-events';
 import { describeQueueError } from '@/lib/queue-errors';
-import { listTickets, nextTicket, skipTicket } from '@/lib/tickets';
+import { listTickets, nextTicket, recallTicket, skipTicket } from '@/lib/tickets';
 import type { Ticket } from '@/types/api';
 import { deriveQueueView } from '@/utils/queue-view';
 
@@ -26,6 +26,8 @@ async function run<T>(fn: () => Promise<T>): Promise<Result<T>> {
  * daftar tiket, alih-alih menerapkan delta. Ini sederhana dan tahan terhadap event yang terlewat.
  * `queue_closed` memanggil `onQueueClosed`.
  */
+const RECALL_DELAY_MS = 3000;
+
 export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(queueId !== null);
@@ -34,6 +36,19 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
   const [nextError, setNextError] = useState<string>();
   const [skipLoading, setSkipLoading] = useState(false);
   const [skipError, setSkipError] = useState<string>();
+  const [recallLoading, setRecallLoading] = useState(false);
+  const [recallError, setRecallError] = useState<string>();
+  // Panggil ulang aktif 3 detik setelah Next/Skip dan hanya sekali per nomor; backend yang menegakkan.
+  const [recallReady, setRecallReady] = useState(true);
+  const recallTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const armRecall = useCallback(() => {
+    setRecallReady(false);
+    if (recallTimer.current) clearTimeout(recallTimer.current);
+    recallTimer.current = setTimeout(() => setRecallReady(true), RECALL_DELAY_MS);
+  }, []);
+  useEffect(() => () => {
+    if (recallTimer.current) clearTimeout(recallTimer.current);
+  }, []);
 
   const apply = useCallback((r: Result<Ticket[]>) => {
     if (r.ok) {
@@ -106,12 +121,13 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     setNextError(undefined);
     const r = await run(() => nextTicket(queueId, counterId));
     if (r.ok) {
+      armRecall();
       await reload(queueId);
     } else {
       setNextError(r.message);
     }
     setNextLoading(false);
-  }, [queueId, reload]);
+  }, [queueId, reload, armRecall]);
 
   const skip = useCallback(async () => {
     if (queueId === null) return;
@@ -119,12 +135,26 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     setSkipError(undefined);
     const r = await run(() => skipTicket(queueId));
     if (r.ok) {
+      armRecall();
       await reload(queueId);
     } else {
       setSkipError(r.message);
     }
     setSkipLoading(false);
-  }, [queueId, reload]);
+  }, [queueId, reload, armRecall]);
+
+  const recall = useCallback(async () => {
+    if (queueId === null) return;
+    setRecallLoading(true);
+    setRecallError(undefined);
+    const r = await run(() => recallTicket(queueId));
+    if (r.ok) {
+      setRecallReady(false);
+    } else {
+      setRecallError(r.message);
+    }
+    setRecallLoading(false);
+  }, [queueId]);
 
   const view = useMemo(() => deriveQueueView(tickets), [tickets]);
 
@@ -139,5 +169,9 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     skip,
     skipLoading,
     skipError,
+    recall,
+    recallLoading,
+    recallReady,
+    recallError,
   };
 }

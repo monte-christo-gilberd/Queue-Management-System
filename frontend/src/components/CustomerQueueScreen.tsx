@@ -1,3 +1,4 @@
+import { PushToggle } from '@/components/PushToggle';
 import { Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
@@ -105,6 +106,7 @@ export function CustomerQueueScreen({
           <AppButton label="Gabung Antrian" variant="dark" loading={joining} onPress={onJoin} />
         ) : null}
 
+        {ticketNumber && !closed && (ticketStatus === 'waiting' || servingNow) ? <PushToggle /> : null}
         {onBack ? <AppButton label="Kembali ke Halaman Utama" variant="outline" onPress={onBack} /> : null}
       </View>
     </View>

@@ -167,7 +167,7 @@ func (r *TicketRepository) CurrentServing(
 	const query = `
 		SELECT
 			id, queue_id, ticket_number, sort_key, user_id, status, skip_count,
-			last_notified_at, created_at, completed_at, cancelled_at
+			last_notified_at, created_at, completed_at, cancelled_at, called_at, recalled_at
 		FROM tickets
 		WHERE queue_id=$1 AND status='completed' AND called_at IS NOT NULL
 		ORDER BY called_at DESC, id DESC
@@ -182,6 +182,26 @@ func (r *TicketRepository) CurrentServing(
 		return model.Ticket{}, err
 	}
 	return t, nil
+}
+
+// MarkRecalled menandai nomor yang sedang dilayani sudah dipanggil ulang. Trigger database memancarkan sinyal push.
+func (r *TicketRepository) MarkRecalled(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID int64,
+) error {
+	result, err := tx.ExecContext(ctx, `UPDATE tickets SET recalled_at=now() WHERE id=$1`, ticketID)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
 }
 
 // SkipSettings membaca pengaturan skip antrian di dalam transaksi yang sama dengan Skip.
@@ -253,7 +273,7 @@ func (r *TicketRepository) RequeueSkipped(
 	const query = `
 		UPDATE tickets
 		SET status='waiting', skip_count=skip_count+1, sort_key=$2,
-			completed_at=NULL, called_at=NULL, called_counter_id=NULL
+			completed_at=NULL, called_at=NULL, called_counter_id=NULL, recalled_at=NULL
 		WHERE id=$1
 	`
 	result, err := tx.ExecContext(ctx, query, ticketID, sortKey)
@@ -348,7 +368,8 @@ func (r *TicketRepository) MarkCompleted(
 			status='completed', 
 			completed_at=now(),
 			called_counter_id=$2,
-			called_at=now() 
+			called_at=now(),
+			recalled_at=NULL
 		WHERE id=$1
 	`
 

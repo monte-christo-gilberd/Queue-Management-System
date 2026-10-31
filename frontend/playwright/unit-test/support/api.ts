@@ -157,3 +157,9 @@ export async function subscribedOwnerSession(
   const token = await loginViaApi(request, SUBSCRIBED_OWNER.email, SUBSCRIBED_OWNER.password);
   return { token, displayName: SUBSCRIBED_OWNER.email };
 }
+
+export async function recallViaApi(request: APIRequestContext, token: string, queueId: number) {
+  return request.post(`${API_URL}/api/v1/queues/${queueId}/recall`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

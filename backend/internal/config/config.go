@@ -24,6 +24,9 @@ type Config struct {
 	QRServiceURL   string
 	QRServiceToken string
 	QRHTTPTimeout  time.Duration
+
+	// Kunci VAPID publik untuk Web Push (opsional; kosong = fitur push mati).
+	VAPIDPublicKey string
 }
 
 func Load() (Config, error) {
@@ -39,6 +42,7 @@ func Load() (Config, error) {
 		PublicAppURL:   strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/"),
 		QRServiceURL:   strings.TrimRight(os.Getenv("QR_SERVICE_URL"), "/"),
 		QRServiceToken: os.Getenv("QR_SERVICE_TOKEN"),
+		VAPIDPublicKey: os.Getenv("VAPID_PUBLIC_KEY"),
 	}
 
 	if cfg.DatabaseURL == "" {

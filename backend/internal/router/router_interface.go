@@ -7,6 +7,7 @@ type TicketHandler interface {
 	Preview(c *gin.Context)
 	Next(c *gin.Context)
 	Skip(c *gin.Context)
+	Recall(c *gin.Context)
 	List(c *gin.Context)
 	Status(c *gin.Context)
 	MyTickets(c *gin.Context)
@@ -31,11 +32,18 @@ type QueueHandler interface {
 	UpdateSkipSettings(c *gin.Context)
 }
 
+type PushHandler interface {
+	PublicKey(c *gin.Context)
+	Subscribe(c *gin.Context)
+	Unsubscribe(c *gin.Context)
+}
+
 type SSEHandler interface {
 	ServeSSE(c *gin.Context)
 }
 
 type AppRouter struct {
+	pushHandler    PushHandler
 	ticketHandler  TicketHandler
 	userHandler    UserHandler
 	queueHandler   QueueHandler

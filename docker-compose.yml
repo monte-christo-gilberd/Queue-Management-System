@@ -21,6 +21,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-qms}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-qms_db}
+      NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?set NOTIFY_DB_PASSWORD in .env}
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -56,6 +57,27 @@ services:
       - internal
     restart: unless-stopped
 
+  notify-service:
+    build:
+      context: ./notify-service
+      target: dev
+    environment:
+      DATABASE_URL: postgresql://notify_ro:${NOTIFY_DB_PASSWORD}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:?set VAPID_PUBLIC_KEY in .env}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:?set VAPID_PRIVATE_KEY in .env}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+    volumes:
+      - ./notify-service:/src
+      - go_build_cache:/root/.cache/go-build
+      - go_mod_cache:/go/pkg/mod
+    stop_grace_period: 3s
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -71,6 +93,7 @@ services:
       QR_SERVICE_URL: http://qr-service:8090
       QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
       QR_HTTP_TIMEOUT: ${QR_HTTP_TIMEOUT:-1}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
     volumes:
       - ./backend:/src
       - go_build_cache:/root/.cache/go-build

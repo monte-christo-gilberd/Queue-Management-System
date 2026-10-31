@@ -84,6 +84,14 @@ func (f *fakeTicketRepo) CurrentServing(
 	return model.Ticket{}, apperror.ErrNotFound
 }
 
+func (f *fakeTicketRepo) MarkRecalled(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID int64,
+) error {
+	return nil
+}
+
 func (f *fakeTicketRepo) MarkSkipped(
 	ctx context.Context,
 	tx *sqlx.Tx,

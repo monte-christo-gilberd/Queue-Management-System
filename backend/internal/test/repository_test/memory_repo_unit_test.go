@@ -243,6 +243,10 @@ func (m *memTickets) CurrentServing(_ context.Context, _ *sqlx.Tx, queueID int64
 	return *best, nil
 }
 
+func (m *memTickets) MarkRecalled(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
+	return nil
+}
+
 func (m *memTickets) MarkSkipped(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

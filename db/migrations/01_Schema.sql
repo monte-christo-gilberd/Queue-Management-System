@@ -155,6 +155,9 @@ CREATE TABLE tickets (
     called_counter_id BIGINT REFERENCES counters(id) ON DELETE SET NULL,
     called_at         TIMESTAMPTZ,
 
+    -- panggil ulang oleh owner: boleh sekali per pemanggilan (di-NULL-kan tiap tiket dipanggil)
+    recalled_at      TIMESTAMPTZ,
+
     last_notified_at TIMESTAMPTZ,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at     TIMESTAMPTZ,
@@ -222,3 +225,37 @@ CREATE TABLE queue_history (
 
     archived_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Langganan Web Push per browser (satu user bisa punya banyak perangkat).
+CREATE TABLE push_subscriptions (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint   TEXT NOT NULL UNIQUE,
+    p256dh     TEXT NOT NULL,
+    auth       TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_push_subscriptions_user ON push_subscriptions(user_id);
+
+-- Sinyal untuk notify-service (LISTEN queue_events). Hanya memancarkan; pengiriman push terjadi di luar
+-- transaksi Next/Skip. NOTIFY dikirim saat COMMIT, jadi transaksi yang dibatalkan tidak mengirim apa pun.
+CREATE FUNCTION tickets_notify() RETURNS trigger AS $$
+BEGIN
+    IF NEW.skip_count > OLD.skip_count THEN
+        PERFORM pg_notify('queue_events', json_build_object(
+            'kind', 'skipped', 'queue_id', NEW.queue_id, 'ticket_id', NEW.id)::text);
+    ELSIF NEW.status = 'completed' AND NEW.called_at IS NOT NULL
+       AND NEW.called_at IS DISTINCT FROM OLD.called_at THEN
+        PERFORM pg_notify('queue_events', json_build_object(
+            'kind', 'called', 'queue_id', NEW.queue_id, 'ticket_id', NEW.id)::text);
+    ELSIF NEW.recalled_at IS NOT NULL AND NEW.recalled_at IS DISTINCT FROM OLD.recalled_at THEN
+        PERFORM pg_notify('queue_events', json_build_object(
+            'kind', 'recalled', 'queue_id', NEW.queue_id, 'ticket_id', NEW.id)::text);
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER tickets_notify_trg
+    AFTER UPDATE OF called_at, recalled_at, skip_count ON tickets
+    FOR EACH ROW EXECUTE FUNCTION tickets_notify();

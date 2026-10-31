@@ -39,6 +39,10 @@ export type QueueDetailProps = {
   onSkip?: () => void;
   skipLoading?: boolean;
   onNext?: () => void;
+  /** Panggil ulang nomor yang sedang dilayani (push ke pemiliknya). */
+  onRecall?: () => void;
+  recallDisabled?: boolean;
+  recallLoading?: boolean;
   nextLoading?: boolean;
   /** TODO: backend belum mendukung ini (catatan antrian) */
   onSubmitNote?: (note: string) => void;
@@ -70,6 +74,9 @@ export default function QueueDetail({
   onSkip,
   skipLoading = false,
   onNext,
+  onRecall,
+  recallDisabled = false,
+  recallLoading = false,
   nextLoading = false,
   onSubmitNote,
   qrCard,
@@ -111,6 +118,16 @@ export default function QueueDetail({
                 loading={nextLoading}
               />
             </View>
+          ) : null}
+
+          {!isClosed && onRecall ? (
+            <AppButton
+              label="PANGGIL ULANG"
+              variant="outline"
+              onPress={onRecall}
+              loading={recallLoading}
+              disabled={recallDisabled || !currentNumber}
+            />
           ) : null}
 
           {errorMessage ? (

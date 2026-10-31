@@ -698,3 +698,95 @@ func TestSkipFallback_AgainstPostgres(t *testing.T) {
 	assert.NotEqual(t, served.ID, last.ID)
 	assert.Equal(t, "waiting", last.Status)
 }
+
+func TestRecall_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "o@b.c", time.Now().Add(time.Hour))
+	u1, u2 := seedUser(t, db, "1@b.c"), seedUser(t, db, "2@b.c")
+	q := createQueue(t, db, owner, "Q")
+
+	ticketRepo := repository.NewTicketRepository(db)
+	txRunner := database.NewSqlxTxRunner(db)
+	queueSvc := service.NewQueueService(
+		repository.NewQueueRepository(db),
+		repository.NewSubscriptionChecker(db),
+		txRunner,
+	).WithTicketHolderChecker(ticketRepo)
+	svc := service.NewTicketService(ticketRepo, txRunner).WithQueueGuard(queueSvc)
+
+	for _, u := range []int64{u1, u2} {
+		_, err := svc.JoinQueue(ctx, q.ID, u)
+		require.NoError(t, err)
+	}
+
+	_, err := svc.RecallTicket(ctx, q.ID, owner)
+	assert.ErrorIs(t, err, apperror.ErrNothingToRecall)
+
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	require.NoError(t, err)
+	_, err = svc.RecallTicket(ctx, q.ID, owner)
+	assert.ErrorIs(t, err, apperror.ErrRecallTooSoon)
+
+	_, err = db.ExecContext(ctx, `UPDATE tickets SET called_at = now() - interval '5 seconds' WHERE ticket_number = 1`)
+	require.NoError(t, err)
+	got, err := svc.RecallTicket(ctx, q.ID, owner)
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.TicketNumber)
+
+	var recalled bool
+	require.NoError(t, db.GetContext(ctx, &recalled, `SELECT recalled_at IS NOT NULL FROM tickets WHERE ticket_number = 1`))
+	assert.True(t, recalled)
+
+	_, err = svc.RecallTicket(ctx, q.ID, owner)
+	assert.ErrorIs(t, err, apperror.ErrAlreadyRecalled)
+
+	// Nomor berikutnya dipanggil: kesempatan panggil ulang untuk nomor baru kembali (nomor 2 masih di bawah 3 detik).
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	require.NoError(t, err)
+	_, err = svc.RecallTicket(ctx, q.ID, owner)
+	assert.ErrorIs(t, err, apperror.ErrRecallTooSoon)
+}
+
+func TestTicketsNotifyTrigger_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "o@b.c", time.Now().Add(time.Hour))
+	u1 := seedUser(t, db, "1@b.c")
+	q := createQueue(t, db, owner, "Q")
+
+	ticketRepo := repository.NewTicketRepository(db)
+	txRunner := database.NewSqlxTxRunner(db)
+	queueSvc := service.NewQueueService(
+		repository.NewQueueRepository(db),
+		repository.NewSubscriptionChecker(db),
+		txRunner,
+	).WithTicketHolderChecker(ticketRepo)
+	svc := service.NewTicketService(ticketRepo, txRunner).WithQueueGuard(queueSvc)
+	_, err := svc.JoinQueue(ctx, q.ID, u1)
+	require.NoError(t, err)
+
+	// Dengar lewat koneksi terpisah di database yang sama (NOTIFY lintas schema, channel global per database).
+	listener, err := db.Conn(ctx)
+	require.NoError(t, err)
+	defer listener.Close()
+	_, err = listener.ExecContext(ctx, "LISTEN queue_events")
+	require.NoError(t, err)
+
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	require.NoError(t, err)
+
+	var payload string
+	err = listener.Raw(func(dc interface{}) error {
+		wctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		n, err := dc.(*stdlib.Conn).Conn().WaitForNotification(wctx)
+		if err != nil {
+			return err
+		}
+		payload = n.Payload
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Contains(t, payload, `"kind" : "called"`)
+}

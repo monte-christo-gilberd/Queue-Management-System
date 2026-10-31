@@ -139,6 +139,8 @@ Sumber data: `GET /queues/:id/status` saat dibuka, lalu SSE untuk pembaruan.
 - **Antrian Saya**: daftar tiket yang sama dengan kriteria Beranda.
 - **Riwayat**: tiket di antrian yang sudah ditutup, dan tiket yang sudah dilayani tetapi nomornya sudah lewat.
 
+**Notifikasi giliran (Web Push).** Di layar tiket berstatus Menunggu, customer menekan "Aktifkan notifikasi" dan memberi izin browser. Saat nomornya dipanggil ia menerima "Giliran Anda"; customer di urutan waiting terdepan menerima "Tinggal 1 nomor lagi". Owner dapat menekan "Panggil ulang" 3 detik setelah Next/Skip, sekali per nomor; push hanya ke nomor yang sedang dilayani. Customer yang nomornya dilewati juga menerima push (dilewati permanen, atau dikembalikan ke antrian).
+
 Event SSE yang diterima customer:
 
 | Event | Yang terjadi di layar |

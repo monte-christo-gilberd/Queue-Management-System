@@ -42,6 +42,10 @@ func (s *stubTicketService) NextTicket(context.Context, int64, int64, int64) (mo
 	return model.Ticket{}, s.nextErr
 }
 
+func (s *stubTicketService) RecallTicket(context.Context, int64, int64) (model.Ticket, error) {
+	return model.Ticket{}, s.nextErr
+}
+
 func (s *stubTicketService) SkipTicket(context.Context, int64, int64) (model.Ticket, error) {
 	return model.Ticket{}, s.nextErr
 }

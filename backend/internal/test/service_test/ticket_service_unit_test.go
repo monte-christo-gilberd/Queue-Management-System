@@ -9,6 +9,7 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -481,4 +482,63 @@ func TestSkipFallback_MaxReturnsMakesSkipPermanent(t *testing.T) {
 	sk, _ := env.ts.ListTickets(ctx, env.queueID, specOwnerID, []string{"skipped"})
 	require.Len(t, sk, 1)
 	assert.Equal(t, 1, sk[0].TicketNumber)
+}
+
+func serveFirst(t *testing.T, env *specEnv, customers int) {
+	joinN(env, customers)
+	_, err := env.ts.NextTicket(context.Background(), env.queueID, specOwnerID, 0)
+	require.NoError(t, err)
+}
+
+func TestRecall_NothingServed(t *testing.T) {
+	env := newSpecEnv(t)
+	joinN(env, 1)
+	_, err := env.ts.RecallTicket(context.Background(), env.queueID, specOwnerID)
+	assert.ErrorIs(t, err, apperror.ErrNothingToRecall)
+}
+
+func TestRecall_TooSoonBeforeThreeSeconds(t *testing.T) {
+	env := newSpecEnv(t)
+	serveFirst(t, env, 2)
+	_, err := env.ts.RecallTicket(context.Background(), env.queueID, specOwnerID)
+	assert.ErrorIs(t, err, apperror.ErrRecallTooSoon)
+	assert.Equal(t, 0, env.tickets.recalls)
+}
+
+func TestRecall_AllowedOnceAfterThreeSeconds(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	serveFirst(t, env, 2)
+	env.tickets.backdateCall(1, service.RecallDelay+time.Second)
+
+	got, err := env.ts.RecallTicket(ctx, env.queueID, specOwnerID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.TicketNumber)
+	assert.Equal(t, 1, env.tickets.recalls)
+
+	_, err = env.ts.RecallTicket(ctx, env.queueID, specOwnerID)
+	assert.ErrorIs(t, err, apperror.ErrAlreadyRecalled)
+	assert.Equal(t, 1, env.tickets.recalls)
+}
+
+func TestRecall_ResetsAfterNextCall(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	serveFirst(t, env, 2)
+	env.tickets.backdateCall(1, service.RecallDelay+time.Second)
+	_, err := env.ts.RecallTicket(ctx, env.queueID, specOwnerID)
+	require.NoError(t, err)
+
+	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0) // nomor 2 dipanggil
+	require.NoError(t, err)
+	env.tickets.backdateCall(2, service.RecallDelay+time.Second)
+	_, err = env.ts.RecallTicket(ctx, env.queueID, specOwnerID)
+	assert.NoError(t, err)
+}
+
+func TestRecall_CustomerIsDenied(t *testing.T) {
+	env := newSpecEnv(t)
+	serveFirst(t, env, 2)
+	_, err := env.ts.RecallTicket(context.Background(), env.queueID, specCustomerA)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }

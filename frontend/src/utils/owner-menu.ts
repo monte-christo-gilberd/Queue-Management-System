@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 
 import type { OwnerMenuItem } from '@/components/layout/ResponsiveScreenLayout';
+import { releasePushForLogout } from '@/lib/push';
 import { useAuthStore } from '@/store/authStore';
 
 /** Navigasi menu profil — dipakai bersama oleh semua route owner (HP dan desktop). */
@@ -32,8 +33,10 @@ export function handleOwnerMenuItemPress(item: OwnerMenuItem) {
       // dibuka oleh layout sendiri (popup masuk antrian)
       break;
     case 'logout':
-      useAuthStore.getState().logout();
-      router.replace('/');
+      void releasePushForLogout().finally(() => {
+        useAuthStore.getState().logout();
+        router.replace('/');
+      });
       break;
   }
 }

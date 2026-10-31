@@ -228,13 +228,19 @@ Dengan nginx, `EXPO_PUBLIC_API_URL` harus diisi dengan origin nginx. Kalau tidak
 
 Ekspektasi tes diturunkan dari product overview (`documentation/docs/product-overview.md`), bukan dari kode.
 
+## 6b. notify-service (Web Push)
+
+Service Go terpisah, internal, tanpa port. Trigger `tickets_notify_trg` (`AFTER UPDATE OF called_at, recalled_at, skip_count`) memanggil `pg_notify('queue_events', {kind: called|recalled|skipped, queue_id, ticket_id})`; NOTIFY dikirim saat COMMIT. `notify-service` LISTEN (harus ke primary), membaca data dengan role `notify_ro` (SELECT `tickets`, `queues`, `push_subscriptions`; DELETE `push_subscriptions`), lalu mengirim lewat webpush-go. Penerima: `called` → pemilik nomor dan tiket waiting terdepan; `recalled` → pemilik nomor; `skipped` (trigger saat `skip_count` naik) → pemilik nomor yang dilewati, teks tergantung status tiket (`skipped` atau `waiting`). Langganan 404/410 dihapus. Teks nomor dibuat satu fungsi (`message.Label`). Struktur: `internal/{config,message,event,store,push,notify}`, tes di `internal/test/`. Belum ada outbox: push saat service mati hilang.
+
+Backend: `POST /queues/:id/recall` (`tickets.recalled_at`, 3 detik, sekali per pemanggilan) dan `GET /push/public-key`, `POST /push/subscribe|unsubscribe`. Langganan unik per `endpoint`; subscribe memindahkannya ke user yang login.
+
 ## 7. Batasan dan yang belum dibangun
 
 Yang belum ada di backend (lihat product overview):
-- Notifikasi ke customer berikutnya, pembatalan oleh customer, hapus customer oleh owner.
+- Pembatalan oleh customer, hapus customer oleh owner.
 - Counter kustom (kini satu counter default otomatis per antrian, disembunyikan di UI), penyisipan di posisi tertentu, antrian ulang (requeue).
 - Batas harian/fallback QR, riwayat dan ekspor, catatan antrian, Google login.
-- Pembayaran langganan, verifikasi email, lupa password, `notify-service` (Tier 2).
+- Pembayaran langganan, verifikasi email, lupa password.
 
 Di frontend, tombol dan layar untuk fitur di atas sudah ada tetapi belum tersambung (TODO di kode).
 

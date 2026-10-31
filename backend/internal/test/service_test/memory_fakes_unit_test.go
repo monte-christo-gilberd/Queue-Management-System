@@ -32,6 +32,7 @@ type memTicketRepo struct {
 
 	skipSettings map[int64]model.SkipSettings
 	rebalances   int
+	recalls      int
 }
 
 func newMemTicketRepo() *memTicketRepo {
@@ -105,6 +106,8 @@ func (m *memTicketRepo) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID in
 			m.doneSeq[ticketID] = m.seq
 			t.Status = "completed"
 			t.CompletedAt = sql.NullTime{Time: time.Now(), Valid: true}
+			t.CalledAt = t.CompletedAt
+			t.RecalledAt = sql.NullTime{}
 			t.CalledCounterID = counterID
 			return nil
 		}
@@ -125,6 +128,30 @@ func (m *memTicketRepo) CurrentServing(_ context.Context, _ *sqlx.Tx, queueID in
 		return model.Ticket{}, apperror.ErrNotFound
 	}
 	return *best, nil
+}
+
+func (m *memTicketRepo) MarkRecalled(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.ID == ticketID {
+			t.RecalledAt = sql.NullTime{Time: time.Now(), Valid: true}
+			m.recalls++
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
+// backdateCall menggeser waktu pemanggilan ke belakang supaya tes tidak perlu menunggu 3 detik.
+func (m *memTicketRepo) backdateCall(ticketID int64, d time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.ID == ticketID {
+			t.CalledAt = sql.NullTime{Time: t.CalledAt.Time.Add(-d), Valid: true}
+		}
+	}
 }
 
 func (m *memTicketRepo) MarkSkipped(_ context.Context, _ *sqlx.Tx, ticketID int64) error {

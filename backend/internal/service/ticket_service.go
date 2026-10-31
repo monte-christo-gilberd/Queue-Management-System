@@ -44,6 +44,11 @@ type TicketRepository interface {
 		tx *sqlx.Tx,
 		ticketID int64,
 	) error
+	MarkRecalled(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		ticketID int64,
+	) error
 	SkipSettings(
 		ctx context.Context,
 		tx *sqlx.Tx,
@@ -424,6 +429,48 @@ func (s *TicketService) SkipTicket(
 	notifyEvent(s.notifier, queueID, EventTicketNext, dto.NewTicketEvent(called))
 
 	return called, nil
+}
+
+// RecallDelay: jeda minimal setelah sebuah nomor dipanggil sebelum owner boleh memanggil ulang.
+const RecallDelay = 3 * time.Second
+
+// RecallTicket memanggil ulang nomor yang sedang dilayani: hanya push ke pemiliknya (lewat trigger database),
+// tidak mengubah status. Boleh sekali per pemanggilan dan baru 3 detik setelah dipanggil.
+func (s *TicketService) RecallTicket(
+	ctx context.Context,
+	queueID,
+	requesterID int64,
+) (model.Ticket, error) {
+	if s.guard == nil {
+		return model.Ticket{}, errNoQueueGuard
+	}
+	if _, err := s.guard.GetQueue(ctx, queueID, requesterID); err != nil {
+		return model.Ticket{}, err
+	}
+
+	var serving model.Ticket
+	err := s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
+		var err error
+		serving, err = s.repository.CurrentServing(ctx, tx, queueID)
+		if errors.Is(err, apperror.ErrNotFound) {
+			return apperror.ErrNothingToRecall
+		}
+		if err != nil {
+			return err
+		}
+		if serving.RecalledAt.Valid {
+			return apperror.ErrAlreadyRecalled
+		}
+		if time.Since(serving.CalledAt.Time) < RecallDelay {
+			return apperror.ErrRecallTooSoon
+		}
+		return s.repository.MarkRecalled(ctx, tx, serving.ID)
+	})
+	if err != nil {
+		return model.Ticket{}, err
+	}
+	serving.RecalledAt = sql.NullTime{Time: time.Now(), Valid: true}
+	return serving, nil
 }
 
 // requeueSortKey: sort_key untuk tiket yang dikembalikan. Dipanggil setelah tiket berikutnya diambil,

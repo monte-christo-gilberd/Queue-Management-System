@@ -15,10 +15,11 @@ Dokumen lain:
 - Owner: buat antrian (perlu langganan aktif), ubah nama dan deskripsi, panggil Next, tutup antrian.
 - Owner: QR antrian statis/dinamis (token dibuat `qr-service`, gambar digambar di frontend dari `join_url`), penggantian kode statis, salin tautan join.
 - Customer: bergabung lewat tautan/QR bertoken, melihat nomor yang sedang dilayani dan posisi di depan, serta riwayat tiket.
+- Notifikasi giliran lewat Web Push (`notify-service`): nomor dipanggil → "Giliran Anda", nomor berikutnya → "Tinggal 1 nomor lagi". Nomor yang dilewati juga diberi tahu. Owner bisa "Panggil ulang" (3 detik setelah Next, sekali per nomor). Hanya di browser lewat HTTPS (`make tunnel`); Expo Go tidak mendukung.
 - Pembaruan real-time lewat Server-Sent Events (termasuk `queue_qr_updated`).
 - Mode terang dan gelap.
 
-Yang belum tersedia (lihat [DESIGN.md](DESIGN.md#7-batasan-dan-yang-belum-dibangun)): notifikasi/email,
+Yang belum tersedia (lihat [DESIGN.md](DESIGN.md#7-batasan-dan-yang-belum-dibangun)): email,
 pembatalan oleh customer, counter kustom, catatan, riwayat ekspor, login Google,
 dan pembayaran langganan.
 
@@ -142,15 +143,28 @@ Buka `http://localhost:8080` (atau `QMS_PUBLIC_ORIGIN`). Hanya nginx yang membuk
 |---|---|---|
 | db | `db/Dockerfile` | `postgres:16-alpine`, skema dan index dijalankan otomatis saat data directory kosong |
 | qr-service | `qr-service/Dockerfile` | Target `dev` (`go run`, restart manual), hanya di jaringan internal |
+| notify-service | `notify-service/Dockerfile` | Target `dev`, hanya di jaringan internal. LISTEN ke Postgres (role `notify_ro`), kirim Web Push (VAPID) |
 | backend | `backend/Dockerfile` | Target `dev` (`go run`, restart manual), healthcheck `/health`, hanya di jaringan internal |
 | frontend | `frontend/Dockerfile` | Target `dev` (Metro, hot reload) di port 80 internal |
 | nginx | `deploy/nginx/Dockerfile` | Reverse proxy, satu-satunya yang membuka port (80) |
 
-Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot reload; Go perlu `docker compose restart backend` (atau `qr-service`) setelah ubah kode. Target `prod` tersedia di tiap Dockerfile untuk nanti.
+Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot reload; Go perlu `docker compose restart backend` (`qr-service`, `notify-service`) setelah ubah kode. Target `prod` tersedia di tiap Dockerfile untuk nanti.
 Kredensial (`POSTGRES_PASSWORD`, `JWT_SECRET`, `JOIN_LINK_SECRET`, `QR_SERVICE_TOKEN`) tidak dibakar ke image.
 Frontend memanggil API di origin halaman (`EXPO_PUBLIC_API_URL=origin`), jadi mengganti `QMS_PUBLIC_ORIGIN` tidak butuh build ulang frontend.
 
-Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) atau `make tunnel` (HTTPS publik, kamera HP jalan); `make down` untuk berhenti. Perintah lain: `make restart` (backend dan qr-service), `make seed`, `make logs`. Lihat `Makefile` dan `deploy/nginx/README.md`.
+Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) atau `make tunnel` (HTTPS publik, kamera HP jalan); `make down` untuk berhenti. Perintah lain: `make restart` (backend, qr-service, notify-service), `make seed`, `make logs`. Lihat `Makefile` dan `deploy/nginx/README.md`.
+
+## Notifikasi (notify-service)
+
+Variabel `.env` (lihat `.env.example`): `NOTIFY_DB_PASSWORD` (password role `notify_ro`, hanya baca), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Buat kunci VAPID dengan `npx web-push generate-vapid-keys`.
+
+Alur: trigger `tickets_notify_trg` di Postgres memancarkan `pg_notify('queue_events')` saat nomor dipanggil atau dipanggil ulang; `notify-service` mendengarkan, menghitung penerima, lalu mengirim push. Tanpa outbox, jadi push yang terjadi saat service mati hilang.
+
+Catatan:
+- Satu browser hanya melayani satu akun. Layar tiket mendaftarkan ulang langganan ke akun yang sedang login, dan logout melepas langganan.
+- Push hanya jalan di HTTPS (`make tunnel`) dan di browser yang mendukung; Expo Go tidak.
+- DB yang sudah berjalan tidak menjalankan ulang skrip init. Terapkan manual: `ALTER TABLE tickets ADD COLUMN recalled_at TIMESTAMPTZ;`, tabel `push_subscriptions`, fungsi `tickets_notify` dan trigger `tickets_notify_trg` (jika sudah ada versi lama tanpa event `skipped`, jalankan ulang `CREATE OR REPLACE FUNCTION` dan buat ulang trigger) (ada di akhir `db/migrations/01_Schema.sql`), serta role `notify_ro` (`db/migrations/03_notify_role.sh`). Pengaturan Skip juga butuh kolom `queue_settings.skip_fallback`, `skip_fallback_n`, `skip_max_returns`.
+- Tes unit: `cd notify-service && go test ./...`.
 
 ## Build frontend untuk produksi
 

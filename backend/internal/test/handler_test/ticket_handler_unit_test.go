@@ -21,6 +21,7 @@ func specTicketEngine(svc *specTicketSvc, userID int64) *gin.Engine {
 	e.GET("/join/preview", h.Preview)
 	e.POST("/queues/:queue_id/next", h.Next)
 	e.POST("/queues/:queue_id/skip", h.Skip)
+	e.POST("/queues/:queue_id/recall", h.Recall)
 	e.GET("/queues/:queue_id/tickets", h.List)
 	e.GET("/queues/:queue_id/status", h.Status)
 	e.GET("/users/me/tickets", h.MyTickets)
@@ -247,4 +248,30 @@ func TestSpec_Skip_BadQueueIDIs400(t *testing.T) {
 	e := specTicketEngine(&specTicketSvc{}, 7)
 	w := specRequest(e, http.MethodPost, "/queues/abc/skip", "")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestSpec_Recall_ErrorMapping(t *testing.T) {
+	cases := []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{apperror.ErrNothingToRecall, http.StatusConflict, "NOTHING_TO_RECALL"},
+		{apperror.ErrRecallTooSoon, http.StatusConflict, "RECALL_TOO_SOON"},
+		{apperror.ErrAlreadyRecalled, http.StatusConflict, "ALREADY_RECALLED"},
+		{apperror.ErrNotFound, http.StatusNotFound, "NOT_FOUND"},
+	}
+	for _, c := range cases {
+		e := specTicketEngine(&specTicketSvc{err: c.err}, 7)
+		w := specRequest(e, http.MethodPost, "/queues/1/recall", "")
+		assert.Equal(t, c.status, w.Code)
+		assert.Equal(t, c.code, specErrorCode(t, w))
+	}
+}
+
+func TestSpec_Recall_ReturnsServingTicket(t *testing.T) {
+	svc := &specTicketSvc{ticket: model.Ticket{ID: 2, QueueID: 1, TicketNumber: 2, Status: "completed"}}
+	w := specRequest(specTicketEngine(svc, 7), http.MethodPost, "/queues/1/recall", "")
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, float64(2), specDecode(t, w)["data"].(map[string]interface{})["ticket_number"])
 }

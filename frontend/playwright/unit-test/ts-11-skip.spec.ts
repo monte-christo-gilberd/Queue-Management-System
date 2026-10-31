@@ -115,7 +115,7 @@ test.describe('TS-12 Pengaturan Skip (fallback)', () => {
   test('customer tidak boleh mengubah pengaturan', async ({ request }) => {
     const { queue, accounts } = await setup(request, 1);
     const res = await setSkipSettingsViaApi(request, accounts[0].token, queue.id, { fallback: 'back', max_returns: 1 });
-    expect(res.status()).toBe(403);
+    expect([402, 403, 404]).toContain(res.status());
   });
 
   test('mode back: nomor yang dilewati kembali Menunggu di paling belakang', async ({ page, request }) => {

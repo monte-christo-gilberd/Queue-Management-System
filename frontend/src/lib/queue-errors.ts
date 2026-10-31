@@ -19,6 +19,12 @@ export function describeQueueError(error: unknown): string {
       return 'Tidak ada yang menunggu di antrian ini';
     case 'NOTHING_TO_SKIP':
       return 'Belum ada nomor yang sedang dilayani';
+    case 'NOTHING_TO_RECALL':
+      return 'Belum ada nomor yang sedang dilayani';
+    case 'RECALL_TOO_SOON':
+      return 'Panggil ulang tersedia 3 detik setelah nomor dipanggil';
+    case 'ALREADY_RECALLED':
+      return 'Nomor ini sudah dipanggil ulang';
     case 'QUEUE_CLOSED':
       return 'Antrian sudah ditutup';
     case 'ALREADY_JOINED':

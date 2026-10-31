@@ -3,7 +3,7 @@
 #   make up IP=192.168.1.5   # mode LAN dengan IP tertentu
 #   make tunnel          # HTTPS publik via Cloudflare quick tunnel (kamera HP jalan)
 #   make down            # hentikan stack dan tunnel
-#   make restart         # restart backend dan qr-service setelah ubah kode Go
+#   make restart         # restart backend, qr-service, notify-service setelah ubah kode Go
 #   make seed            # reset database ke data seed dev
 # Kamera di browser butuh HTTPS atau localhost, jadi scan QR dari HP lewat IP LAN
 # tidak jalan di web; pakai `make tunnel`. Tunnel butuh cloudflared dan internet.
@@ -46,7 +46,7 @@ tunnel:
 	  [ -n "$$url" ] && break; sleep 1
 	done
 	[ -n "$$url" ] || { echo "URL tunnel tidak muncul, lihat $(LOG)" >&2; $(stop_tunnel); exit 1; }
-	QMS_PUBLIC_ORIGIN="$$url" docker compose up -d --build --force-recreate backend qr-service nginx frontend db
+	QMS_PUBLIC_ORIGIN="$$url" docker compose up -d --build --force-recreate backend qr-service notify-service nginx frontend db
 	echo; echo "Buka dari HP mana pun: $$url"; echo "Hentikan: make down"
 
 down:
@@ -54,7 +54,7 @@ down:
 	docker compose down
 
 restart:
-	docker compose restart backend qr-service
+	docker compose restart backend qr-service notify-service
 
 seed:
 	docker compose exec -T db psql -U qms -d qms_db < db/scripts/reset_seed_dev.sql

@@ -174,6 +174,15 @@ Body `{ "fallback": "remove|back|after_n", "n": int, "max_returns": int }`. Hany
 - `after_n`: kembali `waiting` setelah N tiket yang sedang menunggu (dihitung setelah tiket berikutnya dipanggil); bila yang menunggu kurang dari N, ke paling belakang. Bila jarak `sort_key` habis, tiket waiting dinomori ulang otomatis.
 Error: 400 `BAD_REQUEST` (mode tidak dikenal, N atau `max_returns` < 1), 402 `SUBSCRIPTION_INACTIVE`, 403 (bukan owner), 409 `QUEUE_CLOSED`, 404 `NOT_FOUND`.
 
+### POST /api/v1/queues/:queue_id/recall
+Owner memanggil ulang nomor yang sedang dilayani. Hanya push ke pemiliknya (status tidak berubah). Aktif 3 detik setelah nomor dipanggil (Next/Skip) dan hanya sekali per pemanggilan. Error 409: `NOTHING_TO_RECALL`, `RECALL_TOO_SOON`, `ALREADY_RECALLED`. Bukan owner antrian: 404.
+
+### Web Push (perlu login)
+- `GET /api/v1/push/public-key` → `{ public_key }` (kunci VAPID publik).
+- `POST /api/v1/push/subscribe` body `{ endpoint, keys: { p256dh, auth } }`; endpoint wajib `https`, 400 bila tidak. Endpoint yang sama dipindah ke user yang sedang login.
+- `POST /api/v1/push/unsubscribe` body `{ endpoint }`.
+Rute `/push` hanya ada bila `VAPID_PUBLIC_KEY` diset. Push dikirim `notify-service` (LISTEN `queue_events`): nomor dipanggil → pemilik "Giliran Anda" dan tiket waiting terdepan "Tinggal 1 nomor lagi"; recall → pemilik saja; skip → pemilik nomor yang dilewati ("dilewati" atau "dilewati dan dikembalikan ke antrian").
+
 ### POST /api/v1/queues/:queue_id/skip
 Melewati nomor yang sedang dilayani (tiket `completed` dengan `called_at` terbaru) lalu langsung memanggil tiket `waiting` pertama, dalam satu transaksi. Hanya owner. `skip_count` +1 dan `completed_at` dikosongkan. Nasib tiket yang dilewati mengikuti pengaturan Skip antrian (lihat `settings/skip`): `remove` atau batas `max_returns` tercapai menjadi `skipped` permanen (`called_at` tetap); `back`/`after_n` mengembalikannya ke `waiting` di posisi baru (`called_at` dan `called_counter_id` dikosongkan).
 
