@@ -197,7 +197,7 @@ Dengan nginx, `EXPO_PUBLIC_API_URL` harus diisi dengan origin nginx. Kalau tidak
 - nginx melayani frontend statis, meneruskan `/api/` ke backend, memakai rute SSE tanpa buffer, dan mengurus TLS.
   Konfigurasinya ada di `deploy/nginx/`.
 - Docker disiapkan sebagai jalur kedua. Setiap layanan punya Dockerfile dan `Dockerfile.dockerignore`:
-  `db/`, `backend/`, `frontend/`, dan `deploy/nginx/`. Berkas ini belum pernah di-build dan belum ada `docker-compose.yml`.
+  `db/`, `backend/`, `frontend/`, dan `deploy/nginx/`. Stack berjalan lewat `docker-compose.yml` (dev, hot reload) dan `docker-compose.prod.yml` (demo/produksi di belakang Cloudflare Tunnel, env dari `.env.prod`). Keduanya sudah dibuild dan diuji.
 - Pada container, frontend tidak berjalan sebagai server. Image frontend hanya berisi hasil build (`/dist`) yang diisi ke volume.
   Container nginx membaca volume itu dan meneruskan `/api/` ke container backend (nama service `backend`, port 8080).
 - Nginx di container hanya HTTP. TLS diurus di luar container atau ditambahkan kemudian.
@@ -230,7 +230,7 @@ Ekspektasi tes diturunkan dari product overview (`documentation/docs/product-ove
 
 ## 6b. notify-service (Web Push)
 
-Service Go terpisah, internal, tanpa port. Trigger `tickets_notify_trg` (`AFTER UPDATE OF called_at, recalled_at, skip_count`) memanggil `pg_notify('queue_events', {kind: called|recalled|skipped, queue_id, ticket_id})`; NOTIFY dikirim saat COMMIT. `notify-service` LISTEN (harus ke primary), membaca data dengan role `notify_ro` (SELECT `tickets`, `queues`, `push_subscriptions`; DELETE `push_subscriptions`), lalu mengirim lewat webpush-go. Penerima: `called` → pemilik nomor dan tiket waiting terdepan; `recalled` → pemilik nomor; `skipped` (trigger saat `skip_count` naik) → pemilik nomor yang dilewati, teks tergantung status tiket (`skipped` atau `waiting`). Langganan 404/410 dihapus. Teks nomor dibuat satu fungsi (`message.Label`). Struktur: `internal/{config,message,event,store,push,notify}`, tes di `internal/test/`. Belum ada outbox: push saat service mati hilang.
+Service Go terpisah, internal, tidak dipublikasikan nginx. Hanya membuka `GET :8091/health` (200 bila LISTEN aktif) untuk healthcheck compose; log JSON; push memakai timeout 8 detik dan coba ulang 3 kali untuk kegagalan sementara. Trigger `tickets_notify_trg` (`AFTER UPDATE OF called_at, recalled_at, skip_count`) memanggil `pg_notify('queue_events', {kind: called|recalled|skipped, queue_id, ticket_id})`; NOTIFY dikirim saat COMMIT. `notify-service` LISTEN (harus ke primary), membaca data dengan role `notify_ro` (SELECT `tickets`, `queues`, `push_subscriptions`; DELETE `push_subscriptions`), lalu mengirim lewat webpush-go. Penerima: `called` → pemilik nomor dan tiket waiting terdepan; `recalled` → pemilik nomor; `skipped` (trigger saat `skip_count` naik) → pemilik nomor yang dilewati, teks tergantung status tiket (`skipped` atau `waiting`). Langganan 404/410 dihapus. Teks nomor dibuat satu fungsi (`message.Label`). Struktur: `internal/{config,message,event,store,push,notify}`, tes di `internal/test/`. Belum ada outbox: push saat service mati hilang.
 
 Backend: `POST /queues/:id/recall` (`tickets.recalled_at`, 3 detik, sekali per pemanggilan) dan `GET /push/public-key`, `POST /push/subscribe|unsubscribe`. Langganan unik per `endpoint`; subscribe memindahkannya ke user yang login.
 

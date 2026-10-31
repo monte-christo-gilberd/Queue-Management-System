@@ -100,7 +100,7 @@ Butuh token. Tiket milik user di semua antrian.
     "action": "list_my_tickets",
     "tickets": [
       {
-        "id": 121, "queue_id": 122, "ticket_number": 2, "sort_key": 131072, "user_id": 3,
+        "id": 121, "queue_id": 122, "ticket_number": 2, "ticket_prefix": "A", "sort_key": 131072, "user_id": 3,
         "status": "waiting", "skip_count": 0, "last_notified_at": null,
         "created_at": "2026-10-17T16:29:57+07:00", "completed_at": null, "cancelled_at": null,
         "queue_name": "Loket A", "queue_status": "active", "current_number": 1
@@ -110,6 +110,7 @@ Butuh token. Tiket milik user di semua antrian.
 }
 ```
 `current_number` = `ticket_number` yang sedang dilayani di antrian itu, atau null.
+`ticket_prefix` = awalan nomor milik antrian (bukan kolom `tickets`). Label tampilan = `ticket_prefix` + `ticket_number`, mis. `A2`.
 
 ## Antrian (owner)
 

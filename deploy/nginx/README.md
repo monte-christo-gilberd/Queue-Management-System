@@ -42,10 +42,14 @@ Hanya ada satu `docker-compose.yml` (mode development, hot reload). Hanya nginx 
 
 ## Belum ada
 
-- HSTS dan sertifikat produksi. Untuk uji dari HP pakai tunnel (bagian di bawah).
-- Mailpit (`/mail/`) dan `notify-service`. Tambahkan saat layanannya ada.
+- HSTS (ditunda, keputusan 31 Okt; bila dipasang mulai dengan `max-age=300`, hanya di `nginx.prod.conf`). Sertifikat ditangani Cloudflare, bukan nginx.
+- Mailpit (`/mail/`). Tambahkan saat layanannya ada. `notify-service` internal dan tidak dipublikasikan.
 
-## HTTPS publik tanpa konfigurasi di HP (tunnel)
+## Produksi/demo: `nginx.prod.conf`
+
+Di belakang Cloudflare Tunnel (`cloudflared` di host, target `http://localhost:8080`). Port hanya terikat ke `127.0.0.1`. IP klien dibaca dari `CF-Connecting-IP` (`set_real_ip_from 172.29.0.0/16`). Header WebSocket Metro tidak ada di prod (`frontend-upgrade.prod.conf` kosong). Domain tetap: `https://qms.montechristo.my.id`; tunnel dikelola manual (`docs/setup-perintah-manual.md`).
+
+## HTTPS publik tanpa konfigurasi di HP (tunnel) sementara (quick tunnel, uji saja)
 
 HP tidak perlu memasang apa pun: Cloudflare quick tunnel memberi URL `https://*.trycloudflare.com` dengan sertifikat yang dipercaya publik, jadi kamera pemindai QR langsung jalan.
 
