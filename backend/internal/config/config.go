@@ -12,6 +12,8 @@ import (
 )
 
 type Config struct {
+	// Env: "production" mengaktifkan validasi ketat (APP_ENV).
+	Env            string
 	DatabaseURL    string
 	JWTSecret      string
 	Port           string
@@ -33,6 +35,7 @@ func Load() (Config, error) {
 	_ = godotenv.Load()
 
 	cfg := Config{
+		Env:            strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV"))),
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		Port:           os.Getenv("PORT"),
@@ -81,7 +84,45 @@ func Load() (Config, error) {
 	}
 	cfg.QRHTTPTimeout = timeout
 
+	if cfg.Env == "production" {
+		if err := cfg.validateProduction(); err != nil {
+			return Config{}, err
+		}
+	}
+
 	return cfg, nil
+}
+
+var weakSecrets = map[string]bool{
+	"change-me-jwt-secret":                      true,
+	"change-me-service-token-at-least-32-bytes": true,
+	"secret":   true,
+	"password": true,
+}
+
+// validateProduction menolak konfigurasi yang tidak aman saat APP_ENV=production.
+func (c Config) validateProduction() error {
+	if len(c.JWTSecret) < 32 || weakSecrets[c.JWTSecret] {
+		return fmt.Errorf("production: JWT_SECRET must be at least 32 chars and not a default value")
+	}
+	if len(c.QRServiceToken) < 32 || weakSecrets[c.QRServiceToken] {
+		return fmt.Errorf("production: QR_SERVICE_TOKEN must be at least 32 chars and not a default value")
+	}
+	for _, o := range c.AllowedOrigins {
+		if o == "*" {
+			return fmt.Errorf("production: ALLOWED_ORIGINS must not contain *")
+		}
+		if !strings.HasPrefix(o, "https://") {
+			return fmt.Errorf("production: ALLOWED_ORIGINS must use https (got %q)", o)
+		}
+	}
+	if !strings.HasPrefix(c.PublicAppURL, "https://") {
+		return fmt.Errorf("production: PUBLIC_APP_URL must use https")
+	}
+	if err := validatePublicURL(c.PublicAppURL); err != nil {
+		return fmt.Errorf("production: PUBLIC_APP_URL: %w", err)
+	}
+	return nil
 }
 
 func parseOrigins(raw string) []string {
