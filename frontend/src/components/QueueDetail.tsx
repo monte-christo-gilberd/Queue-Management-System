@@ -43,6 +43,9 @@ export type QueueDetailProps = {
   onRecall?: () => void;
   recallDisabled?: boolean;
   recallLoading?: boolean;
+  /** Tampilkan Panggil ulang di tempat Skip. */
+  showRecall?: boolean;
+  skipDisabled?: boolean;
   nextLoading?: boolean;
   /** TODO: backend belum mendukung ini (catatan antrian) */
   onSubmitNote?: (note: string) => void;
@@ -77,6 +80,8 @@ export default function QueueDetail({
   onRecall,
   recallDisabled = false,
   recallLoading = false,
+  showRecall = false,
+  skipDisabled = false,
   nextLoading = false,
   onSubmitNote,
   qrCard,
@@ -109,7 +114,25 @@ export default function QueueDetail({
 
           {!isClosed ? (
             <View className="flex-row gap-3">
-              <AppButton label="SKIP" variant="outline" className="flex-1" onPress={onSkip} loading={skipLoading} />
+              {showRecall && onRecall ? (
+                <AppButton
+                  label="PANGGIL ULANG"
+                  variant="outline"
+                  className="flex-1"
+                  onPress={onRecall}
+                  loading={recallLoading}
+                  disabled={recallDisabled || !currentNumber}
+                />
+              ) : (
+                <AppButton
+                  label="SKIP"
+                  variant="outline"
+                  className="flex-1"
+                  onPress={onSkip}
+                  loading={skipLoading}
+                  disabled={skipDisabled}
+                />
+              )}
               <AppButton
                 label="NEXT"
                 variant="dark"
@@ -118,16 +141,6 @@ export default function QueueDetail({
                 loading={nextLoading}
               />
             </View>
-          ) : null}
-
-          {!isClosed && onRecall ? (
-            <AppButton
-              label="PANGGIL ULANG"
-              variant="outline"
-              onPress={onRecall}
-              loading={recallLoading}
-              disabled={recallDisabled || !currentNumber}
-            />
           ) : null}
 
           {errorMessage ? (

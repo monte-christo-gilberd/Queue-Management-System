@@ -15,7 +15,7 @@ Dokumen lain:
 - Owner: buat antrian (perlu langganan aktif), ubah nama dan deskripsi, panggil Next, tutup antrian.
 - Owner: QR antrian statis/dinamis (token dibuat `qr-service`, gambar digambar di frontend dari `join_url`), penggantian kode statis, salin tautan join.
 - Customer: bergabung lewat tautan/QR bertoken, melihat nomor yang sedang dilayani dan posisi di depan, serta riwayat tiket.
-- Notifikasi giliran lewat Web Push (`notify-service`): nomor dipanggil → "Giliran Anda", nomor berikutnya → "Tinggal 1 nomor lagi". Nomor yang dilewati juga diberi tahu. Owner bisa "Panggil ulang" (3 detik setelah Next, sekali per nomor). Hanya di browser lewat HTTPS (`make tunnel`); Expo Go tidak mendukung.
+- Notifikasi giliran lewat Web Push (`notify-service`): nomor dipanggil → "Giliran Anda", nomor berikutnya → "Tinggal 1 nomor lagi". Nomor yang dilewati juga diberi tahu. Notifikasi diaktifkan otomatis saat join (tanpa efek bila izin ditolak). Owner bisa "Panggil ulang" (tombol menggantikan Skip di detail antrian, mati 3 detik setelah Next, sekali per nomor). Hanya di browser lewat HTTPS (`make tunnel`); Expo Go tidak mendukung.
 - Pembaruan real-time lewat Server-Sent Events (termasuk `queue_qr_updated`).
 - Mode terang dan gelap.
 

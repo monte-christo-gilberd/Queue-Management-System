@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import { enablePush, pushSupported } from './push';
 import type { PublicQueue, QueueQR, Ticket } from '@/types/api';
 
 /**
@@ -49,5 +50,10 @@ export async function previewJoin(token: string): Promise<PublicQueue> {
  * 410 QR_EXPIRED, 503 QR_UNAVAILABLE.
  */
 export async function joinByToken(token: string): Promise<Ticket> {
-  return apiFetch<Ticket>('/api/v1/join', { method: 'POST', body: { t: token } });
+  const ticket = await apiFetch<Ticket>('/api/v1/join', { method: 'POST', body: { t: token } });
+  // Aktifkan notifikasi otomatis; bila izin ditolak atau tidak didukung, tidak terjadi apa-apa.
+  if (pushSupported() && Notification.permission !== 'denied') {
+    void enablePush().catch(() => undefined);
+  }
+  return ticket;
 }

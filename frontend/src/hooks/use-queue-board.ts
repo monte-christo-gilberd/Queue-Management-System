@@ -38,13 +38,24 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
   const [skipError, setSkipError] = useState<string>();
   const [recallLoading, setRecallLoading] = useState(false);
   const [recallError, setRecallError] = useState<string>();
-  // Panggil ulang aktif 3 detik setelah Next/Skip dan hanya sekali per nomor; backend yang menegakkan.
+  // Setelah Next/Skip: tombol Panggil ulang menggantikan Skip (mati 3 detik). Setelah dipanggil ulang,
+  // Skip kembali (mati 3 detik). Backend tetap menegakkan aturan 3 detik dan sekali per nomor.
   const [recallReady, setRecallReady] = useState(true);
+  const [showRecall, setShowRecall] = useState(false);
+  const [skipReady, setSkipReady] = useState(true);
   const recallTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const armRecall = useCallback(() => {
+    setShowRecall(true);
+    setSkipReady(true);
     setRecallReady(false);
     if (recallTimer.current) clearTimeout(recallTimer.current);
     recallTimer.current = setTimeout(() => setRecallReady(true), RECALL_DELAY_MS);
+  }, []);
+  const armSkip = useCallback(() => {
+    setShowRecall(false);
+    setSkipReady(false);
+    if (recallTimer.current) clearTimeout(recallTimer.current);
+    recallTimer.current = setTimeout(() => setSkipReady(true), RECALL_DELAY_MS);
   }, []);
   useEffect(() => () => {
     if (recallTimer.current) clearTimeout(recallTimer.current);
@@ -149,12 +160,12 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     setRecallError(undefined);
     const r = await run(() => recallTicket(queueId));
     if (r.ok) {
-      setRecallReady(false);
+      armSkip();
     } else {
       setRecallError(r.message);
     }
     setRecallLoading(false);
-  }, [queueId]);
+  }, [queueId, armSkip]);
 
   const view = useMemo(() => deriveQueueView(tickets), [tickets]);
 
@@ -172,6 +183,8 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     recall,
     recallLoading,
     recallReady,
+    showRecall,
+    skipReady,
     recallError,
   };
 }

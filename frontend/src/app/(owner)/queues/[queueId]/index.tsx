@@ -129,6 +129,8 @@ function QueueDetailEditor({
       onRecall={() => void board.recall()}
       recallDisabled={!board.recallReady}
       recallLoading={board.recallLoading}
+      showRecall={board.showRecall}
+      skipDisabled={!board.skipReady}
       nextLoading={board.nextLoading}
       qrCard={
         <QueueQRCard
