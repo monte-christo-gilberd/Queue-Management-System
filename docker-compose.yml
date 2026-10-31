@@ -7,7 +7,7 @@
 #
 # Kode di-mount. Frontend hot reload (Metro). Go (backend, qr-service) memakai `go run`: setelah ubah kode,
 #   docker compose restart backend      # atau qr-service; cache build di volume, jadi hanya beberapa detik
-# HTTPS untuk uji dari HP: scripts/tunnel-dev.sh (Cloudflare quick tunnel).
+# HTTPS untuk uji dari HP: make tunnel (Cloudflare quick tunnel).
 # Akses db/psql lewat kontainer:
 #   docker compose exec db psql -U qms -d qms_db
 #   docker compose exec -T db psql -U qms -d qms_db < db/scripts/reset_seed_dev.sql

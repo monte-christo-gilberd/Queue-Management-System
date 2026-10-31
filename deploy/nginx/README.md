@@ -50,8 +50,8 @@ HP tidak perlu memasang apa pun: Cloudflare quick tunnel memberi URL `https://*.
 
 ```bash
 # pasang cloudflared: https://github.com/cloudflare/cloudflared/releases
-scripts/tunnel-dev.sh        # buka tunnel, jalankan stack, cetak URL
-scripts/tunnel-dev.sh down   # hentikan
+make tunnel   # buka tunnel, jalankan stack, cetak URL
+make down     # hentikan
 ```
 
 - URL acak dan berganti tiap sesi. Skrip memberikannya sebagai `QMS_PUBLIC_ORIGIN` ke backend dan qr-service (yang membacanya saat start). Frontend memakai `EXPO_PUBLIC_API_URL=origin` (origin halaman), jadi tidak perlu build ulang saat URL berganti.
