@@ -81,6 +81,21 @@ func (f *fakeQueueRepo) CreateQueueSettingsIfMissing(
 	return nil
 }
 
+func (f *fakeQueueRepo) GetSkipSettings(
+	ctx context.Context,
+	queueID int64,
+) (model.SkipSettings, error) {
+	return model.DefaultSkipSettings(), nil
+}
+
+func (f *fakeQueueRepo) UpdateSkipSettings(
+	ctx context.Context,
+	queueID int64,
+	settings model.SkipSettings,
+) error {
+	return nil
+}
+
 func (f *fakeQueueRepo) UpdateQRType(
 	ctx context.Context,
 	queueID int64,
@@ -389,5 +404,59 @@ func TestGetActiveQueue(t *testing.T) {
 		if !errors.Is(err, c.wantErr) {
 			t.Errorf("%s: expected %v, got %v", c.name, c.wantErr, err)
 		}
+	}
+}
+
+func TestUpdateSkipSettings_Validation(t *testing.T) {
+	ctx := context.Background()
+	open := model.Queue{ID: 1, OwnerID: 100, Status: "active"}
+	cases := []struct {
+		name string
+		in   model.SkipSettings
+		ok   bool
+	}{
+		{"remove", model.SkipSettings{Fallback: "remove", MaxReturns: 1}, true},
+		{"back", model.SkipSettings{Fallback: "back", MaxReturns: 2}, true},
+		{"after_n", model.SkipSettings{Fallback: "after_n", N: 3, MaxReturns: 1}, true},
+		{"after_n zero", model.SkipSettings{Fallback: "after_n", N: 0, MaxReturns: 1}, false},
+		{"unknown", model.SkipSettings{Fallback: "x", MaxReturns: 1}, false},
+		{"max zero", model.SkipSettings{Fallback: "back", MaxReturns: 0}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			svc := service.NewQueueService(&fakeQueueRepo{getQueue: open}, &fakeSubscription{active: true}, &fakeTxRunner{})
+			_, err := svc.UpdateSkipSettings(ctx, 1, 100, c.in)
+			if c.ok && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !c.ok && !errors.Is(err, apperror.ErrInvalidSkipSettings) {
+				t.Fatalf("expected ErrInvalidSkipSettings, got %v", err)
+			}
+		})
+	}
+}
+
+func TestUpdateSkipSettings_Guards(t *testing.T) {
+	ctx := context.Background()
+	in := model.SkipSettings{Fallback: "back", MaxReturns: 1}
+
+	svc := service.NewQueueService(&fakeQueueRepo{getQueue: model.Queue{ID: 1, OwnerID: 100}}, &fakeSubscription{active: true}, &fakeTxRunner{})
+	if _, err := svc.UpdateSkipSettings(ctx, 1, 999, in); !errors.Is(err, apperror.ErrNotFound) {
+		t.Errorf("non-owner: expected ErrNotFound, got %v", err)
+	}
+
+	svc = service.NewQueueService(&fakeQueueRepo{getQueue: model.Queue{ID: 1, OwnerID: 100, Status: "closed"}}, &fakeSubscription{active: true}, &fakeTxRunner{})
+	if _, err := svc.UpdateSkipSettings(ctx, 1, 100, in); !errors.Is(err, apperror.ErrQueueClosed) {
+		t.Errorf("closed: expected ErrQueueClosed, got %v", err)
+	}
+
+	svc = service.NewQueueService(&fakeQueueRepo{getQueue: model.Queue{ID: 1, OwnerID: 100, Status: "active"}}, &fakeSubscription{active: false}, &fakeTxRunner{})
+	if _, err := svc.UpdateSkipSettings(ctx, 1, 100, in); !errors.Is(err, apperror.ErrSubscriptionInactive) {
+		t.Errorf("inactive: expected ErrSubscriptionInactive, got %v", err)
+	}
+
+	svc = service.NewQueueService(&fakeQueueRepo{getQueue: model.Queue{ID: 1, OwnerID: 100}}, nil, nil)
+	if _, err := svc.GetSkipSettings(ctx, 1, 999); !errors.Is(err, apperror.ErrNotFound) {
+		t.Errorf("get non-owner: expected ErrNotFound, got %v", err)
 	}
 }

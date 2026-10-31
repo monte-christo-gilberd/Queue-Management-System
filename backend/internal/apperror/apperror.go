@@ -8,6 +8,7 @@ var (
 	ErrRetryExhausted       = errors.New("too many failed retries")
 	ErrQueueEmpty           = errors.New("queue is currently empty")
 	ErrNothingToSkip        = errors.New("no ticket is being served")
+	ErrInvalidSkipSettings  = errors.New("invalid skip settings")
 	ErrSubscriptionInactive = errors.New("subscription is inactive")
 	ErrQueueClosed          = errors.New("queue is closed")
 	ErrAlreadyJoined        = errors.New("user already joined this queue")

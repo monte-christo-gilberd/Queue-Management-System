@@ -262,6 +262,54 @@ func (r *QueueRepository) GetQueueSettings(
 	return settings, nil
 }
 
+func (r *QueueRepository) GetSkipSettings(
+	ctx context.Context,
+	queueID int64,
+) (model.SkipSettings, error) {
+	var s model.SkipSettings
+	err := r.db.GetContext(
+		ctx,
+		&s,
+		`SELECT skip_fallback, COALESCE(skip_fallback_n, 0) AS skip_fallback_n, skip_max_returns
+		 FROM queue_settings WHERE queue_id = $1`,
+		queueID,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.DefaultSkipSettings(), nil
+	}
+	if err != nil {
+		return model.SkipSettings{}, err
+	}
+	return s, nil
+}
+
+func (r *QueueRepository) UpdateSkipSettings(
+	ctx context.Context,
+	queueID int64,
+	s model.SkipSettings,
+) error {
+	var n interface{}
+	if s.Fallback == model.SkipFallbackAfterN {
+		n = s.N
+	}
+	// Baris queue_settings dibuat bersama antrian; upsert menjaga antrian lama tanpa baris.
+	_, err := r.db.ExecContext(
+		ctx,
+		`INSERT INTO queue_settings (queue_id, skip_fallback, skip_fallback_n, skip_max_returns)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (queue_id) DO UPDATE
+		 SET skip_fallback = EXCLUDED.skip_fallback,
+		     skip_fallback_n = EXCLUDED.skip_fallback_n,
+		     skip_max_returns = EXCLUDED.skip_max_returns,
+		     updated_at = now()`,
+		queueID,
+		s.Fallback,
+		n,
+		s.MaxReturns,
+	)
+	return err
+}
+
 func (r *QueueRepository) CreateQueueSettingsIfMissing(
 	ctx context.Context,
 	queueID int64,

@@ -29,6 +29,9 @@ type memTicketRepo struct {
 	doneSeq   map[int64]int64
 	inserts   int
 	completes int
+
+	skipSettings map[int64]model.SkipSettings
+	rebalances   int
 }
 
 func newMemTicketRepo() *memTicketRepo {
@@ -136,6 +139,74 @@ func (m *memTicketRepo) MarkSkipped(_ context.Context, _ *sqlx.Tx, ticketID int6
 		}
 	}
 	return apperror.ErrNotFound
+}
+
+func (m *memTicketRepo) SkipSettings(_ context.Context, _ *sqlx.Tx, queueID int64) (model.SkipSettings, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.skipSettings[queueID]; ok {
+		return s, nil
+	}
+	return model.DefaultSkipSettings(), nil
+}
+
+func (m *memTicketRepo) WaitingSortKeys(_ context.Context, _ *sqlx.Tx, queueID int64, limit int) ([]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	keys := []int64{}
+	for _, t := range m.waitingInOrder(queueID) {
+		keys = append(keys, t.SortKey)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	if len(keys) > limit {
+		keys = keys[:limit]
+	}
+	return keys, nil
+}
+
+func (m *memTicketRepo) SortKeyTaken(_ context.Context, _ *sqlx.Tx, queueID, sortKey int64) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.QueueID == queueID && t.SortKey == sortKey {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *memTicketRepo) RequeueSkipped(_ context.Context, _ *sqlx.Tx, ticketID, sortKey int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.ID == ticketID {
+			t.Status = "waiting"
+			t.SkipCount++
+			t.SortKey = sortKey
+			t.CompletedAt = sql.NullTime{}
+			delete(m.doneSeq, ticketID)
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
+func (m *memTicketRepo) RebalanceWaiting(_ context.Context, _ *sqlx.Tx, queueID, gap int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w := m.waitingInOrder(queueID)
+	sort.Slice(w, func(i, j int) bool { return w[i].SortKey < w[j].SortKey })
+	var base int64
+	for _, t := range m.tickets {
+		if t.QueueID == queueID && t.SortKey > base {
+			base = t.SortKey
+		}
+	}
+	for i, t := range w {
+		t.SortKey = base + int64(i+1)*gap
+	}
+	m.rebalances++
+	return nil
 }
 
 func (m *memTicketRepo) GetCounterByQueue(_ context.Context, _ int64) (model.Counter, error) {
@@ -287,6 +358,7 @@ type memQueueRepo struct {
 	queues   map[int64]model.Queue
 	settings map[int64]model.QueueSettings
 	counters []model.Counter
+	skip     map[int64]model.SkipSettings
 }
 
 func newMemQueueRepo() *memQueueRepo {
@@ -406,6 +478,25 @@ func (m *memQueueRepo) CreateQueueSettingsIfMissing(_ context.Context, queueID i
 	if _, ok := m.settings[queueID]; !ok {
 		m.settings[queueID] = model.QueueSettings{QueueID: queueID, QRType: model.QueueQRTypeStatic}
 	}
+	return nil
+}
+
+func (m *memQueueRepo) GetSkipSettings(_ context.Context, queueID int64) (model.SkipSettings, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.skip[queueID]; ok {
+		return s, nil
+	}
+	return model.DefaultSkipSettings(), nil
+}
+
+func (m *memQueueRepo) UpdateSkipSettings(_ context.Context, queueID int64, s model.SkipSettings) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.skip == nil {
+		m.skip = map[int64]model.SkipSettings{}
+	}
+	m.skip[queueID] = s
 	return nil
 }
 

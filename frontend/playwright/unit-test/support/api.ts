@@ -72,6 +72,27 @@ export async function skipViaApi(request: APIRequestContext, token: string, queu
   });
 }
 
+/** Mengatur pengaturan Skip antrian lewat API. */
+export async function setSkipSettingsViaApi(
+  request: APIRequestContext,
+  token: string,
+  queueId: number,
+  body: { fallback: 'remove' | 'back' | 'after_n'; n?: number; max_returns: number },
+) {
+  return request.put(`${API_URL}/api/v1/queues/${queueId}/settings/skip`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: body,
+  });
+}
+
+/** Daftar tiket antrian (owner) lewat API. */
+export async function listTicketsViaApi(request: APIRequestContext, token: string, queueId: number) {
+  const res = await request.get(`${API_URL}/api/v1/queues/${queueId}/tickets`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res;
+}
+
 /** Menutup antrian lewat API (menyiapkan data). */
 export async function closeQueueViaApi(request: APIRequestContext, token: string, queueId: number) {
   const res = await request.post(`${API_URL}/api/v1/queues/${queueId}/close`, {

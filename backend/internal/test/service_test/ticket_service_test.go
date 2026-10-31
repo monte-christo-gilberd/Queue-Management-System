@@ -92,6 +92,50 @@ func (f *fakeTicketRepo) MarkSkipped(
 	return nil
 }
 
+func (f *fakeTicketRepo) SkipSettings(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID int64,
+) (model.SkipSettings, error) {
+	return model.DefaultSkipSettings(), nil
+}
+
+func (f *fakeTicketRepo) WaitingSortKeys(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID int64,
+	limit int,
+) ([]int64, error) {
+	return nil, nil
+}
+
+func (f *fakeTicketRepo) SortKeyTaken(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID,
+	sortKey int64,
+) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeTicketRepo) RequeueSkipped(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID,
+	sortKey int64,
+) error {
+	return nil
+}
+
+func (f *fakeTicketRepo) RebalanceWaiting(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID,
+	gap int64,
+) error {
+	return nil
+}
+
 func (f *fakeTicketRepo) HasTicket(
 	ctx context.Context,
 	queueID,

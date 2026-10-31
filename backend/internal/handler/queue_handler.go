@@ -40,6 +40,17 @@ type QueueService interface {
 		queueID,
 		requesterID int64,
 	) error
+	GetSkipSettings(
+		ctx context.Context,
+		queueID,
+		requesterID int64,
+	) (model.SkipSettings, error)
+	UpdateSkipSettings(
+		ctx context.Context,
+		queueID,
+		requesterID int64,
+		settings model.SkipSettings,
+	) (model.SkipSettings, error)
 }
 
 type QueueQRService interface {
@@ -402,6 +413,64 @@ func (h *QueueHandler) GetQR(
 	}
 
 	respondData(c, http.StatusOK, qr)
+}
+
+func (h *QueueHandler) respondSkipSettings(c *gin.Context, s model.SkipSettings) {
+	respondData(c, http.StatusOK, dto.NewSkipSettingsResponse(s))
+}
+
+func (h *QueueHandler) respondSkipError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, apperror.ErrNotFound):
+		respondError(c, http.StatusNotFound, "NOT_FOUND", "queue not found")
+	case errors.Is(err, apperror.ErrSubscriptionInactive):
+		respondError(c, http.StatusPaymentRequired, "SUBSCRIPTION_INACTIVE", "subscription is inactive")
+	case errors.Is(err, apperror.ErrQueueClosed):
+		respondError(c, http.StatusConflict, "QUEUE_CLOSED", "queue is closed")
+	case errors.Is(err, apperror.ErrInvalidSkipSettings):
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid skip settings")
+	default:
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+	}
+}
+
+// GetSkipSettings: GET /api/v1/queues/:queue_id/settings/skip
+func (h *QueueHandler) GetSkipSettings(c *gin.Context) {
+	queueID, err := strconv.ParseInt(c.Param("queue_id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
+		return
+	}
+	s, err := h.service.GetSkipSettings(c.Request.Context(), queueID, c.GetInt64("user_id"))
+	if err != nil {
+		h.respondSkipError(c, err)
+		return
+	}
+	h.respondSkipSettings(c, s)
+}
+
+// UpdateSkipSettings: PUT /api/v1/queues/:queue_id/settings/skip
+func (h *QueueHandler) UpdateSkipSettings(c *gin.Context) {
+	queueID, err := strconv.ParseInt(c.Param("queue_id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
+		return
+	}
+	var req dto.SkipSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+		return
+	}
+	s, err := h.service.UpdateSkipSettings(c.Request.Context(), queueID, c.GetInt64("user_id"), model.SkipSettings{
+		Fallback:   req.Fallback,
+		N:          req.N,
+		MaxReturns: req.MaxReturns,
+	})
+	if err != nil {
+		h.respondSkipError(c, err)
+		return
+	}
+	h.respondSkipSettings(c, s)
 }
 
 // SetQRType: PUT /api/v1/queues/:queue_id/qr/type — set mode statis/dinamik.

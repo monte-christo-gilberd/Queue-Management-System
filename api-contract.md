@@ -164,8 +164,18 @@ Memanggil tiket `waiting` pertama dan menandainya `completed`. Hanya owner.
 ```
 Error: 404 `NOT_FOUND` (bukan owner), 409 `QUEUE_EMPTY` (tidak ada yang menunggu).
 
+### GET /api/v1/queues/:queue_id/settings/skip
+Pengaturan Skip antrian. Hanya owner. Respons: `{ "data": { "fallback": "remove|back|after_n", "n": null|int, "max_returns": int } }`. Default `remove`, `n` null, `max_returns` 1.
+
+### PUT /api/v1/queues/:queue_id/settings/skip
+Body `{ "fallback": "remove|back|after_n", "n": int, "max_returns": int }`. Hanya owner dengan langganan aktif pada antrian yang belum ditutup. `n` wajib ≥ 1 untuk `after_n` dan diabaikan untuk mode lain. `max_returns` ≥ 1: berapa kali satu tiket boleh dikembalikan sebelum menjadi `skipped` permanen.
+- `remove`: nomor langsung `skipped`.
+- `back`: kembali `waiting` di urutan paling belakang.
+- `after_n`: kembali `waiting` setelah N tiket yang sedang menunggu (dihitung setelah tiket berikutnya dipanggil); bila yang menunggu kurang dari N, ke paling belakang. Bila jarak `sort_key` habis, tiket waiting dinomori ulang otomatis.
+Error: 400 `BAD_REQUEST` (mode tidak dikenal, N atau `max_returns` < 1), 402 `SUBSCRIPTION_INACTIVE`, 403 (bukan owner), 409 `QUEUE_CLOSED`, 404 `NOT_FOUND`.
+
 ### POST /api/v1/queues/:queue_id/skip
-Melewati nomor yang sedang dilayani (tiket `completed` dengan `called_at` terbaru) lalu langsung memanggil tiket `waiting` pertama, dalam satu transaksi. Hanya owner. Tiket yang dilewati menjadi `skipped`, `skip_count` +1, `completed_at` dikosongkan (`called_at` tetap). Customer yang dilewati belum bisa kembali.
+Melewati nomor yang sedang dilayani (tiket `completed` dengan `called_at` terbaru) lalu langsung memanggil tiket `waiting` pertama, dalam satu transaksi. Hanya owner. `skip_count` +1 dan `completed_at` dikosongkan. Nasib tiket yang dilewati mengikuti pengaturan Skip antrian (lihat `settings/skip`): `remove` atau batas `max_returns` tercapai menjadi `skipped` permanen (`called_at` tetap); `back`/`after_n` mengembalikannya ke `waiting` di posisi baru (`called_at` dan `called_counter_id` dikosongkan).
 
 200: objek tiket yang baru dipanggil (sama seperti Next), `status` = `"completed"`.
 Error: 404 `NOT_FOUND` (bukan owner), 409 `NOTHING_TO_SKIP` (belum ada nomor yang dilayani), 409 `QUEUE_EMPTY` (tidak ada yang menunggu; tidak ada perubahan, nomor tetap dilayani).
@@ -316,7 +326,7 @@ data: {"type":"ticket_next","queue_id":122,"payload":{...},"ts":"2026-10-17T09:2
 |---|---|---|
 | `ticket_joined` | Customer berhasil join (tiket baru) | TicketEvent |
 | `ticket_next` | Owner menekan Next | TicketEvent dengan `status` = `completed` |
-| `ticket_skipped` | Owner menekan Skip | TicketEvent dengan `status` = `skipped`; disusul `ticket_next` untuk nomor yang dipanggil |
+| `ticket_skipped` | Owner menekan Skip | TicketEvent dengan `status` akhir tiket (`skipped`, atau `waiting` bila dikembalikan); disusul `ticket_next` untuk nomor yang dipanggil |
 | `queue_updated` | Nama atau deskripsi antrian diubah | `{ "queue_id": 122 }` |
 | `queue_closed` | Antrian ditutup | `{ "queue_id": 122 }` |
 | `queue_qr_updated` | Mode QR diubah atau token statis diganti | `{ "queue_id": 122 }` |

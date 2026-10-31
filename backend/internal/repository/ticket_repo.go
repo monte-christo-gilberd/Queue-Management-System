@@ -184,6 +184,132 @@ func (r *TicketRepository) CurrentServing(
 	return t, nil
 }
 
+// SkipSettings membaca pengaturan skip antrian di dalam transaksi yang sama dengan Skip.
+func (r *TicketRepository) SkipSettings(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID int64,
+) (model.SkipSettings, error) {
+	var s model.SkipSettings
+	const query = `
+		SELECT skip_fallback, COALESCE(skip_fallback_n, 0) AS skip_fallback_n, skip_max_returns
+		FROM queue_settings
+		WHERE queue_id = $1
+	`
+	err := tx.GetContext(ctx, &s, query, queueID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.DefaultSkipSettings(), nil
+	}
+	if err != nil {
+		return model.SkipSettings{}, err
+	}
+	return s, nil
+}
+
+// WaitingSortKeys: sort_key tiket waiting, terkecil dulu, paling banyak limit.
+func (r *TicketRepository) WaitingSortKeys(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID int64,
+	limit int,
+) ([]int64, error) {
+	keys := []int64{}
+	err := tx.SelectContext(
+		ctx,
+		&keys,
+		`SELECT sort_key FROM tickets WHERE queue_id=$1 AND status='waiting' ORDER BY sort_key ASC LIMIT $2`,
+		queueID,
+		limit,
+	)
+	return keys, err
+}
+
+// SortKeyTaken: apakah sort_key sudah dipakai tiket mana pun di antrian ini (UNIQUE berlaku semua status).
+func (r *TicketRepository) SortKeyTaken(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID,
+	sortKey int64,
+) (bool, error) {
+	var taken bool
+	err := tx.GetContext(
+		ctx,
+		&taken,
+		`SELECT EXISTS (SELECT 1 FROM tickets WHERE queue_id=$1 AND sort_key=$2)`,
+		queueID,
+		sortKey,
+	)
+	return taken, err
+}
+
+// RequeueSkipped mengembalikan tiket yang dilewati ke waiting di sort_key baru. skip_count naik 1;
+// penanda "sudah dipanggil" dikosongkan supaya tiket diperlakukan seperti tiket menunggu biasa.
+func (r *TicketRepository) RequeueSkipped(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID,
+	sortKey int64,
+) error {
+	const query = `
+		UPDATE tickets
+		SET status='waiting', skip_count=skip_count+1, sort_key=$2,
+			completed_at=NULL, called_at=NULL, called_counter_id=NULL
+		WHERE id=$1
+	`
+	result, err := tx.ExecContext(ctx, query, ticketID, sortKey)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
+}
+
+// RebalanceWaiting menomori ulang sort_key tiket waiting dengan jarak gap, urutan tetap. Kunci baru
+// dimulai di atas sort_key terbesar mana pun supaya tidak bentrok dengan tiket non-waiting. Dua langkah
+// (negasi lalu isi) karena UNIQUE (queue_id, sort_key) dicek per baris.
+func (r *TicketRepository) RebalanceWaiting(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID,
+	gap int64,
+) error {
+	var base int64
+	if err := tx.GetContext(
+		ctx,
+		&base,
+		`SELECT COALESCE(MAX(sort_key), 0) FROM tickets WHERE queue_id=$1`,
+		queueID,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE tickets SET sort_key = -sort_key WHERE queue_id=$1 AND status='waiting'`,
+		queueID,
+	); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(
+		ctx,
+		`UPDATE tickets t SET sort_key = $2 + o.rn * $3
+		 FROM (
+			SELECT id, ROW_NUMBER() OVER (ORDER BY sort_key DESC) AS rn
+			FROM tickets WHERE queue_id=$1 AND status='waiting'
+		 ) o
+		 WHERE t.id = o.id`,
+		queueID,
+		base,
+		gap,
+	)
+	return err
+}
+
 // MarkSkipped mengubah tiket yang sedang dilayani menjadi skipped; called_at dipertahankan.
 func (r *TicketRepository) MarkSkipped(
 	ctx context.Context,

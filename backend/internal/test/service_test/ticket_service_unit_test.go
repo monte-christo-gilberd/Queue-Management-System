@@ -6,6 +6,7 @@ import (
 	"qms/internal/dto"
 	"qms/internal/model"
 	"qms/internal/service"
+	"sort"
 	"sync"
 	"testing"
 
@@ -401,4 +402,83 @@ func TestSpec_Skip_CustomerIsDenied(t *testing.T) {
 
 	_, err := env.ts.SkipTicket(ctx, env.queueID, specCustomerA)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
+}
+
+func setSkip(env *specEnv, s model.SkipSettings) {
+	env.tickets.skipSettings = map[int64]model.SkipSettings{env.queueID: s}
+}
+
+func joinN(env *specEnv, n int) {
+	ctx := context.Background()
+	for _, c := range []int64{specCustomerA, specCustomerB, specCustomerC}[:n] {
+		_, _ = env.ts.JoinQueue(ctx, env.queueID, c)
+	}
+}
+
+func waitingNumbers(t *testing.T, env *specEnv) []int {
+	all, err := env.ts.ListTickets(context.Background(), env.queueID, specOwnerID, []string{"waiting"})
+	require.NoError(t, err)
+	sort.Slice(all, func(i, j int) bool { return all[i].SortKey < all[j].SortKey })
+	out := []int{}
+	for _, x := range all {
+		out = append(out, x.TicketNumber)
+	}
+	return out
+}
+
+func TestSkipFallback_BackRequeuesAtTheEnd(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	setSkip(env, model.SkipSettings{Fallback: model.SkipFallbackBack, MaxReturns: 1})
+	joinN(env, 3)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	require.NoError(t, err)
+	assert.Equal(t, []int{3, 1}, waitingNumbers(t, env))
+}
+
+func TestSkipFallback_AfterNPlacesBehindN(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	setSkip(env, model.SkipSettings{Fallback: model.SkipFallbackAfterN, N: 1, MaxReturns: 1})
+	joinN(env, 3)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	require.NoError(t, err)
+	// 2 dipanggil; sisa menunggu [3]; tiket 1 mundur 1 -> [3,1]
+	assert.Equal(t, []int{3, 1}, waitingNumbers(t, env))
+}
+
+func TestSkipFallback_AfterNMoreThanWaitingGoesToBack(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	setSkip(env, model.SkipSettings{Fallback: model.SkipFallbackAfterN, N: 5, MaxReturns: 1})
+	joinN(env, 3)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	require.NoError(t, err)
+	assert.Equal(t, []int{3, 1}, waitingNumbers(t, env))
+}
+
+func TestSkipFallback_MaxReturnsMakesSkipPermanent(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	setSkip(env, model.SkipSettings{Fallback: model.SkipFallbackBack, MaxReturns: 1})
+	joinN(env, 3)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID) // 1 kembali, 2 dilayani
+	require.NoError(t, err)
+	_, err = env.ts.SkipTicket(ctx, env.queueID, specOwnerID) // 2 kembali (skip_count 0), 3 dilayani
+	require.NoError(t, err)
+	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0) // 1 dilayani
+	require.NoError(t, err)
+	_, err = env.ts.SkipTicket(ctx, env.queueID, specOwnerID) // 1 sudah 1x kembali -> permanen
+	require.NoError(t, err)
+
+	sk, _ := env.ts.ListTickets(ctx, env.queueID, specOwnerID, []string{"skipped"})
+	require.Len(t, sk, 1)
+	assert.Equal(t, 1, sk[0].TicketNumber)
 }

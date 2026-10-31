@@ -44,6 +44,35 @@ type TicketRepository interface {
 		tx *sqlx.Tx,
 		ticketID int64,
 	) error
+	SkipSettings(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		queueID int64,
+	) (model.SkipSettings, error)
+	WaitingSortKeys(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		queueID int64,
+		limit int,
+	) ([]int64, error)
+	SortKeyTaken(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		queueID,
+		sortKey int64,
+	) (bool, error)
+	RequeueSkipped(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		ticketID,
+		sortKey int64,
+	) error
+	RebalanceWaiting(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		queueID,
+		gap int64,
+	) error
 	ListByQueue(
 		ctx context.Context,
 		queueID int64,
@@ -333,6 +362,8 @@ func (s *TicketService) SkipTicket(
 	}
 
 	var skipped, called model.Ticket
+	var requeued bool
+	var newSortKey int64
 	err = s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
 		var err error
 		skipped, err = s.repository.CurrentServing(ctx, tx, queueID)
@@ -349,18 +380,37 @@ func (s *TicketService) SkipTicket(
 		if err != nil {
 			return err
 		}
-		if err := s.repository.MarkSkipped(ctx, tx, skipped.ID); err != nil {
+		if err := s.repository.MarkCompleted(ctx, tx, called.ID, counter.ID); err != nil {
 			return err
 		}
-		return s.repository.MarkCompleted(ctx, tx, called.ID, counter.ID)
+		settings, err := s.repository.SkipSettings(ctx, tx, queueID)
+		if err != nil {
+			return err
+		}
+		// Nomor yang sudah dikembalikan sebanyak batas menjadi skipped permanen.
+		if settings.Fallback == model.SkipFallbackRemove || skipped.SkipCount >= settings.MaxReturns {
+			return s.repository.MarkSkipped(ctx, tx, skipped.ID)
+		}
+		sortKey, err := s.requeueSortKey(ctx, tx, queueID, settings)
+		if err != nil {
+			return err
+		}
+		requeued = true
+		newSortKey = sortKey
+		return s.repository.RequeueSkipped(ctx, tx, skipped.ID, sortKey)
 	})
 	if err != nil {
 		return model.Ticket{}, err
 	}
 
-	skipped.Status = "skipped"
 	skipped.SkipCount++
 	skipped.CompletedAt = sql.NullTime{}
+	if requeued {
+		skipped.Status = "waiting"
+		skipped.SortKey = newSortKey
+	} else {
+		skipped.Status = "skipped"
+	}
 
 	called.Status = "completed"
 	called.CompletedAt = sql.NullTime{Time: time.Now(), Valid: true}
@@ -374,6 +424,49 @@ func (s *TicketService) SkipTicket(
 	notifyEvent(s.notifier, queueID, EventTicketNext, dto.NewTicketEvent(called))
 
 	return called, nil
+}
+
+// requeueSortKey: sort_key untuk tiket yang dikembalikan. Dipanggil setelah tiket berikutnya diambil,
+// jadi "mundur N" dihitung terhadap antrian yang tersisa. Bila yang menunggu kurang dari N, jatuh ke belakang.
+func (s *TicketService) requeueSortKey(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID int64,
+	settings model.SkipSettings,
+) (int64, error) {
+	back := func() (int64, error) {
+		max, err := s.repository.MaxWaitingSortKey(ctx, tx, queueID)
+		return max + SortKeyGap, err
+	}
+	if settings.Fallback != model.SkipFallbackAfterN || settings.N < 1 {
+		return back()
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		keys, err := s.repository.WaitingSortKeys(ctx, tx, queueID, settings.N+1)
+		if err != nil {
+			return 0, err
+		}
+		if len(keys) <= settings.N {
+			return back()
+		}
+		lower, upper := keys[settings.N-1], keys[settings.N]
+		mid := lower + (upper-lower)/2
+		if mid > lower {
+			taken, err := s.repository.SortKeyTaken(ctx, tx, queueID, mid)
+			if err != nil {
+				return 0, err
+			}
+			if !taken {
+				return mid, nil
+			}
+		}
+		// Jarak habis atau bentrok: nomori ulang tiket waiting lalu hitung lagi.
+		if err := s.repository.RebalanceWaiting(ctx, tx, queueID, SortKeyGap); err != nil {
+			return 0, err
+		}
+	}
+	return 0, apperror.ErrRetryExhausted
 }
 
 // ListTickets mengembalikan tiket queue milik requester. statuses kosong = semua status.

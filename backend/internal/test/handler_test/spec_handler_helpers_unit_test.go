@@ -143,6 +143,16 @@ func (m *specQueueSvc) CloseQueue(_ context.Context, queueID, requesterID int64)
 	return specErr(r, 0)
 }
 
+func (m *specQueueSvc) GetSkipSettings(_ context.Context, queueID, requesterID int64) (model.SkipSettings, error) {
+	r := m.call("GetSkipSettings", queueID, requesterID)
+	return specRet(r, 0).(model.SkipSettings), specErr(r, 1)
+}
+
+func (m *specQueueSvc) UpdateSkipSettings(_ context.Context, queueID, requesterID int64, s model.SkipSettings) (model.SkipSettings, error) {
+	r := m.call("UpdateSkipSettings", queueID, requesterID, s)
+	return specRet(r, 0).(model.SkipSettings), specErr(r, 1)
+}
+
 // specTicketSvc: stub untuk handler.TicketService. Mengembalikan nilai yang sudah ditentukan dan mencatat argumen.
 type specTicketSvc struct {
 	mu sync.Mutex

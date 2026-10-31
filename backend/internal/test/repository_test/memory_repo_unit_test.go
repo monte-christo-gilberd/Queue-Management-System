@@ -113,6 +113,14 @@ func (m *memQueues) CreateQueueSettingsIfMissing(_ context.Context, id int64) er
 	return nil
 }
 
+func (m *memQueues) GetSkipSettings(_ context.Context, id int64) (model.SkipSettings, error) {
+	return model.DefaultSkipSettings(), nil
+}
+
+func (m *memQueues) UpdateSkipSettings(_ context.Context, id int64, s model.SkipSettings) error {
+	return nil
+}
+
 func (m *memQueues) UpdateQRType(_ context.Context, id int64, qrType string) error {
 	return nil
 }

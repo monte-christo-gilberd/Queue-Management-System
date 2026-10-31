@@ -30,7 +30,7 @@ function served(id: number, completedAt: string, overrides: Partial<Ticket> = {}
 }
 
 test('antrian kosong: tidak ada yang dilayani, tidak ada berikutnya (4.3 langkah 4)', () => {
-  assert.deepEqual(deriveQueueView([]), { previous: null, current: null, next: null, upcoming: [] });
+  assert.deepEqual(deriveQueueView([]), { previous: null, current: null, skipped: [], next: null, upcoming: [] });
 });
 
 test('antrian belum dimulai: nomor pertama menjadi berikutnya, sisanya upcoming sesuai urutan bergabung (US-14)', () => {

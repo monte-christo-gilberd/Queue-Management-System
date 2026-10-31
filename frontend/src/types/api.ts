@@ -85,6 +85,14 @@ export type QueueStatus = {
   next_number: number | null;
 };
 
+/** Pengaturan nomor yang dilewati (Skip). `n` hanya terisi untuk `after_n`. */
+export type SkipFallback = 'remove' | 'back' | 'after_n';
+export type SkipSettings = {
+  fallback: SkipFallback;
+  n: number | null;
+  max_returns: number;
+};
+
 /** Respons QR owner. QR digambar frontend dari `join_url`. */
 export type QueueQR = {
   action: 'queue_qr';

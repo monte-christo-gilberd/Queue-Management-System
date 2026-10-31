@@ -16,3 +16,23 @@ type QueueSettings struct {
 	QRType        string         `db:"qr_type"`
 	QRCurrentCode sql.NullString `db:"qr_current_code"`
 }
+
+// Nilai queue_settings.skip_fallback.
+const (
+	SkipFallbackRemove = "remove"
+	SkipFallbackBack   = "back"
+	SkipFallbackAfterN = "after_n"
+)
+
+// SkipSettings: apa yang terjadi pada nomor yang dilewati. N hanya berarti untuk after_n (0 = tidak ada).
+// MaxReturns = berapa kali satu tiket boleh dikembalikan sebelum menjadi skipped permanen.
+type SkipSettings struct {
+	Fallback   string `db:"skip_fallback"`
+	N          int    `db:"skip_fallback_n"`
+	MaxReturns int    `db:"skip_max_returns"`
+}
+
+// DefaultSkipSettings: perilaku sebelum pengaturan ada (nomor yang dilewati tidak kembali).
+func DefaultSkipSettings() SkipSettings {
+	return SkipSettings{Fallback: SkipFallbackRemove, MaxReturns: 1}
+}

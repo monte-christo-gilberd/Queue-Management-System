@@ -8,6 +8,8 @@ import type { TimelineItem } from '@/components/QueueTimeline';
 import ResponsiveScreenLayout from '@/components/layout/ResponsiveScreenLayout';
 import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useQueueQR } from '@/hooks/use-queue-qr';
+import { useSkipSettings } from '@/hooks/use-skip-settings';
+import { SkipSettingsCard } from '@/components/SkipSettingsCard';
 import { useQueueDetail } from '@/hooks/use-queues';
 import { describeQueueError } from '@/lib/queue-errors';
 import { closeQueue, updateQueue } from '@/lib/queues';
@@ -64,6 +66,7 @@ function QueueDetailEditor({
 
   // QR antrian: token statis/dinamis + countdown + penggantian kode (qr-service lewat backend).
   const qr = useQueueQR(queue.id);
+  const skipCfg = useSkipSettings(queue.id);
 
   // Papan tiket: daftar tiket + SKIP/NEXT. Antrian ditutup dari sini memuat ulang detail.
   const board = useQueueBoard(queue.id, () => void reload());
@@ -137,6 +140,18 @@ function QueueDetailEditor({
           onRefresh={qr.reload}
           onRetry={qr.refresh}
         />
+      }
+      skipSettingsCard={
+        skipCfg.settings ? (
+          <SkipSettingsCard
+            settings={skipCfg.settings}
+            disabled={queue.status === 'closed'}
+            saving={skipCfg.saving}
+            saved={skipCfg.saved}
+            error={skipCfg.error}
+            onSave={(v) => void skipCfg.save(v)}
+          />
+        ) : null
       }
       onCloseQueue={close}
       closing={closing}

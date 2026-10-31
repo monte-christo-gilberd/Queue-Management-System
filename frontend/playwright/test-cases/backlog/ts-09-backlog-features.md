@@ -12,7 +12,7 @@
 | TC-09-06 | Counter per counter | 4.11, US-4, US-19 (Scope #11, P2) | Satu counter default per antrian sudah ada. CRUD counter dan halamannya ditunda ke Tier 2 |
 | TC-09-07 | Menyisipkan customer di posisi tertentu | 4.12, US-10 (Scope #12, P3) | Belum ada |
 | TC-09-08 | QR dinamis dan batas harian | 4.13, US-5 (Scope #13, P3) | QR dinamis (TTL 120 detik) sudah ada dan diuji di ts-05. Batas harian belum ada |
-| TC-09-09 | Pengembalian otomatis setelah skip | 4.14, US-17 (Scope #14, P3) | Belum ada |
+| TC-09-09 | Pengembalian otomatis setelah skip | 4.14, US-17 (Scope #14, P3) | Sebagian: pengembalian ke antrian (`back`, `after_n`) dan batas `max_returns` sudah ada (TS-12); belum ada pengembalian otomatis tanpa aksi owner |
 | TC-09-10 | Riwayat dan ekspor CSV/Excel | 4.15, US-13 (Scope #15, P4) | Belum ada |
 | TC-09-11 | Catatan per nomor | 4.16, US-12 (Scope #16, P4) | Belum ada |
 | TC-09-12 | Login dengan Google | 4.17, US-20 (Scope #17, P4) | Belum ada (OAuth) |

@@ -637,3 +637,64 @@ func TestSkipTicket_AgainstPostgres(t *testing.T) {
 	require.NotNil(t, st.CurrentNumber)
 	assert.Equal(t, 3, *st.CurrentNumber)
 }
+
+func TestSkipFallback_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "fo@b.c", time.Now().Add(time.Hour))
+	q := createQueue(t, db, owner, "Q")
+
+	ticketRepo := repository.NewTicketRepository(db)
+	queueRepo := repository.NewQueueRepository(db)
+	txRunner := database.NewSqlxTxRunner(db)
+	queueSvc := service.NewQueueService(queueRepo, repository.NewSubscriptionChecker(db), txRunner).
+		WithTicketHolderChecker(ticketRepo)
+	svc := service.NewTicketService(ticketRepo, txRunner).WithQueueGuard(queueSvc)
+
+	users := []int64{}
+	for i := 0; i < 8; i++ {
+		users = append(users, seedUser(t, db, fmt.Sprintf("f%d@b.c", i)))
+	}
+	for _, u := range users {
+		_, err := svc.JoinQueue(ctx, q.ID, u)
+		require.NoError(t, err)
+	}
+
+	_, err := queueSvc.UpdateSkipSettings(ctx, q.ID, owner, model.SkipSettings{Fallback: "after_n", N: 1, MaxReturns: 50})
+	require.NoError(t, err)
+	got, err := queueSvc.GetSkipSettings(ctx, q.ID, owner)
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.N)
+
+	// Persist ulang ke Postgres lalu panggil nomor 1 dan skip berulang di titik sisip yang sama.
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	require.NoError(t, err)
+	for i := 0; i < 25; i++ {
+		_, err = svc.SkipTicket(ctx, q.ID, owner)
+		require.NoError(t, err, "skip ke-%d", i)
+	}
+
+	waiting, err := svc.ListTickets(ctx, q.ID, owner, []string{"waiting"})
+	require.NoError(t, err)
+	seen := map[int64]bool{}
+	for _, w := range waiting {
+		assert.False(t, seen[w.SortKey], "sort_key kembar")
+		seen[w.SortKey] = true
+	}
+	assert.Len(t, waiting, 7)
+
+	// back: tiket yang dilewati ke belakang.
+	_, err = queueSvc.UpdateSkipSettings(ctx, q.ID, owner, model.SkipSettings{Fallback: "back", MaxReturns: 50})
+	require.NoError(t, err)
+	served, err := svc.SkipTicket(ctx, q.ID, owner)
+	require.NoError(t, err)
+	waiting, _ = svc.ListTickets(ctx, q.ID, owner, []string{"waiting"})
+	last := waiting[0]
+	for _, w := range waiting {
+		if w.SortKey > last.SortKey {
+			last = w
+		}
+	}
+	assert.NotEqual(t, served.ID, last.ID)
+	assert.Equal(t, "waiting", last.Status)
+}

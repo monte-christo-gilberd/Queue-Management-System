@@ -42,6 +42,15 @@ type QueueRepositoryInterface interface {
 		ctx context.Context,
 		queueID int64,
 	) error
+	GetSkipSettings(
+		ctx context.Context,
+		queueID int64,
+	) (model.SkipSettings, error)
+	UpdateSkipSettings(
+		ctx context.Context,
+		queueID int64,
+		settings model.SkipSettings,
+	) error
 	UpdateQRType(
 		ctx context.Context,
 		queueID int64,

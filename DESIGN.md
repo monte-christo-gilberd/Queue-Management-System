@@ -98,7 +98,7 @@ Batasan penting di `tickets`:
             join                 next
   (baru) ───────────► waiting ───────────► completed
                          │
-                         └── (skipped: lewat POST /skip; cancelled: tersedia di skema, belum ada endpoint)
+                         └── (skipped: lewat POST /skip, atau kembali ke waiting sesuai `queue_settings.skip_fallback` (`remove|back|after_n`, `skip_fallback_n`, `skip_max_returns`); cancelled: tersedia di skema, belum ada endpoint)
 ```
 
 - **Join ulang** (user yang sudah punya tiket di antrian itu): backend mengembalikan **tiket yang sudah ada** dengan 200.

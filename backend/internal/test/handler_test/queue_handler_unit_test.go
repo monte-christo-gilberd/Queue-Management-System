@@ -25,6 +25,8 @@ func specQueueEngine(svc *specQueueSvc, userID int64) *gin.Engine {
 	e.GET("/queues/:queue_id", h.Get)
 	e.PUT("/queues/:queue_id", h.Update)
 	e.POST("/queues/:queue_id/close", h.Close)
+	e.GET("/queues/:queue_id/settings/skip", h.GetSkipSettings)
+	e.PUT("/queues/:queue_id/settings/skip", h.UpdateSkipSettings)
 	return e
 }
 
@@ -222,4 +224,53 @@ func TestSpec_ListQueues_EmptyListIsJSONArray(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	data := specDecode(t, w)["data"].(map[string]interface{})
 	assert.Equal(t, []interface{}{}, data["queues"])
+}
+
+func TestSkipSettings_GetReturnsNullNWhenUnset(t *testing.T) {
+	svc := newSpecQueueSvc(t)
+	svc.On("GetSkipSettings", int64(1), specOwner).Return(model.SkipSettings{Fallback: "remove", MaxReturns: 1}, nil)
+	w := specRequest(specQueueEngine(svc, specOwner), http.MethodGet, "/queues/1/settings/skip", "")
+
+	require.Equal(t, http.StatusOK, w.Code)
+	data := specDecode(t, w)["data"].(map[string]interface{})
+	assert.Equal(t, "remove", data["fallback"])
+	assert.Nil(t, data["n"])
+	assert.Equal(t, float64(1), data["max_returns"])
+}
+
+func TestSkipSettings_PutAfterN(t *testing.T) {
+	svc := newSpecQueueSvc(t)
+	in := model.SkipSettings{Fallback: "after_n", N: 2, MaxReturns: 3}
+	svc.On("UpdateSkipSettings", int64(1), specOwner, in).Return(in, nil)
+	w := specRequest(specQueueEngine(svc, specOwner), http.MethodPut, "/queues/1/settings/skip", `{"fallback":"after_n","n":2,"max_returns":3}`)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	data := specDecode(t, w)["data"].(map[string]interface{})
+	assert.Equal(t, float64(2), data["n"])
+}
+
+func TestSkipSettings_ErrorMapping(t *testing.T) {
+	cases := []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{apperror.ErrInvalidSkipSettings, http.StatusBadRequest, "BAD_REQUEST"},
+		{apperror.ErrSubscriptionInactive, http.StatusPaymentRequired, "SUBSCRIPTION_INACTIVE"},
+		{apperror.ErrQueueClosed, http.StatusConflict, "QUEUE_CLOSED"},
+		{apperror.ErrNotFound, http.StatusNotFound, "NOT_FOUND"},
+	}
+	for _, c := range cases {
+		svc := newSpecQueueSvc(t)
+		in := model.SkipSettings{Fallback: "back", MaxReturns: 1}
+		svc.On("UpdateSkipSettings", int64(1), specOwner, in).Return(model.SkipSettings{}, c.err)
+		w := specRequest(specQueueEngine(svc, specOwner), http.MethodPut, "/queues/1/settings/skip", `{"fallback":"back","max_returns":1}`)
+		assert.Equal(t, c.status, w.Code)
+		assert.Equal(t, c.code, specErrorCode(t, w))
+	}
+}
+
+func TestSkipSettings_BadBodyIs400(t *testing.T) {
+	w := specRequest(specQueueEngine(newSpecQueueSvc(t), specOwner), http.MethodPut, "/queues/1/settings/skip", `nope`)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

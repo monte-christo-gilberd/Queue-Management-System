@@ -27,6 +27,8 @@ type QueueHandler interface {
 	GetQR(c *gin.Context)
 	SetQRType(c *gin.Context)
 	ReplaceQR(c *gin.Context)
+	GetSkipSettings(c *gin.Context)
+	UpdateSkipSettings(c *gin.Context)
 }
 
 type SSEHandler interface {

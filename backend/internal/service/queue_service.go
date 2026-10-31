@@ -43,6 +43,15 @@ type QueueRepository interface {
 		ctx context.Context,
 		queueID int64,
 	) error
+	GetSkipSettings(
+		ctx context.Context,
+		queueID int64,
+	) (model.SkipSettings, error)
+	UpdateSkipSettings(
+		ctx context.Context,
+		queueID int64,
+		settings model.SkipSettings,
+	) error
 	UpdateQRType(
 		ctx context.Context,
 		queueID int64,
@@ -316,6 +325,56 @@ func (s *QueueService) UpdateQueue(
 		},
 	)
 	return nil
+}
+
+// GetSkipSettings: pengaturan skip antrian (hanya owner).
+func (s *QueueService) GetSkipSettings(
+	ctx context.Context,
+	queueID,
+	requesterID int64,
+) (model.SkipSettings, error) {
+	if _, err := s.validateOwnership(ctx, queueID, requesterID); err != nil {
+		return model.SkipSettings{}, err
+	}
+	return s.repository.GetSkipSettings(ctx, queueID)
+}
+
+// UpdateSkipSettings menyimpan pengaturan skip. Mode harus dikenal, N >= 1 untuk after_n, batas kembali >= 1.
+func (s *QueueService) UpdateSkipSettings(
+	ctx context.Context,
+	queueID,
+	requesterID int64,
+	settings model.SkipSettings,
+) (model.SkipSettings, error) {
+	if err := s.isSubscribed(ctx, requesterID); err != nil {
+		return model.SkipSettings{}, err
+	}
+	queue, err := s.validateOwnership(ctx, queueID, requesterID)
+	if err != nil {
+		return model.SkipSettings{}, err
+	}
+	if queue.Status == "closed" {
+		return model.SkipSettings{}, apperror.ErrQueueClosed
+	}
+
+	switch settings.Fallback {
+	case model.SkipFallbackRemove, model.SkipFallbackBack:
+		settings.N = 0
+	case model.SkipFallbackAfterN:
+		if settings.N < 1 {
+			return model.SkipSettings{}, apperror.ErrInvalidSkipSettings
+		}
+	default:
+		return model.SkipSettings{}, apperror.ErrInvalidSkipSettings
+	}
+	if settings.MaxReturns < 1 {
+		return model.SkipSettings{}, apperror.ErrInvalidSkipSettings
+	}
+
+	if err := s.repository.UpdateSkipSettings(ctx, queueID, settings); err != nil {
+		return model.SkipSettings{}, err
+	}
+	return settings, nil
 }
 
 func (s *QueueService) CloseQueue(

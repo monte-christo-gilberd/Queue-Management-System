@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { useIsWide } from "@/hooks/use-is-wide";
 import type { Queue } from "@/types/api";
@@ -46,6 +46,9 @@ export type QueueDetailProps = {
   /** Slot kartu QR (dirender route dari `useQueueQR`). */
   qrCard?: React.ReactNode;
 
+  /** Slot kartu pengaturan Skip (dirender route dari `useSkipSettings`). */
+  skipSettingsCard?: React.ReactNode;
+
   /** Tutup antrian (POST /close). Dipanggil setelah pengguna mengonfirmasi di popup. */
   onCloseQueue?: () => void;
   closing?: boolean;
@@ -70,6 +73,7 @@ export default function QueueDetail({
   nextLoading = false,
   onSubmitNote,
   qrCard,
+  skipSettingsCard,
   onCloseQueue,
   closing = false,
 }: QueueDetailProps) {
@@ -81,8 +85,6 @@ export default function QueueDetail({
   const [noteOpen, setNoteOpen] = useState(false);
   const [ticketsOpen, setTicketsOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
-  // TODO: backend belum mendukung pengaturan antrian; toggle ini hanya tampilan.
-  const [loopEnabled, setLoopEnabled] = useState(false);
 
   return (
     <ResponsiveScreenLayout
@@ -149,17 +151,7 @@ export default function QueueDetail({
             ) : null}
           </View>
 
-          {/* TODO: backend belum mendukung pengaturan antrian; toggle hanya tampilan. */}
-          <View className="gap-3 rounded-card border border-line p-3.5">
-            <Text className="text-[12px] font-semibold text-muted">Pengaturan antrian</Text>
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1 gap-0.5 pr-3">
-                <Text className="text-[14px] font-bold text-foreground">Sistem pengulangan antrian</Text>
-                <Text className="text-[12px] text-muted">mundur 2 kali · ke belakang · langsung batal</Text>
-              </View>
-              <Switch value={loopEnabled} onValueChange={setLoopEnabled} />
-            </View>
-          </View>
+          {skipSettingsCard}
 
           {isClosed ? (
             <Text className="text-[13px] font-bold text-muted">Antrian ini sudah ditutup.</Text>

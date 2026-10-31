@@ -109,3 +109,25 @@ type SetQRTypeRequest struct {
 type NextTicketRequest struct {
 	CounterID int64 `json:"counter_id"`
 }
+
+// SkipSettingsRequest: body PUT /queues/:id/settings/skip.
+type SkipSettingsRequest struct {
+	Fallback   string `json:"fallback"`
+	N          int    `json:"n"`
+	MaxReturns int    `json:"max_returns"`
+}
+
+type SkipSettingsResponse struct {
+	Fallback   string `json:"fallback"`
+	N          *int   `json:"n"`
+	MaxReturns int    `json:"max_returns"`
+}
+
+func NewSkipSettingsResponse(s model.SkipSettings) SkipSettingsResponse {
+	var n *int
+	if s.N > 0 {
+		v := s.N
+		n = &v
+	}
+	return SkipSettingsResponse{Fallback: s.Fallback, N: n, MaxReturns: s.MaxReturns}
+}
