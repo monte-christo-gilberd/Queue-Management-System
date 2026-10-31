@@ -29,7 +29,7 @@ export function MyTicketCard({ ticket, onOpen }: { ticket: MyTicket; onOpen: (qu
         </Text>
       </View>
       <Text className="text-[18px] font-black text-primary">
-        {formatTicketNumber(ticket.ticket_number)}
+        {formatTicketNumber(ticket.ticket_number, ticket.ticket_prefix)}
       </Text>
     </Pressable>
   );

@@ -400,12 +400,13 @@ func (m *memQueueRepo) CreateNewQueue(_ context.Context, _ *sqlx.Tx, ownerID int
 	defer m.mu.Unlock()
 	m.nextID++
 	q := model.Queue{
-		ID:        m.nextID,
-		OwnerID:   ownerID,
-		QueueName: name,
-		QueueDesc: sql.NullString{String: desc, Valid: desc != ""},
-		Status:    "active",
-		CreatedAt: time.Now(),
+		ID:           m.nextID,
+		OwnerID:      ownerID,
+		QueueName:    name,
+		QueueDesc:    sql.NullString{String: desc, Valid: desc != ""},
+		TicketPrefix: "A",
+		Status:       "active",
+		CreatedAt:    time.Now(),
 	}
 	m.queues[q.ID] = q
 	m.order = append(m.order, q.ID)
@@ -439,6 +440,18 @@ func (m *memQueueRepo) ListQueueByOwner(_ context.Context, ownerID int64, active
 		out = append(out, q)
 	}
 	return out, nil
+}
+
+func (m *memQueueRepo) SetTicketPrefix(_ context.Context, queueID int64, prefix string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	q, ok := m.queues[queueID]
+	if !ok {
+		return apperror.ErrNotFound
+	}
+	q.TicketPrefix = prefix
+	m.queues[queueID] = q
+	return nil
 }
 
 func (m *memQueueRepo) UpdateQueueDetails(_ context.Context, queueID int64, name, desc string) error {

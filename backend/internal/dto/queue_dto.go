@@ -2,27 +2,53 @@ package dto
 
 import (
 	"qms/internal/model"
+	"strings"
 	"time"
 )
+
+// DefaultTicketPrefix dipakai bila owner tidak mengisi prefix.
+const DefaultTicketPrefix = "A"
+
+// NormalizeTicketPrefix: huruf besar, 1-3 karakter A-Z/0-9. Kosong dikembalikan apa adanya (ok=true).
+func NormalizeTicketPrefix(raw string) (string, bool) {
+	p := strings.ToUpper(strings.TrimSpace(raw))
+	if p == "" {
+		return "", true
+	}
+	if len(p) > 3 {
+		return "", false
+	}
+	for _, r := range p {
+		if (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return "", false
+		}
+	}
+	return p, true
+}
 
 type CreateQueueRequest struct {
 	QueueName        string `json:"queue_name" binding:"required,no_html_tags"`
 	QueueDescription string `json:"queue_description" binding:"no_html_tags"`
+	// Opsional: 1-3 huruf/angka. Kosong = "A" (create) / tidak diubah (update).
+	TicketPrefix string `json:"ticket_prefix"`
 }
 
 type UpdateQueueRequest struct {
 	QueueName        string `json:"queue_name" binding:"required,no_html_tags"`
 	QueueDescription string `json:"queue_description" binding:"no_html_tags"`
+	// Opsional: 1-3 huruf/angka. Kosong = "A" (create) / tidak diubah (update).
+	TicketPrefix string `json:"ticket_prefix"`
 }
 
 type QueueResponse struct {
-	ID        int64      `json:"id"`
-	OwnerID   int64      `json:"owner_id"`
-	QueueName string     `json:"queue_name"`
-	QueueDesc *string    `json:"queue_desc"`
-	Status    string     `json:"status"`
-	CreatedAt time.Time  `json:"created_at"`
-	ClosedAt  *time.Time `json:"closed_at"`
+	ID           int64      `json:"id"`
+	OwnerID      int64      `json:"owner_id"`
+	QueueName    string     `json:"queue_name"`
+	QueueDesc    *string    `json:"queue_desc"`
+	TicketPrefix string     `json:"ticket_prefix"`
+	Status       string     `json:"status"`
+	CreatedAt    time.Time  `json:"created_at"`
+	ClosedAt     *time.Time `json:"closed_at"`
 }
 
 func NewQueueResponse(q model.Queue) QueueResponse {
@@ -31,34 +57,37 @@ func NewQueueResponse(q model.Queue) QueueResponse {
 		desc = &q.QueueDesc.String
 	}
 	return QueueResponse{
-		ID:        q.ID,
-		OwnerID:   q.OwnerID,
-		QueueName: q.QueueName,
-		QueueDesc: desc,
-		Status:    q.Status,
-		CreatedAt: q.CreatedAt,
-		ClosedAt:  nullTimePtr(q.ClosedAt),
+		ID:           q.ID,
+		OwnerID:      q.OwnerID,
+		QueueName:    q.QueueName,
+		QueueDesc:    desc,
+		TicketPrefix: q.TicketPrefix,
+		Status:       q.Status,
+		CreatedAt:    q.CreatedAt,
+		ClosedAt:     nullTimePtr(q.ClosedAt),
 	}
 }
 
 type PublicQueueResponse struct {
-	ID        int64      `json:"id"`
-	QueueName string     `json:"queue_name"`
-	QueueDesc *string    `json:"queue_desc"`
-	Status    string     `json:"status"`
-	CreatedAt time.Time  `json:"created_at"`
-	ClosedAt  *time.Time `json:"closed_at"`
+	ID           int64      `json:"id"`
+	QueueName    string     `json:"queue_name"`
+	QueueDesc    *string    `json:"queue_desc"`
+	TicketPrefix string     `json:"ticket_prefix"`
+	Status       string     `json:"status"`
+	CreatedAt    time.Time  `json:"created_at"`
+	ClosedAt     *time.Time `json:"closed_at"`
 }
 
 func NewPublicQueueResponse(q model.Queue) PublicQueueResponse {
 	full := NewQueueResponse(q)
 	return PublicQueueResponse{
-		ID:        full.ID,
-		QueueName: full.QueueName,
-		QueueDesc: full.QueueDesc,
-		Status:    full.Status,
-		CreatedAt: full.CreatedAt,
-		ClosedAt:  full.ClosedAt,
+		ID:           full.ID,
+		QueueName:    full.QueueName,
+		QueueDesc:    full.QueueDesc,
+		TicketPrefix: full.TicketPrefix,
+		Status:       full.Status,
+		CreatedAt:    full.CreatedAt,
+		ClosedAt:     full.ClosedAt,
 	}
 }
 

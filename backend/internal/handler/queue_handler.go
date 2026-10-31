@@ -12,6 +12,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ticketPrefixSetter: kemampuan opsional service (mengubah prefix nomor tiket).
+type ticketPrefixSetter interface {
+	SetTicketPrefix(ctx context.Context, queueID, requesterID int64, prefix string) error
+}
+
 type QueueService interface {
 	CreateQueue(
 		ctx context.Context,
@@ -111,12 +116,25 @@ func (h *QueueHandler) Create(
 		return
 	}
 
+	prefix, okPrefix := dto.NormalizeTicketPrefix(req.TicketPrefix)
+	if !okPrefix {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "ticket_prefix must be 1-3 letters or digits")
+		return
+	}
+
 	queue, err := h.service.CreateQueue(
 		c.Request.Context(),
 		requesterID,
 		req.QueueName,
 		req.QueueDescription,
 	)
+	if err == nil && prefix != "" {
+		if setter, ok := h.service.(ticketPrefixSetter); ok {
+			if err = setter.SetTicketPrefix(c.Request.Context(), queue.ID, requesterID, prefix); err == nil {
+				queue.TicketPrefix = prefix
+			}
+		}
+	}
 	if errors.Is(err, apperror.ErrSubscriptionInactive) {
 		respondError(
 			c,
@@ -293,6 +311,12 @@ func (h *QueueHandler) Update(
 		return
 	}
 
+	prefix, okPrefix := dto.NormalizeTicketPrefix(req.TicketPrefix)
+	if !okPrefix {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "ticket_prefix must be 1-3 letters or digits")
+		return
+	}
+
 	err = h.service.UpdateQueue(
 		c.Request.Context(),
 		queueID,
@@ -300,6 +324,11 @@ func (h *QueueHandler) Update(
 		req.QueueName,
 		req.QueueDescription,
 	)
+	if err == nil && prefix != "" {
+		if setter, ok := h.service.(ticketPrefixSetter); ok {
+			err = setter.SetTicketPrefix(c.Request.Context(), queueID, requesterID, prefix)
+		}
+	}
 	if errors.Is(err, apperror.ErrSubscriptionInactive) {
 		respondError(
 			c,

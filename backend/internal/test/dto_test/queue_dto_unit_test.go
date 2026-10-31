@@ -138,3 +138,28 @@ func TestSpec_LoginRequest_PrefersIdentifierThenEmail(t *testing.T) {
 	assert.Equal(t, "budi@x.com", dto.LoginRequest{Email: "budi@x.com"}.Login())
 	assert.Equal(t, "", dto.LoginRequest{}.Login())
 }
+
+func TestNormalizeTicketPrefix(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{"", "", true},
+		{"  ", "", true},
+		{"a", "A", true},
+		{" vip ", "VIP", true},
+		{"B2", "B2", true},
+		{"ABCD", "", false},
+		{"A-", "", false},
+		{"a b", "", false},
+		{"<b>", "", false},
+		{"é", "", false},
+	}
+	for _, c := range cases {
+		got, ok := dto.NormalizeTicketPrefix(c.in)
+		if ok != c.ok || got != c.want {
+			t.Fatalf("NormalizeTicketPrefix(%q) = (%q,%v), want (%q,%v)", c.in, got, ok, c.want, c.ok)
+		}
+	}
+}

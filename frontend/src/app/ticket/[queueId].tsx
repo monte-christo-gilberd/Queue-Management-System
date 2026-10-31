@@ -30,10 +30,10 @@ function TicketQueueContent() {
     <CustomerQueueScreen
       queueName={queue?.queue_name ?? ''}
       queueDescription={queue?.queue_desc ?? null}
-      ticketNumber={ticket ? formatTicketNumber(ticket.ticket_number) : null}
+      ticketNumber={ticket ? formatTicketNumber(ticket.ticket_number, queue?.ticket_prefix) : null}
       ticketStatus={(ticket?.status as CustomerTicketStatus | undefined) ?? null}
       servingNow={ticket != null && !closed && status?.current_number === ticket.ticket_number}
-      currentNumber={status?.current_number != null ? formatTicketNumber(status.current_number) : null}
+      currentNumber={status?.current_number != null ? formatTicketNumber(status.current_number, queue?.ticket_prefix) : null}
       counterName={status?.current_counter_name ?? null}
       waitingAhead={status?.waiting_ahead ?? null}
       closed={closed}

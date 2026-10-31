@@ -20,7 +20,7 @@ Dokumen lain:
 - Mode terang dan gelap.
 
 Yang belum tersedia (lihat [DESIGN.md](docs/DESIGN.md#7-batasan-dan-yang-belum-dibangun)): email,
-pembatalan oleh customer, hapus nomor oleh owner, layar tampilan publik, prefix tiket kustom, counter kustom, catatan, ekspor riwayat, login Google,
+pembatalan oleh customer, hapus nomor oleh owner, layar tampilan publik, counter kustom, catatan, ekspor riwayat, login Google,
 dan pembayaran langganan.
 
 ## Teknologi
@@ -178,6 +178,7 @@ Catatan:
 - Satu browser hanya melayani satu akun. Layar tiket mendaftarkan ulang langganan ke akun yang sedang login, dan logout melepas langganan.
 - Push hanya jalan di HTTPS (`make tunnel`) dan di browser yang mendukung; Expo Go tidak.
 - DB yang sudah berjalan tidak menjalankan ulang skrip init. Terapkan manual: `ALTER TABLE tickets ADD COLUMN recalled_at TIMESTAMPTZ;`, tabel `push_subscriptions`, fungsi `tickets_notify` dan trigger `tickets_notify_trg` (jika sudah ada versi lama tanpa event `skipped`, jalankan ulang `CREATE OR REPLACE FUNCTION` dan buat ulang trigger) (ada di akhir `db/migrations/01_Schema.sql`), serta role `notify_ro` (`db/migrations/03_notify_role.sh`). Pengaturan Skip juga butuh kolom `queue_settings.skip_fallback`, `skip_fallback_n`, `skip_max_returns`.
+- Awalan nomor tiket: DB lama butuh `ALTER TABLE queues ADD COLUMN ticket_prefix VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (ticket_prefix ~ '^[A-Z0-9]{1,3}$');`, lalu restart backend dan notify-service (notify membaca kolom ini).
 - Tes unit: `cd notify-service && go test ./...`.
 
 ## Build frontend untuk produksi

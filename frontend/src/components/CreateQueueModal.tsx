@@ -9,7 +9,7 @@ export type CreateQueueModalProps = {
   visible: boolean;
   onClose: () => void;
   /** Dipanggil dengan isian form. Validasi dan pemanggilan API ada di route. */
-  onSubmit: (name: string, description: string) => void;
+  onSubmit: (name: string, description: string, ticketPrefix: string) => void;
   loading?: boolean;
   errorMessage?: string;
 };
@@ -42,6 +42,7 @@ function CreateQueueForm({
 }: Omit<CreateQueueModalProps, 'visible'>) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [prefix, setPrefix] = useState('');
 
   return (
     <>
@@ -58,6 +59,13 @@ function CreateQueueForm({
         value={description}
         onChangeText={setDescription}
       />
+      <FormField
+        label="Awalan Nomor"
+        placeholder="Opsional, 1-3 huruf/angka (default A)"
+        value={prefix}
+        onChangeText={(v) => setPrefix(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3))}
+        autoCapitalize="characters"
+      />
 
       {errorMessage ? <Text className="text-[13px] text-live">{errorMessage}</Text> : null}
 
@@ -65,7 +73,7 @@ function CreateQueueForm({
         label="Buat Antrian"
         variant="dark"
         loading={loading}
-        onPress={() => onSubmit(name, description)}
+        onPress={() => onSubmit(name, description, prefix)}
       />
       <AppButton label="Batal" variant="outline" onPress={onClose} />
     </>

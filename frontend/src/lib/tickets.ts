@@ -55,6 +55,7 @@ type MyTicketsResponse = { action: 'list_my_tickets'; tickets: MyTicket[] };
 /** Tiket saya di semua antrian, beserta nama dan status antriannya. */
 export type MyTicket = Ticket & {
   queue_name: string;
+  ticket_prefix?: string;
   queue_status: 'active' | 'closed';
   /** ticket_number yang sedang dilayani di antrian ini; null bila belum ada. */
   current_number: number | null;

@@ -8,6 +8,8 @@ export type Queue = {
   owner_id: number;
   queue_name: string;
   queue_desc: string | null;
+  /** Prefix nomor tiket (1-3 huruf/angka besar), mis. "A". */
+  ticket_prefix?: string;
   status: 'active' | 'closed';
   created_at: string;
   closed_at: string | null;

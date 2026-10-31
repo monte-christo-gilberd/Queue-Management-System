@@ -63,6 +63,8 @@ CREATE TABLE queues (
     owner_id   BIGINT NOT NULL REFERENCES owners(user_id),
     queue_name TEXT NOT NULL,
     queue_desc TEXT,
+    -- Prefix nomor tiket yang dilihat customer (mis. 'A' -> A-001). 1-3 huruf/angka besar.
+    ticket_prefix VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (ticket_prefix ~ '^[A-Z0-9]{1,3}$'),
     status     VARCHAR NOT NULL DEFAULT 'active'
         CHECK (status IN ('active', 'closed')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

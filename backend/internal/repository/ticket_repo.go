@@ -637,6 +637,7 @@ func (r *TicketRepository) ListByUser(
 			t.completed_at,
 			t.cancelled_at,
 			q.queue_name,
+			q.ticket_prefix,
 			q.status AS queue_status,
 			(
 				SELECT c.ticket_number

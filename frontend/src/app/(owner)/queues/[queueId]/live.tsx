@@ -22,9 +22,9 @@ export default function QueueLiveRoute() {
     <QueueLiveScreen
       queueName={queue?.queue_name ?? 'Antrian'}
       counterName={counterName ?? undefined}
-      previousTicket={toLive(previous)}
-      currentTicket={toLive(current)}
-      nextTicket={toLive(next)}
+      previousTicket={toLive(previous, queue?.ticket_prefix)}
+      currentTicket={toLive(current, queue?.ticket_prefix)}
+      nextTicket={toLive(next, queue?.ticket_prefix)}
       onSkip={() => void board.skip()}
       onNext={() => void board.next()}
       onMenuItemPress={handleOwnerMenuItemPress}
@@ -32,6 +32,6 @@ export default function QueueLiveRoute() {
   );
 }
 
-function toLive(entry: TicketEntry | null) {
-  return entry ? { number: formatTicketNumber(entry.ticket.ticket_number), name: entry.customerName } : null;
+function toLive(entry: TicketEntry | null, prefix?: string) {
+  return entry ? { number: formatTicketNumber(entry.ticket.ticket_number, prefix), name: entry.customerName } : null;
 }

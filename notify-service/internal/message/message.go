@@ -3,9 +3,12 @@ package message
 
 import "fmt"
 
-// Label: satu-satunya tempat format nomor tiket untuk teks notifikasi (fitur prefix nanti hanya mengubah ini).
-func Label(number int) string {
-	return fmt.Sprintf("A-%03d", number)
+// Label: satu-satunya tempat format nomor tiket untuk teks notifikasi. Prefix kosong = "A".
+func Label(prefix string, number int) string {
+	if prefix == "" {
+		prefix = "A"
+	}
+	return fmt.Sprintf("%s-%03d", prefix, number)
 }
 
 type Ticket struct {
@@ -15,6 +18,7 @@ type Ticket struct {
 	UserID    int64
 	Status    string
 	QueueName string
+	Prefix    string
 }
 
 type Subscription struct {

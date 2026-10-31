@@ -76,7 +76,7 @@ export default function QueueList({
               <Text className={cn("text-[13px] font-bold", fg)}>
                 Nomor Saat Ini:{" "}
                 {currentTicketNumber
-                  ? formatTicketNumber(currentTicketNumber)
+                  ? formatTicketNumber(currentTicketNumber, queue.ticket_prefix)
                   : "-"}
               </Text>
               <Text className={cn("text-[12px] font-normal", fg)}>

@@ -48,13 +48,13 @@ export async function createQueueViaApi(
   request: APIRequestContext,
   token: string,
   name: string,
-): Promise<{ id: number; queue_name: string }> {
+): Promise<{ id: number; queue_name: string; ticket_prefix: string }> {
   const res = await request.post(`${API_URL}/api/v1/queues`, {
     headers: { Authorization: `Bearer ${token}` },
     data: { queue_name: name, queue_description: 'Dibuat oleh tes E2E' },
   });
   expect(res.status(), await res.text()).toBe(201);
-  const body = (await res.json()) as { data: { queue: { id: number; queue_name: string } } };
+  const body = (await res.json()) as { data: { queue: { id: number; queue_name: string; ticket_prefix: string } } };
   return body.data.queue;
 }
 

@@ -148,3 +148,24 @@ func TestSpec_ViewQueue_TicketHolderSeesQueueWithoutOwnerFlag(t *testing.T) {
 	assert.False(t, isOwner)
 	assert.Equal(t, env.queueID, q.ID)
 }
+
+func TestSpec_SetTicketPrefix_OwnerChangesPrefix(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+
+	q, err := env.qs.CreateQueue(ctx, specOwnerID, "Kasir 2", "")
+	require.NoError(t, err)
+	require.NoError(t, env.qs.SetTicketPrefix(ctx, q.ID, specOwnerID, "VIP"))
+
+	got, _, err := env.qs.ViewQueue(ctx, q.ID, specOwnerID)
+	require.NoError(t, err)
+	assert.Equal(t, "VIP", got.TicketPrefix)
+}
+
+func TestSpec_SetTicketPrefix_OtherOwnerRejected(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+
+	err := env.qs.SetTicketPrefix(ctx, env.queueID, specOtherOwnerID, "X")
+	assert.Error(t, err)
+}

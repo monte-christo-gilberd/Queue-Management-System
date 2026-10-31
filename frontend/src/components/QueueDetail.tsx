@@ -27,6 +27,9 @@ export type QueueDetailProps = {
   queueDescription: string;
   onChangeQueueName: (value: string) => void;
   onChangeQueueDescription: (value: string) => void;
+  /** Awalan nomor tiket (1-3 huruf/angka). Kolom tampil bila `onChangeTicketPrefix` diberikan. */
+  ticketPrefix?: string;
+  onChangeTicketPrefix?: (value: string) => void;
   /** Simpan nama dan deskripsi (PUT). Tombol hanya tampil bila diberikan. */
   onSave?: () => void;
   saving?: boolean;
@@ -69,6 +72,8 @@ export default function QueueDetail({
   queueDescription,
   onChangeQueueName,
   onChangeQueueDescription,
+  ticketPrefix = '',
+  onChangeTicketPrefix,
   onSave,
   saving = false,
   errorMessage,
@@ -176,6 +181,15 @@ export default function QueueDetail({
               value={queueDescription}
               onChangeText={onChangeQueueDescription}
             />
+            {onChangeTicketPrefix ? (
+              <FormField
+                label="Awalan Nomor"
+                placeholder="mis. A, VIP"
+                value={ticketPrefix}
+                onChangeText={(v) => onChangeTicketPrefix(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3))}
+                autoCapitalize="characters"
+              />
+            ) : null}
             {onSave ? (
               <AppButton label="SIMPAN" variant="dark" loading={saving} onPress={onSave} />
             ) : null}

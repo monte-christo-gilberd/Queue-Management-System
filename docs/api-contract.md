@@ -121,9 +121,9 @@ Membuat antrian. Butuh langganan owner aktif.
 
 Request:
 ```json
-{ "queue_name": "Loket A", "queue_description": "Pelayanan umum" }
+{ "queue_name": "Loket A", "queue_description": "Pelayanan umum", "ticket_prefix": "A" }
 ```
-`queue_name` wajib. `queue_description` boleh kosong.
+`queue_name` wajib. `queue_description` boleh kosong. `ticket_prefix` opsional: 1-3 huruf/angka (huruf kecil diubah jadi besar), kosong = `A`. Selain itu 400 `BAD_REQUEST`. Nomor tampil sebagai `<prefix>-<nomor 3 digit>`, mis. `VIP-007`.
 
 201:
 ```json
@@ -145,7 +145,7 @@ Error: 400, 404 `NOT_FOUND`.
 ### PUT /api/v1/queues/:queue_id
 Ubah nama dan deskripsi. Butuh langganan aktif dan hak owner.
 
-Request: `{ "queue_name": "Loket B", "queue_description": "..." }`
+Request: `{ "queue_name": "Loket B", "queue_description": "...", "ticket_prefix": "B" }` (`ticket_prefix` opsional; kosong = tidak diubah; aturan sama dengan buat antrian. Mengubahnya mengubah tampilan semua nomor di antrian itu, termasuk yang sudah terbit.)
 200: `{ "data": { "action": "update_queue", ... } }`
 Error: 400, 402 `SUBSCRIPTION_INACTIVE`, 404.
 
@@ -289,7 +289,7 @@ Status antrian untuk owner atau pemegang tiket. Pengguna lain mendapat 404.
 
 ### QueueResponse
 ```json
-{ "id": 122, "owner_id": 1, "queue_name": "Loket A", "queue_desc": "Pelayanan umum",
+{ "id": 122, "owner_id": 1, "queue_name": "Loket A", "queue_desc": "Pelayanan umum", "ticket_prefix": "A",
   "status": "active", "created_at": "...", "closed_at": null }
 ```
 `status`: `active` atau `closed`. `queue_desc` bisa null.

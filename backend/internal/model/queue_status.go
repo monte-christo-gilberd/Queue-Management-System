@@ -15,6 +15,7 @@ type QueueStatus struct {
 type UserTicket struct {
 	Ticket
 	QueueName   string `db:"queue_name"`
+	TicketPrefix string `db:"ticket_prefix"`
 	QueueStatus string `db:"queue_status"`
 	// CurrentNumber: ticket_number yang sedang dilayani di antrian ini (completed terbaru); nil bila belum ada.
 	CurrentNumber *int `db:"current_number"`

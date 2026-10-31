@@ -51,6 +51,7 @@ func (r *QueueRepository) CreateNewQueue(
 			owner_id, 
 			queue_name, 
 			queue_desc, 
+			ticket_prefix,
 			status, 
 			created_at
 	`
@@ -103,6 +104,7 @@ func (r *QueueRepository) GetQueueByID(
 			owner_id, 
 			queue_name, 
 			queue_desc, 
+			ticket_prefix,
 			status, 
 			created_at,
 			closed_at
@@ -139,6 +141,7 @@ func (r *QueueRepository) ListQueueByOwner(
 			owner_id, 
 			queue_name, 
 			queue_desc, 
+			ticket_prefix,
 			status, 
 			created_at,
 			closed_at
@@ -159,6 +162,31 @@ func (r *QueueRepository) ListQueueByOwner(
 	}
 
 	return queues, nil
+}
+
+// SetTicketPrefix mengubah prefix nomor tiket antrian (sudah divalidasi service).
+func (r *QueueRepository) SetTicketPrefix(
+	ctx context.Context,
+	queueID int64,
+	prefix string,
+) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE queues SET ticket_prefix = $1 WHERE id = $2`,
+		prefix,
+		queueID,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
 }
 
 func (r *QueueRepository) UpdateQueueDetails(

@@ -24,6 +24,11 @@ type QueueRepositoryInterface interface {
 		ownerID int64,
 		activeOnly bool,
 	) ([]model.Queue, error)
+	SetTicketPrefix(
+		ctx context.Context,
+		queueID int64,
+		prefix string,
+	) error
 	UpdateQueueDetails(
 		ctx context.Context,
 		queueID int64,

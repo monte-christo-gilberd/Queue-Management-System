@@ -22,19 +22,19 @@ func New(pool *pgxpool.Pool) *PG {
 func (s *PG) Ticket(ctx context.Context, ticketID int64) (message.Ticket, error) {
 	var t message.Ticket
 	err := s.pool.QueryRow(ctx, `
-		SELECT t.id, t.queue_id, t.ticket_number, t.user_id, t.status, q.queue_name
+		SELECT t.id, t.queue_id, t.ticket_number, t.user_id, t.status, q.queue_name, q.ticket_prefix
 		FROM tickets t JOIN queues q ON q.id = t.queue_id
-		WHERE t.id = $1`, ticketID).Scan(&t.ID, &t.QueueID, &t.Number, &t.UserID, &t.Status, &t.QueueName)
+		WHERE t.id = $1`, ticketID).Scan(&t.ID, &t.QueueID, &t.Number, &t.UserID, &t.Status, &t.QueueName, &t.Prefix)
 	return t, err
 }
 
 func (s *PG) FirstWaiting(ctx context.Context, queueID int64) (*message.Ticket, error) {
 	var t message.Ticket
 	err := s.pool.QueryRow(ctx, `
-		SELECT t.id, t.queue_id, t.ticket_number, t.user_id, t.status, q.queue_name
+		SELECT t.id, t.queue_id, t.ticket_number, t.user_id, t.status, q.queue_name, q.ticket_prefix
 		FROM tickets t JOIN queues q ON q.id = t.queue_id
 		WHERE t.queue_id = $1 AND t.status = 'waiting'
-		ORDER BY t.sort_key ASC LIMIT 1`, queueID).Scan(&t.ID, &t.QueueID, &t.Number, &t.UserID, &t.Status, &t.QueueName)
+		ORDER BY t.sort_key ASC LIMIT 1`, queueID).Scan(&t.ID, &t.QueueID, &t.Number, &t.UserID, &t.Status, &t.QueueName, &t.Prefix)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

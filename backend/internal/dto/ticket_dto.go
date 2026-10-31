@@ -133,6 +133,7 @@ func NewQueueStatusResponse(s model.QueueStatus) QueueStatusResponse {
 type UserTicketResponse struct {
 	TicketResponse
 	QueueName     string `json:"queue_name"`
+	TicketPrefix  string `json:"ticket_prefix"`
 	QueueStatus   string `json:"queue_status"`
 	CurrentNumber *int   `json:"current_number"`
 }
@@ -143,6 +144,7 @@ func NewUserTicketResponses(tickets []model.UserTicket) []UserTicketResponse {
 		out = append(out, UserTicketResponse{
 			TicketResponse: NewTicketResponse(t.Ticket),
 			QueueName:      t.QueueName,
+			TicketPrefix:   t.TicketPrefix,
 			QueueStatus:    t.QueueStatus,
 			CurrentNumber:  t.CurrentNumber,
 		})

@@ -47,12 +47,12 @@ func (s *Service) Plan(ctx context.Context, e event.Event) ([]Delivery, error) {
 	url := fmt.Sprintf("/ticket/%d", t.QueueID)
 	out := []Delivery{{
 		UserID: t.UserID,
-		Msg:    message.Message{Title: t.QueueName, Body: fmt.Sprintf("Giliran Anda! Nomor %s dipanggil.", message.Label(t.Number)), URL: url},
+		Msg:    message.Message{Title: t.QueueName, Body: fmt.Sprintf("Giliran Anda! Nomor %s dipanggil.", message.Label(t.Prefix, t.Number)), URL: url},
 	}}
 	if e.Kind == event.KindSkipped {
-		body := fmt.Sprintf("Nomor %s dilewati.", message.Label(t.Number))
+		body := fmt.Sprintf("Nomor %s dilewati.", message.Label(t.Prefix, t.Number))
 		if t.Status == "waiting" {
-			body = fmt.Sprintf("Nomor %s dilewati dan dikembalikan ke antrian.", message.Label(t.Number))
+			body = fmt.Sprintf("Nomor %s dilewati dan dikembalikan ke antrian.", message.Label(t.Prefix, t.Number))
 		}
 		out[0].Msg.Body = body
 		return out, nil
@@ -67,7 +67,7 @@ func (s *Service) Plan(ctx context.Context, e event.Event) ([]Delivery, error) {
 	if next != nil && next.UserID != t.UserID {
 		out = append(out, Delivery{
 			UserID: next.UserID,
-			Msg:    message.Message{Title: t.QueueName, Body: fmt.Sprintf("Tinggal 1 nomor lagi. Nomor Anda %s berikutnya.", message.Label(next.Number)), URL: url},
+			Msg:    message.Message{Title: t.QueueName, Body: fmt.Sprintf("Tinggal 1 nomor lagi. Nomor Anda %s berikutnya.", message.Label(next.Prefix, next.Number)), URL: url},
 		})
 	}
 	return out, nil

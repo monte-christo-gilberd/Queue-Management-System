@@ -25,6 +25,11 @@ type QueueRepository interface {
 		ownerID int64,
 		activeOnly bool,
 	) ([]model.Queue, error)
+	SetTicketPrefix(
+		ctx context.Context,
+		queueID int64,
+		prefix string,
+	) error
 	UpdateQueueDetails(
 		ctx context.Context,
 		queueID int64,
@@ -159,6 +164,26 @@ func (s *QueueService) CreateQueue(
 		return model.Queue{}, err
 	}
 	return queue, nil
+}
+
+// SetTicketPrefix mengubah prefix nomor tiket (owner antrian, langganan aktif). Prefix sudah dinormalisasi handler.
+func (s *QueueService) SetTicketPrefix(
+	ctx context.Context,
+	queueID,
+	requesterID int64,
+	prefix string,
+) error {
+	if err := s.isSubscribed(ctx, requesterID); err != nil {
+		return err
+	}
+	if _, err := s.validateOwnership(ctx, queueID, requesterID); err != nil {
+		return err
+	}
+	if err := s.repository.SetTicketPrefix(ctx, queueID, prefix); err != nil {
+		return err
+	}
+	notifyEvent(s.notifier, queueID, EventQueueUpdated, map[string]interface{}{"queue_id": queueID})
+	return nil
 }
 
 // CreateDefaultCounter membuat counter bernama tertentu; dipakai bila queue

@@ -1,9 +1,8 @@
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
-/** Format tampilan nomor tiket, mis. 42 -> "A-042". */
-export function formatTicketNumber(ticketNumber: number): string {
-  // TODO: konfirmasi sumber data — prefix huruf ("A-") belum ada di backend.
-  return `A-${String(ticketNumber).padStart(3, '0')}`;
+/** Format tampilan nomor tiket, mis. 42 -> "A-042". Prefix dari antrian (`ticket_prefix`), default "A". */
+export function formatTicketNumber(ticketNumber: number, prefix?: string | null): string {
+  return `${prefix || 'A'}-${String(ticketNumber).padStart(3, '0')}`;
 }
 
 function pad2(value: number): string {

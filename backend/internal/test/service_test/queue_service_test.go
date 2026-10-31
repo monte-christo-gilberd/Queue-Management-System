@@ -51,6 +51,14 @@ func (f *fakeQueueRepo) ListQueueByOwner(
 	return f.listQueues, f.listErr
 }
 
+func (f *fakeQueueRepo) SetTicketPrefix(
+	ctx context.Context,
+	queueID int64,
+	prefix string,
+) error {
+	return f.updateDetailsErr
+}
+
 func (f *fakeQueueRepo) UpdateQueueDetails(
 	ctx context.Context,
 	queueID int64,

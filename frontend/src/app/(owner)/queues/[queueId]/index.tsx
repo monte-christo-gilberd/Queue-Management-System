@@ -60,6 +60,7 @@ function QueueDetailEditor({
 }) {
   const [queueName, setQueueName] = useState(queue.queue_name);
   const [queueDescription, setQueueDescription] = useState(queue.queue_desc ?? '');
+  const [ticketPrefix, setTicketPrefix] = useState(queue.ticket_prefix ?? 'A');
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
@@ -72,10 +73,10 @@ function QueueDetailEditor({
   const board = useQueueBoard(queue.id, () => void reload());
   const currentId = board.view.current?.ticket.id ?? null;
   const timeline: TimelineItem[] = board.tickets.map((t): TimelineItem => ({
-    number: formatTicketNumber(t.ticket_number),
+    number: formatTicketNumber(t.ticket_number, queue.ticket_prefix),
     status: t.id === currentId ? 'current' : t.status === 'completed' ? 'done' : t.status,
   }));
-  const currentNumber = board.view.current ? formatTicketNumber(board.view.current.ticket.ticket_number) : null;
+  const currentNumber = board.view.current ? formatTicketNumber(board.view.current.ticket.ticket_number, queue.ticket_prefix) : null;
 
   async function save() {
     const name = queueName.trim();
@@ -86,7 +87,7 @@ function QueueDetailEditor({
     setSaving(true);
     setErrorMessage(undefined);
     try {
-      await updateQueue(queue.id, { queue_name: name, queue_description: queueDescription.trim() });
+      await updateQueue(queue.id, { queue_name: name, queue_description: queueDescription.trim(), ticket_prefix: ticketPrefix || undefined });
       await reload();
     } catch (e) {
       setErrorMessage(describeQueueError(e));
@@ -118,6 +119,8 @@ function QueueDetailEditor({
       queueDescription={queueDescription}
       onChangeQueueName={setQueueName}
       onChangeQueueDescription={setQueueDescription}
+      ticketPrefix={ticketPrefix}
+      onChangeTicketPrefix={setTicketPrefix}
       onSave={save}
       saving={saving}
       errorMessage={errorMessage ?? board.nextError ?? board.skipError ?? board.recallError ?? board.error}

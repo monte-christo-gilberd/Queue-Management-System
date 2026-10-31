@@ -58,6 +58,7 @@ export default function DashboardRoute() {
               key={t.id}
               queueId={t.queue_id}
               queueName={t.queue_name}
+              ticketPrefix={t.ticket_prefix}
               onChanged={() => void reloadTickets()}
             />
           ))}
@@ -73,7 +74,7 @@ export default function DashboardRoute() {
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
     .slice(0, DASHBOARD_QUEUE_COUNT);
 
-  async function handleCreate(name: string, description: string) {
+  async function handleCreate(name: string, description: string, ticketPrefix: string) {
     const trimmed = name.trim();
     if (!trimmed) {
       setCreateError('Nama antrian wajib diisi');
@@ -85,6 +86,7 @@ export default function DashboardRoute() {
       const queue = await createQueue({
         queue_name: trimmed,
         queue_description: description.trim(),
+        ticket_prefix: ticketPrefix || undefined,
       });
       closeCreate();
       router.push({ pathname: '/queues/[queueId]', params: { queueId: String(queue.id) } });
@@ -144,15 +146,15 @@ function OwnerQueueBoard({
   const { previous, current, skipped, next, upcoming } = board.view;
 
   const items: TimelineItem[] = [
-    ...(previous ? [{ number: formatTicketNumber(previous.ticket.ticket_number), status: 'done' as const }] : []),
-    ...(current ? [{ number: formatTicketNumber(current.ticket.ticket_number), status: 'current' as const }] : []),
+    ...(previous ? [{ number: formatTicketNumber(previous.ticket.ticket_number, queue.ticket_prefix), status: 'done' as const }] : []),
+    ...(current ? [{ number: formatTicketNumber(current.ticket.ticket_number, queue.ticket_prefix), status: 'current' as const }] : []),
     ...skipped.map((entry) => ({
-      number: formatTicketNumber(entry.ticket.ticket_number),
+      number: formatTicketNumber(entry.ticket.ticket_number, queue.ticket_prefix),
       status: 'skipped' as const,
     })),
-    ...(next ? [{ number: formatTicketNumber(next.ticket.ticket_number), status: 'waiting' as const }] : []),
+    ...(next ? [{ number: formatTicketNumber(next.ticket.ticket_number, queue.ticket_prefix), status: 'waiting' as const }] : []),
     ...upcoming.map((entry) => ({
-      number: formatTicketNumber(entry.ticket.ticket_number),
+      number: formatTicketNumber(entry.ticket.ticket_number, queue.ticket_prefix),
       status: 'waiting' as const,
     })),
   ];
@@ -185,10 +187,12 @@ function OwnerQueueBoard({
 function QueueSpot({
   queueId,
   queueName,
+  ticketPrefix,
   onChanged,
 }: {
   queueId: number;
   queueName: string;
+  ticketPrefix?: string;
   onChanged: () => void;
 }) {
   const status = useQueueSpot(queueId, onChanged);
@@ -196,9 +200,9 @@ function QueueSpot({
   return (
     <MySpotCard
       queueName={queueName}
-      currentNumber={status.current_number != null ? formatTicketNumber(status.current_number) : null}
-      previousNumber={status.previous_number != null ? formatTicketNumber(status.previous_number) : null}
-      nextNumber={status.next_number != null ? formatTicketNumber(status.next_number) : null}
+      currentNumber={status.current_number != null ? formatTicketNumber(status.current_number, ticketPrefix) : null}
+      previousNumber={status.previous_number != null ? formatTicketNumber(status.previous_number, ticketPrefix) : null}
+      nextNumber={status.next_number != null ? formatTicketNumber(status.next_number, ticketPrefix) : null}
     />
   );
 }

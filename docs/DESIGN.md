@@ -239,7 +239,7 @@ Backend: `POST /queues/:id/recall` (`tickets.recalled_at`, 3 detik, sekali per p
 Yang belum ada di backend (lihat product overview):
 - Pembatalan oleh customer, hapus customer oleh owner.
 - Counter kustom (kini satu counter default otomatis per antrian, disembunyikan di UI), penyisipan di posisi tertentu, antrian ulang (requeue).
-- Layar tampilan publik, ekspor riwayat (CSV/Excel), catatan antrian, Google login, prefix tiket kustom.
+- Layar tampilan publik, ekspor riwayat (CSV/Excel), catatan antrian, Google login.
 - Dihapus dari produk (31 Okt 2026): `registration_limit`, batas harian QR, batas riwayat, dan penghapusan permanen (riwayat selalu ada).
 - Pembayaran langganan, verifikasi email, lupa password.
 

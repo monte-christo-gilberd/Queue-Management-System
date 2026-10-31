@@ -5,6 +5,8 @@ import type { Queue } from '@/types/api';
 export type QueueInput = {
   queue_name: string;
   queue_description: string;
+  /** Opsional: 1-3 huruf/angka. Kosong = tidak diubah (ubah) / "A" (buat). */
+  ticket_prefix?: string;
 };
 
 type ListResponse = { action: 'list_queues'; queues: Queue[] };

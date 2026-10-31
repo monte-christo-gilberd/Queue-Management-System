@@ -73,6 +73,18 @@ func (m *memQueues) ListQueueByOwner(_ context.Context, ownerID int64, activeOnl
 	return out, nil
 }
 
+func (m *memQueues) SetTicketPrefix(_ context.Context, queueID int64, prefix string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	q, ok := m.rows[queueID]
+	if !ok {
+		return apperror.ErrNotFound
+	}
+	q.TicketPrefix = prefix
+	m.rows[queueID] = q
+	return nil
+}
+
 func (m *memQueues) UpdateQueueDetails(_ context.Context, id int64, name, desc string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
