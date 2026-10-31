@@ -239,11 +239,13 @@ Backend: `POST /queues/:id/recall` (`tickets.recalled_at`, 3 detik, sekali per p
 Yang belum ada di backend (lihat product overview):
 - Pembatalan oleh customer, hapus customer oleh owner.
 - Counter kustom (kini satu counter default otomatis per antrian, disembunyikan di UI), penyisipan di posisi tertentu, antrian ulang (requeue).
-- Batas harian/fallback QR, riwayat dan ekspor, catatan antrian, Google login.
+- Layar tampilan publik, ekspor riwayat (CSV/Excel), catatan antrian, Google login, prefix tiket kustom.
+- Dihapus dari produk (31 Okt 2026): `registration_limit`, batas harian QR, batas riwayat, dan penghapusan permanen (riwayat selalu ada).
 - Pembayaran langganan, verifikasi email, lupa password.
 
 Di frontend, tombol dan layar untuk fitur di atas sudah ada tetapi belum tersambung (TODO di kode).
 
 Batasan teknis:
-- Hub SSE di memori (lihat 2.7).
+- Hub SSE di memori (lihat 2.7): backend hanya satu instance.
+- Deploy demo: `docker-compose.prod.yml` di belakang Cloudflare Tunnel; backend `APP_ENV=production` memvalidasi rahasia dan origin https.
 - `ALREADY_JOINED` tidak lagi dikirim. Kode dan penanganan frontend dibiarkan agar tidak merusak klien lama.

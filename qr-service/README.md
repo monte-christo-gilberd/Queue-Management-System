@@ -13,7 +13,7 @@ tetap milik backend.
 ## Menjalankan lokal
 
 ```bash
-cp .env.example .env
+cp ../.env.example .env   # lalu pakai bagian [qr-service/.env] di dalamnya
 go run ./cmd/qr-service
 ```
 

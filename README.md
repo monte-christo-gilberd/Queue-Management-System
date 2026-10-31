@@ -4,9 +4,9 @@ Sistem antrian untuk layanan tatap muka. Owner membuat antrian dan memanggil nom
 lewat tautan dan melihat posisi serta nomor yang sedang dilayani secara real-time, tanpa perlu refresh.
 
 Dokumen lain:
-- [DESIGN.md](DESIGN.md): arsitektur, keputusan desain, dan batasan.
-- [FLOW.md](FLOW.md): alur pengguna dan diagram urutan.
-- [api-contract.md](api-contract.md): kontrak HTTP dan SSE.
+- [DESIGN.md](docs/DESIGN.md): arsitektur, keputusan desain, dan batasan.
+- [FLOW.md](docs/FLOW.md): alur pengguna dan diagram urutan.
+- [api-contract.md](docs/api-contract.md): kontrak HTTP dan SSE.
 - [deploy/nginx/README.md](deploy/nginx/README.md): pemasangan nginx.
 
 ## Fitur yang sudah berjalan
@@ -19,8 +19,8 @@ Dokumen lain:
 - Pembaruan real-time lewat Server-Sent Events (termasuk `queue_qr_updated`).
 - Mode terang dan gelap.
 
-Yang belum tersedia (lihat [DESIGN.md](DESIGN.md#7-batasan-dan-yang-belum-dibangun)): email,
-pembatalan oleh customer, counter kustom, catatan, riwayat ekspor, login Google,
+Yang belum tersedia (lihat [DESIGN.md](docs/DESIGN.md#7-batasan-dan-yang-belum-dibangun)): email,
+pembatalan oleh customer, hapus nomor oleh owner, layar tampilan publik, prefix tiket kustom, counter kustom, catatan, ekspor riwayat, login Google,
 dan pembayaran langganan.
 
 ## Teknologi
@@ -41,11 +41,13 @@ qr-service/       Microservice QR (cmd/qr-service, internal/{config,joinlink,htt
 frontend/         Aplikasi Expo (src/app rute, src/components, src/hooks, src/lib, src/store), Dockerfile
 db/               Dockerfile dan skema PostgreSQL (migrations/01_Schema.sql, 02_Indexes.sql)
 deploy/nginx/     Konfigurasi nginx untuk pemasangan di host, Dockerfile, dan template konfigurasi
-docker-compose.yml  Stack development (hot reload): db, qr-service, backend, frontend; hanya nginx yang membuka port
-.env.example      Variabel untuk docker compose (secret, origin publik)
-DESIGN.md         Desain sistem
-FLOW.md           Alur pengguna
-api-contract.md   Kontrak API
+docker-compose.yml  Stack development (hot reload): db, qr-service, notify-service, backend, frontend; hanya nginx yang membuka port
+docker-compose.prod.yml  Stack demo/produksi (target prod, nginx hanya di 127.0.0.1)
+notify-service/   Web Push (LISTEN Postgres)
+scripts/          backup-prod.sh (backup/restore DB prod)
+.env.example      Template env dev, plus bagian per service untuk menjalankan di luar Docker
+.env.prod.example Template env produksi
+docs/             DESIGN.md, FLOW.md, api-contract.md, plan-live.md, plan-setelah-live.md, setup-domain.md, setup-waf-wifi.md
 ```
 
 ## Menjalankan secara lokal
@@ -64,7 +66,7 @@ psql -d qms_db -f db/migrations/02_Indexes.sql
 
 ```bash
 cd qr-service
-cp .env.example .env     # isi JOIN_LINK_SECRET (>=32 byte) + QR_SERVICE_TOKEN
+cp ../.env.example .env     # salin bagian [qr-service/.env]; isi JOIN_LINK_SECRET (>=32 byte) + QR_SERVICE_TOKEN
 go run ./cmd/qr-service  # http://localhost:8090
 ```
 
@@ -75,7 +77,7 @@ go run ./cmd/qr-service  # http://localhost:8090
 
 ```bash
 cd backend
-cp .env.example .env     # isi DATABASE_URL, JWT_SECRET, PORT, ALLOWED_ORIGINS + variabel QR
+cp ../.env.example .env     # salin bagian [backend/.env]; isi DATABASE_URL, JWT_SECRET, PORT, ALLOWED_ORIGINS + variabel QR
 go run ./cmd/server
 ```
 
@@ -148,11 +150,23 @@ Buka `http://localhost:8080` (atau `QMS_PUBLIC_ORIGIN`). Hanya nginx yang membuk
 | frontend | `frontend/Dockerfile` | Target `dev` (Metro, hot reload) di port 80 internal |
 | nginx | `deploy/nginx/Dockerfile` | Reverse proxy, satu-satunya yang membuka port (80) |
 
-Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot reload; Go perlu `docker compose restart backend` (`qr-service`, `notify-service`) setelah ubah kode. Target `prod` tersedia di tiap Dockerfile untuk nanti.
+Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot reload; Go perlu `docker compose restart backend` (`qr-service`, `notify-service`) setelah ubah kode. Untuk demo/produksi pakai `docker-compose.prod.yml` (lihat bawah).
 Kredensial (`POSTGRES_PASSWORD`, `JWT_SECRET`, `JOIN_LINK_SECRET`, `QR_SERVICE_TOKEN`) tidak dibakar ke image.
 Frontend memanggil API di origin halaman (`EXPO_PUBLIC_API_URL=origin`), jadi mengganti `QMS_PUBLIC_ORIGIN` tidak butuh build ulang frontend.
 
 Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) atau `make tunnel` (HTTPS publik, kamera HP jalan); `make down` untuk berhenti. Perintah lain: `make restart` (backend, qr-service, notify-service), `make seed`, `make logs`. Lihat `Makefile` dan `deploy/nginx/README.md`.
+
+## Demo/produksi di belakang Cloudflare Tunnel
+
+```bash
+cp .env.prod.example .env   # isi rahasia (openssl rand -hex 32) dan kunci VAPID baru
+make down                   # stack dev memakai port 8080 yang sama
+make prod-up                # docker compose -f docker-compose.prod.yml up -d --build
+make prod-guard             # setelah akun demo dibuat: seed/reset ditolak di DB ini
+make prod-backup            # ~/qms-backups/qms-<waktu>.sql.gz; restore: scripts/backup-prod.sh restore <file>
+```
+
+Nginx hanya terikat ke `127.0.0.1:8080`; `cloudflared` di host menunjuk ke `http://localhost:8080`. IP klien dibaca dari `CF-Connecting-IP`. Backend dengan `APP_ENV=production` menolak start bila rahasia lemah atau origin bukan https. Database prod memakai volume sendiri tanpa seed. Backend berjalan satu instance (hub SSE di memori). Lihat `docs/setup-domain.md`, `docs/setup-waf-wifi.md`, dan `docs/plan-live.md`.
 
 ## Notifikasi (notify-service)
 
@@ -178,5 +192,5 @@ Hasilnya ada di `frontend/dist/`. Salin ke folder yang dibaca nginx, lalu ikuti 
 ## Status
 
 Proyek capstone, masih dalam pengembangan. Alur join berbasis token QR, QR statis/dinamis, penggantian kode,
-Next, dan event SSE sudah diimplementasikan. Lihat [DESIGN.md](DESIGN.md) untuk batasan teknis,
+Next, Skip dengan fallback, Recall, push notifikasi, dan event SSE sudah diimplementasikan. Rencana berikutnya ada di `docs/plan-setelah-live.md`. Lihat [docs/DESIGN.md](docs/DESIGN.md) untuk batasan teknis,
 terutama hub SSE yang masih di memori satu proses.
