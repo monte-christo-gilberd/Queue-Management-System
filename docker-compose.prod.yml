@@ -106,6 +106,7 @@ services:
       context: ./deploy/nginx
       args:
         NGINX_CONF: nginx.prod.conf
+        FRONTEND_UPGRADE: frontend-upgrade.prod.conf
     ports:
       # Hanya loopback: cloudflared di host menjangkau ini; LAN tidak bisa
       # (mencegah pemalsuan CF-Connecting-IP dan melewati aturan WAF).

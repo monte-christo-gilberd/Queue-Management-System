@@ -1,5 +1,5 @@
 # Kontainer notify-service (Go). Build context: folder notify-service/
-FROM golang:1.25-alpine AS base
+FROM golang:1.27-alpine AS base
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

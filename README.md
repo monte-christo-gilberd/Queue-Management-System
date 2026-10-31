@@ -28,7 +28,7 @@ dan pembayaran langganan.
 | Bagian | Teknologi |
 |---|---|
 | Backend | Go 1.27, Gin, sqlx + pgx, JWT HS256, bcrypt |
-| qr-service | Go 1.25, token join HMAC (internal, tidak dipublikasikan nginx) |
+| qr-service | Go 1.27, token join HMAC (internal, tidak dipublikasikan nginx) |
 | Database | PostgreSQL |
 | Frontend | Expo SDK 57 (Expo Router, web static), React Native, NativeWind, Zustand |
 | Deploy | Docker Compose, nginx (reverse proxy + rate limit login dan `/join`) |
@@ -159,11 +159,13 @@ Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) ata
 ## Demo/produksi di belakang Cloudflare Tunnel
 
 ```bash
-cp .env.prod.example .env   # isi rahasia (openssl rand -hex 32) dan kunci VAPID baru
+cp .env.prod.example .env.prod && chmod 600 .env.prod   # isi rahasia (openssl rand -hex 32) dan kunci VAPID baru; .env dev tidak tersentuh
 make down                   # stack dev memakai port 8080 yang sama
-make prod-up                # docker compose -f docker-compose.prod.yml up -d --build
+make prod-up                # docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+scripts/create-demo-accounts.sh   # 1 owner + 4 customer, sandi acak di ~/qms-demo-accounts.txt
 make prod-guard             # setelah akun demo dibuat: seed/reset ditolak di DB ini
 make prod-backup            # ~/qms-backups/qms-<waktu>.sql.gz; restore: scripts/backup-prod.sh restore <file>
+make prod-reset             # kosongkan antrian/tiket/push untuk demo ulang; akun dipertahankan, backup otomatis dulu
 ```
 
 Nginx hanya terikat ke `127.0.0.1:8080`; `cloudflared` di host menunjuk ke `http://localhost:8080`. IP klien dibaca dari `CF-Connecting-IP`. Backend dengan `APP_ENV=production` menolak start bila rahasia lemah atau origin bukan https. Database prod memakai volume sendiri tanpa seed. Backend berjalan satu instance (hub SSE di memori). Lihat `docs/setup-domain.md`, `docs/setup-waf-wifi.md`, dan `docs/plan-live.md`.

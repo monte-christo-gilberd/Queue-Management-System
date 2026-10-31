@@ -17,6 +17,7 @@ name: qms
 services:
   db:
     build: ./db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-qms}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}

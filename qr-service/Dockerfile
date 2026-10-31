@@ -1,6 +1,6 @@
 # Kontainer qr-service (Go). Build context: folder qr-service/
 # Target: dev (go run, restart manual: docker compose restart qr-service) atau prod (default).
-FROM golang:1.25-alpine AS base
+FROM golang:1.27-alpine AS base
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

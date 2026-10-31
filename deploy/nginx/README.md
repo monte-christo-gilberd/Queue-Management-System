@@ -5,6 +5,7 @@ Mengikuti dua template di `template-nginx/`:
 | Berkas | Template | Fungsi |
 |---|---|---|
 | `deploy/nginx/nginx.conf` | `nginx-reverse-proxy.conf.example` | Reverse proxy, satu-satunya pintu masuk (port 80) |
+| `deploy/nginx/frontend-upgrade.dev.conf` / `.prod.conf` | - | Header WebSocket untuk HMR Metro. Hanya dev; di prod berkasnya kosong (build arg `FRONTEND_UPGRADE`) |
 | `frontend/nginx.conf` | `nginx-frontend.conf.example` | nginx di kontainer frontend, menyajikan hasil `expo export` |
 
 Nama host di config adalah nama service di `docker-compose.yml`: `backend:8080`, `qr-service:8090`, `frontend:80`.

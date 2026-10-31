@@ -1,6 +1,6 @@
 module qms/notify-service
 
-go 1.25.0
+go 1.27.1
 
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0

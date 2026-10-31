@@ -4,6 +4,13 @@ import { Platform, Text, View } from 'react-native';
 import { AppButton } from '@/components/ui/AppButton';
 import { disablePush, enablePush, pushSupported, syncSubscription } from '@/lib/push';
 
+function isIOSDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  // iPadOS 13+ melaporkan diri sebagai Mac, bedakan lewat layar sentuh.
+  return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+
 /** Tombol notifikasi giliran (Web Push). Tidak tampil bila perangkat tidak mendukung (mis. Expo Go). */
 export function PushToggle() {
   const [on, setOn] = useState(false);
@@ -25,11 +32,14 @@ export function PushToggle() {
   }, [supported]);
 
   if (!supported) {
-    return Platform.OS === 'web' ? (
+    if (Platform.OS !== 'web') return null;
+    return (
       <Text className="text-[12px] font-normal text-muted">
-        Notifikasi tidak didukung di browser ini (di iPhone, tambahkan situs ke Layar Utama dulu).
+        {isIOSDevice()
+          ? 'Di iPhone/iPad, notifikasi hanya bisa setelah situs dipasang: buka di Safari, ketuk Bagikan, pilih "Tambahkan ke Layar Utama", lalu buka dari ikon itu.'
+          : 'Notifikasi tidak didukung di browser ini. Gunakan Chrome, Edge, atau Firefox.'}
       </Text>
-    ) : null;
+    );
   }
 
   const toggle = async () => {

@@ -11,7 +11,7 @@
 SHELL := bash
 .SHELLFLAGS := -euo pipefail -c
 .ONESHELL:
-.PHONY: up tunnel down restart seed logs ps prod-up prod-down prod-guard prod-backup
+.PHONY: up tunnel down restart seed logs ps prod-up prod-down prod-guard prod-backup prod-reset
 
 PIDFILE := /tmp/qms-tunnel.pid
 LOG := /tmp/qms-tunnel.log
@@ -65,8 +65,9 @@ logs:
 ps:
 	docker compose ps
 
-# --- Stack demo/produksi (docker-compose.prod.yml, .env dari .env.prod.example) ---
-PROD := docker compose -f docker-compose.prod.yml
+# --- Stack demo/produksi (docker-compose.prod.yml, env dari .env.prod; salin dari .env.prod.example) ---
+PROD_ENV ?= .env.prod
+PROD := docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV)
 
 prod-up:
 	$(PROD) up -d --build
@@ -79,4 +80,8 @@ prod-guard:
 	$(PROD) exec -T db psql -U qms -d qms_db -c "CREATE TABLE IF NOT EXISTS _no_seed_guard (x int)"
 
 prod-backup:
-	scripts/backup-prod.sh backup
+	QMS_ENV_FILE=$(PROD_ENV) scripts/backup-prod.sh backup
+
+# Reset data demo: hapus antrian/tiket/push, akun dipertahankan (backup otomatis dulu).
+prod-reset:
+	QMS_ENV_FILE=$(PROD_ENV) scripts/reset-demo.sh

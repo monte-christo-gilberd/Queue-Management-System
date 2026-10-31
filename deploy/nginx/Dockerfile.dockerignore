@@ -2,3 +2,5 @@
 !nginx.conf
 !nginx.prod.conf
 !server.conf
+!frontend-upgrade.dev.conf
+!frontend-upgrade.prod.conf
