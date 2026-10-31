@@ -141,18 +141,22 @@ function OwnerQueueBoard({
 }) {
   const board = useQueueBoard(queue.id, onQueueClosed);
   const [noteOpen, setNoteOpen] = useState(false);
-  const { previous, current, next, upcoming } = board.view;
+  const { previous, current, skipped, next, upcoming } = board.view;
 
   const items: TimelineItem[] = [
     ...(previous ? [{ number: formatTicketNumber(previous.ticket.ticket_number), status: 'done' as const }] : []),
     ...(current ? [{ number: formatTicketNumber(current.ticket.ticket_number), status: 'current' as const }] : []),
+    ...skipped.map((entry) => ({
+      number: formatTicketNumber(entry.ticket.ticket_number),
+      status: 'skipped' as const,
+    })),
     ...(next ? [{ number: formatTicketNumber(next.ticket.ticket_number), status: 'waiting' as const }] : []),
     ...upcoming.map((entry) => ({
       number: formatTicketNumber(entry.ticket.ticket_number),
       status: 'waiting' as const,
     })),
   ];
-  const message = board.nextError ?? board.error;
+  const message = board.nextError ?? board.skipError ?? board.error;
 
   return (
     <>
@@ -160,10 +164,12 @@ function OwnerQueueBoard({
       <QueueTimeline
         title={queue.queue_name}
         items={items}
+        onSkip={() => void board.skip()}
         onNext={() => void board.next()}
         onNote={() => setNoteOpen(true)}
         onOpen={onOpen}
         nextLoading={board.nextLoading}
+        skipLoading={board.skipLoading}
       />
       <AppendNoteModal
         visible={noteOpen}

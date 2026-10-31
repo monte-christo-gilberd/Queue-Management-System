@@ -157,6 +157,58 @@ func (r *TicketRepository) NextWaiting(
 	return currentTicket, nil
 }
 
+// CurrentServing: tiket yang sedang dilayani (completed dengan called_at terbaru), dikunci.
+func (r *TicketRepository) CurrentServing(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID int64,
+) (model.Ticket, error) {
+	var t model.Ticket
+	const query = `
+		SELECT
+			id, queue_id, ticket_number, sort_key, user_id, status, skip_count,
+			last_notified_at, created_at, completed_at, cancelled_at
+		FROM tickets
+		WHERE queue_id=$1 AND status='completed' AND called_at IS NOT NULL
+		ORDER BY called_at DESC, id DESC
+		LIMIT 1
+		FOR UPDATE
+	`
+	err := tx.GetContext(ctx, &t, query, queueID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Ticket{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return model.Ticket{}, err
+	}
+	return t, nil
+}
+
+// MarkSkipped mengubah tiket yang sedang dilayani menjadi skipped; called_at dipertahankan.
+func (r *TicketRepository) MarkSkipped(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID int64,
+) error {
+	const query = `
+		UPDATE tickets
+		SET status='skipped', skip_count=skip_count+1, completed_at=NULL
+		WHERE id=$1
+	`
+	result, err := tx.ExecContext(ctx, query, ticketID)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
+}
+
 func (r *TicketRepository) MarkCompleted(
 	ctx context.Context,
 	tx *sqlx.Tx,

@@ -5,7 +5,7 @@
 | TC | Fitur | Sumber | Status di kode |
 |---|---|---|---|
 | TC-09-01 | Papan tampilan publik | 4.5, US-7 (Scope #5, P1) | Belum ada |
-| TC-09-02 | Skip nomor | 4.7, US-8 skip (Scope #7, P2) | Backlog. Skip menandai nomor yang sedang dilayani `skipped` lalu memanggil nomor berikutnya |
+| TC-09-02 | Skip nomor | 4.7, US-8 skip (Scope #7, P2) | **Selesai**, lihat `ts-11-skip.spec.ts` (TC-09-02a sampai e) |
 | TC-09-03 | Notifikasi customer berikutnya | 4.8, US-9 (Scope #8, P2) | Belum ada |
 | TC-09-04 | Customer membatalkan nomornya | 4.9, US-16 (Scope #9, P2) | Belum ada |
 | TC-09-05 | Owner menghapus customer dari antrian | 4.10, US-11 (Scope #10, P2) | Belum ada |

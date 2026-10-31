@@ -11,6 +11,7 @@ export type SseMessage = { event?: string; data: string };
 export type QueueEventType =
   | 'ticket_joined'
   | 'ticket_next'
+  | 'ticket_skipped'
   | 'queue_updated'
   | 'queue_closed'
   | 'queue_qr_updated';
@@ -25,6 +26,7 @@ export type QueueEvent = {
 const EVENT_TYPES: readonly QueueEventType[] = [
   'ticket_joined',
   'ticket_next',
+  'ticket_skipped',
   'queue_updated',
   'queue_closed',
   'queue_qr_updated',

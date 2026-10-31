@@ -164,6 +164,12 @@ Memanggil tiket `waiting` pertama dan menandainya `completed`. Hanya owner.
 ```
 Error: 404 `NOT_FOUND` (bukan owner), 409 `QUEUE_EMPTY` (tidak ada yang menunggu).
 
+### POST /api/v1/queues/:queue_id/skip
+Melewati nomor yang sedang dilayani (tiket `completed` dengan `called_at` terbaru) lalu langsung memanggil tiket `waiting` pertama, dalam satu transaksi. Hanya owner. Tiket yang dilewati menjadi `skipped`, `skip_count` +1, `completed_at` dikosongkan (`called_at` tetap). Customer yang dilewati belum bisa kembali.
+
+200: objek tiket yang baru dipanggil (sama seperti Next), `status` = `"completed"`.
+Error: 404 `NOT_FOUND` (bukan owner), 409 `NOTHING_TO_SKIP` (belum ada nomor yang dilayani), 409 `QUEUE_EMPTY` (tidak ada yang menunggu; tidak ada perubahan, nomor tetap dilayani).
+
 ### GET /api/v1/queues/:queue_id/tickets
 Semua tiket antrian, urut `sort_key`. Hanya owner. Maksimal 500 baris.
 
@@ -310,6 +316,7 @@ data: {"type":"ticket_next","queue_id":122,"payload":{...},"ts":"2026-10-17T09:2
 |---|---|---|
 | `ticket_joined` | Customer berhasil join (tiket baru) | TicketEvent |
 | `ticket_next` | Owner menekan Next | TicketEvent dengan `status` = `completed` |
+| `ticket_skipped` | Owner menekan Skip | TicketEvent dengan `status` = `skipped`; disusul `ticket_next` untuk nomor yang dipanggil |
 | `queue_updated` | Nama atau deskripsi antrian diubah | `{ "queue_id": 122 }` |
 | `queue_closed` | Antrian ditutup | `{ "queue_id": 122 }` |
 | `queue_qr_updated` | Mode QR diubah atau token statis diganti | `{ "queue_id": 122 }` |

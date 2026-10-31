@@ -36,8 +36,8 @@ export type QueueDetailProps = {
   timeline: TimelineItem[];
   /** Nomor yang sedang dilayani, sudah diformat; null bila belum ada. */
   currentNumber: string | null;
-  /** TODO: backend belum mendukung ini (skip ticket) */
   onSkip?: () => void;
+  skipLoading?: boolean;
   onNext?: () => void;
   nextLoading?: boolean;
   /** TODO: backend belum mendukung ini (catatan antrian) */
@@ -65,6 +65,7 @@ export default function QueueDetail({
   timeline,
   currentNumber,
   onSkip,
+  skipLoading = false,
   onNext,
   nextLoading = false,
   onSubmitNote,
@@ -99,7 +100,7 @@ export default function QueueDetail({
 
           {!isClosed ? (
             <View className="flex-row gap-3">
-              <AppButton label="SKIP" variant="outline" className="flex-1" onPress={onSkip} />
+              <AppButton label="SKIP" variant="outline" className="flex-1" onPress={onSkip} loading={skipLoading} />
               <AppButton
                 label="NEXT"
                 variant="dark"

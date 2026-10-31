@@ -15,6 +15,7 @@ type EventNotifier interface {
 const (
 	EventTicketJoined   = "ticket_joined"
 	EventTicketNext     = "ticket_next"
+	EventTicketSkipped  = "ticket_skipped"
 	EventQueueClosed    = "queue_closed"
 	EventQueueUpdated   = "queue_updated"
 	EventQueueQRUpdated = "queue_qr_updated"

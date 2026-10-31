@@ -220,6 +220,35 @@ func (m *memTickets) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID int64
 	return apperror.ErrNotFound
 }
 
+func (m *memTickets) CurrentServing(_ context.Context, _ *sqlx.Tx, queueID int64) (model.Ticket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var best *model.Ticket
+	for _, t := range m.rows {
+		if t.QueueID == queueID && t.Status == "completed" && (best == nil || t.CompletedAt.Time.After(best.CompletedAt.Time)) {
+			best = t
+		}
+	}
+	if best == nil {
+		return model.Ticket{}, apperror.ErrNotFound
+	}
+	return *best, nil
+}
+
+func (m *memTickets) MarkSkipped(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.rows {
+		if t.ID == ticketID {
+			t.Status = "skipped"
+			t.SkipCount++
+			t.CompletedAt = sql.NullTime{}
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
 // memUsers: tabel users. UNIQUE(email) -> ErrDuplicate.
 type memUsers struct {
 	mu     sync.Mutex

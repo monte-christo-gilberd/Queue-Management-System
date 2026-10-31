@@ -77,7 +77,7 @@ test('setelah nomor terakhir dilayani dan tidak ada yang menunggu: next dan upco
   assert.deepEqual(view.upcoming, []);
 });
 
-test('tiket yang dilewati atau dibatalkan tidak tampil sebagai berikutnya maupun upcoming (4.7, 4.9)', () => {
+test('tiket yang dilewati atau dibatalkan tidak tampil sebagai berikutnya maupun upcoming; dilewati masuk `skipped` (4.7, 4.9)', () => {
   const view = deriveQueueView([
     ticket(1, { status: 'skipped', skip_count: 1 }),
     ticket(2, { status: 'cancelled', cancelled_at: '2026-10-17T08:30:00Z' }),
@@ -87,6 +87,7 @@ test('tiket yang dilewati atau dibatalkan tidak tampil sebagai berikutnya maupun
   assert.equal(view.next?.ticket.id, 3);
   assert.deepEqual(view.upcoming.map((e) => e.ticket.id), [4]);
   assert.equal(view.current, null);
+  assert.deepEqual(view.skipped.map((e) => e.ticket.id), [1]);
 });
 
 test('sisipan di posisi 1 saat ada yang dilayani menjadi berikutnya, tidak menggantikan yang dilayani (4.12)', () => {

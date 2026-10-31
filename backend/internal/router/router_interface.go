@@ -6,6 +6,7 @@ type TicketHandler interface {
 	Join(c *gin.Context)
 	Preview(c *gin.Context)
 	Next(c *gin.Context)
+	Skip(c *gin.Context)
 	List(c *gin.Context)
 	Status(c *gin.Context)
 	MyTickets(c *gin.Context)

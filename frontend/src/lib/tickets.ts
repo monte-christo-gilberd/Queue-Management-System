@@ -20,6 +20,15 @@ export async function nextTicket(queueId: number, counterId = 0): Promise<Ticket
 }
 
 /**
+ * POST /api/v1/queues/:id/skip — lewati nomor yang sedang dilayani dan panggil berikutnya (owner).
+ * Mengembalikan tiket yang baru dipanggil. 409 NOTHING_TO_SKIP bila belum ada yang dilayani,
+ * 409 QUEUE_EMPTY bila tidak ada yang menunggu (nomor tetap dilayani).
+ */
+export async function skipTicket(queueId: number): Promise<Ticket> {
+  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/skip`, { method: 'POST' });
+}
+
+/**
  * GET /api/v1/queues/:id/status — status untuk pemegang tiket. Untuk yang belum punya tiket backend
  * membalas 404 (sama dengan antrian tidak ada); pemanggil memperlakukannya sebagai "belum bergabung".
  */

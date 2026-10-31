@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useQueueEvents } from '@/hooks/use-queue-events';
 import { describeQueueError } from '@/lib/queue-errors';
-import { listTickets, nextTicket } from '@/lib/tickets';
+import { listTickets, nextTicket, skipTicket } from '@/lib/tickets';
 import type { Ticket } from '@/types/api';
 import { deriveQueueView } from '@/utils/queue-view';
 
@@ -32,6 +32,8 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
   const [error, setError] = useState<string>();
   const [nextLoading, setNextLoading] = useState(false);
   const [nextError, setNextError] = useState<string>();
+  const [skipLoading, setSkipLoading] = useState(false);
+  const [skipError, setSkipError] = useState<string>();
 
   const apply = useCallback((r: Result<Ticket[]>) => {
     if (r.ok) {
@@ -84,7 +86,7 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
 
   useQueueEvents(queueId, {
     onEvent: (event) => {
-      if (event.type === 'ticket_joined' || event.type === 'ticket_next') {
+      if (event.type === 'ticket_joined' || event.type === 'ticket_next' || event.type === 'ticket_skipped') {
         scheduleReload(event.queue_id);
       } else if (event.type === 'queue_closed') {
         closedRef.current?.();
@@ -111,6 +113,19 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     setNextLoading(false);
   }, [queueId, reload]);
 
+  const skip = useCallback(async () => {
+    if (queueId === null) return;
+    setSkipLoading(true);
+    setSkipError(undefined);
+    const r = await run(() => skipTicket(queueId));
+    if (r.ok) {
+      await reload(queueId);
+    } else {
+      setSkipError(r.message);
+    }
+    setSkipLoading(false);
+  }, [queueId, reload]);
+
   const view = useMemo(() => deriveQueueView(tickets), [tickets]);
 
   return {
@@ -121,5 +136,8 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     next,
     nextLoading,
     nextError,
+    skip,
+    skipLoading,
+    skipError,
   };
 }

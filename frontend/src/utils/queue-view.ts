@@ -8,11 +8,13 @@ import type { Ticket, TicketEntry } from '@/types/api';
  * - `previous` = tiket `completed` sebelumnya.
  * - `next`     = tiket `waiting` pertama (sort_key terkecil).
  * - `upcoming` = sisa tiket `waiting` setelah `next`.
- * Tiket `skipped` dan `cancelled` tidak ditampilkan.
+ * - `skipped`  = tiket `skipped` (dilewati), urut nomor.
+ * Tiket `cancelled` tidak ditampilkan.
  */
 export type QueueView = {
   previous: TicketEntry | null;
   current: TicketEntry | null;
+  skipped: TicketEntry[];
   next: TicketEntry | null;
   upcoming: TicketEntry[];
 };
@@ -30,11 +32,16 @@ export function deriveQueueView(tickets: readonly Ticket[]): QueueView {
     .filter((t) => t.status === 'waiting')
     .sort((a, b) => a.sort_key - b.sort_key || a.id - b.id);
 
+  const skipped = tickets
+    .filter((t) => t.status === 'skipped')
+    .sort((a, b) => a.ticket_number - b.ticket_number);
+
   const entry = (ticket: Ticket): TicketEntry => ({ ticket, counterName: ticket.called_counter_name ?? undefined });
 
   return {
     previous: completed[1] ? entry(completed[1]) : null,
     current: completed[0] ? entry(completed[0]) : null,
+    skipped: skipped.map(entry),
     next: waiting[0] ? entry(waiting[0]) : null,
     upcoming: waiting.slice(1).map(entry),
   };

@@ -18,6 +18,7 @@ export type QueueTimelineProps = {
   /** Ketuk bagian kartu (judul dan timeline) untuk membuka detail antrian. */
   onOpen?: () => void;
   nextLoading?: boolean;
+  skipLoading?: boolean;
 };
 
 const STATUS_TEXT: Record<TimelineItem["status"], string> = {
@@ -100,6 +101,7 @@ export function QueueTimeline({
   onNote,
   onOpen,
   nextLoading = false,
+  skipLoading = false,
 }: QueueTimelineProps) {
   return (
     <View className="w-full gap-5 rounded-[20px] bg-dark p-5 dark:border dark:border-line">
@@ -113,10 +115,10 @@ export function QueueTimeline({
       <View className="flex-row gap-3">
         <Pressable
           onPress={onSkip}
-          disabled={!onSkip}
+          disabled={!onSkip || skipLoading}
           className="h-12 flex-1 items-center justify-center rounded-[10px] border border-[#3a3a3a] active:opacity-80"
         >
-          <Text className="text-[15px] font-bold text-white">Skip</Text>
+          <Text className="text-[15px] font-bold text-white">{skipLoading ? "..." : "Skip"}</Text>
         </Pressable>
         <Pressable
           onPress={onNext}

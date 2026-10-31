@@ -109,6 +109,35 @@ func (m *memTicketRepo) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID in
 	return apperror.ErrNotFound
 }
 
+func (m *memTicketRepo) CurrentServing(_ context.Context, _ *sqlx.Tx, queueID int64) (model.Ticket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var best *model.Ticket
+	for _, t := range m.tickets {
+		if t.QueueID == queueID && t.Status == "completed" && (best == nil || m.doneSeq[t.ID] > m.doneSeq[best.ID]) {
+			best = t
+		}
+	}
+	if best == nil {
+		return model.Ticket{}, apperror.ErrNotFound
+	}
+	return *best, nil
+}
+
+func (m *memTicketRepo) MarkSkipped(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.ID == ticketID {
+			t.Status = "skipped"
+			t.SkipCount++
+			t.CompletedAt = sql.NullTime{}
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
 func (m *memTicketRepo) GetCounterByQueue(_ context.Context, _ int64) (model.Counter, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

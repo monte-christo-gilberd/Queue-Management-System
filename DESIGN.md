@@ -98,7 +98,7 @@ Batasan penting di `tickets`:
             join                 next
   (baru) ───────────► waiting ───────────► completed
                          │
-                         └── (skipped, cancelled: tersedia di skema, belum ada endpoint)
+                         └── (skipped: lewat POST /skip; cancelled: tersedia di skema, belum ada endpoint)
 ```
 
 - **Join ulang** (user yang sudah punya tiket di antrian itu): backend mengembalikan **tiket yang sudah ada** dengan 200.
@@ -231,7 +231,7 @@ Ekspektasi tes diturunkan dari product overview (`documentation/docs/product-ove
 ## 7. Batasan dan yang belum dibangun
 
 Yang belum ada di backend (lihat product overview):
-- Skip tiket, notifikasi ke customer berikutnya, pembatalan oleh customer, hapus customer oleh owner.
+- Notifikasi ke customer berikutnya, pembatalan oleh customer, hapus customer oleh owner.
 - Counter kustom (kini satu counter default otomatis per antrian, disembunyikan di UI), penyisipan di posisi tertentu, antrian ulang (requeue).
 - Batas harian/fallback QR, riwayat dan ekspor, catatan antrian, Google login.
 - Pembayaran langganan, verifikasi email, lupa password, `notify-service` (Tier 2).

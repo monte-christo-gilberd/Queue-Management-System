@@ -15,6 +15,7 @@ type stubTicket struct{}
 
 func (stubTicket) Join(c *gin.Context)      {}
 func (stubTicket) Next(c *gin.Context)      {}
+func (stubTicket) Skip(c *gin.Context)      {}
 func (stubTicket) List(c *gin.Context)      {}
 func (stubTicket) Status(c *gin.Context)    {}
 func (stubTicket) MyTickets(c *gin.Context) {}

@@ -65,6 +65,13 @@ export async function nextViaApi(request: APIRequestContext, token: string, queu
   });
 }
 
+/** Memanggil SKIP lewat API (lewati nomor yang dilayani, panggil berikutnya). */
+export async function skipViaApi(request: APIRequestContext, token: string, queueId: number) {
+  return request.post(`${API_URL}/api/v1/queues/${queueId}/skip`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 /** Menutup antrian lewat API (menyiapkan data). */
 export async function closeQueueViaApi(request: APIRequestContext, token: string, queueId: number) {
   const res = await request.post(`${API_URL}/api/v1/queues/${queueId}/close`, {

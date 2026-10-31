@@ -5,10 +5,9 @@ import { test } from '@playwright/test';
  * sampai fitur dikerjakan. Lihat test-cases/queue-management/backlog/ts-09-backlog-features.md.
  */
 const BACKLOG: Array<[title: string, source: string]> = [
-  // Catatan status: TC-09-02 backlog (Skip = tandai nomor sekarang `skipped` lalu panggil berikutnya); TC-09-06 hanya counter default (CRUD di Tier 2);
+  // Catatan status: TC-09-02 (Skip) sudah ada di ts-11-skip.spec.ts; TC-09-06 hanya counter default (CRUD di Tier 2);
   // TC-09-08 QR dinamis sudah ada (batas harian belum); TC-09-16 sudah ada tetapi kamera tidak bisa diotomasi.
   ['TC-09-01 Papan tampilan publik', '4.5, US-7'],
-  ['TC-09-02 Skip nomor', '4.7, US-8 skip'],
   ['TC-09-03 Notifikasi customer berikutnya', '4.8, US-9'],
   ['TC-09-04 Customer membatalkan nomornya', '4.9, US-16'],
   ['TC-09-05 Owner menghapus customer dari antrian', '4.10, US-11'],

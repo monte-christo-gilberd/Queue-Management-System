@@ -17,6 +17,7 @@ func registerQueueRoutes(
 
 	// Join berbasis token: nomor id tidak dipakai lagi dari URL.
 	rg.POST("/:queue_id/next", ticketH.Next)
+	rg.POST("/:queue_id/skip", ticketH.Skip)
 	rg.GET("/:queue_id/tickets", ticketH.List)
 	rg.GET("/:queue_id/status", ticketH.Status)
 

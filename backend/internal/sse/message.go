@@ -6,10 +6,11 @@ import (
 )
 
 const (
-	EventTicketJoined = "ticket_joined"
-	EventTicketNext   = "ticket_next"
-	EventQueueClosed  = "queue_closed"
-	EventQueueUpdated = "queue_updated"
+	EventTicketJoined  = "ticket_joined"
+	EventTicketNext    = "ticket_next"
+	EventTicketSkipped = "ticket_skipped"
+	EventQueueClosed   = "queue_closed"
+	EventQueueUpdated  = "queue_updated"
 )
 
 // Event adalah kontrak JSON ke browser web & Expo RN.

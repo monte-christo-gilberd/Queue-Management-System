@@ -25,6 +25,7 @@ export default function QueueLiveRoute() {
       previousTicket={toLive(previous)}
       currentTicket={toLive(current)}
       nextTicket={toLive(next)}
+      onSkip={() => void board.skip()}
       onNext={() => void board.next()}
       onMenuItemPress={handleOwnerMenuItemPress}
     />

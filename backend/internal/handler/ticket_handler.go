@@ -25,6 +25,11 @@ type TicketService interface {
 		requesterID int64,
 		counterID int64,
 	) (model.Ticket, error)
+	SkipTicket(
+		ctx context.Context,
+		queueID,
+		requesterID int64,
+	) (model.Ticket, error)
 	ListTickets(
 		ctx context.Context,
 		queueID,
@@ -276,6 +281,31 @@ func (h *TicketHandler) Next(
 		http.StatusOK,
 		dto.NewTicketResponse(ticket),
 	)
+}
+
+// Skip: POST /api/v1/queues/:queue_id/skip — owner melewati nomor yang sedang dilayani
+// dan langsung memanggil nomor berikutnya.
+func (h *TicketHandler) Skip(c *gin.Context) {
+	queueID, err := strconv.ParseInt(c.Param("queue_id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
+		return
+	}
+	ticket, err := h.service.SkipTicket(c.Request.Context(), queueID, c.GetInt64("user_id"))
+	if err != nil {
+		switch {
+		case errors.Is(err, apperror.ErrNotFound):
+			respondError(c, http.StatusNotFound, "NOT_FOUND", "queue not found")
+		case errors.Is(err, apperror.ErrNothingToSkip):
+			respondError(c, http.StatusConflict, "NOTHING_TO_SKIP", "no ticket is being served")
+		case errors.Is(err, apperror.ErrQueueEmpty):
+			respondError(c, http.StatusConflict, "QUEUE_EMPTY", "queue is currently empty")
+		default:
+			respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		}
+		return
+	}
+	respondData(c, http.StatusOK, dto.NewTicketResponse(ticket))
 }
 
 var validTicketStatuses = map[string]bool{

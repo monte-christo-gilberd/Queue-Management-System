@@ -179,6 +179,11 @@ func (s *specTicketSvc) NextTicket(_ context.Context, queueID, requesterID int64
 	return s.ticket, s.err
 }
 
+func (s *specTicketSvc) SkipTicket(_ context.Context, queueID, requesterID int64) (model.Ticket, error) {
+	s.record(queueID, requesterID)
+	return s.ticket, s.err
+}
+
 func (s *specTicketSvc) ListTickets(_ context.Context, queueID, requesterID int64, statuses []string) ([]model.Ticket, error) {
 	s.record(queueID, requesterID)
 	s.gotStatus = statuses

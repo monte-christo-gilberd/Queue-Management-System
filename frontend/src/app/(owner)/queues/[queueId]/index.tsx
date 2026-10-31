@@ -117,9 +117,11 @@ function QueueDetailEditor({
       onChangeQueueDescription={setQueueDescription}
       onSave={save}
       saving={saving}
-      errorMessage={errorMessage ?? board.nextError ?? board.error}
+      errorMessage={errorMessage ?? board.nextError ?? board.skipError ?? board.error}
       timeline={timeline}
       currentNumber={currentNumber}
+      onSkip={() => void board.skip()}
+      skipLoading={board.skipLoading}
       onNext={() => void board.next()}
       nextLoading={board.nextLoading}
       qrCard={

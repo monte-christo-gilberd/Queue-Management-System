@@ -34,6 +34,16 @@ type TicketRepository interface {
 		ticketID int64,
 		counterID int64,
 	) error
+	CurrentServing(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		queueID int64,
+	) (model.Ticket, error)
+	MarkSkipped(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		ticketID int64,
+	) error
 	ListByQueue(
 		ctx context.Context,
 		queueID int64,
@@ -300,6 +310,70 @@ func (s *TicketService) NextTicket(
 	)
 
 	return ticket, nil
+}
+
+// SkipTicket melewati tiket yang sedang dilayani lalu memanggil tiket waiting berikutnya.
+// Bila tidak ada yang dilayani: ErrNothingToSkip; bila tidak ada yang menunggu: ErrQueueEmpty
+// (transaksi dibatalkan, tiket tetap dilayani). Mengembalikan tiket yang baru dipanggil.
+func (s *TicketService) SkipTicket(
+	ctx context.Context,
+	queueID,
+	requesterID int64,
+) (model.Ticket, error) {
+	if s.guard == nil {
+		return model.Ticket{}, errNoQueueGuard
+	}
+	if _, err := s.guard.GetQueue(ctx, queueID, requesterID); err != nil {
+		return model.Ticket{}, err
+	}
+
+	counter, err := s.repository.GetCounterByQueue(ctx, queueID)
+	if err != nil {
+		return model.Ticket{}, err
+	}
+
+	var skipped, called model.Ticket
+	err = s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
+		var err error
+		skipped, err = s.repository.CurrentServing(ctx, tx, queueID)
+		if errors.Is(err, apperror.ErrNotFound) {
+			return apperror.ErrNothingToSkip
+		}
+		if err != nil {
+			return err
+		}
+		called, err = s.repository.NextWaiting(ctx, tx, queueID)
+		if errors.Is(err, apperror.ErrNotFound) {
+			return apperror.ErrQueueEmpty
+		}
+		if err != nil {
+			return err
+		}
+		if err := s.repository.MarkSkipped(ctx, tx, skipped.ID); err != nil {
+			return err
+		}
+		return s.repository.MarkCompleted(ctx, tx, called.ID, counter.ID)
+	})
+	if err != nil {
+		return model.Ticket{}, err
+	}
+
+	skipped.Status = "skipped"
+	skipped.SkipCount++
+	skipped.CompletedAt = sql.NullTime{}
+
+	called.Status = "completed"
+	called.CompletedAt = sql.NullTime{Time: time.Now(), Valid: true}
+	called.CalledAt = called.CompletedAt
+	called.CalledCounterID = counter.ID
+	if !counter.IsDefault {
+		called.CounterName = counter.Name
+	}
+
+	notifyEvent(s.notifier, queueID, EventTicketSkipped, dto.NewTicketEvent(skipped))
+	notifyEvent(s.notifier, queueID, EventTicketNext, dto.NewTicketEvent(called))
+
+	return called, nil
 }
 
 // ListTickets mengembalikan tiket queue milik requester. statuses kosong = semua status.

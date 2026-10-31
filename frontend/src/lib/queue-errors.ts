@@ -17,6 +17,8 @@ export function describeQueueError(error: unknown): string {
       return 'Antrian tidak ditemukan';
     case 'QUEUE_EMPTY':
       return 'Tidak ada yang menunggu di antrian ini';
+    case 'NOTHING_TO_SKIP':
+      return 'Belum ada nomor yang sedang dilayani';
     case 'QUEUE_CLOSED':
       return 'Antrian sudah ditutup';
     case 'ALREADY_JOINED':

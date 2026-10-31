@@ -343,3 +343,62 @@ func TestSpec_ListTickets_CustomerCannotSeeOthersTickets(t *testing.T) {
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 	assert.Empty(t, tickets)
 }
+
+func TestSpec_Skip_SkipsServingAndCallsNext(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	for _, c := range []int64{specCustomerA, specCustomerB, specCustomerC} {
+		_, _ = env.ts.JoinQueue(ctx, env.queueID, c)
+	}
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	require.NoError(t, err)
+
+	called, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, called.TicketNumber)
+	assert.Equal(t, "completed", called.Status)
+
+	all, _ := env.ts.ListTickets(ctx, env.queueID, specOwnerID, []string{"skipped"})
+	require.Len(t, all, 1)
+	assert.Equal(t, 1, all[0].TicketNumber)
+	assert.Equal(t, 1, all[0].SkipCount)
+
+	st, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerB)
+	require.NoError(t, err)
+	require.NotNil(t, st.CurrentNumber)
+	assert.Equal(t, 2, *st.CurrentNumber)
+	assert.Equal(t, 1, env.events.count(service.EventTicketSkipped))
+	assert.Equal(t, 2, env.events.count(service.EventTicketNext))
+}
+
+func TestSpec_Skip_NothingServedIsNothingToSkip(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	assert.ErrorIs(t, err, apperror.ErrNothingToSkip)
+	assert.Equal(t, 0, env.events.count(service.EventTicketSkipped))
+}
+
+func TestSpec_Skip_NobodyWaitingKeepsServing(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	assert.ErrorIs(t, err, apperror.ErrQueueEmpty)
+
+	// fake tx tidak rollback, jadi cek lewat event: tidak ada yang disiarkan
+	assert.Equal(t, 0, env.events.count(service.EventTicketSkipped))
+}
+
+func TestSpec_Skip_CustomerIsDenied(t *testing.T) {
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specCustomerA)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+}

@@ -581,3 +581,59 @@ func TestJoinQueue_AfterQueueDrainedStillAcceptsJoin(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "waiting", tk.Status)
 }
+
+func TestSkipTicket_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "o@b.c", time.Now().Add(time.Hour))
+	u1, u2, u3 := seedUser(t, db, "1@b.c"), seedUser(t, db, "2@b.c"), seedUser(t, db, "3@b.c")
+	q := createQueue(t, db, owner, "Q")
+
+	ticketRepo := repository.NewTicketRepository(db)
+	txRunner := database.NewSqlxTxRunner(db)
+	queueSvc := service.NewQueueService(
+		repository.NewQueueRepository(db),
+		repository.NewSubscriptionChecker(db),
+		txRunner,
+	).WithTicketHolderChecker(ticketRepo)
+	svc := service.NewTicketService(ticketRepo, txRunner).WithQueueGuard(queueSvc)
+
+	for _, u := range []int64{u1, u2, u3} {
+		_, err := svc.JoinQueue(ctx, q.ID, u)
+		require.NoError(t, err)
+	}
+
+	_, err := svc.SkipTicket(ctx, q.ID, owner)
+	assert.ErrorIs(t, err, apperror.ErrNothingToSkip)
+
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	require.NoError(t, err)
+
+	called, err := svc.SkipTicket(ctx, q.ID, owner)
+	require.NoError(t, err)
+	assert.Equal(t, 2, called.TicketNumber)
+
+	st, err := svc.QueueStatus(ctx, q.ID, owner)
+	require.NoError(t, err)
+	require.NotNil(t, st.CurrentNumber)
+	assert.Equal(t, 2, *st.CurrentNumber)
+
+	skipped, err := svc.ListTickets(ctx, q.ID, owner, []string{"skipped"})
+	require.NoError(t, err)
+	require.Len(t, skipped, 1)
+	assert.Equal(t, 1, skipped[0].TicketNumber)
+	assert.Equal(t, 1, skipped[0].SkipCount)
+	assert.False(t, skipped[0].CompletedAt.Valid)
+
+	// Skip beruntun: 2 dilewati, 3 dipanggil; lalu tidak ada yang menunggu -> QUEUE_EMPTY, 3 tetap dilayani.
+	called, err = svc.SkipTicket(ctx, q.ID, owner)
+	require.NoError(t, err)
+	assert.Equal(t, 3, called.TicketNumber)
+	_, err = svc.SkipTicket(ctx, q.ID, owner)
+	assert.ErrorIs(t, err, apperror.ErrQueueEmpty)
+
+	st, err = svc.QueueStatus(ctx, q.ID, owner)
+	require.NoError(t, err)
+	require.NotNil(t, st.CurrentNumber)
+	assert.Equal(t, 3, *st.CurrentNumber)
+}

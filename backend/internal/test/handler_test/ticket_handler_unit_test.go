@@ -20,6 +20,7 @@ func specTicketEngine(svc *specTicketSvc, userID int64) *gin.Engine {
 	e.POST("/join", h.Join)
 	e.GET("/join/preview", h.Preview)
 	e.POST("/queues/:queue_id/next", h.Next)
+	e.POST("/queues/:queue_id/skip", h.Skip)
 	e.GET("/queues/:queue_id/tickets", h.List)
 	e.GET("/queues/:queue_id/status", h.Status)
 	e.GET("/users/me/tickets", h.MyTickets)
@@ -210,4 +211,40 @@ func TestSpec_MyTickets_ReturnsOwnTicketsWithQueueInfo(t *testing.T) {
 	assert.Equal(t, "list_my_tickets", data["action"])
 	assert.Equal(t, []interface{}{}, data["tickets"])
 	assert.Equal(t, int64(42), svc.gotUser)
+}
+
+func TestSpec_Skip_ErrorMapping(t *testing.T) {
+	cases := []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{apperror.ErrNothingToSkip, http.StatusConflict, "NOTHING_TO_SKIP"},
+		{apperror.ErrQueueEmpty, http.StatusConflict, "QUEUE_EMPTY"},
+		{apperror.ErrNotFound, http.StatusNotFound, "NOT_FOUND"},
+	}
+	for _, c := range cases {
+		e := specTicketEngine(&specTicketSvc{err: c.err}, 7)
+		w := specRequest(e, http.MethodPost, "/queues/1/skip", "")
+		assert.Equal(t, c.status, w.Code)
+		assert.Equal(t, c.code, specErrorCode(t, w))
+	}
+}
+
+func TestSpec_Skip_ReturnsCalledTicket(t *testing.T) {
+	svc := &specTicketSvc{ticket: model.Ticket{ID: 2, QueueID: 1, TicketNumber: 2, UserID: 102, Status: "completed"}}
+	e := specTicketEngine(svc, 7)
+
+	w := specRequest(e, http.MethodPost, "/queues/1/skip", "")
+
+	require.Equal(t, http.StatusOK, w.Code)
+	data := specDecode(t, w)["data"].(map[string]interface{})
+	assert.Equal(t, float64(2), data["ticket_number"])
+	assert.Equal(t, "completed", data["status"])
+}
+
+func TestSpec_Skip_BadQueueIDIs400(t *testing.T) {
+	e := specTicketEngine(&specTicketSvc{}, 7)
+	w := specRequest(e, http.MethodPost, "/queues/abc/skip", "")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

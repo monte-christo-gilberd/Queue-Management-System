@@ -76,6 +76,22 @@ func (f *fakeTicketRepo) MarkCompleted(
 	return nil // tidak dipakai di test ini
 }
 
+func (f *fakeTicketRepo) CurrentServing(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID int64,
+) (model.Ticket, error) {
+	return model.Ticket{}, apperror.ErrNotFound
+}
+
+func (f *fakeTicketRepo) MarkSkipped(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID int64,
+) error {
+	return nil
+}
+
 func (f *fakeTicketRepo) HasTicket(
 	ctx context.Context,
 	queueID,

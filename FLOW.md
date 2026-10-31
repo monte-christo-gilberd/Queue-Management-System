@@ -80,7 +80,7 @@ Dibuka dari Dashboard (ketuk judul antrian) atau dari Daftar Antrian. Layout dua
 |---|---|
 | QR antrian | QR digambar di frontend dari `join_url`, mode statis/dinamis, hitung mundur, salin tautan, ganti kode (statis) |
 | Tautan join | Tautan `<origin>/join?t=<token>` berasal dari backend (tombol salin di kartu QR) |
-| SKIP / NEXT | NEXT berfungsi. SKIP ditunda (backlog) |
+| SKIP / NEXT | Keduanya berfungsi. SKIP melewati nomor yang dilayani lalu memanggil berikutnya; nomor yang dilewati tampil "dilewati" |
 | Append Note | Popup catatan. Belum tersambung ke backend |
 | Tampilan customer | Nomor yang sedang dilayani (tanpa posisi sebelum/sesudah) |
 | Daftar tiket | Ketuk kartu tampilan customer untuk membuka semua tiket antrian |
@@ -144,6 +144,7 @@ Event SSE yang diterima customer:
 | Event | Yang terjadi di layar |
 |---|---|
 | `ticket_joined` | Posisi di depan diperbarui |
+| `ticket_skipped` | Nomor yang dilayani dilewati; status tiket menjadi Dilewati |
 | `ticket_next` | Nomor yang sedang dilayani dan posisi di depan diperbarui |
 | `queue_updated` | Nama antrian diperbarui |
 | `queue_closed` | Pesan "antrian ditutup", tiket pindah ke Riwayat |
@@ -160,5 +161,5 @@ lalu mengambil ulang status.
 ## 8. Yang belum punya alur
 
 Fitur di bawah ini ada di product overview tetapi belum punya endpoint, sehingga alurnya belum bisa dijalankan:
-skip tiket, notifikasi ke customer berikutnya, pembatalan oleh customer, hapus customer, counter,
+notifikasi ke customer berikutnya, pembatalan oleh customer, hapus customer, counter,
 penyisipan posisi, antrian ulang, batas harian QR, riwayat dan ekspor, catatan antrian, login Google, dan pembayaran langganan.

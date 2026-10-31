@@ -94,7 +94,7 @@ test('JSON rusak, bukan objek, atau tipe tidak dikenal ditolak', () => {
   assert.equal(parseQueueEvent('{bukan json'), null);
   assert.equal(parseQueueEvent('null'), null);
   assert.equal(parseQueueEvent('"teks"'), null);
-  assert.equal(parseQueueEvent('{"type":"ticket_skipped","queue_id":3}'), null);
+  assert.equal(parseQueueEvent('{"type":"ticket_unknown","queue_id":3}'), null);
   assert.equal(parseQueueEvent('{"queue_id":3}'), null);
 });
 
@@ -145,4 +145,13 @@ test('resyncInterval: cepat hanya bila SSE belum hidup melewati masa tunggu', ()
 test('shouldResync memakai interval kustom', () => {
   assert.equal(shouldResync(true, false, 0, FALLBACK_POLL_MS, FALLBACK_POLL_MS), true);
   assert.equal(shouldResync(true, false, 0, FALLBACK_POLL_MS - 1, FALLBACK_POLL_MS), false);
+});
+
+test('event ticket_skipped dikenali', () => {
+  assert.deepEqual(parseQueueEvent('{"type":"ticket_skipped","queue_id":3}'), {
+    type: 'ticket_skipped',
+    queue_id: 3,
+    payload: undefined,
+    ts: undefined,
+  });
 });

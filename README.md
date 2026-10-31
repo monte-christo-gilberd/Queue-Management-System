@@ -18,7 +18,7 @@ Dokumen lain:
 - Pembaruan real-time lewat Server-Sent Events (termasuk `queue_qr_updated`).
 - Mode terang dan gelap.
 
-Yang belum tersedia (lihat [DESIGN.md](DESIGN.md#7-batasan-dan-yang-belum-dibangun)): skip, notifikasi/email,
+Yang belum tersedia (lihat [DESIGN.md](DESIGN.md#7-batasan-dan-yang-belum-dibangun)): notifikasi/email,
 pembatalan oleh customer, counter kustom, catatan, riwayat ekspor, login Google,
 dan pembayaran langganan.
 
