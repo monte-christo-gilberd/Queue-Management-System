@@ -71,6 +71,12 @@ services:
       - ./notify-service:/src
       - go_build_cache:/root/.cache/go-build
       - go_mod_cache:/go/pkg/mod
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8091/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
     stop_grace_period: 3s
     depends_on:
       db:

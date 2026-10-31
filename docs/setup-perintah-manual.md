@@ -295,3 +295,23 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod down -v   # mengh
 ```
 
 Matikan laptop: tunnel ikut berhenti otomatis dan tidak hidup lagi saat boot (sudah `disabled`). Stack Docker dengan `restart: unless-stopped` akan hidup lagi setelah boot kecuali sudah di-`down`.
+
+## 13. Terapkan penyesuaian skema ke DB yang sudah berjalan
+
+Idempoten, aman diulang. Backup dulu (bagian 6), lalu:
+
+```bash
+PROD="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+$PROD exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql
+$PROD restart backend notify-service
+```
+
+Ini menggantikan `ALTER` satu per satu di bagian 8. Untuk dev, pakai `docker compose exec -T db ...` tanpa `-f`.
+
+## 14. Healthcheck dan log notify-service
+
+```bash
+docker ps --format '{{.Names}} {{.Status}}' | grep notify          # (healthy)
+docker exec qms-prod-notify-service-1 wget -qO- http://127.0.0.1:8091/health
+docker logs --tail 20 qms-prod-notify-service-1                    # log JSON
+```

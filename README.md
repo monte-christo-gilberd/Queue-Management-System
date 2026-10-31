@@ -43,7 +43,7 @@ db/               Dockerfile dan skema PostgreSQL (migrations/01_Schema.sql, 02_
 deploy/nginx/     Konfigurasi nginx untuk pemasangan di host, Dockerfile, dan template konfigurasi
 docker-compose.yml  Stack development (hot reload): db, qr-service, notify-service, backend, frontend; hanya nginx yang membuka port
 docker-compose.prod.yml  Stack demo/produksi (target prod, nginx hanya di 127.0.0.1)
-notify-service/   Web Push (LISTEN Postgres)
+notify-service/   Web Push (LISTEN Postgres), /health :8091, log JSON
 scripts/          backup-prod.sh (backup/restore DB prod)
 .env.example      Template env dev, plus bagian per service untuk menjalankan di luar Docker
 .env.prod.example Template env produksi
@@ -179,7 +179,7 @@ Alur: trigger `tickets_notify_trg` di Postgres memancarkan `pg_notify('queue_eve
 Catatan:
 - Satu browser hanya melayani satu akun. Layar tiket mendaftarkan ulang langganan ke akun yang sedang login, dan logout melepas langganan.
 - Push hanya jalan di HTTPS (`make tunnel`) dan di browser yang mendukung; Expo Go tidak.
-- DB yang sudah berjalan tidak menjalankan ulang skrip init. Terapkan manual: `ALTER TABLE tickets ADD COLUMN recalled_at TIMESTAMPTZ;`, tabel `push_subscriptions`, fungsi `tickets_notify` dan trigger `tickets_notify_trg` (jika sudah ada versi lama tanpa event `skipped`, jalankan ulang `CREATE OR REPLACE FUNCTION` dan buat ulang trigger) (ada di akhir `db/migrations/01_Schema.sql`), serta role `notify_ro` (`db/migrations/03_notify_role.sh`). Pengaturan Skip juga butuh kolom `queue_settings.skip_fallback`, `skip_fallback_n`, `skip_max_returns`.
+- DB yang sudah berjalan tidak menjalankan ulang skrip init. **Cara cepat dan idempoten:** `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql` (prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`), lalu restart backend dan notify-service. Isinya mencakup semua penyesuaian di bawah ini, yang bila dikerjakan manual: `ALTER TABLE tickets ADD COLUMN recalled_at TIMESTAMPTZ;`, tabel `push_subscriptions`, fungsi `tickets_notify` dan trigger `tickets_notify_trg` (jika sudah ada versi lama tanpa event `skipped`, jalankan ulang `CREATE OR REPLACE FUNCTION` dan buat ulang trigger) (ada di akhir `db/migrations/01_Schema.sql`), serta role `notify_ro` (`db/migrations/03_notify_role.sh`). Pengaturan Skip juga butuh kolom `queue_settings.skip_fallback`, `skip_fallback_n`, `skip_max_returns`.
 - Awalan nomor tiket: DB lama butuh `ALTER TABLE queues ADD COLUMN ticket_prefix VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (ticket_prefix ~ '^[A-Z0-9]{1,3}$');`, lalu restart backend dan notify-service (notify membaca kolom ini).
 - Tes unit: `cd notify-service && go test ./...`.
 

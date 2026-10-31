@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -34,7 +34,8 @@ func Parse(raw string) (Event, error) {
 }
 
 // Listen berjalan sampai koneksi putus atau ctx selesai. LISTEN hanya jalan di primary.
-func Listen(ctx context.Context, dsn string, handle func(Event)) error {
+// onState dipanggil true setelah LISTEN aktif (untuk healthcheck); boleh nil.
+func Listen(ctx context.Context, dsn string, handle func(Event), onState func(bool)) error {
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		return err
@@ -43,7 +44,10 @@ func Listen(ctx context.Context, dsn string, handle func(Event)) error {
 	if _, err := conn.Exec(ctx, "LISTEN queue_events"); err != nil {
 		return err
 	}
-	log.Println("listening on queue_events")
+	slog.Info("listening on queue_events")
+	if onState != nil {
+		onState(true)
+	}
 	for {
 		n, err := conn.WaitForNotification(ctx)
 		if err != nil {
@@ -51,7 +55,7 @@ func Listen(ctx context.Context, dsn string, handle func(Event)) error {
 		}
 		e, err := Parse(n.Payload)
 		if err != nil {
-			log.Printf("skip bad event: %v", err)
+			slog.Warn("skip bad event", "err", err)
 			continue
 		}
 		handle(e)
