@@ -1,0 +1,132 @@
+# Stack QMS untuk DEMO/PRODUKSI di satu mesin (laptop) di belakang Cloudflare Tunnel.
+# Tanpa Metro/hot reload, tanpa kode di-mount: semua service memakai target `prod`.
+# Hanya nginx yang membuka port, dan hanya ke 127.0.0.1 (cloudflared di host yang menjangkaunya).
+#
+#   cp .env.prod.example .env      # isi rahasia (openssl rand -hex 32)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   -> http://127.0.0.1:${QMS_HTTP_PORT:-8080}   (target tunnel: http://localhost:8080)
+#
+# Jangan jalankan bersamaan dengan docker-compose.yml (dev): port bentrok.
+# Database prod memakai volume sendiri (db_data_prod) dan TIDAK berisi seed.
+name: qms-prod
+
+services:
+  db:
+    build: ./db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-qms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-qms_db}
+      NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?set NOTIFY_DB_PASSWORD in .env}
+    volumes:
+      - db_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - internal
+    restart: unless-stopped
+
+  qr-service:
+    build:
+      context: ./qr-service
+      target: prod
+    environment:
+      PORT: "8090"
+      JOIN_LINK_SECRET: ${JOIN_LINK_SECRET:?set JOIN_LINK_SECRET in .env}
+      QR_DYNAMIC_TTL_SECONDS: ${QR_DYNAMIC_TTL_SECONDS:-120}
+      QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    networks:
+      - internal
+    restart: unless-stopped
+
+  notify-service:
+    build:
+      context: ./notify-service
+      target: prod
+    environment:
+      DATABASE_URL: postgresql://notify_ro:${NOTIFY_DB_PASSWORD}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      target: prod
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-qms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+      PORT: "8080"
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      ALLOWED_ORIGINS: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
+      PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
+      # Hanya nginx (jaringan internal) yang boleh menentukan IP klien.
+      TRUSTED_PROXIES: 172.29.0.0/16
+      QR_SERVICE_URL: http://qr-service:8090
+      QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
+      QR_HTTP_TIMEOUT: ${QR_HTTP_TIMEOUT:-1}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      db:
+        condition: service_healthy
+      qr-service:
+        condition: service_started
+    networks:
+      - internal
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+      args:
+        # Web memanggil API di origin yang sama (lewat nginx).
+        EXPO_PUBLIC_API_URL: origin
+    networks:
+      - internal
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: ./deploy/nginx
+      args:
+        NGINX_CONF: nginx.prod.conf
+    ports:
+      # Hanya loopback: cloudflared di host menjangkau ini; LAN tidak bisa
+      # (mencegah pemalsuan CF-Connecting-IP dan melewati aturan WAF).
+      - "127.0.0.1:${QMS_HTTP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      qr-service:
+        condition: service_started
+      frontend:
+        condition: service_started
+    networks:
+      - internal
+    restart: unless-stopped
+
+volumes:
+  db_data_prod:
+
+networks:
+  internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16

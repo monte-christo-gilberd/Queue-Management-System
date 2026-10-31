@@ -26,7 +26,10 @@ type AuthGateProps = {
 export function AuthGate({ children, mode = 'required', nextPath }: AuthGateProps) {
   const hydrated = useAuthHydrated();
   const token = useAuthStore((s) => s.token);
-  const path = usePathname();
+  const routerPath = usePathname();
+  // Build statis: usePathname() bisa "/" saat hidrasi awal, sehingga `?next=` hilang.
+  // Di web, path sebenarnya ada di window.location.
+  const path = typeof window !== 'undefined' && window.location?.pathname ? window.location.pathname : routerPath;
   const { next } = useLocalSearchParams<{ next?: string }>();
 
   const decision = decideAuthGate({ mode, hydrated, token, path, nextPath, next });

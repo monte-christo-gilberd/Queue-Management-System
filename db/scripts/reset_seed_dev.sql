@@ -21,6 +21,16 @@
 
 BEGIN;
 
+-- Pengaman: menolak jalan di database yang ditandai produksi/demo.
+-- Tandai DB demo sekali dengan:  CREATE TABLE _no_seed_guard (x int);
+-- (make prod-guard melakukannya). Di dev tabel ini tidak ada.
+DO $$
+BEGIN
+    IF to_regclass('public._no_seed_guard') IS NOT NULL THEN
+        RAISE EXCEPTION 'Database ini ditandai produksi (_no_seed_guard). Seed/reset ditolak.';
+    END IF;
+END $$;
+
 -- Kosongkan semua tabel yang punya data. Semua tabel yang mereferensi users/owners ikut dalam daftar,
 -- sehingga tidak perlu CASCADE. Tanpa CASCADE, jika ada tabel lain yang bergantung, TRUNCATE gagal
 -- dan tidak ada yang berubah. RESTART IDENTITY mengembalikan id mulai dari 1.

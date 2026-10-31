@@ -63,6 +63,8 @@ test.describe('TS-06 Status antrian (customer)', () => {
     const otherDevice = await context.newPage();
     try {
       await signInThroughUi(otherDevice, customer.email, customer.password);
+      // Tunggu login selesai (token tersimpan) sebelum membuka halaman lain.
+      await otherDevice.waitForURL((url) => url.pathname !== '/');
       await otherDevice.goto(`${WEB_URL}/ticket/${queue.id}`);
 
       await expect(otherDevice.getByText('A-001', { exact: true })).toBeVisible();

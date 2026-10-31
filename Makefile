@@ -11,7 +11,7 @@
 SHELL := bash
 .SHELLFLAGS := -euo pipefail -c
 .ONESHELL:
-.PHONY: up tunnel down restart seed logs ps
+.PHONY: up tunnel down restart seed logs ps prod-up prod-down prod-guard prod-backup
 
 PIDFILE := /tmp/qms-tunnel.pid
 LOG := /tmp/qms-tunnel.log
@@ -64,3 +64,19 @@ logs:
 
 ps:
 	docker compose ps
+
+# --- Stack demo/produksi (docker-compose.prod.yml, .env dari .env.prod.example) ---
+PROD := docker compose -f docker-compose.prod.yml
+
+prod-up:
+	$(PROD) up -d --build
+
+prod-down:
+	$(PROD) down
+
+# Tandai DB prod agar seed/reset ditolak. Jalankan sekali setelah akun demo dibuat.
+prod-guard:
+	$(PROD) exec -T db psql -U qms -d qms_db -c "CREATE TABLE IF NOT EXISTS _no_seed_guard (x int)"
+
+prod-backup:
+	scripts/backup-prod.sh backup
