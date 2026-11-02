@@ -1,3 +1,4 @@
+import { useIsFocused } from 'expo-router';
 import { fetch as expoFetch } from 'expo/fetch';
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
@@ -33,10 +34,12 @@ type Handlers = {
  * - 401 → sesi habis, logout. 403/404 → berhenti (bukan milik user / tidak ada).
  * - Resinkron (`onResync`) saat tab/app kembali aktif dan tiap 45 detik selama aktif; tiap 3 detik bila SSE
  *   tidak mengirim apa pun (mis. quick tunnel menahan stream).
- * - Dihentikan saat `queueId` berubah atau komponen unmount.
+ * - Dihentikan saat `queueId` berubah, komponen unmount, layar tidak fokus (layar di bawah stack tidak
+ *   boleh menahan koneksi), atau antrian ditutup (`queue_closed` tidak pernah dibuka lagi).
  */
 export function useQueueEvents(queueId: number | null, handlers: Handlers) {
   const token = useAuthStore((s) => s.token);
+  const focused = useIsFocused();
 
   // Handler disimpan di ref agar pemanggil boleh memberi fungsi baru tiap render tanpa membuka ulang koneksi.
   const handlersRef = useRef(handlers);
@@ -47,15 +50,15 @@ export function useQueueEvents(queueId: number | null, handlers: Handlers) {
   const healthRef = useRef<StreamHealth>({ live: false, since: Date.now() });
 
   useEffect(() => {
-    if (queueId === null || !token) return;
+    if (queueId === null || !token || !focused) return;
     const controller = new AbortController();
     healthRef.current = { live: false, since: Date.now() };
     void streamLoop(queueId, token, controller.signal, handlersRef, healthRef);
     return () => controller.abort();
-  }, [queueId, token]);
+  }, [queueId, token, focused]);
 
   useEffect(() => {
-    if (queueId === null || !token) return;
+    if (queueId === null || !token || !focused) return;
     let lastSyncAt = Date.now();
     let active = isForeground();
 
@@ -77,7 +80,7 @@ export function useQueueEvents(queueId: number | null, handlers: Handlers) {
       clearInterval(timer);
       stop();
     };
-  }, [queueId, token]);
+  }, [queueId, token, focused]);
 }
 
 function isForeground(): boolean {
@@ -105,8 +108,10 @@ async function streamLoop(
 ) {
   let delay = BACKOFF_START_MS;
   let disconnected = false;
+  // Antrian yang sudah ditutup tidak pernah dibuka lagi: berhenti, jangan reconnect.
+  let closed = false;
 
-  while (!signal.aborted) {
+  while (!signal.aborted && !closed) {
     try {
       const res = await expoFetch(`${API_BASE_URL}/api/v1/queues/${queueId}/event`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
@@ -128,7 +133,9 @@ async function streamLoop(
       const decoder = new TextDecoder();
       const parser = createSseParser((message) => {
         const event = parseQueueEvent(message.data);
-        if (event) handlersRef.current.onEvent(event);
+        if (!event) return;
+        handlersRef.current.onEvent(event);
+        if (event.type === 'queue_closed') closed = true;
       });
 
       for (;;) {
@@ -136,12 +143,17 @@ async function streamLoop(
         if (done) break;
         healthRef.current.live = true;
         parser.push(decoder.decode(value, { stream: true }));
+        // Server tidak menutup stream sendiri setelah queue_closed: lepas koneksinya di sini.
+        if (closed) {
+          void reader.cancel();
+          break;
+        }
       }
     } catch {
       // jaringan putus, server restart, atau request dibatalkan (dicek di bawah)
     }
 
-    if (signal.aborted) return;
+    if (signal.aborted || closed) return;
     healthRef.current = { live: false, since: Date.now() };
     disconnected = true;
     await sleep(delay, signal);

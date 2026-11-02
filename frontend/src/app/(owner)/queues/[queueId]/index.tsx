@@ -102,7 +102,8 @@ function QueueDetailEditor({
     try {
       await closeQueue(queue.id);
       // Setelah ditutup, owner kembali ke Dashboard (antrian itu tidak lagi tampil di sana).
-      router.replace('/dashboard');
+      // navigate, bukan replace: Dashboard yang sudah ada dipakai lagi, tidak dibuat instance baru.
+      router.navigate('/dashboard');
     } catch (e) {
       setErrorMessage(describeQueueError(e));
     } finally {

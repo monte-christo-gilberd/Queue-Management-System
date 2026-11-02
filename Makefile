@@ -32,7 +32,7 @@ up:
 	[ -n "$$ip" ] || { echo "IP LAN tidak terdeteksi; beri manual: make up IP=<ip>" >&2; exit 1; }
 	export QMS_PUBLIC_ORIGIN="http://$$ip:$$port"
 	docker compose up -d --build --force-recreate
-	echo; echo "Buka dari HP (satu Wi-Fi): $$QMS_PUBLIC_ORIGIN"
+	echo; echo "Link (satu Wi-Fi): $$QMS_PUBLIC_ORIGIN"
 
 tunnel:
 	command -v cloudflared >/dev/null || { echo "cloudflared belum terpasang" >&2; exit 1; }
@@ -47,7 +47,7 @@ tunnel:
 	done
 	[ -n "$$url" ] || { echo "URL tunnel tidak muncul, lihat $(LOG)" >&2; $(stop_tunnel); exit 1; }
 	QMS_PUBLIC_ORIGIN="$$url" docker compose up -d --build --force-recreate backend qr-service notify-service nginx frontend db
-	echo; echo "Buka dari HP mana pun: $$url"; echo "Hentikan: make down"
+	echo; echo "Link: $$url"; echo "Hentikan: make down"
 
 down:
 	$(stop_tunnel)
