@@ -25,6 +25,13 @@ define stop_tunnel
 [ -f $(PIDFILE) ] && kill "$$(cat $(PIDFILE))" 2>/dev/null || true; rm -f $(PIDFILE)
 endef
 
+# Memanaskan Metro (dev) agar kompilasi selesai sebelum browser membuka link. Gagal pemanasan tidak menggagalkan make.
+define warm_metro
+echo "Memanaskan Metro (cache kosong bisa ±30–40 detik)..."
+curl -fsS -o /dev/null --retry 30 --retry-delay 2 --retry-all-errors "http://localhost:$$port/" || echo "Pemanasan halaman gagal; muat pertama bisa lambat." >&2
+curl -fsS -o /dev/null --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors "http://localhost:$$port/node_modules/expo-router/entry.bundle?platform=web&dev=true&hot=false&lazy=true&transform.routerRoot=src%2Fapp&transform.reactCompiler=true" || echo "Pemanasan bundle gagal." >&2
+endef
+
 up:
 	$(need_env)
 	ip="$(IP)"
@@ -32,13 +39,14 @@ up:
 	[ -n "$$ip" ] || { echo "IP LAN tidak terdeteksi; beri manual: make up IP=<ip>" >&2; exit 1; }
 	export QMS_PUBLIC_ORIGIN="http://$$ip:$$port"
 	docker compose up -d --build --force-recreate
+	$(warm_metro)
 	echo; echo "Link (satu Wi-Fi): $$QMS_PUBLIC_ORIGIN"
 
 tunnel:
 	command -v cloudflared >/dev/null || { echo "cloudflared belum terpasang" >&2; exit 1; }
 	$(need_env)
 	$(stop_tunnel); rm -f $(LOG)
-	cloudflared tunnel --protocol http2 --no-autoupdate --url "http://localhost:$$port" >$(LOG) 2>&1 &
+	cloudflared tunnel --config /dev/null --protocol http2 --no-autoupdate --url "http://localhost:$$port" >$(LOG) 2>&1 &
 	echo $$! > $(PIDFILE)
 	url=""
 	for _ in $$(seq 1 40); do
@@ -47,6 +55,7 @@ tunnel:
 	done
 	[ -n "$$url" ] || { echo "URL tunnel tidak muncul, lihat $(LOG)" >&2; $(stop_tunnel); exit 1; }
 	QMS_PUBLIC_ORIGIN="$$url" docker compose up -d --build --force-recreate backend qr-service notify-service nginx frontend db
+	$(warm_metro)
 	echo; echo "Link: $$url"; echo "Hentikan: make down"
 
 down:

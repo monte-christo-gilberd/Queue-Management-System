@@ -133,11 +133,13 @@ services:
       - ./frontend:/app
       # Jaga node_modules dari image (jangan tertimpa folder host).
       - /app/node_modules
+      # Cache Metro bertahan saat container dibuat ulang (make up memakai --force-recreate).
+      - metro_cache:/tmp/metro-cache
     networks:
       - internal
     restart: unless-stopped
 
-  # Satu-satunya pintu masuk. 
+  # Satu-satunya pintu masuk.
   nginx:
     build: ./deploy/nginx
     ports:
@@ -157,6 +159,7 @@ volumes:
   db_data:
   go_build_cache:
   go_mod_cache:
+  metro_cache:
 
 networks:
   internal:
