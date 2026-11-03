@@ -61,6 +61,11 @@ export type QueueDetailProps = {
   noteItems?: { id: number; number: string; note: string }[];
   /** Buka popup catatan untuk nomor tertentu dari daftar tiket (isi lama dimuat dulu oleh route). */
   onOpenTicketNote?: (ticketId: number) => void;
+  /**
+   * Popup catatan sedang terbuka. Daftar tiket disembunyikan selama itu dan muncul lagi saat popup ditutup:
+   * urutan lapisan dua modal bertumpuk di web ditentukan kapan portal-nya dibuat, jadi tidak bisa diandalkan.
+   */
+  noteOpen?: boolean;
   /** Hapus nomor customer dari antrian (4.10). Dipanggil setelah owner mengonfirmasi. */
   onRemoveTicket?: (ticketId: number) => void;
   removeLoading?: boolean;
@@ -112,6 +117,7 @@ export default function QueueDetail({
   removableTickets = [],
   noteItems = [],
   onOpenTicketNote,
+  noteOpen = false,
   onRemoveTicket,
   removeLoading = false,
   onInsert,
@@ -247,7 +253,7 @@ export default function QueueDetail({
       </View>
 
       {/* Daftar semua tiket yang terdaftar di antrian ini (dibuka dari kartu customer). */}
-      <ModalCard visible={ticketsOpen} onRequestClose={() => setTicketsOpen(false)}>
+      <ModalCard visible={ticketsOpen && !noteOpen} onRequestClose={() => setTicketsOpen(false)}>
         <Text className="text-[20px] font-extrabold text-foreground">Daftar tiket</Text>
         {timeline.length > 0 ? (
           <View className="rounded-[20px] bg-dark p-5">

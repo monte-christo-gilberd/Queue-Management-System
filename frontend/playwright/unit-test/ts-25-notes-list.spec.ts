@@ -85,8 +85,10 @@ test.describe('TS-25 Catatan tampil di daftar tiket (4.16)', () => {
     await box.fill('catatan sudah diubah');
     await action(page, 'Simpan Catatan').click();
 
-    await expect(page.getByText('catatan sudah diubah')).toBeVisible();
-    await expect(page.getByText(SECRET)).toHaveCount(0);
+    // Periksa pratinjau lewat tombolnya: teks yang sama juga ada di kolom popup yang sedang menutup.
+    const preview = page.getByRole('button', { name: 'Edit catatan A-001' });
+    await expect(preview).toContainText('catatan sudah diubah');
+    await expect(preview).not.toContainText(SECRET);
   });
 
   test('TC-25-03 Menambah catatan untuk nomor yang belum punya dari daftar tiket', async ({ page, request }) => {
@@ -97,7 +99,6 @@ test.describe('TS-25 Catatan tampil di daftar tiket (4.16)', () => {
     await page.getByPlaceholder('Tulis catatan untuk nomor ini...').fill('minta struk');
     await action(page, 'Append Note').last().click();
 
-    await expect(page.getByRole('button', { name: 'Edit catatan A-002' })).toBeVisible();
-    await expect(page.getByText('minta struk')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Edit catatan A-002' })).toContainText('minta struk');
   });
 });

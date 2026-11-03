@@ -166,6 +166,7 @@ function QueueDetailEditor({
       removableTickets={removableTickets}
       noteItems={noteItems}
       onOpenTicketNote={(ticketId) => void note.open(ticketId)}
+      noteOpen={note.visible}
       onRemoveTicket={(ticketId) => void board.remove(ticketId)}
       removeLoading={board.removeLoading}
       timeline={timeline}
