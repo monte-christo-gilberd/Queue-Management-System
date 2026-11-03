@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueueEvents } from '@/hooks/use-queue-events';
 import { ApiError } from '@/lib/api';
 import { describeQueueError } from '@/lib/queue-errors';
-import { getQueueStatus } from '@/lib/tickets';
+import { cancelMyTicket, getQueueStatus } from '@/lib/tickets';
 import type { QueueStatus } from '@/types/api';
 
 const RELOAD_DEBOUNCE_MS = 300;
@@ -82,6 +82,7 @@ export function useTicketQueue(queueId: number) {
         event.type === 'ticket_joined' ||
         event.type === 'ticket_next' ||
         event.type === 'ticket_skipped' ||
+        event.type === 'ticket_cancelled' ||
         event.type === 'queue_closed' ||
         event.type === 'queue_updated'
       ) {
@@ -92,5 +93,23 @@ export function useTicketQueue(queueId: number) {
     onResync: () => scheduleReload(),
   });
 
-  return { status, loading, error };
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string>();
+
+  /** Batalkan nomor saya (4.9). Backend no-op bila sudah tidak aktif, jadi klik ganda aman. */
+  const cancel = useCallback(async () => {
+    if (invalid) return;
+    setCancelling(true);
+    setCancelError(undefined);
+    try {
+      await cancelMyTicket(queueId);
+      await loadStatus();
+    } catch (e) {
+      setCancelError(describeQueueError(e));
+    } finally {
+      setCancelling(false);
+    }
+  }, [invalid, queueId, loadStatus]);
+
+  return { status, loading, error, cancel, cancelling, cancelError };
 }

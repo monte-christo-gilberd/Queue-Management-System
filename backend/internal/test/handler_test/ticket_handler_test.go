@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"qms/internal/apperror"
@@ -46,6 +47,10 @@ func (s *stubTicketService) RecallTicket(context.Context, int64, int64) (model.T
 	return model.Ticket{}, s.nextErr
 }
 
+func (s *stubTicketService) CancelTicket(context.Context, int64, int64) (model.Ticket, error) {
+	return model.Ticket{}, s.err
+}
+
 func (s *stubTicketService) SkipTicket(context.Context, int64, int64) (model.Ticket, error) {
 	return model.Ticket{}, s.nextErr
 }
@@ -83,6 +88,7 @@ func newListEngine(svc *stubTicketService) *gin.Engine {
 	e.GET("/queues/:queue_id/status", h.Status)
 	e.POST("/join", h.Join)
 	e.POST("/queues/:queue_id/next", h.Next)
+	e.POST("/queues/:queue_id/cancel", h.Cancel)
 	return e
 }
 
@@ -247,4 +253,26 @@ func TestMyTickets_OK(t *testing.T) {
 		"id":3,"queue_id":5,"ticket_number":1,"ticket_prefix":"","sort_key":0,"user_id":0,"status":"waiting",
 		"skip_count":0,"last_notified_at":null,"created_at":"0001-01-01T00:00:00Z",
 		"completed_at":null,"cancelled_at":null,"called_counter_id":null,"called_counter_name":null,"called_at":null,"queue_name":"Loket A","queue_status":"active","current_number":null}]}}`, w.Body.String())
+}
+
+func TestCancel_ErrorMapping(t *testing.T) {
+	cases := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"ok", nil, http.StatusOK, ""},
+		{"not_found", apperror.ErrNotFound, http.StatusNotFound, "NOT_FOUND"},
+		{"queue_closed", apperror.ErrQueueClosed, http.StatusConflict, "QUEUE_CLOSED"},
+		{"internal", errors.New("db down"), http.StatusInternalServerError, "INTERNAL_ERROR"},
+	}
+	for _, c := range cases {
+		w := doPost(newListEngine(&stubTicketService{err: c.err}), "/queues/5/cancel")
+
+		assert.Equal(t, c.status, w.Code, c.name)
+		if c.code != "" {
+			assert.Contains(t, w.Body.String(), `"`+c.code+`"`)
+		}
+	}
 }

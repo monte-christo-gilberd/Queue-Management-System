@@ -75,6 +75,31 @@ func (f *fakeTicketRepo) MarkCompleted(
 	return nil // tidak dipakai di test ini
 }
 
+func (f *fakeTicketRepo) MarkCancelled(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID int64,
+) error {
+	return nil // tidak dipakai di test ini
+}
+
+func (f *fakeTicketRepo) MarkDeleted(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID int64,
+) error {
+	return nil // tidak dipakai di test ini
+}
+
+func (f *fakeTicketRepo) GetForUpdate(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID,
+	ticketID int64,
+) (model.Ticket, error) {
+	return model.Ticket{}, apperror.ErrNotFound // tidak dipakai di test ini
+}
+
 func (f *fakeTicketRepo) MarkServing(
 	ctx context.Context,
 	tx *sqlx.Tx,

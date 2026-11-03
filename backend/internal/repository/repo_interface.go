@@ -113,6 +113,22 @@ type TicketRepositoryInterface interface {
 		ticketID int64,
 		counterID int64,
 	) error
+	MarkCancelled(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		ticketID int64,
+	) error
+	MarkDeleted(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		ticketID int64,
+	) error
+	GetForUpdate(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		queueID,
+		ticketID int64,
+	) (model.Ticket, error)
 }
 
 type UserRepositoryInterface interface {

@@ -154,6 +154,47 @@ func (m *memTicketRepo) MarkRecalled(_ context.Context, _ *sqlx.Tx, ticketID int
 	return apperror.ErrNotFound
 }
 
+// MarkCancelled membatalkan tiket: status cancelled, cancelled_at terisi, completed_at kosong; called_at tetap.
+func (m *memTicketRepo) MarkCancelled(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.ID == ticketID {
+			t.Status = "cancelled"
+			t.CancelledAt = sql.NullTime{Time: time.Now(), Valid: true}
+			t.CompletedAt = sql.NullTime{}
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
+// MarkDeleted: status deleted; skip_count dan called_at tidak berubah (perilaku remove 4.10).
+func (m *memTicketRepo) MarkDeleted(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.ID == ticketID {
+			t.Status = "deleted"
+			t.CompletedAt = sql.NullTime{}
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
+// GetForUpdate: tiket milik antrian ini; antrian lain atau id tidak dikenal = ErrNotFound.
+func (m *memTicketRepo) GetForUpdate(_ context.Context, _ *sqlx.Tx, queueID, ticketID int64) (model.Ticket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.ID == ticketID && t.QueueID == queueID {
+			return *t, nil
+		}
+	}
+	return model.Ticket{}, apperror.ErrNotFound
+}
+
 // backdateCall menggeser waktu pemanggilan ke belakang supaya tes tidak perlu menunggu 3 detik.
 func (m *memTicketRepo) backdateCall(ticketID int64, d time.Duration) {
 	m.mu.Lock()

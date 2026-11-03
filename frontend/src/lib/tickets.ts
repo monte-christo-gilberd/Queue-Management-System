@@ -67,6 +67,20 @@ export function isOnHome(t: MyTicket): boolean {
   return t.status === 'waiting' || t.status === 'currently_served';
 }
 
+/** Tombol batal customer tampil hanya untuk nomor yang masih aktif di antrian yang masih buka (4.9). */
+export function canCancelTicket(ticket: { status: string } | null | undefined, queueClosed: boolean): boolean {
+  if (!ticket || queueClosed) return false;
+  return ticket.status === 'waiting' || ticket.status === 'currently_served';
+}
+
+/**
+ * POST /api/v1/queues/:id/cancel — customer membatalkan nomornya sendiri (4.9).
+ * Tanpa tiket aktif, atau sudah dibatalkan: backend membalas tiket terakhir (no-op), bukan error.
+ */
+export async function cancelMyTicket(queueId: number): Promise<Ticket> {
+  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/cancel`, { method: 'POST' });
+}
+
 /** GET /api/v1/users/me/tickets — tiket saya (login diperlukan). */
 export async function listMyTickets(): Promise<MyTicket[]> {
   const data = await apiFetch<MyTicketsResponse>('/api/v1/users/me/tickets');

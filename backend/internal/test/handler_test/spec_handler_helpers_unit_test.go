@@ -199,6 +199,11 @@ func (s *specTicketSvc) SkipTicket(_ context.Context, queueID, requesterID int64
 	return s.ticket, s.err
 }
 
+func (s *specTicketSvc) CancelTicket(_ context.Context, queueID, userID int64) (model.Ticket, error) {
+	s.record(queueID, userID)
+	return model.Ticket{}, nil
+}
+
 func (s *specTicketSvc) ListTickets(_ context.Context, queueID, requesterID int64, statuses []string) ([]model.Ticket, error) {
 	s.record(queueID, requesterID)
 	s.gotStatus = statuses

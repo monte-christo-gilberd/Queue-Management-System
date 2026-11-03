@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { AuthGate } from '@/components/auth/AuthGate';
 import { CustomerQueueScreen, type CustomerTicketStatus } from '@/components/CustomerQueueScreen';
 import { useTicketQueue } from '@/hooks/use-ticket-queue';
+import { canCancelTicket } from '@/lib/tickets';
 import { formatTicketNumber } from '@/utils/format';
 
 /**
@@ -20,11 +21,13 @@ export default function TicketQueueRoute() {
 function TicketQueueContent() {
   const { queueId } = useLocalSearchParams<{ queueId: string }>();
   const id = Number(queueId);
-  const { status, loading, error } = useTicketQueue(id);
+  const { status, loading, error, cancel, cancelling, cancelError } = useTicketQueue(id);
 
   const queue = status?.queue;
   const ticket = status?.my_ticket ?? null;
   const closed = queue?.status === 'closed';
+  // Customer hanya bisa membatalkan nomor yang masih aktif di antrian yang masih buka (4.9).
+  const canCancel = canCancelTicket(ticket, closed);
 
   return (
     <CustomerQueueScreen
@@ -38,8 +41,11 @@ function TicketQueueContent() {
       waitingAhead={status?.waiting_ahead ?? null}
       closed={closed}
       loading={loading}
-      errorMessage={error}
+      errorMessage={error ?? cancelError}
       canJoin={false}
+      canCancel={canCancel}
+      cancelling={cancelling}
+      onCancel={() => void cancel()}
       onBack={() => router.replace('/dashboard')}
     />
   );

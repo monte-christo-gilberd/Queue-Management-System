@@ -105,9 +105,9 @@ func main() {
 	noteService := service.
 		NewNoteService(repository.NewNoteRepository(db)).
 		WithQueueGuard(queueService)
-		
+
 	appRouter.WithNotes(handler.NewNoteHandler(noteService))
-	
+
 	if cfg.VAPIDPublicKey != "" {
 		appRouter.WithPush(handler.NewPushHandler(
 			repository.NewPushRepository(db),

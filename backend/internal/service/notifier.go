@@ -13,12 +13,14 @@ type EventNotifier interface {
 
 // Nama event disamakan dengan internal/ws/message.go.
 const (
-	EventTicketJoined   = "ticket_joined"
-	EventTicketNext     = "ticket_next"
-	EventTicketSkipped  = "ticket_skipped"
-	EventQueueClosed    = "queue_closed"
-	EventQueueUpdated   = "queue_updated"
-	EventQueueQRUpdated = "queue_qr_updated"
+	EventTicketJoined    = "ticket_joined"
+	EventTicketNext      = "ticket_next"
+	EventTicketSkipped   = "ticket_skipped"
+	EventTicketCancelled = "ticket_cancelled"
+	EventTicketRemoved   = "ticket_removed"
+	EventQueueClosed     = "queue_closed"
+	EventQueueUpdated    = "queue_updated"
+	EventQueueQRUpdated  = "queue_qr_updated"
 )
 
 func notifyEvent(

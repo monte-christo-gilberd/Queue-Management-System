@@ -284,6 +284,45 @@ func (m *memTickets) MarkSkipped(_ context.Context, _ *sqlx.Tx, ticketID int64) 
 	return apperror.ErrNotFound
 }
 
+func (m *memTickets) MarkCancelled(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.rows {
+		if t.ID == ticketID {
+			t.Status = "cancelled"
+			t.CancelledAt = sql.NullTime{Time: time.Now(), Valid: true}
+			t.CompletedAt = sql.NullTime{}
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
+func (m *memTickets) MarkDeleted(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.rows {
+		if t.ID == ticketID {
+			t.Status = "deleted"
+			t.CompletedAt = sql.NullTime{}
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
+// GetForUpdate: tiket milik antrian ini; antrian lain atau id tidak dikenal = ErrNotFound.
+func (m *memTickets) GetForUpdate(_ context.Context, _ *sqlx.Tx, queueID, ticketID int64) (model.Ticket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.rows {
+		if t.ID == ticketID && t.QueueID == queueID {
+			return *t, nil
+		}
+	}
+	return model.Ticket{}, apperror.ErrNotFound
+}
+
 // memUsers: tabel users. UNIQUE(email) -> ErrDuplicate.
 type memUsers struct {
 	mu     sync.Mutex
@@ -462,4 +501,58 @@ func TestRepoFake_UserEmailIsUnique(t *testing.T) {
 
 	_, err = repo.FindByEmail(ctx, "tidak@ada.com")
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
+}
+
+func TestRepoFake_MarkCancelledKeepsCalledAt(t *testing.T) {
+	// Nomor yang sedang dilayani dibatalkan: called_at tetap, completed_at kosong, status cancelled.
+	ctx := context.Background()
+	repo := newMemTickets()
+	tk, err := repo.Insert(ctx, nil, 1, 42, 65536)
+	require.NoError(t, err)
+	require.NoError(t, repo.MarkServing(ctx, nil, tk.ID, 1))
+	served, err := repo.CurrentServing(ctx, nil, 1)
+	require.NoError(t, err)
+
+	require.NoError(t, repo.MarkCancelled(ctx, nil, tk.ID))
+
+	_, err = repo.CurrentServing(ctx, nil, 1)
+	assert.ErrorIs(t, err, apperror.ErrNotFound, "tidak ada lagi yang dilayani")
+	for _, row := range repo.rows {
+		if row.ID == tk.ID {
+			assert.Equal(t, "cancelled", row.Status)
+			assert.True(t, row.CancelledAt.Valid)
+			assert.False(t, row.CompletedAt.Valid)
+			assert.Equal(t, served.CalledAt.Time, row.CalledAt.Time, "called_at dipertahankan")
+		}
+	}
+}
+
+func TestRepoFake_MarkCancelledUnknownTicketIsNotFound(t *testing.T) {
+	assert.ErrorIs(t, newMemTickets().MarkCancelled(context.Background(), nil, 999), apperror.ErrNotFound)
+}
+
+func TestRepoFake_MarkDeletedLeavesWaitingOrderWithoutRequeue(t *testing.T) {
+	// 4.10: nomor yang dihapus keluar dari urutan tunggu, tidak kembali ke waiting, dan skip_count tidak naik.
+	ctx := context.Background()
+	repo := newMemTickets()
+	first, err := repo.Insert(ctx, nil, 1, 42, 65536)
+	require.NoError(t, err)
+	second, err := repo.Insert(ctx, nil, 1, 43, 131072)
+	require.NoError(t, err)
+
+	require.NoError(t, repo.MarkDeleted(ctx, nil, first.ID))
+
+	next, err := repo.NextWaiting(ctx, nil, 1)
+	require.NoError(t, err)
+	assert.Equal(t, second.ID, next.ID, "nomor yang dihapus tidak lagi di urutan tunggu")
+	for _, row := range repo.rows {
+		if row.ID == first.ID {
+			assert.Equal(t, "deleted", row.Status)
+			assert.Equal(t, 0, row.SkipCount, "skip_count tidak naik")
+		}
+	}
+}
+
+func TestRepoFake_MarkDeletedUnknownTicketIsNotFound(t *testing.T) {
+	assert.ErrorIs(t, newMemTickets().MarkDeleted(context.Background(), nil, 999), apperror.ErrNotFound)
 }

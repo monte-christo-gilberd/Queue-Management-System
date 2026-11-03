@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { PushToggle } from '@/components/PushToggle';
 import { Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
+import { ModalCard } from '@/components/ui/ModalCard';
 import { cn } from '@/utils/cn';
 
 export type CustomerTicketStatus = 'waiting' | 'currently_served' | 'completed' | 'cancelled' | 'skipped' | 'deleted';
@@ -28,6 +30,10 @@ export type CustomerQueueScreenProps = {
   canJoin: boolean;
   joining?: boolean;
   onJoin?: () => void;
+  /** Tombol "Batalkan nomor saya" tampil bila true (tiket waiting atau currently_served di antrian aktif). */
+  canCancel?: boolean;
+  cancelling?: boolean;
+  onCancel?: () => void;
   /** Tombol kembali ke halaman utama. Tidak tampil bila tidak diberikan. */
   onBack?: () => void;
 };
@@ -57,8 +63,13 @@ export function CustomerQueueScreen({
   canJoin,
   joining = false,
   onJoin,
+  canCancel = false,
+  cancelling = false,
+  onCancel,
   onBack,
 }: CustomerQueueScreenProps) {
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+
   return (
     <View className="flex-1 items-center bg-background px-5 py-10">
       <View className="w-full max-w-[420px] gap-5">
@@ -108,9 +119,35 @@ export function CustomerQueueScreen({
           <AppButton label="Gabung Antrian" variant="dark" loading={joining} onPress={onJoin} />
         ) : null}
 
+        {canCancel && onCancel ? (
+          <AppButton
+            label="Batalkan nomor saya"
+            variant="outline"
+            loading={cancelling}
+            onPress={() => setCancelConfirmOpen(true)}
+          />
+        ) : null}
+
         {ticketNumber && !closed && (ticketStatus === 'waiting' || servingNow) ? <PushToggle /> : null}
         {onBack ? <AppButton label="Kembali ke Halaman Utama" variant="outline" onPress={onBack} /> : null}
       </View>
+
+      <ModalCard visible={cancelConfirmOpen} onRequestClose={() => setCancelConfirmOpen(false)}>
+        <Text className="text-[20px] font-extrabold text-foreground">Batalkan nomor ini?</Text>
+        <Text className="text-[13px] text-muted">
+          Nomor Anda keluar dari antrian. Untuk kembali, Anda harus bergabung lagi dan mendapat nomor baru.
+        </Text>
+        <AppButton
+          label="Ya, Batalkan"
+          variant="dark"
+          loading={cancelling}
+          onPress={() => {
+            onCancel?.();
+            setCancelConfirmOpen(false);
+          }}
+        />
+        <AppButton label="Tidak" variant="outline" onPress={() => setCancelConfirmOpen(false)} />
+      </ModalCard>
     </View>
   );
 }

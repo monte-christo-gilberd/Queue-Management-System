@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -896,4 +897,107 @@ func TestNoteRepository_UpsertAgainstPostgres(t *testing.T) {
 	var rows int
 	require.NoError(t, db.GetContext(ctx, &rows, `SELECT COUNT(*) FROM ticket_notes WHERE ticket_id = $1`, tk.ID))
 	assert.Equal(t, 1, rows, "upsert paralel tetap satu baris")
+}
+
+// Owner remove (4.10): MarkDeleted keluar dari urutan tunggu, tidak masuk daftar skipped, dan
+// tidak mengubah skip_count.
+func TestTicketRepository_MarkDeleted_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "del-o@b.c", time.Now().Add(time.Hour))
+	u1 := seedUser(t, db, "del-1@b.c")
+	u2 := seedUser(t, db, "del-2@b.c")
+	q := createQueue(t, db, owner, "Delete")
+	t1 := joinTicket(t, db, q.ID, u1)
+	t2 := joinTicket(t, db, q.ID, u2)
+	repo := repository.NewTicketRepository(db)
+
+	require.NoError(t, database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
+		return repo.MarkDeleted(ctx, tx, t1.ID)
+	}))
+
+	waiting, err := repo.ListByQueue(ctx, q.ID, []string{"waiting"})
+	require.NoError(t, err)
+	require.Len(t, waiting, 1)
+	assert.Equal(t, t2.ID, waiting[0].ID)
+
+	skipped, err := repo.ListByQueue(ctx, q.ID, []string{"skipped"})
+	require.NoError(t, err)
+	assert.Empty(t, skipped, "deleted tidak tampil di daftar skipped")
+
+	deleted, err := repo.ListByQueue(ctx, q.ID, []string{"deleted"})
+	require.NoError(t, err)
+	require.Len(t, deleted, 1)
+	assert.Equal(t, 0, deleted[0].SkipCount, "skip_count tidak naik")
+
+	err = database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
+		return repo.MarkDeleted(ctx, tx, 999999)
+	})
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+}
+
+// GetForUpdate menolak tiket milik antrian lain; Next dan Cancel yang berebut nomor yang sama
+// tidak menghasilkan deadlock (urutan kunci: nomor yang sedang dilayani dulu, lalu waiting).
+func TestTicketRepository_GetForUpdateAndNextVsCancel_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "gfu-o@b.c", time.Now().Add(time.Hour))
+	u1 := seedUser(t, db, "gfu-1@b.c")
+	u2 := seedUser(t, db, "gfu-2@b.c")
+	q := createQueue(t, db, owner, "GFU")
+	other := createQueue(t, db, owner, "GFU lain")
+	t1 := joinTicket(t, db, q.ID, u1)
+	joinTicket(t, db, q.ID, u2)
+	repo := repository.NewTicketRepository(db)
+	txRunner := database.NewSqlxTxRunner(db)
+	queueSvc := service.NewQueueService(
+		repository.NewQueueRepository(db),
+		repository.NewSubscriptionChecker(db),
+		txRunner,
+	).WithTicketHolderChecker(repo)
+	svc := service.NewTicketService(repo, txRunner).WithQueueGuard(queueSvc)
+
+	assert.ErrorIs(t, database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
+		_, err := repo.GetForUpdate(ctx, tx, other.ID, t1.ID)
+		return err
+	}), apperror.ErrNotFound, "tiket milik antrian lain harus ditolak")
+
+	// Tiket waiting belum pernah dipanggil: called_counter_id NULL. Harus tetap bisa dikunci dan dibaca.
+	require.NoError(t, database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
+		got, err := repo.GetForUpdate(ctx, tx, q.ID, t1.ID)
+		if err != nil {
+			return err
+		}
+		assert.Equal(t, "waiting", got.Status)
+		return nil
+	}))
+
+	// Nomor pertama sedang dilayani, lalu Next dan Cancel berebut dalam beberapa putaran.
+	_, err := svc.NextTicket(ctx, q.ID, owner, 0)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 20)
+	for i := 0; i < 10; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, err := svc.NextTicket(ctx, q.ID, owner, 0)
+			if err != nil && !errors.Is(err, apperror.ErrQueueEmpty) {
+				errs <- err
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			_, err := svc.CancelTicket(ctx, q.ID, u1)
+			if err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		assert.NotContains(t, err.Error(), "deadlock", "tidak boleh ada deadlock: %v", err)
+	}
 }

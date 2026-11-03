@@ -39,6 +39,22 @@ type TicketRepository interface {
 		ticketID int64,
 		counterID int64,
 	) error
+	MarkCancelled(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		ticketID int64,
+	) error
+	MarkDeleted(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		ticketID int64,
+	) error
+	GetForUpdate(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		queueID,
+		ticketID int64,
+	) (model.Ticket, error)
 	CurrentServing(
 		ctx context.Context,
 		tx *sqlx.Tx,
@@ -306,6 +322,12 @@ func (s *TicketService) NextTicket(
 	err = s.tx.WithTx(
 		ctx,
 		func(tx *sqlx.Tx) error {
+			// Urutan kunci: nomor yang sedang dilayani dulu, baru waiting teratas. CancelTicket dan
+			// RemoveTicket memakai urutan yang sama agar tidak terjadi deadlock.
+			serving, servingErr := s.repository.CurrentServing(ctx, tx, queueID)
+			if servingErr != nil && !errors.Is(servingErr, apperror.ErrNotFound) {
+				return servingErr
+			}
 			var err error
 			ticket, err = s.repository.NextWaiting(
 				ctx,
@@ -316,13 +338,9 @@ func (s *TicketService) NextTicket(
 				return err
 			}
 
-			// Nomor yang sedang dilayani selesai lebih dulu, lalu tiket berikutnya mulai dilayani.
+			// Nomor yang sedang dilayani selesai, lalu tiket berikutnya mulai dilayani.
 			// Antrian tanpa nomor yang sedang dilayani tetap sah: langkah pertama dilewati.
-			serving, err := s.repository.CurrentServing(ctx, tx, queueID)
-			if err != nil && !errors.Is(err, apperror.ErrNotFound) {
-				return err
-			}
-			if err == nil {
+			if servingErr == nil {
 				if err := s.repository.MarkCompleted(ctx, tx, serving.ID); err != nil {
 					return err
 				}
@@ -446,6 +464,151 @@ func (s *TicketService) SkipTicket(
 	notifyEvent(s.notifier, queueID, EventTicketNext, dto.NewTicketEvent(called))
 
 	return called, nil
+}
+
+// retireOutcome: hasil satu pengeluaran tiket dari antrian (cancel atau remove).
+type retireOutcome struct {
+	changed     bool         // false bila tiket sudah tidak aktif (no-op)
+	target      model.Ticket // keadaan tiket yang dikeluarkan
+	promoted    model.Ticket // waiting teratas yang naik ke currently_served, bila ada
+	hasPromoted bool
+}
+
+// retireTicket mengeluarkan satu tiket aktif dari antrian dalam satu transaksi. Bila tiket itu sedang dilayani,
+// waiting teratas naik ke currently_served. Tiket yang sudah tidak aktif menghasilkan no-op tanpa menulis apa pun.
+// mark menulis status akhir (MarkCancelled atau MarkDeleted); status adalah nilai yang dipakai di payload.
+func (s *TicketService) retireTicket(
+	ctx context.Context,
+	queueID,
+	ticketID int64,
+	mark func(ctx context.Context, tx *sqlx.Tx, ticketID int64) error,
+	status string,
+) (retireOutcome, error) {
+	counter, err := s.repository.GetCounterByQueue(ctx, queueID)
+	if err != nil {
+		return retireOutcome{}, err
+	}
+
+	var out retireOutcome
+	err = s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
+		// Urutan kunci sama dengan NextTicket: nomor yang sedang dilayani dulu, lalu tiket target.
+		if _, err := s.repository.CurrentServing(ctx, tx, queueID); err != nil && !errors.Is(err, apperror.ErrNotFound) {
+			return err
+		}
+		target, err := s.repository.GetForUpdate(ctx, tx, queueID, ticketID)
+		if err != nil {
+			return err
+		}
+		out.target = target
+		// Status dibaca di dalam transaksi, jadi perubahan yang terjadi sejak pemanggil membaca tetap terdeteksi.
+		if target.Status != "waiting" && target.Status != "currently_served" {
+			return nil
+		}
+
+		if err := mark(ctx, tx, target.ID); err != nil {
+			return err
+		}
+		out.changed = true
+		out.target.Status = status
+		out.target.CompletedAt = sql.NullTime{}
+
+		if target.Status != "currently_served" {
+			return nil
+		}
+		next, err := s.repository.NextWaiting(ctx, tx, queueID)
+		if errors.Is(err, apperror.ErrNotFound) {
+			return nil // tidak ada yang menunggu: antrian kosong, tidak ada yang dilayani
+		}
+		if err != nil {
+			return err
+		}
+		if err := s.repository.MarkServing(ctx, tx, next.ID, counter.ID); err != nil {
+			return err
+		}
+		next.Status = "currently_served"
+		next.CalledAt = sql.NullTime{Time: time.Now(), Valid: true}
+		next.CalledCounterID = counter.ID
+		if !counter.IsDefault {
+			next.CounterName = counter.Name
+		}
+		out.promoted = next
+		out.hasPromoted = true
+		return nil
+	})
+	if err != nil {
+		return retireOutcome{}, err
+	}
+	return out, nil
+}
+
+// CancelTicket membatalkan tiket aktif milik customer (4.9). Nomor yang sedang dilayani dibatalkan, lalu waiting
+// teratas naik. Tanpa tiket aktif, atau sudah tidak aktif: no-op tanpa error (klik dua kali tidak error).
+func (s *TicketService) CancelTicket(
+	ctx context.Context,
+	queueID,
+	userID int64,
+) (model.Ticket, error) {
+	if s.guard == nil {
+		return model.Ticket{}, errNoQueueGuard
+	}
+	if _, err := s.guard.GetActiveQueue(ctx, queueID); err != nil {
+		return model.Ticket{}, err
+	}
+
+	mine, err := s.repository.FindByUser(ctx, queueID, userID)
+	if err != nil {
+		return model.Ticket{}, err
+	}
+
+	out, err := s.retireTicket(ctx, queueID, mine.ID, s.repository.MarkCancelled, "cancelled")
+	if err != nil {
+		return model.Ticket{}, err
+	}
+	if !out.changed {
+		return out.target, nil
+	}
+
+	out.target.CancelledAt = sql.NullTime{Time: time.Now(), Valid: true}
+	notifyEvent(s.notifier, queueID, EventTicketCancelled, dto.NewTicketEvent(out.target))
+	if out.hasPromoted {
+		notifyEvent(s.notifier, queueID, EventTicketNext, dto.NewTicketEvent(out.promoted))
+	}
+	return out.target, nil
+}
+
+// RemoveTicket menghapus nomor customer dari antrian atas perintah owner (4.10). Perilakunya seperti skip tanpa
+// fallback: tiket tidak dikembalikan ke waiting dan skip_count tidak naik. Antrian ditutup: ErrQueueClosed.
+// Tiket sudah tidak aktif: no-op. Tiket milik antrian lain: ErrNotFound.
+func (s *TicketService) RemoveTicket(
+	ctx context.Context,
+	queueID,
+	requesterID,
+	ticketID int64,
+) (model.Ticket, error) {
+	if s.guard == nil {
+		return model.Ticket{}, errNoQueueGuard
+	}
+	queue, err := s.guard.GetQueue(ctx, queueID, requesterID)
+	if err != nil {
+		return model.Ticket{}, err
+	}
+	if queue.Status == "closed" {
+		return model.Ticket{}, apperror.ErrQueueClosed
+	}
+
+	out, err := s.retireTicket(ctx, queueID, ticketID, s.repository.MarkDeleted, "deleted")
+	if err != nil {
+		return model.Ticket{}, err
+	}
+	if !out.changed {
+		return out.target, nil
+	}
+
+	notifyEvent(s.notifier, queueID, EventTicketRemoved, dto.NewTicketEvent(out.target))
+	if out.hasPromoted {
+		notifyEvent(s.notifier, queueID, EventTicketNext, dto.NewTicketEvent(out.promoted))
+	}
+	return out.target, nil
 }
 
 // RecallDelay: jeda minimal setelah sebuah nomor dipanggil sebelum owner boleh memanggil ulang.

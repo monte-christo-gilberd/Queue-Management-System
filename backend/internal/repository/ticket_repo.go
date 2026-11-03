@@ -801,3 +801,106 @@ func (r *TicketRepository) FirstWaitingNumber(
 	}
 	return number, true, nil
 }
+
+// GetForUpdate mengunci satu tiket di antrian ini (FOR UPDATE). Tiket milik antrian lain: ErrNotFound.
+func (r *TicketRepository) GetForUpdate(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID,
+	ticketID int64,
+) (model.Ticket, error) {
+	var t model.Ticket
+	const query = `
+		SELECT
+			id, queue_id, ticket_number, sort_key, user_id, status, skip_count,
+			last_notified_at, created_at, completed_at, cancelled_at, called_at, recalled_at
+		FROM tickets
+		WHERE id = $1 AND queue_id = $2
+		FOR UPDATE
+	`
+	err := tx.GetContext(ctx, &t, query, ticketID, queueID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Ticket{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return model.Ticket{}, err
+	}
+	return t, nil
+}
+
+// MarkDeleted menghapus nomor dari antrian atas perintah owner (4.10). Perilakunya seperti skip tanpa fallback:
+// status deleted, tidak dikembalikan ke waiting, dan skip_count tidak naik. called_at dipertahankan.
+func (r *TicketRepository) MarkDeleted(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID int64,
+) error {
+
+	const query = `
+		UPDATE tickets
+		SET
+			status = 'deleted',
+			completed_at = NULL
+		WHERE id = $1
+	`
+
+	result, err := tx.ExecContext(
+		ctx,
+		query,
+		ticketID,
+	)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return apperror.ErrNotFound
+	}
+
+	return nil
+}
+
+// MarkCancelled membatalkan tiket waiting atau currently_served. called_at dan counter dipertahankan.
+// Berjalan dalam transaksi pemanggil, supaya pembatalan nomor yang sedang dilayani dan promosi
+// nomor berikutnya selalu terjadi bersamaan.
+func (r *TicketRepository) MarkCancelled(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID int64,
+) error {
+
+	const query = `
+		UPDATE tickets
+		SET
+			status = 'cancelled',
+			cancelled_at = now(),
+			completed_at = NULL
+		WHERE id = $1
+	`
+
+	result, err := tx.ExecContext(
+		ctx,
+		query,
+		ticketID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return apperror.ErrNotFound
+	}
+
+	return nil
+}

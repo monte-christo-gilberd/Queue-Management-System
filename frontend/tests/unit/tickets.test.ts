@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isOnHome, type MyTicket } from '@/lib/tickets';
+import { canCancelTicket, isOnHome, type MyTicket } from '@/lib/tickets';
 
 function myTicket(overrides: Partial<MyTicket> = {}): MyTicket {
   return {
@@ -69,4 +69,17 @@ test('tiket yang dibatalkan pelanggan tidak tampil (4.9: keluar dari urutan akti
 
 test('tiket yang dilewati tidak tampil di beranda (4.10 / 4.7: bukan lagi menunggu)', () => {
   assert.equal(isOnHome(myTicket({ status: 'skipped', skip_count: 1 })), false);
+});
+
+test('tombol batal tampil untuk nomor waiting dan currently_served di antrian aktif (4.9)', () => {
+  assert.equal(canCancelTicket({ status: 'waiting' }, false), true);
+  assert.equal(canCancelTicket({ status: 'currently_served' }, false), true);
+});
+
+test('tombol batal tidak tampil bila tiket sudah tidak aktif, belum ada tiket, atau antrian ditutup', () => {
+  assert.equal(canCancelTicket({ status: 'cancelled' }, false), false, 'sudah dibatalkan: no-op');
+  assert.equal(canCancelTicket({ status: 'completed' }, false), false);
+  assert.equal(canCancelTicket({ status: 'skipped' }, false), false);
+  assert.equal(canCancelTicket(null, false), false, 'belum punya tiket');
+  assert.equal(canCancelTicket({ status: 'waiting' }, true), false, 'antrian ditutup');
 });
