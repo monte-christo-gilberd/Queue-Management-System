@@ -21,10 +21,18 @@ func New(pool *pgxpool.Pool) *PG {
 
 func (s *PG) Ticket(ctx context.Context, ticketID int64) (message.Ticket, error) {
 	var t message.Ticket
+	var counter *string
+	// Nama counter hanya diisi bila antrian punya lebih dari satu counter (D1).
 	err := s.pool.QueryRow(ctx, `
-		SELECT t.id, t.queue_id, t.ticket_number, t.user_id, t.status, q.queue_name, q.ticket_prefix
-		FROM tickets t JOIN queues q ON q.id = t.queue_id
-		WHERE t.id = $1`, ticketID).Scan(&t.ID, &t.QueueID, &t.Number, &t.UserID, &t.Status, &t.QueueName, &t.Prefix)
+		SELECT t.id, t.queue_id, t.ticket_number, t.user_id, t.status, q.queue_name, q.ticket_prefix,
+		       CASE WHEN (SELECT count(*) FROM counters c0 WHERE c0.queue_id = t.queue_id) > 1 THEN cc.name END
+		FROM tickets t
+		JOIN queues q ON q.id = t.queue_id
+		LEFT JOIN counters cc ON cc.id = t.called_counter_id
+		WHERE t.id = $1`, ticketID).Scan(&t.ID, &t.QueueID, &t.Number, &t.UserID, &t.Status, &t.QueueName, &t.Prefix, &counter)
+	if counter != nil {
+		t.CounterName = *counter
+	}
 	return t, err
 }
 

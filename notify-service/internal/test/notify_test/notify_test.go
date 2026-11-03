@@ -121,3 +121,33 @@ func TestSkippedNotifiesOnlyOwnerWithStatusText(t *testing.T) {
 		}
 	}
 }
+
+func TestCalledNamesCounterWhenQueueHasSeveral(t *testing.T) {
+	st := &fakeStore{
+		ticket: message.Ticket{ID: 1, QueueID: 9, Number: 1, UserID: 10, QueueName: "Q", CounterName: "Counter 2"},
+		subs:   map[int64][]message.Subscription{10: {sub("a")}},
+	}
+	sd := &fakeSender{}
+	if err := notify.NewService(st, sd).Handle(context.Background(), event.Event{Kind: "called", QueueID: 9, TicketID: 1}); err != nil {
+		t.Fatal(err)
+	}
+	want := "a|Giliran Anda! Nomor A-001 dipanggil di Counter 2."
+	if len(sd.sent) != 1 || sd.sent[0] != want {
+		t.Fatalf("want [%q], got %v", want, sd.sent)
+	}
+}
+
+func TestCalledWithoutCounterNameKeepsOriginalText(t *testing.T) {
+	st := &fakeStore{
+		ticket: message.Ticket{ID: 1, QueueID: 9, Number: 1, UserID: 10, QueueName: "Q"},
+		subs:   map[int64][]message.Subscription{10: {sub("a")}},
+	}
+	sd := &fakeSender{}
+	if err := notify.NewService(st, sd).Handle(context.Background(), event.Event{Kind: "called", QueueID: 9, TicketID: 1}); err != nil {
+		t.Fatal(err)
+	}
+	want := "a|Giliran Anda! Nomor A-001 dipanggil."
+	if len(sd.sent) != 1 || sd.sent[0] != want {
+		t.Fatalf("want [%q], got %v", want, sd.sent)
+	}
+}

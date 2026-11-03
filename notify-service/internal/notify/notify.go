@@ -45,9 +45,13 @@ func (s *Service) Plan(ctx context.Context, e event.Event) ([]Delivery, error) {
 		return nil, err
 	}
 	url := fmt.Sprintf("/ticket/%d", t.QueueID)
+	called := fmt.Sprintf("Giliran Anda! Nomor %s dipanggil.", message.Label(t.Prefix, t.Number))
+	if t.CounterName != "" {
+		called = fmt.Sprintf("Giliran Anda! Nomor %s dipanggil di %s.", message.Label(t.Prefix, t.Number), t.CounterName)
+	}
 	out := []Delivery{{
 		UserID: t.UserID,
-		Msg:    message.Message{Title: t.QueueName, Body: fmt.Sprintf("Giliran Anda! Nomor %s dipanggil.", message.Label(t.Prefix, t.Number)), URL: url},
+		Msg:    message.Message{Title: t.QueueName, Body: called, URL: url},
 	}}
 	if e.Kind == event.KindSkipped {
 		body := fmt.Sprintf("Nomor %s dilewati.", message.Label(t.Prefix, t.Number))

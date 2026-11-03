@@ -19,6 +19,9 @@ type Ticket struct {
 	Status    string
 	QueueName string
 	Prefix    string
+	// CounterName: counter yang memanggil tiket ini. Kosong bila antrian hanya punya satu counter
+	// (counter default disembunyikan, sama dengan UI) atau tiket belum dipanggil.
+	CounterName string
 }
 
 type Subscription struct {
