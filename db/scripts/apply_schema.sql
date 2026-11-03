@@ -80,7 +80,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS tickets_queue_id_user_id_active_key
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'notify_ro') THEN
-        GRANT SELECT ON tickets, queues, push_subscriptions TO notify_ro;
+        GRANT SELECT ON tickets, queues, counters, push_subscriptions TO notify_ro;
         GRANT DELETE ON push_subscriptions TO notify_ro;
     END IF;
 END $$;

@@ -5,7 +5,13 @@ import { AppColors } from '@/constants/app-theme';
 import { AppButton } from '@/components/ui/AppButton';
 import { ModalCard } from '@/components/ui/ModalCard';
 import type { useCounterSession } from '@/hooks/use-counter-session';
-import { MAX_COUNTERS, MAX_COUNTER_NAME_LENGTH, validateCounterName, type Counter } from '@/lib/counters';
+import {
+  MAX_COUNTERS,
+  MAX_COUNTER_NAME_LENGTH,
+  suggestCounterName,
+  validateCounterName,
+  type Counter,
+} from '@/lib/counters';
 import type { Ticket } from '@/types/api';
 import { formatTicketNumber } from '@/utils/format';
 
@@ -18,13 +24,16 @@ type CounterBarProps = {
   prefix?: string | null;
 };
 
+/** Popup yang sedang terbuka. `null` = tertutup. */
+type Popup = { kind: 'create' } | { kind: 'rename'; counter: Counter } | { kind: 'remove'; counter: Counter };
+
 /**
- * Tab counter untuk satu antrian: pindah counter, buat counter (tab baru), ganti nama (tekan lama),
- * dan tutup counter non-default (tombol ×). Dengan satu counter saja, hanya tombol "+" yang tampil.
+ * Tab counter untuk satu antrian: pindah counter, buat counter (popup nama, dengan saran nama),
+ * ganti nama (tombol ✎ atau tekan lama), dan tutup counter non-default (tombol ×).
+ * Dengan satu counter saja, hanya tombol "+" yang tampil; nama counter tetap tersembunyi (D1).
  */
 export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
-  const [renaming, setRenaming] = useState<Counter | null>(null);
-  const [removing, setRemoving] = useState<Counter | null>(null);
+  const [popup, setPopup] = useState<Popup | null>(null);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -37,43 +46,58 @@ export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
   const atLimit = session.counters.length >= MAX_COUNTERS;
   const multi = session.counters.length > 1;
 
+  function close() {
+    setPopup(null);
+    setError(undefined);
+  }
+
+  function openCreate() {
+    setError(undefined);
+    setName(suggestCounterName(session.counters.map((c) => c.name)));
+    setPopup({ kind: 'create' });
+  }
+
   function openRename(counter: Counter) {
     setError(undefined);
     setName(counter.name);
-    setRenaming(counter);
+    setPopup({ kind: 'rename', counter });
   }
 
   function openRemove(counter: Counter) {
     setError(undefined);
-    setRemoving(counter);
+    setPopup({ kind: 'remove', counter });
   }
 
-  async function submitRename() {
-    if (!renaming) return;
+  /** Simpan popup buat atau ganti nama. Galat tampil di dalam popup; sukses menutupnya. */
+  async function submitName() {
+    if (!popup || (popup.kind !== 'create' && popup.kind !== 'rename')) return;
     const problem = validateCounterName(name, false);
     if (problem) {
       setError(problem);
       return;
     }
     setBusy(true);
-    const message = await session.rename(renaming.id, name.trim());
+    const message =
+      popup.kind === 'create'
+        ? await session.add(name.trim())
+        : await session.rename(popup.counter.id, name.trim());
     setBusy(false);
     if (message) {
       setError(message);
     } else {
-      setRenaming(null);
+      close();
     }
   }
 
   async function confirmRemove() {
-    if (!removing) return;
+    if (!popup || popup.kind !== 'remove') return;
     setBusy(true);
-    const message = await session.remove(removing.id);
+    const message = await session.remove(popup.counter.id);
     setBusy(false);
     if (message) {
       setError(message);
     } else {
-      setRemoving(null);
+      close();
     }
   }
 
@@ -81,6 +105,13 @@ export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
     const number = servingNumber.get(counter.id);
     return number === undefined ? null : formatTicketNumber(number, prefix);
   };
+
+  const isNameForm = popup?.kind === 'create' || popup?.kind === 'rename';
+  const formTitle = popup?.kind === 'create' ? 'Counter baru' : 'Ganti nama counter';
+  const formHint =
+    popup?.kind === 'create'
+      ? 'Beri nama counter ini, atau pakai nama yang disarankan. Perangkat ini langsung pindah ke counter baru.'
+      : undefined;
 
   return (
     <View className="gap-2">
@@ -106,6 +137,13 @@ export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
                       {counter.name} · {number ?? 'kosong'}
                     </Text>
                   </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Ganti nama ${counter.name}`}
+                    onPress={() => openRename(counter)}
+                    hitSlop={8}>
+                    <Text className="px-1 text-[13px] font-bold text-foreground">✎</Text>
+                  </Pressable>
                   {counter.is_default ? null : (
                     <Pressable
                       accessibilityRole="button"
@@ -125,7 +163,7 @@ export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
           accessibilityLabel="Tambah counter"
           accessibilityState={{ disabled: atLimit }}
           disabled={atLimit || busy}
-          onPress={() => void session.add()}
+          onPress={openCreate}
           className={`h-9 items-center justify-center rounded-pill px-3.5 ${atLimit ? 'bg-line' : 'bg-dark'}`}>
           <Text className="text-[13px] font-bold text-white">
             {atLimit ? `Maks ${MAX_COUNTERS} counter` : '+ Tambah counter'}
@@ -134,47 +172,48 @@ export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
       </View>
 
       {session.notice ? <Text className="text-[12px] font-normal text-foreground">{session.notice}</Text> : null}
-      {session.fellBack && session.current ? (
-        <Text className="text-[12px] font-normal text-foreground">
-          Counter yang dipilih sudah dihapus; perangkat ini kembali ke {session.current.name}.
-        </Text>
-      ) : null}
       {session.error ? <Text className="text-[12px] font-normal text-live">{session.error}</Text> : null}
 
-      <ModalCard visible={renaming !== null} onRequestClose={() => setRenaming(null)}>
-        <Text className="text-[20px] font-extrabold text-foreground">Ganti nama counter</Text>
+      <ModalCard visible={isNameForm} onRequestClose={close}>
+        <Text className="text-[20px] font-extrabold text-foreground">{formTitle}</Text>
+        {formHint ? <Text className="text-[13px] text-foreground">{formHint}</Text> : null}
         <TextInput
           value={name}
           onChangeText={setName}
           editable={!busy}
+          autoFocus
           maxLength={MAX_COUNTER_NAME_LENGTH}
           placeholder="Nama counter"
           placeholderTextColor={AppColors.placeholder}
+          onSubmitEditing={() => void submitName()}
+          returnKeyType="done"
           className="h-[48px] rounded-card bg-surface px-3.5 text-[14px] text-foreground"
         />
         {error ? <Text className="text-[12px] font-normal text-live">{error}</Text> : null}
         <View className="flex-row gap-3">
-          <AppButton label="Batal" variant="outline" className="flex-1" onPress={() => setRenaming(null)} />
+          <AppButton label="Batal" variant="outline" className="flex-1" onPress={close} />
           <AppButton
-            label={busy ? 'Menyimpan...' : 'Simpan'}
+            label={busy ? 'Menyimpan...' : popup?.kind === 'create' ? 'Buat counter' : 'Simpan'}
             variant="accent"
             className="flex-1"
             disabled={busy}
-            onPress={() => void submitRename()}
+            onPress={() => void submitName()}
           />
         </View>
       </ModalCard>
 
-      <ModalCard visible={removing !== null} onRequestClose={() => setRemoving(null)}>
-        <Text className="text-[20px] font-extrabold text-foreground">Tutup {removing?.name}?</Text>
+      <ModalCard visible={popup?.kind === 'remove'} onRequestClose={close}>
+        <Text className="text-[20px] font-extrabold text-foreground">
+          Tutup {popup?.kind === 'remove' ? popup.counter.name : ''}?
+        </Text>
         <Text className="text-[14px] text-foreground">
-          {removing && servingOf(removing)
-            ? `${servingOf(removing)} sedang dilayani counter ini. Nomor itu akan kembali ke urutan terdepan.`
+          {popup?.kind === 'remove' && servingOf(popup.counter)
+            ? `${servingOf(popup.counter)} sedang dilayani counter ini. Nomor itu akan kembali ke urutan terdepan.`
             : 'Counter ini kosong dan akan dihapus.'}
         </Text>
         {error ? <Text className="text-[12px] font-normal text-live">{error}</Text> : null}
         <View className="flex-row gap-3">
-          <AppButton label="Batal" variant="outline" className="flex-1" onPress={() => setRemoving(null)} />
+          <AppButton label="Batal" variant="outline" className="flex-1" onPress={close} />
           <AppButton
             label={busy ? 'Menutup...' : 'Tutup counter'}
             variant="accent"

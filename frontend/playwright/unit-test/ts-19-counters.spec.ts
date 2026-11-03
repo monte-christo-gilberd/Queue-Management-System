@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
 import {
+  action,
   createQueueViaApi,
   joinQueueViaApi,
   registerAccount,
@@ -134,13 +135,38 @@ test.describe('TS-19 Multi-counter (4.11 / US-4)', () => {
     expect((await listCounters(request, session.token, queue.id)).some((c) => c.id === second.id)).toBe(false);
   });
 
-  test('TC-19-05 Tambah counter di dashboard membuat tab baru', async ({ page, request }) => {
+  test('TC-19-05 Tambah counter menampilkan popup nama dengan saran, lalu membuat tab baru', async ({ page, request }) => {
     const { session, queue } = await setup(request, 1);
     // Halaman detail hanya memuat antrian ini (dashboard memuat semua antrian aktif owner).
     await signInWithToken(page, session.token, session.displayName, `/queues/${queue.id}`);
 
     await expect(page.getByRole('button', { name: 'Tambah counter' })).toBeVisible();
     await page.getByRole('button', { name: 'Tambah counter' }).click();
+    await expect(page.getByText('Counter baru', { exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder('Nama counter')).toHaveValue('Counter 2');
+    await action(page, 'Buat counter').click();
     await expect(page.getByRole('tab', { name: /Counter 2/ })).toBeVisible();
+  });
+
+  test('TC-19-06 Popup tambah counter menerima nama sendiri', async ({ page, request }) => {
+    const { session, queue } = await setup(request, 1);
+    await signInWithToken(page, session.token, session.displayName, `/queues/${queue.id}`);
+
+    await page.getByRole('button', { name: 'Tambah counter' }).click();
+    await page.getByPlaceholder('Nama counter').fill('Loket B');
+    await action(page, 'Buat counter').click();
+    await expect(page.getByRole('tab', { name: /Loket B/ })).toBeVisible();
+  });
+
+  test('TC-19-07 Ganti nama lewat popup tombol ✎ mengubah nama tab', async ({ page, request }) => {
+    const { session, queue } = await setup(request, 1);
+    await createCounter(request, session.token, queue.id);
+    await signInWithToken(page, session.token, session.displayName, `/queues/${queue.id}`);
+
+    await page.getByRole('button', { name: 'Ganti nama Counter 2' }).click();
+    await expect(page.getByText('Ganti nama counter', { exact: true })).toBeVisible();
+    await page.getByPlaceholder('Nama counter').fill('Loket Utama');
+    await action(page, 'Simpan').click();
+    await expect(page.getByRole('tab', { name: /Loket Utama/ })).toBeVisible();
   });
 });

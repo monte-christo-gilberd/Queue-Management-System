@@ -34,6 +34,17 @@ export async function createCounter(queueId: number, name?: string): Promise<Cou
   return apiFetch<Counter>(`/api/v1/queues/${queueId}/counters`, { method: 'POST', body });
 }
 
+/**
+ * Nama yang disarankan untuk counter baru: "Counter N" dengan N terkecil (mulai 2) yang belum dipakai.
+ * Sama dengan nextCounterName di backend; hanya untuk mengisi form, server tetap memeriksa duplikat.
+ */
+export function suggestCounterName(existing: readonly string[]): string {
+  for (let n = 2; ; n++) {
+    const candidate = `Counter ${n}`;
+    if (!existing.includes(candidate)) return candidate;
+  }
+}
+
 /** PUT /api/v1/queues/:id/counters/:counter_id — ganti nama. Counter default boleh diganti namanya. */
 export async function renameCounter(queueId: number, counterId: number, name: string): Promise<Counter> {
   return apiFetch<Counter>(`/api/v1/queues/${queueId}/counters/${counterId}`, {

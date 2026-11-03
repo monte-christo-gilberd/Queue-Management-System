@@ -81,21 +81,26 @@ export function useCounterSession(queueId: number | null) {
     [queueId, counterId, current],
   );
 
-  /** Buat counter baru (nama otomatis) dan langsung pindah ke sana, seperti membuka tab baru. */
-  const add = useCallback(async (): Promise<boolean> => {
-    if (queueId === null) return false;
-    try {
-      const created = await createCounter(queueId);
-      writeStoredCounter(queueId, created.id);
-      setPick({ queueId, id: created.id });
-      setNotice(undefined);
-      await load();
-      return true;
-    } catch (e) {
-      setError(describeCounterError(e));
-      return false;
-    }
-  }, [queueId, load]);
+  /**
+   * Buat counter baru dengan nama (kosong = nama otomatis dari server) lalu langsung pindah ke sana,
+   * seperti membuka tab baru. Mengembalikan pesan galat, atau null bila berhasil.
+   */
+  const add = useCallback(
+    async (name?: string): Promise<string | null> => {
+      if (queueId === null) return 'Antrian belum dimuat';
+      try {
+        const created = await createCounter(queueId, name);
+        writeStoredCounter(queueId, created.id);
+        setPick({ queueId, id: created.id });
+        setNotice(undefined);
+        await load();
+        return null;
+      } catch (e) {
+        return describeCounterError(e);
+      }
+    },
+    [queueId, load],
+  );
 
   /** Ganti nama. Mengembalikan pesan galat, atau null bila berhasil. */
   const rename = useCallback(
