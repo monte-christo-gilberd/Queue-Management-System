@@ -125,13 +125,40 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     expect(res.status()).toBe(404);
   });
 
-  test('TC-05-09 Popup Masuk ke Antrian tanpa input tautan manual', async ({ page, request }) => {
+  test('TC-05-09 Popup Masuk ke Antrian menampilkan kamera dan form tautan', async ({ page, request }) => {
     const customer = await registerAccount(request, 'camera');
     await signInWithToken(page, customer.token, customer.email);
 
     await action(page, 'Masuk Ke Antrian').click();
 
     await expect(page.getByText('Masuk ke Antrian', { exact: true })).toBeVisible();
-    await expect(field(page, 'https://...')).toHaveCount(0);
+    await expect(field(page, 'https://...')).toHaveCount(1);
+    await expect(action(page, 'Masuk')).toBeVisible();
+  });
+
+  test('TC-05-10 Menempel tautan antrian di popup membuat tiket tanpa scan QR', async ({ page, request }) => {
+    const queue = await newQueue(request);
+    const customer = await registerAccount(request, 'paste');
+    const path = await joinPathViaApi(request, queue.id, queue.ownerToken);
+    await signInWithToken(page, customer.token, customer.email);
+
+    await action(page, 'Masuk Ke Antrian').click();
+    await field(page, 'https://...').fill(`${WEB_URL}${path}`);
+    await action(page, 'Masuk').click();
+
+    await expect(page).toHaveURL(new RegExp(`/ticket/${queue.id}`));
+    await expect(page.getByText('Nomor Anda')).toBeVisible();
+    expect((await queueStatusViaApi(request, customer.token, queue.id)).status()).toBe(200);
+  });
+
+  test('TC-05-11 Tautan yang bukan tautan antrian ditolak dengan pesan', async ({ page, request }) => {
+    const customer = await registerAccount(request, 'badlink');
+    await signInWithToken(page, customer.token, customer.email);
+
+    await action(page, 'Masuk Ke Antrian').click();
+    await field(page, 'https://...').fill('https://example.com/lainnya');
+    await action(page, 'Masuk').click();
+
+    await expect(page.getByText('Tautan ini bukan tautan antrian.')).toBeVisible();
   });
 });

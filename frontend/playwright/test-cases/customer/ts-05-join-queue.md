@@ -78,4 +78,18 @@
 |---|---|
 | **Priority** | P2 |
 | **Steps** | 1. Login 2. Klik **Masuk Ke Antrian** |
-| **Expected Result** | Petunjuk memakai kamera HP tampil. Tidak ada input tautan manual |
+| **Expected Result** | Petunjuk memakai kamera HP tampil, beserta form "tempel tautan antrian" dan tombol **Masuk** |
+
+### TC-05-10 — Join dengan menempel tautan
+| | |
+|---|---|
+| **Priority** | P1 |
+| **Steps** | 1. Login sebagai customer 2. Klik **Masuk Ke Antrian** 3. Tempel tautan `/join?t=...` dari owner 4. Klik **Masuk** |
+| **Expected Result** | Customer mendapat tiket dan diarahkan ke halaman tiket, tanpa scan QR |
+
+### TC-05-11 — Tautan bukan tautan antrian
+| | |
+|---|---|
+| **Priority** | P2 |
+| **Steps** | 1. Buka popup 2. Tempel tautan lain (mis. `https://example.com/lainnya`) 3. Klik **Masuk** |
+| **Expected Result** | Pesan "Tautan ini bukan tautan antrian." tampil, tidak ada tiket dibuat |
