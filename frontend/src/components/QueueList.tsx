@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { router } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 
@@ -29,6 +30,7 @@ export default function QueueList({
   loading = false,
   errorMessage,
 }: QueueListProps) {
+  useErrorToast(errorMessage);
   const avatarColor = useThemeColor("avatar");
   const isWide = useIsWide();
 
@@ -40,7 +42,6 @@ export default function QueueList({
       activeItem="queues"
       onBack={() => router.back()}
     >
-      {errorMessage ? <Text className="text-[13px] text-live">{errorMessage}</Text> : null}
       {loading ? <Text className="text-[13px] text-muted">Memuat antrian...</Text> : null}
       {!loading && !errorMessage && items.length === 0 ? (
         <EmptyState

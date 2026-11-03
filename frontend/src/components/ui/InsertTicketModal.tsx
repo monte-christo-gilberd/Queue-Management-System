@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { useEffect, useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
@@ -49,6 +50,7 @@ export function InsertTicketModal({
   }
 
   const shown = validationError ?? errorMessage;
+  useErrorToast(shown);
 
   return (
     <ModalCard visible={visible} onRequestClose={onClose}>
@@ -76,7 +78,6 @@ export function InsertTicketModal({
         placeholderTextColor={AppColors.placeholder}
         className="rounded-card bg-surface p-3.5 text-[14px] text-foreground"
       />
-      {shown ? <Text className="text-[12px] font-normal text-live">{shown}</Text> : null}
       <View className="flex-row gap-3">
         <AppButton label="Batal" variant="outline" className="flex-1" onPress={onClose} />
         <AppButton

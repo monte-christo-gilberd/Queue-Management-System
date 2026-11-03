@@ -166,7 +166,8 @@ test.describe('TS-12 Pengaturan Skip (fallback)', () => {
     await card.getByRole('radio', { name: /Mundur N nomor/ }).click();
     await card.getByRole('textbox').first().fill('0');
     await card.getByText('SIMPAN PENGATURAN').click();
-    await expect(card.getByText('Jumlah nomor harus angka 1 atau lebih')).toBeVisible();
+    // Galat validasi tampil sebagai toast (di luar kartu), bukan teks inline.
+    await expect(page.getByRole('alert').getByText('Jumlah nomor harus angka 1 atau lebih')).toBeVisible();
 
     await card.getByRole('textbox').first().fill('2');
     await card.getByText('SIMPAN PENGATURAN').click();

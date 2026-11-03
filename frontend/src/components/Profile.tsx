@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
@@ -56,6 +57,8 @@ export default function Profile({
   subscriptionPaid = false,
   subscriptionDescription,
 }: ProfileProps) {
+  useErrorToast(confirmPasswordError);
+  useErrorToast(errorMessage);
   const isWide = useIsWide();
 
   return (
@@ -133,12 +136,7 @@ export default function Profile({
               onChangeText={onChangeConfirmPassword}
               secureTextEntry
             />
-            {confirmPasswordError ? (
-              <Text className="text-[12px] font-normal text-live">{confirmPasswordError}</Text>
-            ) : null}
           </View>
-
-          {errorMessage ? <Text className="text-[12px] font-normal text-live">{errorMessage}</Text> : null}
 
           <AppButton label="Simpan Perubahan" variant="dark" onPress={onSubmit} loading={loading} />
         </View>

@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
@@ -22,6 +23,7 @@ export default function ForgotPasswordScreen({
   loading,
   errorMessage,
 }: ForgotPasswordScreenProps) {
+  useErrorToast(errorMessage);
   return (
     <AuthLayout
       title="Lupa Password"
@@ -35,8 +37,6 @@ export default function ForgotPasswordScreen({
         autoCapitalize="none"
         keyboardType="email-address"
       />
-
-      {errorMessage ? <Text className="text-[13px] text-live">{errorMessage}</Text> : null}
 
       <View className="mt-2.5">
         <PrimaryAuthButton label="Kirim" onPress={onSubmit} loading={loading} />

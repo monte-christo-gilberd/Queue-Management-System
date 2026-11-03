@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
@@ -27,6 +28,7 @@ export function SkipSettingsCard({ settings, disabled = false, saving = false, s
   const [n, setN] = useState(settings?.n ? String(settings.n) : '1');
   const [max, setMax] = useState(settings ? String(settings.max_returns) : '1');
   const [localError, setLocalError] = useState<string>();
+  useErrorToast(localError ?? error);
   const [synced, setSynced] = useState(settings !== null);
 
   // Isi form sekali saat pengaturan tersimpan selesai dimuat.
@@ -87,7 +89,6 @@ export function SkipSettingsCard({ settings, disabled = false, saving = false, s
         />
       ) : null}
 
-      {localError || error ? <Text className="text-[12px] text-live">{localError ?? error}</Text> : null}
       {saved && !localError && !error ? <Text className="text-[12px] text-muted">Pengaturan tersimpan</Text> : null}
       <AppButton label="SIMPAN PENGATURAN" variant="dark" loading={saving} onPress={submit} disabled={disabled} />
     </View>

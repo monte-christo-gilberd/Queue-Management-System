@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { useEffect, useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
@@ -31,6 +32,7 @@ export function AppendNoteModal({
   errorMessage,
   placeholder = 'Tulis catatan untuk nomor ini...',
 }: AppendNoteModalProps) {
+  useErrorToast(errorMessage);
   // State tampilan murni: isi TextInput sebelum di-submit. Diisi ulang setiap kali popup dibuka.
   const [note, setNote] = useState(initialNote);
 
@@ -51,7 +53,6 @@ export function AppendNoteModal({
         textAlignVertical="top"
         className="h-[120px] rounded-card bg-surface p-3.5 text-[14px] text-foreground"
       />
-      {errorMessage ? <Text className="text-[12px] font-normal text-live">{errorMessage}</Text> : null}
       <View className="flex-row gap-3">
         <AppButton label="Cancel" variant="outline" className="flex-1" onPress={onCancel} />
         <AppButton

@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'nativewind';
 import { useEffect } from 'react';
 
+import { ToastProvider, ToastViewport } from '@/components/ui/Toast';
 import { AppColors } from '@/constants/app-theme';
 import { themedColors } from '@/constants/tokens';
 import { restoreThemeMode } from '@/hooks/use-theme-mode';
@@ -31,7 +32,11 @@ export default function RootLayout() {
         <title>Queue Management System</title>
       </Head>
       <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }} />
+      <ToastProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+        {/* Toast galat: tumpukan di bawah layar, hilang sendiri setelah 5 detik. */}
+        <ToastViewport />
+      </ToastProvider>
     </ThemeProvider>
   );
 }

@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
@@ -107,6 +108,7 @@ export default function QueueDetail({
   onCloseQueue,
   closing = false,
 }: QueueDetailProps) {
+  useErrorToast(errorMessage);
   const isWide = useIsWide();
   const isClosed = queue.status === "closed";
   const avatarColor = useThemeColor("avatar");
@@ -160,10 +162,6 @@ export default function QueueDetail({
                 loading={nextLoading}
               />
             </View>
-          ) : null}
-
-          {errorMessage ? (
-            <Text className="text-[12px] font-normal text-live">{errorMessage}</Text>
           ) : null}
 
           {/* Tampilan customer: tanpa counter, sebelumnya, dan berikutnya. Ketuk untuk membuka daftar tiket. */}

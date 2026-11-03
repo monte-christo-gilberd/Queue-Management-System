@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { useState } from 'react';
 import { Text } from 'react-native';
 
@@ -40,6 +41,7 @@ function CreateQueueForm({
   loading,
   errorMessage,
 }: Omit<CreateQueueModalProps, 'visible'>) {
+  useErrorToast(errorMessage);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [prefix, setPrefix] = useState('');
@@ -66,8 +68,6 @@ function CreateQueueForm({
         onChangeText={(v) => setPrefix(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3))}
         autoCapitalize="characters"
       />
-
-      {errorMessage ? <Text className="text-[13px] text-live">{errorMessage}</Text> : null}
 
       <AppButton
         label="Buat Antrian"

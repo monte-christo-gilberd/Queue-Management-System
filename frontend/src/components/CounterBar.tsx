@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
@@ -37,6 +38,8 @@ export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  useErrorToast(session.error);
+  useErrorToast(error);
 
   // Nomor yang sedang dilayani tiap counter, dari papan.
   const servingNumber = new Map<number, number>();
@@ -172,7 +175,6 @@ export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
       </View>
 
       {session.notice ? <Text className="text-[12px] font-normal text-foreground">{session.notice}</Text> : null}
-      {session.error ? <Text className="text-[12px] font-normal text-live">{session.error}</Text> : null}
 
       <ModalCard visible={isNameForm} onRequestClose={close}>
         <Text className="text-[20px] font-extrabold text-foreground">{formTitle}</Text>
@@ -189,7 +191,6 @@ export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
           returnKeyType="done"
           className="h-[48px] rounded-card bg-surface px-3.5 text-[14px] text-foreground"
         />
-        {error ? <Text className="text-[12px] font-normal text-live">{error}</Text> : null}
         <View className="flex-row gap-3">
           <AppButton label="Batal" variant="outline" className="flex-1" onPress={close} />
           <AppButton
@@ -211,7 +212,6 @@ export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
             ? `${servingOf(popup.counter)} sedang dilayani counter ini. Nomor itu akan kembali ke urutan terdepan.`
             : 'Counter ini kosong dan akan dihapus.'}
         </Text>
-        {error ? <Text className="text-[12px] font-normal text-live">{error}</Text> : null}
         <View className="flex-row gap-3">
           <AppButton label="Batal" variant="outline" className="flex-1" onPress={close} />
           <AppButton

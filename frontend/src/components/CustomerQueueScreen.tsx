@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { useState } from 'react';
 import { PushToggle } from '@/components/PushToggle';
 import { Text, View } from 'react-native';
@@ -68,6 +69,7 @@ export function CustomerQueueScreen({
   onCancel,
   onBack,
 }: CustomerQueueScreenProps) {
+  useErrorToast(errorMessage);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
   return (
@@ -79,10 +81,6 @@ export function CustomerQueueScreen({
         </Text>
         {queueDescription ? (
           <Text className="text-center text-[14px] text-muted">{queueDescription}</Text>
-        ) : null}
-
-        {errorMessage ? (
-          <Text className="text-center text-[13px] text-live">{errorMessage}</Text>
         ) : null}
 
         {closed ? (

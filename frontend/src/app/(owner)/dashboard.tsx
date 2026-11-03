@@ -1,6 +1,7 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import CreateQueueModal from '@/components/CreateQueueModal';
 import { JoinQueueModals } from '@/components/ui/JoinQueueModals';
@@ -167,10 +168,10 @@ function OwnerQueueBoard({
     })),
   ];
   const message = board.nextError ?? board.skipError ?? board.syncNotice ?? board.error;
+  useErrorToast(message);
 
   return (
     <>
-      {message ? <Text className="text-[12px] font-normal text-live">{message}</Text> : null}
       {board.error ? null : <CounterBar session={counters} tickets={board.tickets} prefix={queue.ticket_prefix} />}
       <QueueTimeline
         title={queue.queue_name}

@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { useEffect, useState } from 'react';
 import { Platform, Text, View } from 'react-native';
 
@@ -16,6 +17,7 @@ export function PushToggle() {
   const [on, setOn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
+  useErrorToast(message);
   const supported = pushSupported();
 
   useEffect(() => {
@@ -68,7 +70,6 @@ export function PushToggle() {
         onPress={() => void toggle()}
         loading={busy}
       />
-      {message ? <Text className="text-[12px] font-normal text-live">{message}</Text> : null}
     </View>
   );
 }

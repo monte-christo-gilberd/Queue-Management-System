@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { router, type Href } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
@@ -44,6 +45,8 @@ export default function RegisterScreen({
   loading,
   errorMessage,
 }: RegisterScreenProps) {
+  useErrorToast(confirmPasswordError);
+  useErrorToast(errorMessage);
   return (
     <AuthLayout title="Buat Akun" subtitle="Daftar untuk mulai mengelola antrian Anda">
       <AuthInput
@@ -78,12 +81,7 @@ export default function RegisterScreen({
           secureTextEntry
           showPasswordToggle
         />
-        {confirmPasswordError ? (
-          <Text className="text-[12px] text-live">{confirmPasswordError}</Text>
-        ) : null}
       </View>
-
-      {errorMessage ? <Text className="text-[13px] text-live">{errorMessage}</Text> : null}
 
       <View className="mt-2.5">
         <PrimaryAuthButton label="Daftar" onPress={onSubmit} loading={loading} />

@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { Text, View } from "react-native";
 
 import ResponsiveScreenLayout, {
@@ -29,6 +30,7 @@ export default function Dashboard({
   topCard,
   canCreateQueue = true,
 }: DashboardProps) {
+  useErrorToast(errorMessage);
   return (
     <ResponsiveScreenLayout
       title="Dashboard"
@@ -38,10 +40,6 @@ export default function Dashboard({
       activeTab="home"
     >
       {topCard}
-
-      {errorMessage ? (
-        <Text className="text-[12px] font-normal text-live">{errorMessage}</Text>
-      ) : null}
 
       {hasActiveQueue ? (
         <View className="w-full gap-4">{boards}</View>

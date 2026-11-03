@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { useState } from 'react';
 import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 
@@ -49,6 +50,7 @@ export function QueueQRCard({
   onRefresh,
   onRetry,
 }: QueueQRCardProps) {
+  useErrorToast(error);
   const { width } = useWindowDimensions();
   const [copied, setCopied] = useState(false);
   const foreground = useThemeColor('foreground');
@@ -91,7 +93,6 @@ export function QueueQRCard({
     return (
       <View className="gap-3 rounded-card border border-line p-3.5">
         <Text className="text-[14px] font-bold text-foreground">QR Antrian</Text>
-        <Text className="text-[12px] text-live">{error}</Text>
         {onRetry ? <AppButton label="COBA LAGI" variant="dark" onPress={onRetry} /> : null}
       </View>
     );

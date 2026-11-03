@@ -1,3 +1,4 @@
+import { useErrorToast } from '@/components/ui/Toast';
 import { router, type Href } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
@@ -36,6 +37,7 @@ export default function LoginScreen({
   loading,
   errorMessage,
 }: LoginScreenProps) {
+  useErrorToast(errorMessage);
   return (
     <AuthLayout title="Queue Management System" subtitle="Kelola antrian Anda dari mana saja">
       <AuthInput
@@ -54,8 +56,6 @@ export default function LoginScreen({
         secureTextEntry
         showPasswordToggle
       />
-
-      {errorMessage ? <Text className="text-[13px] text-live">{errorMessage}</Text> : null}
 
       <View className="mt-2.5">
         <PrimaryAuthButton label="Login" onPress={onSubmit} loading={loading} />
