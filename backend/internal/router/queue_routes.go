@@ -23,6 +23,7 @@ func registerQueueRoutes(
 	rg.POST("/:queue_id/skip", ticketH.Skip)
 	rg.POST("/:queue_id/recall", ticketH.Recall)
 	rg.POST("/:queue_id/cancel", ticketH.Cancel)
+	rg.POST("/:queue_id/insert", ticketH.Insert)
 	rg.GET("/:queue_id/tickets", ticketH.List)
 	rg.GET("/:queue_id/status", ticketH.Status)
 

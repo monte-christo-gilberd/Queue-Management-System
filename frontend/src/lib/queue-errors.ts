@@ -2,6 +2,24 @@ import { ApiError } from './api';
 import { describeQrError, isQrErrorCode } from './qr-errors';
 
 /**
+ * Pesan untuk sisip customer (US-10). Kalimatnya ditujukan ke owner, bukan customer:
+ * ALREADY_JOINED dan NOT_FOUND di sini berarti akun yang dicari, bukan user yang sedang login.
+ */
+export function describeInsertError(error: unknown): string {
+  if (error instanceof ApiError) {
+    switch (error.code) {
+      case 'NOT_FOUND':
+        return 'Akun tidak ditemukan. Periksa email atau username.';
+      case 'AMBIGUOUS_ACCOUNT':
+        return 'Lebih dari satu akun memakai username itu. Gunakan emailnya.';
+      case 'ALREADY_JOINED':
+        return 'Akun ini sudah ikut antrian.';
+    }
+  }
+  return describeQueueError(error);
+}
+
+/**
  * Pesan untuk aksi antrian (buat, ubah, tutup, lihat detail). Fungsi murni.
  * 402 = langganan owner tidak aktif; ditampilkan sebagai ajakan memperpanjang langganan.
  */

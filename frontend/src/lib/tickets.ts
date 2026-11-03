@@ -81,6 +81,24 @@ export async function cancelMyTicket(queueId: number): Promise<Ticket> {
   return apiFetch<Ticket>(`/api/v1/queues/${queueId}/cancel`, { method: 'POST' });
 }
 
+/** Isian sisip (US-10): identifier wajib, posisi bilangan bulat minimal 1. Mengembalikan pesan galat, atau null. */
+export function validateInsertInput(identifier: string, position: number): string | null {
+  if (identifier.trim() === '') return 'Isi email atau username customer';
+  if (!Number.isInteger(position) || position < 1) return 'Posisi harus bilangan bulat, minimal 1';
+  return null;
+}
+
+/**
+ * POST /api/v1/queues/:id/insert — owner menyisipkan akun terdaftar di posisi tertentu (US-10).
+ * Posisi dihitung dari tiket waiting: 1 = berikutnya. Posisi melebihi panjang antrian masuk di paling belakang.
+ */
+export async function insertTicket(queueId: number, identifier: string, position: number): Promise<Ticket> {
+  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/insert`, {
+    method: 'POST',
+    body: { identifier: identifier.trim(), position },
+  });
+}
+
 /** GET /api/v1/users/me/tickets — tiket saya (login diperlukan). */
 export async function listMyTickets(): Promise<MyTicket[]> {
   const data = await apiFetch<MyTicketsResponse>('/api/v1/users/me/tickets');

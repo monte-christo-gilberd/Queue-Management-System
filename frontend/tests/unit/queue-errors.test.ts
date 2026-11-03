@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { ApiError } from '@/lib/api';
-import { describeQueueError } from '@/lib/queue-errors';
+import { describeInsertError, describeQueueError } from '@/lib/queue-errors';
 
 const apiError = (code: string, message = 'server message') => new ApiError(400, code, message);
 
@@ -82,4 +82,18 @@ test('kode QR tak dikenal dan error non-API jatuh ke pesan QR umum', async () =>
   const { describeQrError, QR_DEFAULT_MESSAGE } = await import('@/lib/qr-errors');
   assert.equal(describeQrError(apiError('SOMETHING_ELSE')), QR_DEFAULT_MESSAGE);
   assert.equal(describeQrError(new Error('boom')), QR_DEFAULT_MESSAGE);
+});
+
+test('sisip: username ganda menyarankan email (US-10)', () => {
+  assert.equal(describeInsertError(apiError('AMBIGUOUS_ACCOUNT')), 'Lebih dari satu akun memakai username itu. Gunakan emailnya.');
+});
+
+test('sisip: akun tidak ditemukan dan akun sudah ikut antrian dijelaskan ke owner', () => {
+  assert.equal(describeInsertError(apiError('NOT_FOUND')), 'Akun tidak ditemukan. Periksa email atau username.');
+  assert.equal(describeInsertError(apiError('ALREADY_JOINED')), 'Akun ini sudah ikut antrian.');
+});
+
+test('sisip: kode lain jatuh ke pesan antrian umum', () => {
+  assert.equal(describeInsertError(apiError('QUEUE_CLOSED')), describeQueueError(apiError('QUEUE_CLOSED')));
+  assert.equal(describeInsertError(new Error('x')), 'Terjadi kesalahan, coba lagi');
 });

@@ -172,6 +172,10 @@ function QueueDetailEditor({
           />
         ) : null
       }
+      onInsert={board.insert}
+      insertLoading={board.insertLoading}
+      insertError={board.insertError}
+      defaultInsertPosition={board.tickets.filter((t) => t.status === 'waiting').length + 1}
       onCloseQueue={close}
       closing={closing}
       onOpenNote={currentTicketId !== null ? () => void note.open(currentTicketId) : undefined}

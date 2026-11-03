@@ -20,6 +20,7 @@ type TicketHandlerInterface interface {
 	Next(c *gin.Context)
 	Skip(c *gin.Context)
 	Cancel(c *gin.Context)
+	Insert(c *gin.Context)
 	List(c *gin.Context)
 	Status(c *gin.Context)
 	MyTickets(c *gin.Context)

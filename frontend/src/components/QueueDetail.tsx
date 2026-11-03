@@ -17,6 +17,7 @@ import { FormField } from "@/components/ui/FormField";
 import { ModalCard } from "@/components/ui/ModalCard";
 import { MySpotCard } from "@/components/MySpotCard";
 import { AppendNoteRow, TimelineList, type TimelineItem } from "@/components/QueueTimeline";
+import { InsertTicketModal } from "@/components/ui/InsertTicketModal";
 
 export type QueueDetailProps = {
   shell?: ShellProps;
@@ -51,6 +52,12 @@ export type QueueDetailProps = {
   nextLoading?: boolean;
   /** Buka popup catatan untuk nomor yang sedang dilayani (popup dirender route). */
   onOpenNote?: () => void;
+  /** Sisip customer ke posisi tertentu (US-10). Mengembalikan true bila berhasil. */
+  onInsert?: (identifier: string, position: number) => Promise<boolean>;
+  insertLoading?: boolean;
+  insertError?: string;
+  /** Posisi awal sisip: panjang antrian menunggu + 1. */
+  defaultInsertPosition?: number;
 
   /** Slot kartu QR (dirender route dari `useQueueQR`). */
   qrCard?: React.ReactNode;
@@ -88,6 +95,10 @@ export default function QueueDetail({
   skipDisabled = false,
   nextLoading = false,
   onOpenNote,
+  onInsert,
+  insertLoading = false,
+  insertError,
+  defaultInsertPosition = 1,
   qrCard,
   skipSettingsCard,
   onCloseQueue,
@@ -99,6 +110,7 @@ export default function QueueDetail({
 
   // State tampilan murni: popup daftar tiket dan popup konfirmasi tutup.
   const [ticketsOpen, setTicketsOpen] = useState(false);
+  const [insertOpen, setInsertOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
   return (
@@ -229,8 +241,27 @@ export default function QueueDetail({
             description="Tiket akan muncul di sini setelah customer bergabung ke antrian."
           />
         )}
+        {onInsert ? (
+          <AppButton
+            label="Sisip customer"
+            variant="dark"
+            disabled={isClosed}
+            onPress={() => setInsertOpen(true)}
+          />
+        ) : null}
         <AppButton label="Tutup" variant="outline" onPress={() => setTicketsOpen(false)} />
       </ModalCard>
+
+      {onInsert ? (
+        <InsertTicketModal
+          visible={insertOpen}
+          defaultPosition={defaultInsertPosition}
+          saving={insertLoading}
+          errorMessage={insertError}
+          onClose={() => setInsertOpen(false)}
+          onSubmit={onInsert}
+        />
+      ) : null}
 
       <ModalCard visible={closeConfirmOpen} onRequestClose={() => setCloseConfirmOpen(false)}>
         <Text className="text-[20px] font-extrabold text-foreground">Tutup antrian ini?</Text>

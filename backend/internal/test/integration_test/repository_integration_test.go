@@ -1001,3 +1001,63 @@ func TestTicketRepository_GetForUpdateAndNextVsCancel_AgainstPostgres(t *testing
 		assert.NotContains(t, err.Error(), "deadlock", "tidak boleh ada deadlock: %v", err)
 	}
 }
+
+// Sisip (US-10): akun dicari lewat email di Postgres; dua sisip paralel di posisi sama tidak error,
+// sort_key tetap unik, dan semua tiket tersimpan.
+func TestInsertTicket_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "ins-o@b.c", time.Now().Add(time.Hour))
+	a := seedUser(t, db, "ins-a@b.c")
+	b := seedUser(t, db, "ins-b@b.c")
+	seedUser(t, db, "ins-c@b.c")
+	seedUser(t, db, "ins-d@b.c")
+	seedUser(t, db, "ins-x@b.c")
+	q := createQueue(t, db, owner, "Insert")
+	ticketRepo := repository.NewTicketRepository(db)
+	txRunner := database.NewSqlxTxRunner(db)
+	queueSvc := service.NewQueueService(
+		repository.NewQueueRepository(db),
+		repository.NewSubscriptionChecker(db),
+		txRunner,
+	).WithTicketHolderChecker(ticketRepo)
+	svc := service.NewTicketService(ticketRepo, txRunner).
+		WithQueueGuard(queueSvc).
+		WithAccountFinder(repository.NewUserRepository(db))
+
+	_, err := svc.JoinQueue(ctx, q.ID, a)
+	require.NoError(t, err)
+	_, err = svc.JoinQueue(ctx, q.ID, b)
+	require.NoError(t, err)
+
+	// Sisip sekuensial lewat email: harus menempati posisi 2.
+	_, err = svc.InsertTicket(ctx, q.ID, owner, "ins-c@b.c", 2)
+	require.NoError(t, err)
+
+	// Dua sisip paralel di posisi 2 dengan akun berbeda.
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for _, email := range []string{"ins-d@b.c", "ins-x@b.c"} {
+		wg.Add(1)
+		go func(e string) {
+			defer wg.Done()
+			if _, err := svc.InsertTicket(ctx, q.ID, owner, e, 2); err != nil {
+				errs <- err
+			}
+		}(email)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("sisip paralel gagal: %v", err)
+	}
+
+	waiting, err := ticketRepo.ListByQueue(ctx, q.ID, []string{"waiting"})
+	require.NoError(t, err)
+	assert.Len(t, waiting, 5, "a, c, dua sisipan paralel, b")
+	seen := map[int64]bool{}
+	for _, tk := range waiting {
+		assert.False(t, seen[tk.SortKey], "sort_key harus unik")
+		seen[tk.SortKey] = true
+	}
+}

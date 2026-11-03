@@ -51,6 +51,10 @@ func (s *stubTicketService) CancelTicket(context.Context, int64, int64) (model.T
 	return model.Ticket{}, s.err
 }
 
+func (s *stubTicketService) InsertTicket(context.Context, int64, int64, string, int) (model.Ticket, error) {
+	return model.Ticket{}, s.err
+}
+
 func (s *stubTicketService) SkipTicket(context.Context, int64, int64) (model.Ticket, error) {
 	return model.Ticket{}, s.nextErr
 }
@@ -89,6 +93,7 @@ func newListEngine(svc *stubTicketService) *gin.Engine {
 	e.POST("/join", h.Join)
 	e.POST("/queues/:queue_id/next", h.Next)
 	e.POST("/queues/:queue_id/cancel", h.Cancel)
+	e.POST("/queues/:queue_id/insert", h.Insert)
 	return e
 }
 
@@ -275,4 +280,62 @@ func TestCancel_ErrorMapping(t *testing.T) {
 			assert.Contains(t, w.Body.String(), `"`+c.code+`"`)
 		}
 	}
+}
+
+func doPostJSON(e *gin.Engine, target, body string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	e.ServeHTTP(w, httptest.NewRequest(http.MethodPost, target, bytes.NewBufferString(body)))
+	return w
+}
+
+func TestInsert_OK(t *testing.T) {
+	w := doPostJSON(newListEngine(&stubTicketService{}), "/queues/5/insert", `{"identifier":"budi@test.com","position":2}`)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+}
+
+func TestInsert_ErrorMapping(t *testing.T) {
+	cases := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"not_found", apperror.ErrNotFound, http.StatusNotFound, "NOT_FOUND"},
+		{"ambiguous", apperror.ErrAmbiguousAccount, http.StatusConflict, "AMBIGUOUS_ACCOUNT"},
+		{"already_joined", apperror.ErrAlreadyJoined, http.StatusConflict, "ALREADY_JOINED"},
+		{"queue_closed", apperror.ErrQueueClosed, http.StatusConflict, "QUEUE_CLOSED"},
+		{"invalid_position", apperror.ErrInvalidPosition, http.StatusBadRequest, "BAD_REQUEST"},
+		{"retry_exhausted", apperror.ErrRetryExhausted, http.StatusServiceUnavailable, "RETRY_EXHAUSTED"},
+		{"internal", errors.New("db down"), http.StatusInternalServerError, "INTERNAL_ERROR"},
+	}
+	for _, c := range cases {
+		w := doPostJSON(newListEngine(&stubTicketService{err: c.err}), "/queues/5/insert", `{"identifier":"x","position":1}`)
+
+		assert.Equal(t, c.status, w.Code, c.name)
+		assert.Contains(t, w.Body.String(), `"`+c.code+`"`, c.name)
+	}
+}
+
+func TestInsert_RejectsBadInput(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"identifier kosong", `{"identifier":"   ","position":1}`},
+		{"posisi nol", `{"identifier":"budi","position":0}`},
+		{"posisi tidak ada", `{"identifier":"budi"}`},
+		{"json rusak", `{"identifier":`},
+	}
+	for _, c := range cases {
+		w := doPostJSON(newListEngine(&stubTicketService{}), "/queues/5/insert", c.body)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code, c.name)
+	}
+}
+
+func TestInsert_BadQueueID(t *testing.T) {
+	w := doPostJSON(newListEngine(&stubTicketService{}), "/queues/abc/insert", `{"identifier":"budi","position":1}`)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

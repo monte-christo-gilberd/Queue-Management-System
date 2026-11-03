@@ -142,6 +142,15 @@ type TicketRepository interface {
 	) ([]model.UserTicket, error)
 }
 
+// AccountFinder mencari akun dari email atau username. Dipenuhi UserRepository.
+// Username tidak unik, jadi hasilnya bisa lebih dari satu baris; email dicocokkan lebih dulu.
+type AccountFinder interface {
+	FindByLogin(
+		ctx context.Context,
+		identifier string,
+	) ([]model.User, error)
+}
+
 // QueueGuard dipenuhi *QueueService.
 //   - GetQueue: requester harus owner; selain itu apperror.ErrNotFound.
 //   - GetActiveQueue: queue harus ada (ErrNotFound) dan aktif (ErrQueueClosed).
@@ -163,6 +172,8 @@ type QueueGuard interface {
 	) (model.Queue, bool, error)
 }
 
+var errNoAccountFinder = errors.New("ticket service: account finder is not configured")
+
 var errNoQueueGuard = errors.
 	New("ticket service: queue guard is not configured")
 
@@ -171,6 +182,7 @@ type TicketService struct {
 	tx         TxRunner
 	notifier   EventNotifier
 	guard      QueueGuard
+	accounts   AccountFinder
 }
 
 func NewTicketService(
@@ -193,6 +205,14 @@ func (s *TicketService) WithQueueGuard(
 	guard QueueGuard,
 ) *TicketService {
 	s.guard = guard
+	return s
+}
+
+// WithAccountFinder memasang pencarian akun untuk sisip (US-10). Tanpa ini, InsertTicket gagal tertutup.
+func (s *TicketService) WithAccountFinder(
+	accounts AccountFinder,
+) *TicketService {
+	s.accounts = accounts
 	return s
 }
 
@@ -611,6 +631,82 @@ func (s *TicketService) RemoveTicket(
 	return out.target, nil
 }
 
+// InsertTicket menyisipkan akun terdaftar ke posisi tertentu di antrian (US-10 / 4.12). Position 1-based,
+// dihitung dari tiket waiting: 1 = berikutnya. Posisi melebihi panjang antrian masuk di paling belakang.
+// Akun dicari lewat identifier (email atau username); username ganda ditolak agar akun yang benar tidak tertukar.
+func (s *TicketService) InsertTicket(
+	ctx context.Context,
+	queueID,
+	requesterID int64,
+	identifier string,
+	position int,
+) (model.Ticket, error) {
+	if s.guard == nil {
+		return model.Ticket{}, errNoQueueGuard
+	}
+	if s.accounts == nil {
+		return model.Ticket{}, errNoAccountFinder
+	}
+	if position < 1 {
+		return model.Ticket{}, apperror.ErrInvalidPosition
+	}
+	queue, err := s.guard.GetQueue(ctx, queueID, requesterID)
+	if err != nil {
+		return model.Ticket{}, err
+	}
+	if queue.Status == "closed" {
+		return model.Ticket{}, apperror.ErrQueueClosed
+	}
+
+	users, err := s.accounts.FindByLogin(ctx, identifier)
+	if err != nil {
+		return model.Ticket{}, err
+	}
+	switch {
+	case len(users) == 0:
+		return model.Ticket{}, apperror.ErrNotFound
+	case len(users) > 1:
+		return model.Ticket{}, apperror.ErrAmbiguousAccount
+	}
+	userID := users[0].ID
+
+	joined, err := s.repository.HasTicket(ctx, queueID, userID)
+	if err != nil {
+		return model.Ticket{}, err
+	}
+	if joined {
+		return model.Ticket{}, apperror.ErrAlreadyJoined
+	}
+
+	var ticket model.Ticket
+	for retry := 0; retry < maxRetries; retry++ {
+		err := s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
+			sortKey, err := s.sortKeyAt(ctx, tx, queueID, position)
+			if err != nil {
+				return err
+			}
+			ticket, err = s.repository.Insert(ctx, tx, queueID, userID, sortKey)
+			return err
+		})
+		if err == nil {
+			notifyEvent(s.notifier, queueID, EventTicketJoined, dto.NewTicketEvent(ticket))
+			return ticket, nil
+		}
+		if !errors.Is(err, apperror.ErrDuplicate) {
+			return model.Ticket{}, err
+		}
+		// Bentrok sort_key: coba lagi. Bentrok UNIQUE (queue, user) berarti akun itu baru saja ikut antrian.
+		joined, err := s.repository.HasTicket(ctx, queueID, userID)
+		if err != nil {
+			return model.Ticket{}, err
+		}
+		if joined {
+			return model.Ticket{}, apperror.ErrAlreadyJoined
+		}
+	}
+	return model.Ticket{}, apperror.ErrRetryExhausted
+}
+
 // RecallDelay: jeda minimal setelah sebuah nomor dipanggil sebelum owner boleh memanggil ulang.
 const RecallDelay = 3 * time.Second
 
@@ -654,30 +750,53 @@ func (s *TicketService) RecallTicket(
 }
 
 // requeueSortKey: sort_key untuk tiket yang dikembalikan. Dipanggil setelah tiket berikutnya diambil,
-// jadi "mundur N" dihitung terhadap antrian yang tersisa. Bila yang menunggu kurang dari N, jatuh ke belakang.
+// jadi "mundur N" dihitung terhadap antrian yang tersisa: tiket masuk tepat di posisi N+1.
+// Bila yang menunggu kurang dari N, jatuh ke belakang.
 func (s *TicketService) requeueSortKey(
 	ctx context.Context,
 	tx *sqlx.Tx,
 	queueID int64,
 	settings model.SkipSettings,
 ) (int64, error) {
-	back := func() (int64, error) {
-		max, err := s.repository.MaxWaitingSortKey(ctx, tx, queueID)
-		return max + SortKeyGap, err
-	}
 	if settings.Fallback != model.SkipFallbackAfterN || settings.N < 1 {
-		return back()
+		return s.backSortKey(ctx, tx, queueID)
 	}
+	return s.sortKeyAt(ctx, tx, queueID, settings.N+1)
+}
 
+// backSortKey: sort_key di paling belakang antrian.
+func (s *TicketService) backSortKey(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID int64,
+) (int64, error) {
+	max, err := s.repository.MaxWaitingSortKey(ctx, tx, queueID)
+	return max + SortKeyGap, err
+}
+
+// sortKeyAt: sort_key yang membuat tiket menempati posisi (1-based, dihitung dari tiket waiting) di antrian.
+// Posisi 1 berarti paling depan. Bila tidak ada tiket di posisi itu (antrian lebih pendek), tiket masuk di
+// paling belakang. Sisipan di antara dua tiket memakai titik tengah sort_key; bila jaraknya habis atau
+// bentrok, sort_key tiket waiting dinomori ulang lalu dihitung lagi.
+func (s *TicketService) sortKeyAt(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID int64,
+	position int,
+) (int64, error) {
 	for attempt := 0; attempt < 2; attempt++ {
-		keys, err := s.repository.WaitingSortKeys(ctx, tx, queueID, settings.N+1)
+		keys, err := s.repository.WaitingSortKeys(ctx, tx, queueID, position)
 		if err != nil {
 			return 0, err
 		}
-		if len(keys) <= settings.N {
-			return back()
+		if len(keys) < position {
+			return s.backSortKey(ctx, tx, queueID)
 		}
-		lower, upper := keys[settings.N-1], keys[settings.N]
+		var lower int64
+		if position >= 2 {
+			lower = keys[position-2]
+		}
+		upper := keys[position-1]
 		mid := lower + (upper-lower)/2
 		if mid > lower {
 			taken, err := s.repository.SortKeyTaken(ctx, tx, queueID, mid)

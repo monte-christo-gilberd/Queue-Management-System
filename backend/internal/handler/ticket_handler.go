@@ -40,6 +40,13 @@ type TicketService interface {
 		queueID,
 		userID int64,
 	) (model.Ticket, error)
+	InsertTicket(
+		ctx context.Context,
+		queueID,
+		requesterID int64,
+		identifier string,
+		position int,
+	) (model.Ticket, error)
 	ListTickets(
 		ctx context.Context,
 		queueID,
@@ -339,6 +346,51 @@ func (h *TicketHandler) Cancel(c *gin.Context) {
 		return
 	}
 	respondData(c, http.StatusOK, dto.NewTicketResponse(ticket))
+}
+
+type insertTicketRequest struct {
+	Identifier string `json:"identifier"`
+	Position   int    `json:"position"`
+}
+
+// Insert: POST /api/v1/queues/:queue_id/insert — owner menyisipkan akun terdaftar di posisi tertentu (US-10).
+func (h *TicketHandler) Insert(c *gin.Context) {
+	queueID, err := strconv.ParseInt(c.Param("queue_id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
+		return
+	}
+	var req insertTicketRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+		return
+	}
+	identifier := strings.TrimSpace(req.Identifier)
+	if identifier == "" || req.Position < 1 {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "identifier is required and position must be at least 1")
+		return
+	}
+	ticket, err := h.service.InsertTicket(c.Request.Context(), queueID, c.GetInt64("user_id"), identifier, req.Position)
+	if err != nil {
+		switch {
+		case errors.Is(err, apperror.ErrNotFound):
+			respondError(c, http.StatusNotFound, "NOT_FOUND", "queue or account not found")
+		case errors.Is(err, apperror.ErrAmbiguousAccount):
+			respondError(c, http.StatusConflict, "AMBIGUOUS_ACCOUNT", "more than one account has this username; use the email instead")
+		case errors.Is(err, apperror.ErrAlreadyJoined):
+			respondError(c, http.StatusConflict, "ALREADY_JOINED", "this account already has an active ticket in the queue")
+		case errors.Is(err, apperror.ErrQueueClosed):
+			respondError(c, http.StatusConflict, "QUEUE_CLOSED", "queue is closed")
+		case errors.Is(err, apperror.ErrInvalidPosition):
+			respondError(c, http.StatusBadRequest, "BAD_REQUEST", "position must be at least 1")
+		case errors.Is(err, apperror.ErrRetryExhausted):
+			respondError(c, http.StatusServiceUnavailable, "RETRY_EXHAUSTED", "failed to insert after exhausting all retries")
+		default:
+			respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		}
+		return
+	}
+	respondData(c, http.StatusCreated, dto.NewTicketResponse(ticket))
 }
 
 // Recall: POST /api/v1/queues/:queue_id/recall — owner memanggil ulang nomor yang sedang dilayani (push saja).

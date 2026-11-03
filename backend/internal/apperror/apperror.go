@@ -16,6 +16,8 @@ var (
 	ErrQueueClosed          = errors.New("queue is closed")
 	ErrAlreadyJoined        = errors.New("user already joined this queue")
 	ErrInvalidNote          = errors.New("invalid note")
+	ErrAmbiguousAccount     = errors.New("account identifier matches more than one account")
+	ErrInvalidPosition      = errors.New("position must be at least 1")
 
 	// Error QR: token join tidak valid/tidak ada atau qr-service gagal dipakai.
 	ErrQRInvalid           = errors.New("qr token invalid")

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useQueueEvents } from '@/hooks/use-queue-events';
-import { describeQueueError } from '@/lib/queue-errors';
-import { listTickets, nextTicket, recallTicket, skipTicket } from '@/lib/tickets';
+import { describeInsertError, describeQueueError } from '@/lib/queue-errors';
+import { insertTicket, listTickets, nextTicket, recallTicket, skipTicket } from '@/lib/tickets';
 import type { Ticket } from '@/types/api';
 import { deriveQueueView } from '@/utils/queue-view';
 
@@ -36,6 +36,8 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
   const [nextError, setNextError] = useState<string>();
   const [skipLoading, setSkipLoading] = useState(false);
   const [skipError, setSkipError] = useState<string>();
+  const [insertLoading, setInsertLoading] = useState(false);
+  const [insertError, setInsertError] = useState<string>();
   const [recallLoading, setRecallLoading] = useState(false);
   const [recallError, setRecallError] = useState<string>();
   // Setelah Next/Skip: tombol Panggil ulang menggantikan Skip (mati 3 detik). Setelah dipanggil ulang,
@@ -154,6 +156,26 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     setSkipLoading(false);
   }, [queueId, reload, armRecall]);
 
+  /**
+   * Sisip customer ke posisi tertentu (US-10). Mengembalikan true bila berhasil, agar modal tahu kapan menutup diri.
+   * Galat ditampilkan dengan kalimat khusus sisip (describeInsertError), bukan pesan aksi antrian umum.
+   */
+  const insert = useCallback(async (identifier: string, position: number): Promise<boolean> => {
+    if (queueId === null) return false;
+    setInsertLoading(true);
+    setInsertError(undefined);
+    try {
+      await insertTicket(queueId, identifier, position);
+      await reload(queueId);
+      return true;
+    } catch (e) {
+      setInsertError(describeInsertError(e));
+      return false;
+    } finally {
+      setInsertLoading(false);
+    }
+  }, [queueId, reload]);
+
   const recall = useCallback(async () => {
     if (queueId === null) return;
     setRecallLoading(true);
@@ -181,6 +203,9 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     skipLoading,
     skipError,
     recall,
+    insert,
+    insertLoading,
+    insertError,
     recallLoading,
     recallReady,
     showRecall,

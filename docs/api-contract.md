@@ -193,6 +193,23 @@ Error: 400 `BAD_REQUEST` (catatan kosong setelah dipangkas, atau lebih dari 1000
 
 Catatan tidak pernah ikut dalam respons tiket dan tidak terlihat oleh customer.
 
+### POST /api/v1/queues/:queue_id/insert
+Owner menyisipkan akun terdaftar ke posisi tertentu di urutan tunggu (US-10 / 4.12). Hanya owner antrian.
+
+Body: `{ "identifier": "email atau username", "position": 2 }`. `identifier` dipangkas spasi dan wajib diisi. `position` bilangan bulat minimal 1, dihitung dari tiket `waiting` (1 = berikutnya). Posisi melebihi panjang antrian masuk di paling belakang.
+
+201: objek tiket baru (`status` = `"waiting"`), dengan `ticket_number` berikutnya seperti join biasa. Nomor yang sedang dilayani tidak terganggu.
+
+Error:
+- 400 `BAD_REQUEST`: `identifier` kosong, `position` kurang dari 1, atau body tidak valid.
+- 404 `NOT_FOUND`: bukan owner, antrian tidak ada, atau akun tidak ditemukan.
+- 409 `AMBIGUOUS_ACCOUNT`: lebih dari satu akun memakai username itu. Gunakan email.
+- 409 `ALREADY_JOINED`: akun sudah punya tiket aktif di antrian ini.
+- 409 `QUEUE_CLOSED`.
+- 503 `RETRY_EXHAUSTED`: gagal setelah beberapa kali percobaan, biasanya karena antrian sangat padat.
+
+Akun yang tiket lamanya sudah selesai boleh disisipkan lagi, dengan nomor baru.
+
 ### Web Push (perlu login)
 - `GET /api/v1/push/public-key` → `{ public_key }` (kunci VAPID publik).
 - `POST /api/v1/push/subscribe` body `{ endpoint, keys: { p256dh, auth } }`; endpoint wajib `https`, 400 bila tidak. Endpoint yang sama dipindah ke user yang sedang login.

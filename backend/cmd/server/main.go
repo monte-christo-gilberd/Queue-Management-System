@@ -82,7 +82,8 @@ func main() {
 
 	ticketService := service.
 		NewTicketService(ticketRepo, txRunner, hub).
-		WithQueueGuard(queueService)
+		WithQueueGuard(queueService).
+		WithAccountFinder(userRepo)
 	ticketHandler := handler.
 		NewTicketHandlerWithQR(
 			ticketService,

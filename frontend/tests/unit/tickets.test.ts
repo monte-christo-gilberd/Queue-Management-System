@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { canCancelTicket, isOnHome, type MyTicket } from '@/lib/tickets';
+import { canCancelTicket, isOnHome, type MyTicket, validateInsertInput } from '@/lib/tickets';
 
 function myTicket(overrides: Partial<MyTicket> = {}): MyTicket {
   return {
@@ -82,4 +82,18 @@ test('tombol batal tidak tampil bila tiket sudah tidak aktif, belum ada tiket, a
   assert.equal(canCancelTicket({ status: 'skipped' }, false), false);
   assert.equal(canCancelTicket(null, false), false, 'belum punya tiket');
   assert.equal(canCancelTicket({ status: 'waiting' }, true), false, 'antrian ditutup');
+});
+
+test('sisip: identifier wajib diisi (US-10)', () => {
+  assert.equal(validateInsertInput('', 1), 'Isi email atau username customer');
+  assert.equal(validateInsertInput('   ', 1), 'Isi email atau username customer');
+  assert.equal(validateInsertInput('budi@mail.com', 1), null);
+});
+
+test('sisip: posisi harus bilangan bulat minimal 1', () => {
+  assert.equal(validateInsertInput('budi', 0), 'Posisi harus bilangan bulat, minimal 1');
+  assert.equal(validateInsertInput('budi', -2), 'Posisi harus bilangan bulat, minimal 1');
+  assert.equal(validateInsertInput('budi', 2.5), 'Posisi harus bilangan bulat, minimal 1');
+  assert.equal(validateInsertInput('budi', Number.NaN), 'Posisi harus bilangan bulat, minimal 1');
+  assert.equal(validateInsertInput('budi', 3), null);
 });
