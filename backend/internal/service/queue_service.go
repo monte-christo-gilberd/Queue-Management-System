@@ -84,9 +84,10 @@ type SubscriptionChecker interface {
 	) (bool, error)
 }
 
-// TicketHolderChecker melaporkan apakah user punya tiket di sebuah queue. Dipenuhi TicketRepository.
+// TicketHolderChecker melaporkan apakah user pernah punya tiket di sebuah queue, dalam status apa pun
+// (termasuk yang sudah selesai), supaya pemegang tiket tetap bisa membaca queue. Dipenuhi TicketRepository.
 type TicketHolderChecker interface {
-	HasTicket(
+	HasAnyTicket(
 		ctx context.Context,
 		queueID,
 		userID int64,
@@ -243,7 +244,7 @@ func (s *QueueService) ViewQueue(
 	}
 
 	if s.holders != nil {
-		isHolder, err := s.holders.HasTicket(
+		isHolder, err := s.holders.HasAnyTicket(
 			ctx,
 			queueID,
 			requesterID,

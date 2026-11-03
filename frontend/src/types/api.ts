@@ -21,7 +21,8 @@ export type Ticket = {
   ticket_number: number;
   sort_key: number;
   user_id: number;
-  status: 'waiting' | 'completed' | 'cancelled' | 'skipped';
+  /** currently_served: nomor yang sedang dilayani. deleted: disiapkan, belum dipakai backend. */
+  status: 'waiting' | 'currently_served' | 'completed' | 'cancelled' | 'skipped' | 'deleted';
   skip_count: number;
   last_notified_at: string | null;
   created_at: string;

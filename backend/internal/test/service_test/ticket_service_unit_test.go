@@ -203,7 +203,7 @@ func TestSpec_Next_ServesHeadAndPublishesTicketNext(t *testing.T) {
 	ev, ok := env.events.snapshot()[len(env.events.snapshot())-1].Payload.(dto.TicketEvent)
 	require.True(t, ok)
 	assert.Equal(t, 1, ev.TicketNumber)
-	assert.Equal(t, "completed", ev.Status)
+	assert.Equal(t, "currently_served", ev.Status)
 }
 
 func TestSpec_Next_EmptyQueueReturnsQueueEmptyWithoutStateChange(t *testing.T) {
@@ -218,7 +218,8 @@ func TestSpec_Next_EmptyQueueReturnsQueueEmptyWithoutStateChange(t *testing.T) {
 }
 
 func TestSpec_Next_AfterLastServedIsQueueEmpty(t *testing.T) {
-	// 4.3: tidak ada nomor berikutnya -> sama seperti antrian kosong.
+	// 4.3: tidak ada nomor berikutnya -> sama seperti antrian kosong. Next yang gagal tidak mengubah status:
+	// nomor yang sedang dilayani tetap A-001, dan tidak ada tiket yang diturunkan ke completed.
 	env := newSpecEnv(t)
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
@@ -227,7 +228,37 @@ func TestSpec_Next_AfterLastServedIsQueueEmpty(t *testing.T) {
 
 	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
 	assert.ErrorIs(t, err, apperror.ErrQueueEmpty)
+	assert.Equal(t, 0, env.tickets.completes)
+
+	st, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerA)
+	require.NoError(t, err)
+	require.NotNil(t, st.CurrentNumber)
+	assert.Equal(t, 1, *st.CurrentNumber)
+}
+
+func TestSpec_Next_TwiceCompletesFirstAndServesSecond(t *testing.T) {
+	// 4.3: Next kedua menurunkan nomor pertama menjadi completed dan menaikkan nomor kedua menjadi currently_served.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	require.NoError(t, err)
+
+	second, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 2, second.TicketNumber)
+	assert.Equal(t, "currently_served", second.Status)
 	assert.Equal(t, 1, env.tickets.completes)
+
+	st, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerA)
+	require.NoError(t, err)
+	require.NotNil(t, st.MyTicket)
+	assert.Equal(t, "completed", st.MyTicket.Status)
+	require.NotNil(t, st.CurrentNumber)
+	assert.Equal(t, 2, *st.CurrentNumber)
+	require.NotNil(t, st.PreviousNumber)
+	assert.Equal(t, 1, *st.PreviousNumber)
 }
 
 func TestSpec_Next_CustomerIsDeniedWithoutStateChange(t *testing.T) {
@@ -278,8 +309,8 @@ func TestSpec_Status_NextCustomerSeesUpdateWithoutRejoin(t *testing.T) {
 	assert.Equal(t, "waiting", st.MyTicket.Status)
 }
 
-func TestSpec_Status_ServedCustomerSeesCompleted(t *testing.T) {
-	// TC-06-02: setelah dilayani, status tiket "completed" dan nomor yang dilayani adalah miliknya.
+func TestSpec_Status_ServedCustomerSeesCurrentlyServed(t *testing.T) {
+	// TC-06-02: setelah dipanggil, status tiket "currently_served" dan nomor yang dilayani adalah miliknya.
 	env := newSpecEnv(t)
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
@@ -289,10 +320,10 @@ func TestSpec_Status_ServedCustomerSeesCompleted(t *testing.T) {
 	st, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerA)
 	require.NoError(t, err)
 	require.NotNil(t, st.MyTicket)
-	assert.Equal(t, "completed", st.MyTicket.Status)
+	assert.Equal(t, "currently_served", st.MyTicket.Status)
 	require.NotNil(t, st.CurrentNumber)
 	assert.Equal(t, 1, *st.CurrentNumber)
-	assert.Nil(t, st.WaitingAhead, "tiket yang sudah selesai tidak punya hitungan orang di depan")
+	assert.Nil(t, st.WaitingAhead, "tiket yang sedang dilayani tidak punya hitungan orang di depan")
 }
 
 func TestSpec_Status_HolderSeesClosedQueue(t *testing.T) {
@@ -358,7 +389,7 @@ func TestSpec_Skip_SkipsServingAndCallsNext(t *testing.T) {
 	called, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
 	require.NoError(t, err)
 	assert.Equal(t, 2, called.TicketNumber)
-	assert.Equal(t, "completed", called.Status)
+	assert.Equal(t, "currently_served", called.Status)
 
 	all, _ := env.ts.ListTickets(ctx, env.queueID, specOwnerID, []string{"skipped"})
 	require.Len(t, all, 1)
@@ -541,4 +572,58 @@ func TestRecall_CustomerIsDenied(t *testing.T) {
 	serveFirst(t, env, 2)
 	_, err := env.ts.RecallTicket(context.Background(), env.queueID, specCustomerA)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
+}
+
+func TestSpec_Rejoin_AfterCompletedGetsNewNumberAndOldStaysCompleted(t *testing.T) {
+	// 4.2 / bagian 3.2: setelah tiket selesai, join lagi ke antrian yang sama memberi nomor baru.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	require.NoError(t, err)
+
+	rejoined, err := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	require.NoError(t, err)
+	assert.Equal(t, 3, rejoined.TicketNumber)
+	assert.Equal(t, "waiting", rejoined.Status)
+
+	old := env.tickets.ticketsOf(env.queueID)
+	var oldA model.Ticket
+	for _, tk := range old {
+		if tk.TicketNumber == 1 {
+			oldA = tk
+		}
+	}
+	assert.Equal(t, "completed", oldA.Status, "tiket lama tetap completed")
+}
+
+func TestSpec_Rejoin_WhileWaitingReturnsSameTicket(t *testing.T) {
+	// Join saat tiket masih aktif tidak membuat nomor kedua.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	first, _ := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+
+	again, err := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, again.ID)
+	assert.Len(t, env.tickets.ticketsOf(env.queueID), 1)
+}
+
+func TestSpec_ListMyTickets_OneRowPerQueue(t *testing.T) {
+	// /users/me/tickets: satu baris per antrian walau ada riwayat lama di antrian yang sama.
+	env := newSpecEnv(t)
+	ctx := context.Background()
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
+
+	mine, err := env.ts.ListMyTickets(ctx, specCustomerA)
+	require.NoError(t, err)
+	require.Len(t, mine, 1)
+	assert.Equal(t, 3, mine[0].TicketNumber, "baris yang tampil adalah tiket aktif terbaru")
+	assert.Equal(t, "waiting", mine[0].Status)
 }

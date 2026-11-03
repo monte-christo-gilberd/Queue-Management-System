@@ -295,7 +295,7 @@ func TestTicketRepository(t *testing.T) {
 		assert.Equal(t, c.want, got, "queue=%d user=%d", c.queue, c.user)
 	}
 
-	// NextWaiting + MarkCompleted.
+	// NextWaiting + MarkServing: tiket waiting paling depan mulai dilayani.
 	var next model.Ticket
 	require.NoError(t, database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
 		var err error
@@ -303,11 +303,15 @@ func TestTicketRepository(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		return repo.MarkCompleted(ctx, tx, next.ID, 1)
+		return repo.MarkServing(ctx, tx, next.ID, 1)
 	}))
 	assert.Equal(t, t1.ID, next.ID)
 	err = database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
-		return repo.MarkCompleted(ctx, tx, 999999, 1)
+		return repo.MarkServing(ctx, tx, 999999, 1)
+	})
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+	err = database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
+		return repo.MarkCompleted(ctx, tx, 999999)
 	})
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 	err = database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
@@ -321,15 +325,15 @@ func TestTicketRepository(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, all, 3)
 	assert.Equal(t, []int{1, 2, 3}, []int{all[0].TicketNumber, all[1].TicketNumber, all[2].TicketNumber})
-	assert.Equal(t, "completed", all[0].Status)
-	assert.True(t, all[0].CompletedAt.Valid)
+	assert.Equal(t, "currently_served", all[0].Status)
+	assert.False(t, all[0].CompletedAt.Valid)
 	assert.False(t, all[1].CompletedAt.Valid)
 
 	waiting, err := repo.ListByQueue(ctx, q.ID, []string{"waiting"})
 	require.NoError(t, err)
 	assert.Len(t, waiting, 2)
 
-	two, err := repo.ListByQueue(ctx, q.ID, []string{"waiting", "completed"})
+	two, err := repo.ListByQueue(ctx, q.ID, []string{"waiting", "currently_served"})
 	require.NoError(t, err)
 	assert.Len(t, two, 3)
 
@@ -374,13 +378,13 @@ func TestJoinQueue_TwiceBySameUserReturnsSameTicket(t *testing.T) {
 	assert.Equal(t, first.ID, again.ID)
 	assert.Equal(t, 1, again.TicketNumber)
 
-	// Setelah tiket selesai pun join ulang tidak membuat tiket baru (UNIQUE tidak melihat status).
+	// Tiket yang sedang dilayani masih aktif: join ulang tetap mengembalikan tiket yang sama.
 	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
 	require.NoError(t, err)
 	afterNext, err := svc.JoinQueue(ctx, q.ID, customer)
 	require.NoError(t, err)
 	assert.Equal(t, first.ID, afterNext.ID)
-	assert.Equal(t, "completed", afterNext.Status)
+	assert.Equal(t, "currently_served", afterNext.Status)
 
 	// Queue closed -> ditolak sebelum menyentuh tiket.
 	require.NoError(t, repository.NewQueueRepository(db).CloseQueue(ctx, q.ID))
@@ -438,7 +442,7 @@ func TestQueueStatus_AgainstPostgres(t *testing.T) {
 	require.NotNil(t, st.WaitingAhead)
 	assert.Equal(t, 2, *st.WaitingAhead)
 
-	// Owner memanggil Next dua kali: nomor saat ini = tiket ke-2 (completed terbaru).
+	// Owner memanggil Next dua kali: nomor saat ini = tiket ke-2 (currently_served); tiket ke-1 completed.
 	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
 	require.NoError(t, err)
 	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
@@ -448,6 +452,8 @@ func TestQueueStatus_AgainstPostgres(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, st.CurrentNumber)
 	assert.Equal(t, 2, *st.CurrentNumber)
+	require.NotNil(t, st.PreviousNumber)
+	assert.Equal(t, 1, *st.PreviousNumber)
 	require.NotNil(t, st.WaitingAhead)
 	assert.Equal(t, 0, *st.WaitingAhead)
 
@@ -789,4 +795,58 @@ func TestTicketsNotifyTrigger_AgainstPostgres(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Contains(t, payload, `"kind" : "called"`)
+}
+
+// Rejoin nyata: setelah tiket selesai, join lagi memberi nomor baru dan tiket lama tetap completed.
+// Penutupan antrian menurunkan nomor yang sedang dilayani menjadi completed dalam transaksi yang sama.
+func TestRejoin_AndCloseQueue_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "rj-o@b.c", time.Now().Add(time.Hour))
+	a := seedUser(t, db, "rj-a@b.c")
+	b := seedUser(t, db, "rj-b@b.c")
+	q := createQueue(t, db, owner, "Rejoin")
+
+	ticketRepo := repository.NewTicketRepository(db)
+	txRunner := database.NewSqlxTxRunner(db)
+	queueSvc := service.NewQueueService(
+		repository.NewQueueRepository(db),
+		repository.NewSubscriptionChecker(db),
+		txRunner,
+	).WithTicketHolderChecker(ticketRepo)
+	svc := service.NewTicketService(ticketRepo, txRunner).WithQueueGuard(queueSvc)
+
+	_, err := svc.JoinQueue(ctx, q.ID, a)
+	require.NoError(t, err)
+	_, err = svc.JoinQueue(ctx, q.ID, b)
+	require.NoError(t, err)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0) // A dilayani
+	require.NoError(t, err)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0) // A selesai, B dilayani
+	require.NoError(t, err)
+
+	rejoined, err := svc.JoinQueue(ctx, q.ID, a)
+	require.NoError(t, err)
+	assert.Equal(t, 3, rejoined.TicketNumber)
+	assert.Equal(t, "waiting", rejoined.Status)
+
+	// /users/me/tickets: satu baris per antrian, yaitu tiket aktif.
+	mine, err := svc.ListMyTickets(ctx, a)
+	require.NoError(t, err)
+	require.Len(t, mine, 1)
+	assert.Equal(t, rejoined.ID, mine[0].ID)
+
+	// Tutup antrian saat B masih dilayani: B ikut menjadi completed, tidak ada yang menggantung.
+	require.NoError(t, repository.NewQueueRepository(db).CloseQueue(ctx, q.ID))
+
+	serving, err := ticketRepo.ListByQueue(ctx, q.ID, []string{"currently_served"})
+	require.NoError(t, err)
+	assert.Empty(t, serving)
+
+	completed, err := ticketRepo.ListByQueue(ctx, q.ID, []string{"completed"})
+	require.NoError(t, err)
+	require.Len(t, completed, 2)
+	for _, tk := range completed {
+		assert.True(t, tk.CompletedAt.Valid, "tiket %d harus punya completed_at", tk.TicketNumber)
+	}
 }

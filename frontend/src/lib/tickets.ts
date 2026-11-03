@@ -64,7 +64,7 @@ export type MyTicket = Ticket & {
 /** Tiket yang masih relevan di beranda: menunggu di antrian aktif, atau nomornya sedang dilayani. */
 export function isOnHome(t: MyTicket): boolean {
   if (t.queue_status !== 'active') return false;
-  return t.status === 'waiting' || (t.status === 'completed' && t.current_number === t.ticket_number);
+  return t.status === 'waiting' || t.status === 'currently_served';
 }
 
 /** GET /api/v1/users/me/tickets — tiket saya (login diperlukan). */

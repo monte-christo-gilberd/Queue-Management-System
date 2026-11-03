@@ -4,7 +4,7 @@ import { Text, View } from 'react-native';
 import { AppButton } from '@/components/ui/AppButton';
 import { cn } from '@/utils/cn';
 
-export type CustomerTicketStatus = 'waiting' | 'completed' | 'cancelled' | 'skipped';
+export type CustomerTicketStatus = 'waiting' | 'currently_served' | 'completed' | 'cancelled' | 'skipped' | 'deleted';
 
 export type CustomerQueueScreenProps = {
   queueName: string;
@@ -13,7 +13,7 @@ export type CustomerQueueScreenProps = {
   /** Nomor tiket saya yang sudah diformat (mis. "A-042"); null bila belum bergabung. */
   ticketNumber: string | null;
   ticketStatus: CustomerTicketStatus | null;
-  /** Nomor saya sedang dilayani (tiket completed yang masih nomor sekarang). */
+  /** Nomor saya sedang dilayani (tiket berstatus currently_served). */
   servingNow?: boolean;
   /** Nomor yang sedang dilayani, sudah diformat; null bila belum ada. */
   currentNumber: string | null;
@@ -34,9 +34,11 @@ export type CustomerQueueScreenProps = {
 
 const STATUS_LABEL: Record<CustomerTicketStatus, string> = {
   waiting: 'Menunggu',
+  currently_served: 'Sedang dilayani',
   completed: 'Sudah dilayani',
   skipped: 'Dilewati',
   cancelled: 'Dibatalkan',
+  deleted: 'Dihapus',
 };
 
 /** Layar customer (presentational). Hanya menampilkan data yang diterima lewat props. */

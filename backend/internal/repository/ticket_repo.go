@@ -157,7 +157,7 @@ func (r *TicketRepository) NextWaiting(
 	return currentTicket, nil
 }
 
-// CurrentServing: tiket yang sedang dilayani (completed dengan called_at terbaru), dikunci.
+// CurrentServing: tiket yang sedang dilayani (status currently_served), dikunci.
 func (r *TicketRepository) CurrentServing(
 	ctx context.Context,
 	tx *sqlx.Tx,
@@ -169,8 +169,7 @@ func (r *TicketRepository) CurrentServing(
 			id, queue_id, ticket_number, sort_key, user_id, status, skip_count,
 			last_notified_at, created_at, completed_at, cancelled_at, called_at, recalled_at
 		FROM tickets
-		WHERE queue_id=$1 AND status='completed' AND called_at IS NOT NULL
-		ORDER BY called_at DESC, id DESC
+		WHERE queue_id=$1 AND status='currently_served'
 		LIMIT 1
 		FOR UPDATE
 	`
@@ -355,7 +354,45 @@ func (r *TicketRepository) MarkSkipped(
 	return nil
 }
 
+// MarkCompleted menurunkan nomor yang sedang dilayani menjadi completed. called_at dan counter dipertahankan
+// sebagai jejak pemanggilan; trigger database tidak memancarkan sinyal untuk perubahan ini.
 func (r *TicketRepository) MarkCompleted(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID int64,
+) error {
+
+	const query = `
+		UPDATE tickets
+		SET
+			status='completed',
+			completed_at=now()
+		WHERE id=$1
+	`
+
+	result, err := tx.ExecContext(
+		ctx,
+		query,
+		ticketID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
+}
+
+// MarkServing menaikkan tiket waiting menjadi nomor yang sedang dilayani: status, called_at, counter, dan
+// penanda recall direset. Trigger database memancarkan sinyal 'called' dari perubahan ini.
+func (r *TicketRepository) MarkServing(
 	ctx context.Context,
 	tx *sqlx.Tx,
 	ticketID int64,
@@ -363,10 +400,9 @@ func (r *TicketRepository) MarkCompleted(
 ) error {
 
 	const query = `
-		UPDATE tickets 
-		SET 
-			status='completed', 
-			completed_at=now(),
+		UPDATE tickets
+		SET
+			status='currently_served',
 			called_counter_id=$2,
 			called_at=now(),
 			recalled_at=NULL
@@ -379,7 +415,6 @@ func (r *TicketRepository) MarkCompleted(
 		ticketID,
 		counterID,
 	)
-
 	if err != nil {
 		return err
 	}
@@ -480,8 +515,42 @@ func (r *TicketRepository) ListByQueue(
 	return tickets, nil
 }
 
-// HasTicket melaporkan apakah user pernah punya tiket (status apa pun) di queue ini.
+// HasTicket melaporkan apakah user punya tiket aktif (waiting atau currently_served) di queue ini.
+// Tiket yang sudah selesai tidak dihitung, supaya user boleh join lagi.
 func (r *TicketRepository) HasTicket(
+	ctx context.Context,
+	queueID,
+	userID int64,
+) (bool, error) {
+
+	var exists bool
+
+	const query = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM tickets
+			WHERE queue_id = $1 AND user_id = $2
+				AND status IN ('waiting', 'currently_served')
+		)
+	`
+
+	err := r.db.GetContext(
+		ctx,
+		&exists,
+		query,
+		queueID,
+		userID,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	return exists, nil
+}
+
+// HasAnyTicket melaporkan apakah user pernah punya tiket di queue ini, dalam status apa pun. Dipakai untuk
+// hak baca queue (ViewQueue), supaya pemegang tiket yang sudah selesai tetap bisa melihat antrian.
+func (r *TicketRepository) HasAnyTicket(
 	ctx context.Context,
 	queueID,
 	userID int64,
@@ -511,7 +580,8 @@ func (r *TicketRepository) HasTicket(
 	return exists, nil
 }
 
-// FindByUser mengembalikan tiket user di queue ini (UNIQUE queue_id+user_id, jadi paling banyak satu).
+// FindByUser mengembalikan tiket user di queue ini. Tiket aktif (currently_served, lalu waiting) didahulukan;
+// bila tidak ada, tiket terakhir yang sudah selesai.
 func (r *TicketRepository) FindByUser(
 	ctx context.Context,
 	queueID,
@@ -535,6 +605,14 @@ func (r *TicketRepository) FindByUser(
 			cancelled_at
 		FROM tickets
 		WHERE queue_id = $1 AND user_id = $2
+		ORDER BY
+			CASE status
+				WHEN 'currently_served' THEN 0
+				WHEN 'waiting' THEN 1
+				ELSE 2
+			END,
+			id DESC
+		LIMIT 1
 	`
 
 	err := r.db.GetContext(
@@ -554,8 +632,8 @@ func (r *TicketRepository) FindByUser(
 	return ticket, nil
 }
 
-// LastCompletedNumber: ticket_number tiket completed terbaru; ok=false bila belum ada.
-func (r *TicketRepository) LastCompletedNumber(
+// CurrentServedNumber: ticket_number tiket yang sedang dilayani; ok=false bila belum ada.
+func (r *TicketRepository) CurrentServedNumber(
 	ctx context.Context,
 	queueID int64,
 ) (number int, ok bool, err error) {
@@ -563,8 +641,7 @@ func (r *TicketRepository) LastCompletedNumber(
 	const query = `
 		SELECT ticket_number
 		FROM tickets
-		WHERE queue_id = $1 AND status = 'completed'
-		ORDER BY completed_at DESC, id DESC
+		WHERE queue_id = $1 AND status = 'currently_served'
 		LIMIT 1
 	`
 
@@ -615,7 +692,9 @@ func (r *TicketRepository) CountWaitingBefore(
 	return count, nil
 }
 
-// ListByUser mengembalikan tiket milik user di semua antrian, terbaru dulu (maks 100).
+// ListByUser mengembalikan satu baris per antrian untuk user, terbaru dulu (maks 100). Per antrian dipilih
+// tiket aktif bila ada (currently_served, lalu waiting), selain itu tiket terakhir. Pemilihan dilakukan di
+// subquery karena DISTINCT ON mewajibkan ORDER BY diawali queue_id, sedangkan urutan tampilan memakai created_at.
 func (r *TicketRepository) ListByUser(
 	ctx context.Context,
 	userID int64,
@@ -624,32 +703,41 @@ func (r *TicketRepository) ListByUser(
 	tickets := []model.UserTicket{}
 
 	const query = `
-		SELECT
-			t.id,
-			t.queue_id,
-			t.ticket_number,
-			t.sort_key,
-			t.user_id,
-			t.status,
-			t.skip_count,
-			t.last_notified_at,
-			t.created_at,
-			t.completed_at,
-			t.cancelled_at,
-			q.queue_name,
-			q.ticket_prefix,
-			q.status AS queue_status,
-			(
-				SELECT c.ticket_number
-				FROM tickets c
-				WHERE c.queue_id = t.queue_id AND c.status = 'completed'
-				ORDER BY c.completed_at DESC, c.id DESC
-				LIMIT 1
-			) AS current_number
-		FROM tickets t
-		JOIN queues q ON q.id = t.queue_id
-		WHERE t.user_id = $1
-		ORDER BY t.created_at DESC, t.id DESC
+		SELECT * FROM (
+			SELECT DISTINCT ON (t.queue_id)
+				t.id,
+				t.queue_id,
+				t.ticket_number,
+				t.sort_key,
+				t.user_id,
+				t.status,
+				t.skip_count,
+				t.last_notified_at,
+				t.created_at,
+				t.completed_at,
+				t.cancelled_at,
+				q.queue_name,
+				q.ticket_prefix,
+				q.status AS queue_status,
+				(
+					SELECT c.ticket_number
+					FROM tickets c
+					WHERE c.queue_id = t.queue_id AND c.status = 'currently_served'
+					LIMIT 1
+				) AS current_number
+			FROM tickets t
+			JOIN queues q ON q.id = t.queue_id
+			WHERE t.user_id = $1
+			ORDER BY
+				t.queue_id,
+				CASE t.status
+					WHEN 'currently_served' THEN 0
+					WHEN 'waiting' THEN 1
+					ELSE 2
+				END,
+				t.id DESC
+		) r
+		ORDER BY r.created_at DESC, r.id DESC
 		LIMIT 100
 	`
 

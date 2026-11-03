@@ -4,12 +4,12 @@ import type { Ticket, TicketEntry } from '@/types/api';
  * Tampilan antrian dari daftar tiket (`GET /queues/:id/tickets`). Fungsi murni.
  *
  * Aturan (sesuai perilaku `Next` di backend):
- * - `current`  = tiket `completed` terbaru (completed_at paling besar).
- * - `previous` = tiket `completed` sebelumnya.
+ * - `current`  = tiket `currently_served` (nomor yang sedang dilayani).
+ * - `previous` = tiket `completed` terbaru (completed_at paling besar).
  * - `next`     = tiket `waiting` pertama (sort_key terkecil).
  * - `upcoming` = sisa tiket `waiting` setelah `next`.
  * - `skipped`  = tiket `skipped` (dilewati), urut nomor.
- * Tiket `cancelled` tidak ditampilkan.
+ * Tiket `cancelled` dan `deleted` tidak ditampilkan.
  */
 export type QueueView = {
   previous: TicketEntry | null;
@@ -28,6 +28,8 @@ export function deriveQueueView(tickets: readonly Ticket[]): QueueView {
     .filter((t) => t.status === 'completed')
     .sort((a, b) => completedTime(b) - completedTime(a) || b.id - a.id);
 
+  const serving = tickets.find((t) => t.status === 'currently_served');
+
   const waiting = tickets
     .filter((t) => t.status === 'waiting')
     .sort((a, b) => a.sort_key - b.sort_key || a.id - b.id);
@@ -39,8 +41,8 @@ export function deriveQueueView(tickets: readonly Ticket[]): QueueView {
   const entry = (ticket: Ticket): TicketEntry => ({ ticket, counterName: ticket.called_counter_name ?? undefined });
 
   return {
-    previous: completed[1] ? entry(completed[1]) : null,
-    current: completed[0] ? entry(completed[0]) : null,
+    previous: completed[0] ? entry(completed[0]) : null,
+    current: serving ? entry(serving) : null,
     skipped: skipped.map(entry),
     next: waiting[0] ? entry(waiting[0]) : null,
     upcoming: waiting.slice(1).map(entry),

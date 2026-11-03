@@ -172,7 +172,7 @@ func (m *memSubs) IsActive(_ context.Context, ownerID int64) (bool, error) {
 	return ok && exp.After(time.Now()), nil
 }
 
-// memTickets: tabel tickets. UNIQUE (queue_id, user_id) -> ErrDuplicate.
+// memTickets: tabel tickets. UNIQUE (queue_id, user_id) hanya untuk tiket aktif -> ErrDuplicate.
 type memTickets struct {
 	mu      sync.Mutex
 	nextID  int64
@@ -200,7 +200,7 @@ func (m *memTickets) Insert(_ context.Context, _ *sqlx.Tx, queueID, userID, sort
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.rows {
-		if t.QueueID == queueID && t.UserID == userID {
+		if t.QueueID == queueID && t.UserID == userID && (t.Status == "waiting" || t.Status == "currently_served") {
 			return model.Ticket{}, apperror.ErrDuplicate
 		}
 	}
@@ -227,7 +227,7 @@ func (m *memTickets) NextWaiting(_ context.Context, _ *sqlx.Tx, queueID int64) (
 	return *best, nil
 }
 
-func (m *memTickets) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID int64, counterID int64) error {
+func (m *memTickets) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.rows {
@@ -240,19 +240,30 @@ func (m *memTickets) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID int64
 	return apperror.ErrNotFound
 }
 
+func (m *memTickets) MarkServing(_ context.Context, _ *sqlx.Tx, ticketID int64, counterID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.rows {
+		if t.ID == ticketID {
+			t.Status = "currently_served"
+			t.CalledAt = sql.NullTime{Time: time.Now(), Valid: true}
+			t.CalledCounterID = counterID
+			t.RecalledAt = sql.NullTime{}
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
 func (m *memTickets) CurrentServing(_ context.Context, _ *sqlx.Tx, queueID int64) (model.Ticket, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var best *model.Ticket
 	for _, t := range m.rows {
-		if t.QueueID == queueID && t.Status == "completed" && (best == nil || t.CompletedAt.Time.After(best.CompletedAt.Time)) {
-			best = t
+		if t.QueueID == queueID && t.Status == "currently_served" {
+			return *t, nil
 		}
 	}
-	if best == nil {
-		return model.Ticket{}, apperror.ErrNotFound
-	}
-	return *best, nil
+	return model.Ticket{}, apperror.ErrNotFound
 }
 
 func (m *memTickets) MarkRecalled(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
@@ -424,7 +435,7 @@ func TestRepoFake_NextWaitingFollowsSortKeyOrder(t *testing.T) {
 		next, err := repo.NextWaiting(ctx, nil, 1)
 		require.NoError(t, err)
 		assert.Equal(t, want, next.ID)
-		require.NoError(t, repo.MarkCompleted(ctx, nil, next.ID, 1))
+		require.NoError(t, repo.MarkCompleted(ctx, nil, next.ID))
 	}
 
 	_, err = repo.NextWaiting(ctx, nil, 1)
@@ -432,7 +443,7 @@ func TestRepoFake_NextWaitingFollowsSortKeyOrder(t *testing.T) {
 }
 
 func TestRepoFake_MarkCompletedUnknownTicketIsNotFound(t *testing.T) {
-	assert.ErrorIs(t, newMemTickets().MarkCompleted(context.Background(), nil, 999, 1), apperror.ErrNotFound)
+	assert.ErrorIs(t, newMemTickets().MarkCompleted(context.Background(), nil, 999), apperror.ErrNotFound)
 }
 
 func TestRepoFake_UserEmailIsUnique(t *testing.T) {

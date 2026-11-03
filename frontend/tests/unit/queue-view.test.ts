@@ -29,6 +29,10 @@ function served(id: number, completedAt: string, overrides: Partial<Ticket> = {}
   return ticket(id, { status: 'completed', completed_at: completedAt, ...overrides });
 }
 
+function serving(id: number, calledAt: string, overrides: Partial<Ticket> = {}): Ticket {
+  return ticket(id, { status: 'currently_served', called_at: calledAt, ...overrides });
+}
+
 test('antrian kosong: tidak ada yang dilayani, tidak ada berikutnya (4.3 langkah 4)', () => {
   assert.deepEqual(deriveQueueView([]), { previous: null, current: null, skipped: [], next: null, upcoming: [] });
 });
@@ -42,7 +46,7 @@ test('antrian belum dimulai: nomor pertama menjadi berikutnya, sisanya upcoming 
 });
 
 test('setelah NEXT pertama: nomor pertama menjadi sedang dilayani (US-8)', () => {
-  const view = deriveQueueView([served(1, '2026-10-17T09:00:00Z'), ticket(2), ticket(3)]);
+  const view = deriveQueueView([serving(1, '2026-10-17T09:00:00Z'), ticket(2), ticket(3)]);
   assert.equal(view.current?.ticket.id, 1);
   assert.equal(view.previous, null);
   assert.equal(view.next?.ticket.id, 2);
@@ -52,7 +56,7 @@ test('setelah NEXT pertama: nomor pertama menjadi sedang dilayani (US-8)', () =>
 test('setelah NEXT kedua: yang sedang dilayani maju dan nomor sebelumnya menjadi previous (US-8)', () => {
   const view = deriveQueueView([
     served(1, '2026-10-17T09:00:00Z'),
-    served(2, '2026-10-17T09:05:00Z'),
+    serving(2, '2026-10-17T09:05:00Z'),
     ticket(3),
   ]);
   assert.equal(view.current?.ticket.id, 2);
@@ -61,20 +65,30 @@ test('setelah NEXT kedua: yang sedang dilayani maju dan nomor sebelumnya menjadi
   assert.deepEqual(view.upcoming, []);
 });
 
-test('yang sedang dilayani ditentukan oleh completed_at terbaru, bukan id terkecil/terbesar', () => {
+test('previous ditentukan oleh completed_at terbaru, bukan id terkecil/terbesar', () => {
   const view = deriveQueueView([
     served(5, '2026-10-17T09:10:00Z'),
     served(3, '2026-10-17T09:20:00Z'),
+    serving(7, '2026-10-17T09:30:00Z'),
   ]);
-  assert.equal(view.current?.ticket.id, 3);
-  assert.equal(view.previous?.ticket.id, 5);
+  assert.equal(view.current?.ticket.id, 7);
+  assert.equal(view.previous?.ticket.id, 3);
 });
 
 test('setelah nomor terakhir dilayani dan tidak ada yang menunggu: next dan upcoming kosong (4.3 langkah 4)', () => {
-  const view = deriveQueueView([served(1, '2026-10-17T09:00:00Z'), served(2, '2026-10-17T09:05:00Z')]);
+  const view = deriveQueueView([served(1, '2026-10-17T09:00:00Z'), serving(2, '2026-10-17T09:05:00Z')]);
   assert.equal(view.current?.ticket.id, 2);
+  assert.equal(view.previous?.ticket.id, 1);
   assert.equal(view.next, null);
   assert.deepEqual(view.upcoming, []);
+});
+
+test('tiket deleted tidak tampil di mana pun (disiapkan, belum ada perilaku)', () => {
+  const view = deriveQueueView([ticket(1, { status: 'deleted' }), ticket(2)]);
+  assert.equal(view.next?.ticket.id, 2);
+  assert.deepEqual(view.upcoming, []);
+  assert.deepEqual(view.skipped, []);
+  assert.equal(view.previous, null);
 });
 
 test('tiket yang dilewati atau dibatalkan tidak tampil sebagai berikutnya maupun upcoming; dilewati masuk `skipped` (4.7, 4.9)', () => {
@@ -92,7 +106,7 @@ test('tiket yang dilewati atau dibatalkan tidak tampil sebagai berikutnya maupun
 
 test('sisipan di posisi 1 saat ada yang dilayani menjadi berikutnya, tidak menggantikan yang dilayani (4.12)', () => {
   const view = deriveQueueView([
-    served(1, '2026-10-17T09:00:00Z'),
+    serving(1, '2026-10-17T09:00:00Z'),
     ticket(2, { sort_key: 2 }),
     ticket(3, { sort_key: 0.5 }),
   ]);

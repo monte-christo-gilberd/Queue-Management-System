@@ -335,7 +335,7 @@ type fakeHolders struct {
 	err error
 }
 
-func (f fakeHolders) HasTicket(
+func (f fakeHolders) HasAnyTicket(
 	ctx context.Context,
 	queueID,
 	userID int64,

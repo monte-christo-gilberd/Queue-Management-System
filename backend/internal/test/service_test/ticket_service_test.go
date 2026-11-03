@@ -23,8 +23,8 @@ type fakeTicketRepo struct {
 	joinedAfterInserts int  // HasTicket jadi true setelah N kali Insert (simulasi balapan)
 
 	myTicket        *model.Ticket // hasil FindByUser; nil = ErrNotFound
-	lastCompleted   int
-	hasCompleted    bool
+	currentServed   int
+	hasServed       bool
 	waitingBefore   int
 	waitingBeforeSK int64 // sort_key yang diterima CountWaitingBefore
 	countCalled     bool
@@ -68,6 +68,14 @@ func (f *fakeTicketRepo) NextWaiting(
 }
 
 func (f *fakeTicketRepo) MarkCompleted(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID int64,
+) error {
+	return nil // tidak dipakai di test ini
+}
+
+func (f *fakeTicketRepo) MarkServing(
 	ctx context.Context,
 	tx *sqlx.Tx,
 	ticketID int64,
@@ -166,11 +174,11 @@ func (f *fakeTicketRepo) FindByUser(
 	return *f.myTicket, nil
 }
 
-func (f *fakeTicketRepo) LastCompletedNumber(
+func (f *fakeTicketRepo) CurrentServedNumber(
 	ctx context.Context,
 	queueID int64,
 ) (int, bool, error) {
-	return f.lastCompleted, f.hasCompleted, nil
+	return f.currentServed, f.hasServed, nil
 }
 
 func (f *fakeTicketRepo) ListByUser(
@@ -419,7 +427,7 @@ func newStatusSvc(repo *fakeTicketRepo) *service.TicketService {
 func TestQueueStatus_WaitingHolderGetsAheadCountAndCurrent(t *testing.T) {
 	repo := &fakeTicketRepo{
 		myTicket:      &model.Ticket{ID: 9, TicketNumber: 5, SortKey: 327680, Status: "waiting"},
-		lastCompleted: 3, hasCompleted: true,
+		currentServed: 3, hasServed: true,
 		waitingBefore: 1,
 	}
 
@@ -441,7 +449,7 @@ func TestQueueStatus_WaitingHolderGetsAheadCountAndCurrent(t *testing.T) {
 func TestQueueStatus_CompletedHolderHasNoAheadCount(t *testing.T) {
 	repo := &fakeTicketRepo{
 		myTicket:      &model.Ticket{ID: 9, TicketNumber: 2, SortKey: 131072, Status: "completed"},
-		lastCompleted: 4, hasCompleted: true,
+		currentServed: 4, hasServed: true,
 	}
 
 	got, err := newStatusSvc(repo).QueueStatus(context.Background(), 1, 55)
@@ -480,8 +488,8 @@ func TestQueueStatus_ErrorsWithoutGuard(t *testing.T) {
 func TestQueueStatus_PreviousAndNextNumbers(t *testing.T) {
 	repo := &fakeTicketRepo{
 		myTicket:      &model.Ticket{ID: 9, TicketNumber: 5, SortKey: 327680, Status: "waiting"},
-		lastCompleted: 2, hasCompleted: true,
-		recentNumbers: []int{2, 1},
+		currentServed: 2, hasServed: true,
+		recentNumbers: []int{1},
 		firstWaiting:  3,
 	}
 

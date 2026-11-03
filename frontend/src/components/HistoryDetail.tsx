@@ -20,9 +20,11 @@ export type HistoryDetailProps = {
 
 const STATUS_LABEL: Record<Ticket['status'], string> = {
   waiting: 'Menunggu',
+  currently_served: 'Sedang dilayani',
   completed: 'Selesai',
   cancelled: 'Dibatalkan',
   skipped: 'Dilewati',
+  deleted: 'Dihapus',
 };
 
 export default function HistoryDetail({

@@ -106,6 +106,11 @@ type TicketRepositoryInterface interface {
 		ctx context.Context,
 		tx *sqlx.Tx,
 		ticketID int64,
+	) error
+	MarkServing(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		ticketID int64,
 		counterID int64,
 	) error
 }

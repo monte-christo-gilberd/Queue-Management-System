@@ -12,6 +12,7 @@ plan-live.md
 setup-domain.md
 setup-waf-wifi.md
 plan-setelah-live.md
+plan-migrasi.md
 .env.prod
 
 features/

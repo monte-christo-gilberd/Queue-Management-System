@@ -72,10 +72,14 @@ function QueueDetailEditor({
   // Papan tiket: daftar tiket + SKIP/NEXT. Antrian ditutup dari sini memuat ulang detail.
   const board = useQueueBoard(queue.id, () => void reload());
   const currentId = board.view.current?.ticket.id ?? null;
-  const timeline: TimelineItem[] = board.tickets.map((t): TimelineItem => ({
-    number: formatTicketNumber(t.ticket_number, queue.ticket_prefix),
-    status: t.id === currentId ? 'current' : t.status === 'completed' ? 'done' : t.status,
-  }));
+  const timeline: TimelineItem[] = board.tickets.flatMap((t): TimelineItem[] => {
+    // Tiket yang dihapus owner tidak ikut ditampilkan di timeline.
+    if (t.status === 'deleted') return [];
+    return [{
+      number: formatTicketNumber(t.ticket_number, queue.ticket_prefix),
+      status: t.id === currentId || t.status === 'currently_served' ? 'current' : t.status === 'completed' ? 'done' : t.status,
+    }];
+  });
   const currentNumber = board.view.current ? formatTicketNumber(board.view.current.ticket.ticket_number, queue.ticket_prefix) : null;
 
   async function save() {

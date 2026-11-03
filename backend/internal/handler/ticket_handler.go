@@ -340,10 +340,12 @@ func (h *TicketHandler) Recall(c *gin.Context) {
 }
 
 var validTicketStatuses = map[string]bool{
-	"waiting":   true,
-	"completed": true,
-	"cancelled": true,
-	"skipped":   true,
+	"waiting":          true,
+	"currently_served": true,
+	"completed":        true,
+	"cancelled":        true,
+	"skipped":          true,
+	"deleted":          true,
 }
 
 // parseStatusFilter membaca ?status=a&status=b atau ?status=a,b; false bila ada nilai tak dikenal.

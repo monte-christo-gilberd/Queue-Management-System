@@ -5,9 +5,11 @@ import { formatTicketNumber } from '@/utils/format';
 
 const STATUS_LABEL: Record<MyTicket['status'], string> = {
   waiting: 'Menunggu',
+  currently_served: 'Sedang dilayani',
   completed: 'Sudah dilayani',
   skipped: 'Dilewati',
   cancelled: 'Dibatalkan',
+  deleted: 'Dihapus',
 };
 
 export type MyTicketsListProps = {

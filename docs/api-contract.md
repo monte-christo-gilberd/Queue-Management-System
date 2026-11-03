@@ -109,7 +109,8 @@ Butuh token. Tiket milik user di semua antrian.
   }
 }
 ```
-`current_number` = `ticket_number` yang sedang dilayani di antrian itu, atau null.
+`current_number` = `ticket_number` yang sedang dilayani di antrian itu (tiket `currently_served`), atau null.
+Satu baris per antrian: bila user punya tiket aktif (`currently_served` lalu `waiting`) di antrian itu, tiket aktif yang tampil; bila tidak, tiket terakhirnya.
 `ticket_prefix` = awalan nomor milik antrian (bukan kolom `tickets`). Label tampilan = `ticket_prefix` + `ticket_number`, mis. `A2`.
 
 ## Antrian (owner)
@@ -151,17 +152,17 @@ Request: `{ "queue_name": "Loket B", "queue_description": "...", "ticket_prefix"
 Error: 400, 402 `SUBSCRIPTION_INACTIVE`, 404.
 
 ### POST /api/v1/queues/:queue_id/close
-Menutup antrian. Tidak bisa dibuka lagi. Customer tidak bisa join setelah ditutup.
+Menutup antrian. Tidak bisa dibuka lagi. Customer tidak bisa join setelah ditutup. Nomor yang masih `currently_served` ikut menjadi `completed` (`completed_at` terisi) dalam transaksi yang sama, sehingga tidak ada tiket yang menggantung.
 
 200: `{ "data": { "action": "close", ... } }`
 Error: 400, 404.
 
 ### POST /api/v1/queues/:queue_id/next
-Memanggil tiket `waiting` pertama dan menandainya `completed`. Hanya owner.
+Memanggil tiket `waiting` pertama dan menjadikannya `currently_served` (nomor yang sedang dilayani). Nomor yang sedang dilayani sebelumnya otomatis menjadi `completed` (`completed_at` terisi) dalam transaksi yang sama. Hanya owner.
 
-200: objek tiket langsung di dalam `data`, dengan `status` = `"completed"`.
+200: objek tiket langsung di dalam `data`, dengan `status` = `"currently_served"`.
 ```json
-{ "data": { "id": 121, "queue_id": 122, "ticket_number": 2, "status": "completed", "completed_at": "...", ... } }
+{ "data": { "id": 121, "queue_id": 122, "ticket_number": 2, "status": "currently_served", "called_at": "...", ... } }
 ```
 Error: 404 `NOT_FOUND` (bukan owner), 409 `QUEUE_EMPTY` (tidak ada yang menunggu).
 
@@ -185,15 +186,15 @@ Owner memanggil ulang nomor yang sedang dilayani. Hanya push ke pemiliknya (stat
 Rute `/push` hanya ada bila `VAPID_PUBLIC_KEY` diset. Push dikirim `notify-service` (LISTEN `queue_events`): nomor dipanggil → pemilik "Giliran Anda" dan tiket waiting terdepan "Tinggal 1 nomor lagi"; recall → pemilik saja; skip → pemilik nomor yang dilewati ("dilewati" atau "dilewati dan dikembalikan ke antrian").
 
 ### POST /api/v1/queues/:queue_id/skip
-Melewati nomor yang sedang dilayani (tiket `completed` dengan `called_at` terbaru) lalu langsung memanggil tiket `waiting` pertama, dalam satu transaksi. Hanya owner. `skip_count` +1 dan `completed_at` dikosongkan. Nasib tiket yang dilewati mengikuti pengaturan Skip antrian (lihat `settings/skip`): `remove` atau batas `max_returns` tercapai menjadi `skipped` permanen (`called_at` tetap); `back`/`after_n` mengembalikannya ke `waiting` di posisi baru (`called_at` dan `called_counter_id` dikosongkan).
+Melewati nomor yang sedang dilayani (tiket `currently_served`) lalu langsung memanggil tiket `waiting` pertama, dalam satu transaksi. Hanya owner. `skip_count` +1 dan `completed_at` dikosongkan. Nasib tiket yang dilewati mengikuti pengaturan Skip antrian (lihat `settings/skip`): `remove` atau batas `max_returns` tercapai menjadi `skipped` permanen (`called_at` tetap); `back`/`after_n` mengembalikannya ke `waiting` di posisi baru (`called_at` dan `called_counter_id` dikosongkan).
 
-200: objek tiket yang baru dipanggil (sama seperti Next), `status` = `"completed"`.
+200: objek tiket yang baru dipanggil (sama seperti Next), `status` = `"currently_served"`.
 Error: 404 `NOT_FOUND` (bukan owner), 409 `NOTHING_TO_SKIP` (belum ada nomor yang dilayani), 409 `QUEUE_EMPTY` (tidak ada yang menunggu; tidak ada perubahan, nomor tetap dilayani).
 
 ### GET /api/v1/queues/:queue_id/tickets
 Semua tiket antrian, urut `sort_key`. Hanya owner. Maksimal 500 baris.
 
-Query opsional: `status` (`waiting`, `completed`, `cancelled`, `skipped`), boleh diulang atau dipisah koma.
+Query opsional: `status` (`waiting`, `currently_served`, `completed`, `cancelled`, `skipped`, `deleted`), boleh diulang atau dipisah koma. `deleted` belum ditulis kode mana pun dan selalu menghasilkan daftar kosong (bukan 400).
 
 200:
 ```json
@@ -254,6 +255,7 @@ Customer bergabung lewat token QR. Body `{ "t": "v1..." }`.
 - Antrian belum punya tiket untuk user ini: tiket baru dibuat dengan `status` = `waiting`.
 - Sudah punya tiket: **tiket yang sudah ada dikembalikan** (bukan error, bukan tiket kedua). Ini juga berlaku setelah tiket itu `completed`.
 - Antrian ditutup: 409 `QUEUE_CLOSED`.
+- Tiket terakhir `completed`, `cancelled`, `skipped`, atau `deleted`: join membuat tiket baru dengan nomor baru (rejoin). Tiket `completed` lama tetap tidak berubah.
 
 200: objek tiket langsung di dalam `data`.
 ```json
@@ -281,7 +283,7 @@ Status antrian untuk owner atau pemegang tiket. Pengguna lain mendapat 404.
   }
 }
 ```
-- `current_number`: nomor yang sedang dilayani (tiket `completed` terbaru).
+- `current_number`: nomor yang sedang dilayani (tiket `currently_served`).
 - `previous_number`: nomor sebelumnya.
 - `next_number`: nomor tiket `waiting` berikutnya.
 - `waiting_ahead`: jumlah tiket `waiting` di depan milik requester. Null bila requester bukan pemegang tiket `waiting`.
@@ -304,7 +306,7 @@ Sama seperti QueueResponse tanpa `owner_id`.
   "status": "waiting", "skip_count": 0, "last_notified_at": null,
   "created_at": "...", "completed_at": null, "cancelled_at": null }
 ```
-`status`: `waiting`, `completed`, `cancelled`, `skipped`.
+`status`: `waiting`, `currently_served`, `completed`, `cancelled`, `skipped`, `deleted`.
 `ticket_number` adalah nomor yang dilihat customer. `sort_key` adalah kunci urut internal.
 
 ## Real-time (SSE)
@@ -335,7 +337,7 @@ data: {"type":"ticket_next","queue_id":122,"payload":{...},"ts":"2026-10-17T09:2
 | `type` | Dikirim saat | `payload` |
 |---|---|---|
 | `ticket_joined` | Customer berhasil join (tiket baru) | TicketEvent |
-| `ticket_next` | Owner menekan Next | TicketEvent dengan `status` = `completed` |
+| `ticket_next` | Owner menekan Next | TicketEvent dengan `status` = `currently_served` |
 | `ticket_skipped` | Owner menekan Skip | TicketEvent dengan `status` akhir tiket (`skipped`, atau `waiting` bila dikembalikan); disusul `ticket_next` untuk nomor yang dipanggil |
 | `queue_updated` | Nama atau deskripsi antrian diubah | `{ "queue_id": 122 }` |
 | `queue_closed` | Antrian ditutup | `{ "queue_id": 122 }` |

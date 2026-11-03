@@ -227,20 +227,28 @@ func (r *QueueRepository) UpdateQueueDetails(
 	return nil
 }
 
+// CloseQueue menutup antrian dan, dalam transaksi yang sama, menurunkan nomor yang masih sedang dilayani
+// menjadi completed. Tanpa itu, nomor tersebut akan terus tampil "sedang dilayani" di antrian yang sudah tutup.
 func (r *QueueRepository) CloseQueue(
 	ctx context.Context,
 	queueID int64,
 ) error {
 
-	const query = `
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	const closeQuery = `
 		UPDATE queues
 		SET status = 'closed'
 		WHERE
 			id = $1 AND status = 'active'
 	`
-	result, err := r.db.ExecContext(
+	result, err := tx.ExecContext(
 		ctx,
-		query,
+		closeQuery,
 		queueID,
 	)
 	if err != nil {
@@ -256,7 +264,20 @@ func (r *QueueRepository) CloseQueue(
 		return apperror.ErrNotFound
 	}
 
-	return nil
+	const completeServingQuery = `
+		UPDATE tickets
+		SET status = 'completed', completed_at = now()
+		WHERE queue_id = $1 AND status = 'currently_served'
+	`
+	if _, err := tx.ExecContext(
+		ctx,
+		completeServingQuery,
+		queueID,
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (r *QueueRepository) GetQueueSettings(

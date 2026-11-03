@@ -4,10 +4,10 @@ package model
 type QueueStatus struct {
 	Queue              Queue
 	MyTicket           *Ticket // nil bila requester tidak punya tiket di queue ini
-	CurrentNumber      *int    // ticket_number completed terbaru; nil bila belum ada yang dilayani
+	CurrentNumber      *int    // ticket_number yang sedang dilayani (currently_served); nil bila belum ada
 	CurrentCounterName *string // nama counter yang memanggil nomor ini; nil bila counter default disembunyikan / belum ada
 	WaitingAhead       *int    // jumlah tiket waiting di depan tiket requester; nil bila tiket tidak sedang waiting
-	PreviousNumber     *int    // ticket_number completed sebelum CurrentNumber; nil bila belum ada
+	PreviousNumber     *int    // ticket_number completed terbaru; nil bila belum ada
 	NextNumber         *int    // ticket_number waiting pertama; nil bila tidak ada yang menunggu
 }
 

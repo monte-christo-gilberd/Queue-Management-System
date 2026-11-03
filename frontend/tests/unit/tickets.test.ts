@@ -35,9 +35,14 @@ test('tiket menunggu di antrian yang sudah ditutup tidak tampil; masuk riwayat (
   assert.equal(isOnHome(myTicket({ status: 'waiting', queue_status: 'closed' })), false);
 });
 
-test('nomor yang sedang dilayani tampil di beranda', () => {
-  const ticket = myTicket({ status: 'completed', ticket_number: 3, current_number: 3, completed_at: '2026-10-17T09:00:00Z' });
+test('nomor yang sedang dilayani (currently_served) tampil di beranda', () => {
+  const ticket = myTicket({ status: 'currently_served', ticket_number: 3, current_number: 3, called_at: '2026-10-17T09:00:00Z' });
   assert.equal(isOnHome(ticket), true);
+});
+
+test('nomor yang sudah selesai (completed) tidak tampil di beranda walau nomornya tadi dilayani', () => {
+  const ticket = myTicket({ status: 'completed', ticket_number: 3, current_number: 4, completed_at: '2026-10-17T09:00:00Z' });
+  assert.equal(isOnHome(ticket), false);
 });
 
 test('nomor yang sudah lewat (ada nomor lain yang dilayani setelahnya) tidak tampil di beranda (US-15)', () => {
@@ -50,8 +55,12 @@ test('nomor selesai tanpa nomor yang sedang dilayani (current null) tidak tampil
 });
 
 test('nomor yang sedang dilayani di antrian yang sudah ditutup tidak tampil', () => {
-  const ticket = myTicket({ status: 'completed', ticket_number: 3, current_number: 3, queue_status: 'closed' });
+  const ticket = myTicket({ status: 'currently_served', ticket_number: 3, current_number: 3, queue_status: 'closed' });
   assert.equal(isOnHome(ticket), false);
+});
+
+test('tiket deleted tidak tampil di beranda (disiapkan, belum ada perilaku)', () => {
+  assert.equal(isOnHome(myTicket({ status: 'deleted' })), false);
 });
 
 test('tiket yang dibatalkan pelanggan tidak tampil (4.9: keluar dari urutan aktif)', () => {

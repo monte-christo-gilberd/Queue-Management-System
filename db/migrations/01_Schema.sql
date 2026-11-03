@@ -149,8 +149,10 @@ CREATE TABLE tickets (
     -- kuat karena tidak bisa dihindari dengan clear storage/incognito.
     user_id          BIGINT NOT NULL REFERENCES users(id),
 
+    -- currently_served: nomor yang sedang dilayani (sumber kebenaran, bukan turunan dari completed).
+    -- deleted: disiapkan untuk owner delete number; belum ditulis kode mana pun.
     status           VARCHAR NOT NULL DEFAULT 'waiting'
-        CHECK (status IN ('waiting', 'completed', 'cancelled', 'skipped')),
+        CHECK (status IN ('waiting', 'currently_served', 'completed', 'cancelled', 'skipped', 'deleted')),
     skip_count       INT NOT NULL DEFAULT 0,
 
     -- counter yang memanggil tiket ini (diisi saat Next); NULL selama belum dipanggil
@@ -166,12 +168,16 @@ CREATE TABLE tickets (
     cancelled_at     TIMESTAMPTZ,
 
     UNIQUE (queue_id, ticket_number),
-    -- anti-double-join: 1 akun cuma bisa punya 1 tiket aktif per queue
-    UNIQUE (queue_id, user_id),
     -- jaring pengaman: dua tiket di queue yang sama tidak boleh punya
     -- sort_key yang persis sama (mencegah race condition insert diam-diam korup)
     UNIQUE (queue_id, sort_key)
 );
+
+-- anti-double-join: 1 akun cuma bisa punya 1 tiket aktif per queue. Hanya tiket waiting dan
+-- currently_served yang dihitung; setelah selesai/dibatalkan, akun boleh join lagi dan mendapat nomor baru.
+CREATE UNIQUE INDEX tickets_queue_id_user_id_active_key
+    ON tickets (queue_id, user_id)
+    WHERE status IN ('waiting', 'currently_served');
 
 -- Satu note per tiket: ticket_id sebagai PK, bukan surrogate id + FK biasa.
 -- Menyimpan note kedua untuk tiket yang sama berarti UPDATE baris ini
@@ -246,7 +252,8 @@ BEGIN
     IF NEW.skip_count > OLD.skip_count THEN
         PERFORM pg_notify('queue_events', json_build_object(
             'kind', 'skipped', 'queue_id', NEW.queue_id, 'ticket_id', NEW.id)::text);
-    ELSIF NEW.status = 'completed' AND NEW.called_at IS NOT NULL
+    -- Transisi sementara: 'completed' dibiarkan selama masa transisi (lihat apply_schema.sql).
+    ELSIF NEW.status IN ('completed', 'currently_served') AND NEW.called_at IS NOT NULL
        AND NEW.called_at IS DISTINCT FROM OLD.called_at THEN
         PERFORM pg_notify('queue_events', json_build_object(
             'kind', 'called', 'queue_id', NEW.queue_id, 'ticket_id', NEW.id)::text);
@@ -259,5 +266,5 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER tickets_notify_trg
-    AFTER UPDATE OF called_at, recalled_at, skip_count ON tickets
+    AFTER UPDATE OF status, called_at, recalled_at, skip_count ON tickets
     FOR EACH ROW EXECUTE FUNCTION tickets_notify();

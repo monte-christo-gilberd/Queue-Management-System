@@ -32,6 +32,11 @@ type TicketRepository interface {
 		ctx context.Context,
 		tx *sqlx.Tx,
 		ticketID int64,
+	) error
+	MarkServing(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		ticketID int64,
 		counterID int64,
 	) error
 	CurrentServing(
@@ -93,7 +98,7 @@ type TicketRepository interface {
 		queueID,
 		userID int64,
 	) (model.Ticket, error)
-	LastCompletedNumber(
+	CurrentServedNumber(
 		ctx context.Context,
 		queueID int64,
 	) (number int, ok bool, err error)
@@ -310,7 +315,20 @@ func (s *TicketService) NextTicket(
 			if err != nil {
 				return err
 			}
-			return s.repository.MarkCompleted(
+
+			// Nomor yang sedang dilayani selesai lebih dulu, lalu tiket berikutnya mulai dilayani.
+			// Antrian tanpa nomor yang sedang dilayani tetap sah: langkah pertama dilewati.
+			serving, err := s.repository.CurrentServing(ctx, tx, queueID)
+			if err != nil && !errors.Is(err, apperror.ErrNotFound) {
+				return err
+			}
+			if err == nil {
+				if err := s.repository.MarkCompleted(ctx, tx, serving.ID); err != nil {
+					return err
+				}
+			}
+
+			return s.repository.MarkServing(
 				ctx,
 				tx,
 				ticket.ID,
@@ -325,9 +343,9 @@ func (s *TicketService) NextTicket(
 		return model.Ticket{}, err
 	}
 
-	// Payload mengikuti keadaan setelah Next: nomor ini sudah selesai dilayani (spek 4.3 langkah 3).
-	ticket.Status = "completed"
-	ticket.CompletedAt = sql.NullTime{
+	// Payload mengikuti keadaan setelah Next: nomor ini sekarang sedang dilayani (spek 4.3 langkah 3).
+	ticket.Status = "currently_served"
+	ticket.CalledAt = sql.NullTime{
 		Time:  time.Now(),
 		Valid: true,
 	}
@@ -385,7 +403,7 @@ func (s *TicketService) SkipTicket(
 		if err != nil {
 			return err
 		}
-		if err := s.repository.MarkCompleted(ctx, tx, called.ID, counter.ID); err != nil {
+		if err := s.repository.MarkServing(ctx, tx, called.ID, counter.ID); err != nil {
 			return err
 		}
 		settings, err := s.repository.SkipSettings(ctx, tx, queueID)
@@ -417,9 +435,8 @@ func (s *TicketService) SkipTicket(
 		skipped.Status = "skipped"
 	}
 
-	called.Status = "completed"
-	called.CompletedAt = sql.NullTime{Time: time.Now(), Valid: true}
-	called.CalledAt = called.CompletedAt
+	called.Status = "currently_served"
+	called.CalledAt = sql.NullTime{Time: time.Now(), Valid: true}
 	called.CalledCounterID = counter.ID
 	if !counter.IsDefault {
 		called.CounterName = counter.Name
@@ -564,7 +581,7 @@ func (s *TicketService) QueueStatus(
 
 	status := model.QueueStatus{Queue: queue}
 
-	number, ok, err := s.repository.LastCompletedNumber(
+	number, ok, err := s.repository.CurrentServedNumber(
 		ctx,
 		queueID,
 	)
@@ -581,17 +598,18 @@ func (s *TicketService) QueueStatus(
 		}
 	}
 
-	// Sebelumnya (completed sebelum yang sedang dilayani) dan berikutnya (waiting pertama): hanya nomor.
+	// Sebelumnya (completed terbaru, karena nomor yang sedang dilayani tidak ada di daftar completed) dan
+	// berikutnya (waiting pertama): hanya nomor.
 	recent, err := s.repository.RecentCompletedNumbers(
 		ctx,
 		queueID,
-		2,
+		1,
 	)
 	if err != nil {
 		return model.QueueStatus{}, err
 	}
-	if len(recent) == 2 {
-		status.PreviousNumber = &recent[1]
+	if len(recent) == 1 {
+		status.PreviousNumber = &recent[0]
 	}
 
 	next, hasNext, err := s.repository.FirstWaitingNumber(

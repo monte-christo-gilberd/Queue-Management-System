@@ -55,8 +55,9 @@ func (m *memTicketRepo) Insert(_ context.Context, _ *sqlx.Tx, queueID, userID, s
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.inserts++
+	// Mirror index parsial tickets_queue_id_user_id_active_key: hanya tiket aktif yang bentrok.
 	for _, t := range m.tickets {
-		if t.QueueID == queueID && t.UserID == userID {
+		if t.QueueID == queueID && t.UserID == userID && isActiveStatus(t.Status) {
 			return model.Ticket{}, apperror.ErrDuplicate
 		}
 	}
@@ -96,7 +97,8 @@ func (m *memTicketRepo) NextWaiting(_ context.Context, _ *sqlx.Tx, queueID int64
 	return *w[0], nil
 }
 
-func (m *memTicketRepo) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID int64, counterID int64) error {
+// MarkCompleted menurunkan tiket yang sedang dilayani menjadi completed; called_at dan counter dipertahankan.
+func (m *memTicketRepo) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.tickets {
@@ -106,7 +108,20 @@ func (m *memTicketRepo) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID in
 			m.doneSeq[ticketID] = m.seq
 			t.Status = "completed"
 			t.CompletedAt = sql.NullTime{Time: time.Now(), Valid: true}
-			t.CalledAt = t.CompletedAt
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
+// MarkServing menaikkan tiket waiting menjadi currently_served (called_at baru, recall direset).
+func (m *memTicketRepo) MarkServing(_ context.Context, _ *sqlx.Tx, ticketID int64, counterID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.ID == ticketID {
+			t.Status = "currently_served"
+			t.CalledAt = sql.NullTime{Time: time.Now(), Valid: true}
 			t.RecalledAt = sql.NullTime{}
 			t.CalledCounterID = counterID
 			return nil
@@ -118,16 +133,12 @@ func (m *memTicketRepo) MarkCompleted(_ context.Context, _ *sqlx.Tx, ticketID in
 func (m *memTicketRepo) CurrentServing(_ context.Context, _ *sqlx.Tx, queueID int64) (model.Ticket, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var best *model.Ticket
 	for _, t := range m.tickets {
-		if t.QueueID == queueID && t.Status == "completed" && (best == nil || m.doneSeq[t.ID] > m.doneSeq[best.ID]) {
-			best = t
+		if t.QueueID == queueID && t.Status == "currently_served" {
+			return *t, nil
 		}
 	}
-	if best == nil {
-		return model.Ticket{}, apperror.ErrNotFound
-	}
-	return *best, nil
+	return model.Ticket{}, apperror.ErrNotFound
 }
 
 func (m *memTicketRepo) MarkRecalled(_ context.Context, _ *sqlx.Tx, ticketID int64) error {
@@ -259,7 +270,20 @@ func (m *memTicketRepo) ListByQueue(_ context.Context, queueID int64, statuses [
 	return out, nil
 }
 
+// HasTicket: hanya tiket aktif (waiting atau currently_served) yang dihitung; tiket selesai tidak.
 func (m *memTicketRepo) HasTicket(_ context.Context, queueID, userID int64) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.QueueID == queueID && t.UserID == userID && isActiveStatus(t.Status) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// HasAnyTicket: tiket dalam status apa pun, termasuk yang sudah selesai.
+func (m *memTicketRepo) HasAnyTicket(_ context.Context, queueID, userID int64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.tickets {
@@ -270,25 +294,61 @@ func (m *memTicketRepo) HasTicket(_ context.Context, queueID, userID int64) (boo
 	return false, nil
 }
 
+// FindByUser: tiket aktif didahulukan (currently_served, lalu waiting); bila tidak ada, tiket terbaru.
 func (m *memTicketRepo) FindByUser(_ context.Context, queueID, userID int64) (model.Ticket, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, t := range m.tickets {
-		if t.QueueID == queueID && t.UserID == userID {
-			return *t, nil
-		}
+	t, ok := m.pickForUser(queueID, userID)
+	if !ok {
+		return model.Ticket{}, apperror.ErrNotFound
 	}
-	return model.Ticket{}, apperror.ErrNotFound
+	return t, nil
 }
 
-func (m *memTicketRepo) LastCompletedNumber(_ context.Context, queueID int64) (int, bool, error) {
+// pickForUser: satu tiket user di queue menurut prioritas FindByUser.
+func (m *memTicketRepo) pickForUser(queueID, userID int64) (model.Ticket, bool) {
+	var best *model.Ticket
+	for _, t := range m.tickets {
+		if t.QueueID != queueID || t.UserID != userID {
+			continue
+		}
+		if best == nil || rankStatus(t.Status) < rankStatus(best.Status) ||
+			(rankStatus(t.Status) == rankStatus(best.Status) && t.ID > best.ID) {
+			best = t
+		}
+	}
+	if best == nil {
+		return model.Ticket{}, false
+	}
+	return *best, true
+}
+
+func isActiveStatus(status string) bool {
+	return status == "waiting" || status == "currently_served"
+}
+
+// rankStatus: urutan prioritas tiket untuk satu user di satu queue (makin kecil makin didahulukan).
+func rankStatus(status string) int {
+	switch status {
+	case "currently_served":
+		return 0
+	case "waiting":
+		return 1
+	default:
+		return 2
+	}
+}
+
+// CurrentServedNumber: ticket_number tiket yang sedang dilayani di queue ini.
+func (m *memTicketRepo) CurrentServedNumber(_ context.Context, queueID int64) (int, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	nums := m.completedNewestFirst(queueID)
-	if len(nums) == 0 {
-		return 0, false, nil
+	for _, t := range m.tickets {
+		if t.QueueID == queueID && t.Status == "currently_served" {
+			return t.TicketNumber, true, nil
+		}
 	}
-	return nums[0], true, nil
+	return 0, false, nil
 }
 
 func (m *memTicketRepo) RecentCompletedNumbers(_ context.Context, queueID int64, n int) ([]int, error) {
@@ -343,14 +403,19 @@ func (m *memTicketRepo) CountWaitingBefore(_ context.Context, queueID, sortKey i
 	return n, nil
 }
 
+// ListByUser: satu baris per antrian, tiket dipilih dengan prioritas FindByUser.
 func (m *memTicketRepo) ListByUser(_ context.Context, userID int64) ([]model.UserTicket, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := []model.UserTicket{}
+	seen := map[int64]bool{}
 	for _, t := range m.tickets {
-		if t.UserID == userID {
-			out = append(out, model.UserTicket{Ticket: *t})
+		if t.UserID != userID || seen[t.QueueID] {
+			continue
 		}
+		seen[t.QueueID] = true
+		picked, _ := m.pickForUser(t.QueueID, userID)
+		out = append(out, model.UserTicket{Ticket: picked})
 	}
 	return out, nil
 }
