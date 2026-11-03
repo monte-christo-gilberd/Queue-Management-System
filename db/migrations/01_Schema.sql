@@ -179,6 +179,14 @@ CREATE UNIQUE INDEX tickets_queue_id_user_id_active_key
     ON tickets (queue_id, user_id)
     WHERE status IN ('waiting', 'currently_served');
 
+-- Multi-counter: tiap counter melayani paling banyak satu nomor, dan nomor yang sedang dilayani selalu
+-- punya counter. Dua perangkat di counter yang sama tidak bisa membuat dua nomor dilayani bersamaan.
+CREATE UNIQUE INDEX tickets_one_serving_per_counter
+    ON tickets (called_counter_id)
+    WHERE status = 'currently_served';
+ALTER TABLE tickets ADD CONSTRAINT tickets_serving_has_counter
+    CHECK (status <> 'currently_served' OR called_counter_id IS NOT NULL);
+
 -- Satu note per tiket: ticket_id sebagai PK, bukan surrogate id + FK biasa.
 -- Menyimpan note kedua untuk tiket yang sama berarti UPDATE baris ini
 -- (mengedit note & updated_at/updated_by), bukan INSERT baris baru (append).

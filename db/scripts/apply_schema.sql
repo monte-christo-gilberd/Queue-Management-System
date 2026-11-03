@@ -85,4 +85,19 @@ BEGIN
     END IF;
 END $$;
 
+-- Multi-counter: satu counter melayani paling banyak satu nomor; nomor yang sedang dilayani wajib punya counter.
+-- CHECK dipasang NOT VALID agar tidak memindai ulang tabel di sini. Sebelum VALIDATE CONSTRAINT, pastikan
+-- tidak ada counter ganda dan tidak ada currently_served tanpa counter (lihat query cek di riwayat commit).
+CREATE UNIQUE INDEX IF NOT EXISTS tickets_one_serving_per_counter
+    ON tickets (called_counter_id)
+    WHERE status = 'currently_served';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tickets_serving_has_counter') THEN
+        ALTER TABLE tickets ADD CONSTRAINT tickets_serving_has_counter
+            CHECK (status <> 'currently_served' OR called_counter_id IS NOT NULL) NOT VALID;
+    END IF;
+END $$;
+
 COMMIT;

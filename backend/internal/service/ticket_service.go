@@ -449,6 +449,11 @@ func (s *TicketService) SkipTicket(
 		if err != nil {
 			return err
 		}
+		// Nomor yang dilewati turun dari "sedang dilayani" lebih dulu, supaya counter yang sama tidak memegang
+		// dua nomor sekaligus (indeks tickets_one_serving_per_counter). Urutannya sama dengan NextTicket.
+		if err := s.repository.MarkCompleted(ctx, tx, skipped.ID); err != nil {
+			return err
+		}
 		if err := s.repository.MarkServing(ctx, tx, called.ID, counter.ID); err != nil {
 			return err
 		}
