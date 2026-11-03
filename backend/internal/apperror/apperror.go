@@ -23,6 +23,7 @@ var (
 	ErrCounterLimit         = errors.New("a queue can have at most 10 counters")
 	ErrDefaultCounter       = errors.New("the default counter cannot be deleted")
 	ErrCounterStateChanged  = errors.New("counter state changed since the device last read it")
+	ErrInvalidCursor        = errors.New("invalid pagination cursor")
 
 	// Error QR: token join tidak valid/tidak ada atau qr-service gagal dipakai.
 	ErrQRInvalid           = errors.New("qr token invalid")

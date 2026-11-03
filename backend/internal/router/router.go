@@ -39,6 +39,12 @@ func (a *AppRouter) WithNotes(h NoteHandler) *AppRouter {
 	return a
 }
 
+// WithHistory memasang endpoint riwayat antrian owner (opsional; tanpa ini rute /history tidak ada).
+func (a *AppRouter) WithHistory(h HistoryHandler) *AppRouter {
+	a.historyHandler = h
+	return a
+}
+
 // WithPush memasang endpoint Web Push (opsional; tanpa ini rute /push tidak ada).
 func (a *AppRouter) WithPush(h PushHandler) *AppRouter {
 	a.pushHandler = h
@@ -89,6 +95,12 @@ func SetupRouter(
 	}
 	if router.counterHandler != nil {
 		registerCounterRoutes(queues, router.counterHandler)
+	}
+
+	if router.historyHandler != nil {
+		history := v1.Group("/history")
+		history.Use(router.authMiddleware)
+		registerHistoryRoutes(history, router.historyHandler)
 	}
 
 	if router.pushHandler != nil {

@@ -56,12 +56,40 @@ export type QueueListItem = {
   counterName?: string;
 };
 
-/**
- * Riwayat satu queue.
- * TODO: backend belum mendukung ini (belum ada endpoint history).
- */
-export type HistoryItem = {
-  queue: Queue;
+/** Hasil akhir satu nomor di riwayat. `unserved` = masih menunggu saat antrian ditutup. */
+export type HistoryOutcome = 'completed' | 'skipped' | 'cancelled' | 'deleted' | 'unserved';
+
+/** Ringkasan antrian yang sudah ditutup (GET /api/v1/history/queues). Hitungan per hasil menjumlah ke `total`. */
+export type HistoryQueue = {
+  id: number;
+  queue_name: string;
+  ticket_prefix: string;
+  opened_at: string;
+  closed_at: string;
+  total: number;
+  completed: number;
+  skipped: number;
+  cancelled: number;
+  deleted: number;
+  unserved: number;
+};
+
+/** Satu nomor di antrian yang sudah ditutup (GET /api/v1/history/queues/:id). Hanya dibaca owner. */
+export type HistoryTicket = {
+  ticket_id: number;
+  ticket_number: number;
+  outcome: HistoryOutcome;
+  skip_count: number;
+  joined_at: string;
+  called_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  customer_name: string;
+  customer_email: string;
+  /** Hanya terisi bila antrian punya lebih dari satu counter. */
+  counter_name: string | null;
+  /** Catatan owner; tidak pernah dilihat customer. */
+  note: string | null;
 };
 
 /** Respons login dan register: `{ data: { token } }`. */

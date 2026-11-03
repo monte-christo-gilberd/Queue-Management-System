@@ -242,7 +242,7 @@ func (r *QueueRepository) CloseQueue(
 
 	const closeQuery = `
 		UPDATE queues
-		SET status = 'closed'
+		SET status = 'closed', closed_at = now()
 		WHERE
 			id = $1 AND status = 'active'
 	`

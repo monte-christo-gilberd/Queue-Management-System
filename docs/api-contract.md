@@ -152,7 +152,7 @@ Request: `{ "queue_name": "Loket B", "queue_description": "...", "ticket_prefix"
 Error: 400, 402 `SUBSCRIPTION_INACTIVE`, 404.
 
 ### POST /api/v1/queues/:queue_id/close
-Menutup antrian. Tidak bisa dibuka lagi. Customer tidak bisa join setelah ditutup. Nomor yang masih `currently_served` ikut menjadi `completed` (`completed_at` terisi) dalam transaksi yang sama, sehingga tidak ada tiket yang menggantung.
+Menutup antrian. Tidak bisa dibuka lagi. Customer tidak bisa join setelah ditutup. Nomor yang masih `currently_served` ikut menjadi `completed` (`completed_at` terisi) dalam transaksi yang sama, sehingga tidak ada tiket yang menggantung. `closed_at` diisi dengan waktu penutupan; antrian yang ditutup sebelum perbaikan ini diberi perkiraan oleh `db/scripts/apply_schema.sql` (aktivitas tiket terakhir, atau `created_at` bila tanpa tiket).
 
 200: `{ "data": { "action": "close", ... } }`
 Error: 400, 404.
@@ -277,6 +277,40 @@ Mengganti token statis dengan kode baru. Token lama langsung ditolak saat join. 
 
 200: respons yang sama dengan `GET /qr` (`type` = `static`).
 Error: 404 `NOT_FOUND`, 409 `QR_REPLACE_NOT_ALLOWED` (mode dinamis), 503 `QR_UNAVAILABLE`.
+
+## Riwayat antrian (owner)
+
+Riwayat hanya memuat antrian yang **sudah ditutup**; antrian aktif tidak pernah muncul di sini (tetap di dashboard dan `GET /queues`). Data dibaca langsung dari tabel live. Semua endpoint butuh login, dan kepemilikan dicek di query: user yang bukan owner mendapat daftar kosong, dan 404 pada detail (sama dengan "antrian tidak ada", supaya keberadaan antrian orang lain tidak bocor).
+
+Paginasi memakai kursor buram (`cursor`) dan `limit`. `next_cursor` bernilai `null` pada halaman terakhir. Kursor yang rusak: 400 `BAD_REQUEST`. `limit` bukan angka atau negatif: 400; 0 atau kosong memakai bawaan; nilai di atas batas dipangkas ke batas.
+
+### GET /api/v1/history/queues?limit=&cursor=
+Antrian milik user yang sudah ditutup, terbaru dulu (urut `closed_at` menurun, lalu `id` menurun). `limit` bawaan 20, maksimal 100.
+
+200:
+```json
+{ "data": { "action": "list_history_queues",
+  "queues": [ { "id": 54, "queue_name": "Loket", "ticket_prefix": "A",
+    "opened_at": "2026-11-03T01:00:00Z", "closed_at": "2026-11-03T09:00:00Z",
+    "total": 6, "completed": 2, "skipped": 1, "cancelled": 1, "deleted": 1, "unserved": 1 } ],
+  "next_cursor": "1793700935123456.54" } }
+```
+Hitungan per hasil menjumlah ke `total`. `unserved` = nomor yang masih menunggu saat antrian ditutup (nomor yang sedang dilayani saat ditutup menjadi `completed`).
+
+### GET /api/v1/history/queues/:queue_id?limit=&cursor=
+Ringkasan satu antrian yang sudah ditutup dan satu halaman nomornya, urut nomor naik. `limit` bawaan 50, maksimal 200. Bukan milik owner, masih aktif, atau tidak ada: 404 `NOT_FOUND`.
+
+200:
+```json
+{ "data": { "action": "history_queue",
+  "queue": { "id": 54, "queue_name": "Loket", "...": "sama dengan di daftar" },
+  "tickets": [ { "ticket_id": 56, "ticket_number": 3, "outcome": "completed", "skip_count": 0,
+    "joined_at": "...", "called_at": "...", "completed_at": "...", "cancelled_at": null,
+    "customer_name": "budi", "customer_email": "budi@mail.com",
+    "counter_name": null, "note": "minta struk" } ],
+  "next_cursor": null } }
+```
+`outcome`: `completed`, `skipped`, `cancelled`, `deleted`, atau `unserved`. `counter_name` hanya terisi bila antrian punya lebih dari satu counter. `note` adalah catatan owner (null bila tidak ada) dan tidak pernah terlihat oleh customer. Field yang bernilai null tetap ada di JSON.
 
 ## Antrian (customer)
 

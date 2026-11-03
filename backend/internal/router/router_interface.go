@@ -57,8 +57,14 @@ type NoteHandler interface {
 	Save(c *gin.Context)
 }
 
+type HistoryHandler interface {
+	ListQueues(c *gin.Context)
+	GetQueue(c *gin.Context)
+}
+
 type AppRouter struct {
 	counterHandler CounterHandler
+	historyHandler HistoryHandler
 	noteHandler    NoteHandler
 	pushHandler    PushHandler
 	ticketHandler  TicketHandler

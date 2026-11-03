@@ -100,4 +100,14 @@ BEGIN
     END IF;
 END $$;
 
+-- Riwayat antrian: CloseQueue dulu tidak mengisi closed_at, sehingga antrian yang sudah ditutup tidak punya
+-- tanggal tutup. Isi dengan PERKIRAAN dari aktivitas tiket terakhir (atau created_at bila tanpa tiket).
+-- Antrian yang ditutup sesudah perbaikan kode memakai waktu tutup yang sebenarnya. Idempoten: hanya baris NULL.
+UPDATE queues q
+SET closed_at = COALESCE(
+    (SELECT MAX(GREATEST(t.created_at, t.called_at, t.completed_at, t.cancelled_at))
+       FROM tickets t WHERE t.queue_id = q.id),
+    q.created_at)
+WHERE q.status = 'closed' AND q.closed_at IS NULL;
+
 COMMIT;

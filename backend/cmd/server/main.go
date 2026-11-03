@@ -113,6 +113,9 @@ func main() {
 		WithQueueGuard(queueService).
 		WithTicketReleaser(ticketService)
 	appRouter.WithCounters(handler.NewCounterHandler(counterService))
+	appRouter.WithHistory(handler.NewHistoryHandler(
+		service.NewHistoryService(repository.NewHistoryRepository(db)),
+	))
 
 	if cfg.VAPIDPublicKey != "" {
 		appRouter.WithPush(handler.NewPushHandler(
