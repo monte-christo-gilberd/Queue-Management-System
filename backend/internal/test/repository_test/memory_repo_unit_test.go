@@ -255,11 +255,11 @@ func (m *memTickets) MarkServing(_ context.Context, _ *sqlx.Tx, ticketID int64, 
 	return apperror.ErrNotFound
 }
 
-func (m *memTickets) CurrentServing(_ context.Context, _ *sqlx.Tx, queueID int64) (model.Ticket, error) {
+func (m *memTickets) CurrentServing(_ context.Context, _ *sqlx.Tx, queueID, counterID int64) (model.Ticket, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.rows {
-		if t.QueueID == queueID && t.Status == "currently_served" {
+		if t.QueueID == queueID && t.Status == "currently_served" && t.CalledCounterID == counterID {
 			return *t, nil
 		}
 	}
@@ -510,12 +510,12 @@ func TestRepoFake_MarkCancelledKeepsCalledAt(t *testing.T) {
 	tk, err := repo.Insert(ctx, nil, 1, 42, 65536)
 	require.NoError(t, err)
 	require.NoError(t, repo.MarkServing(ctx, nil, tk.ID, 1))
-	served, err := repo.CurrentServing(ctx, nil, 1)
+	served, err := repo.CurrentServing(ctx, nil, 1, 1)
 	require.NoError(t, err)
 
 	require.NoError(t, repo.MarkCancelled(ctx, nil, tk.ID))
 
-	_, err = repo.CurrentServing(ctx, nil, 1)
+	_, err = repo.CurrentServing(ctx, nil, 1, 1)
 	assert.ErrorIs(t, err, apperror.ErrNotFound, "tidak ada lagi yang dilayani")
 	for _, row := range repo.rows {
 		if row.ID == tk.ID {

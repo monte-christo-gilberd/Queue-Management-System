@@ -133,15 +133,43 @@ func (m *memTicketRepo) MarkServing(_ context.Context, _ *sqlx.Tx, ticketID int6
 	return apperror.ErrNotFound
 }
 
-func (m *memTicketRepo) CurrentServing(_ context.Context, _ *sqlx.Tx, queueID int64) (model.Ticket, error) {
+// CurrentServing: nomor yang sedang dilayani counter ini (per counter, seperti SQL).
+func (m *memTicketRepo) CurrentServing(_ context.Context, _ *sqlx.Tx, queueID, counterID int64) (model.Ticket, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.tickets {
-		if t.QueueID == queueID && t.Status == "currently_served" {
+		if t.QueueID == queueID && t.Status == "currently_served" && t.CalledCounterID == counterID {
 			return *t, nil
 		}
 	}
 	return model.Ticket{}, apperror.ErrNotFound
+}
+
+// LockCounter: counter harus ada di antrian ini. Counter default (ID 1) selalu ada; counter tambahan dari m.counters.
+func (m *memTicketRepo) LockCounter(_ context.Context, _ *sqlx.Tx, queueID, counterID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if c, ok := m.counters[counterID]; ok && c.QueueID == queueID {
+		return nil
+	}
+	if counterID == 1 {
+		return nil
+	}
+	return apperror.ErrNotFound
+}
+
+// ServingByQueue: semua nomor yang sedang dilayani di antrian, yang paling baru dipanggil dulu.
+func (m *memTicketRepo) ServingByQueue(_ context.Context, queueID int64) ([]model.Ticket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []model.Ticket{}
+	for _, t := range m.tickets {
+		if t.QueueID == queueID && t.Status == "currently_served" {
+			out = append(out, *t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CalledAt.Time.After(out[j].CalledAt.Time) })
+	return out, nil
 }
 
 func (m *memTicketRepo) MarkRecalled(_ context.Context, _ *sqlx.Tx, ticketID int64) error {

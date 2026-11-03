@@ -134,9 +134,12 @@ type SetQRTypeRequest struct {
 	Type string `json:"type" binding:"required"`
 }
 
-// NextTicketRequest: `counter_id` opsional; 0 = counter default milik queue.
+// NextTicketRequest: body Next, Skip, dan Recall. `counter_id` opsional (0 = counter default). `expected_ticket_id`
+// opsional: nomor yang dilihat perangkat sebagai nomor counter ini (0 = counter kosong). Nil = klien lama, tanpa
+// pengecekan (D9).
 type NextTicketRequest struct {
-	CounterID int64 `json:"counter_id"`
+	CounterID        int64  `json:"counter_id"`
+	ExpectedTicketID *int64 `json:"expected_ticket_id"`
 }
 
 // SkipSettingsRequest: body PUT /queues/:id/settings/skip.

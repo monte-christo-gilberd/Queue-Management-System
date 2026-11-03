@@ -137,7 +137,7 @@ func (r *TicketRepository) NextWaiting(
 		WHERE queue_id=$1 AND status='waiting'
 		ORDER BY sort_key ASC 
 		LIMIT 1 
-		FOR UPDATE
+		FOR UPDATE SKIP LOCKED
 	`
 
 	err := tx.GetContext(
@@ -157,23 +157,23 @@ func (r *TicketRepository) NextWaiting(
 	return currentTicket, nil
 }
 
-// CurrentServing: tiket yang sedang dilayani (status currently_served), dikunci.
+// CurrentServing: nomor yang sedang dilayani counter ini, dikunci. Tidak ada: ErrNotFound.
 func (r *TicketRepository) CurrentServing(
 	ctx context.Context,
 	tx *sqlx.Tx,
-	queueID int64,
+	queueID,
+	counterID int64,
 ) (model.Ticket, error) {
 	var t model.Ticket
 	const query = `
 		SELECT
 			id, queue_id, ticket_number, sort_key, user_id, status, skip_count,
-			last_notified_at, created_at, completed_at, cancelled_at, called_at, recalled_at
+			last_notified_at, created_at, completed_at, cancelled_at, called_counter_id, called_at, recalled_at
 		FROM tickets
-		WHERE queue_id=$1 AND status='currently_served'
-		LIMIT 1
+		WHERE queue_id=$1 AND called_counter_id=$2 AND status='currently_served'
 		FOR UPDATE
 	`
-	err := tx.GetContext(ctx, &t, query, queueID)
+	err := tx.GetContext(ctx, &t, query, queueID, counterID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Ticket{}, apperror.ErrNotFound
 	}
@@ -835,7 +835,7 @@ func (r *TicketRepository) GetForUpdate(
 	const query = `
 		SELECT
 			id, queue_id, ticket_number, sort_key, user_id, status, skip_count,
-			last_notified_at, created_at, completed_at, cancelled_at, called_at, recalled_at
+			last_notified_at, created_at, completed_at, cancelled_at, COALESCE(called_counter_id, 0) AS called_counter_id, called_at, recalled_at
 		FROM tickets
 		WHERE id = $1 AND queue_id = $2
 		FOR UPDATE
@@ -848,6 +848,42 @@ func (r *TicketRepository) GetForUpdate(
 		return model.Ticket{}, err
 	}
 	return t, nil
+}
+
+// LockCounter mengunci baris counter (FOR SHARE) supaya tidak dihapus di tengah Next/Skip/Recall. Bukan counter
+// antrian ini: ErrNotFound.
+func (r *TicketRepository) LockCounter(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID,
+	counterID int64,
+) error {
+	var id int64
+	err := tx.GetContext(ctx, &id, `SELECT id FROM counters WHERE id=$1 AND queue_id=$2 FOR SHARE`, counterID, queueID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return apperror.ErrNotFound
+	}
+	return err
+}
+
+// ServingByQueue: semua nomor yang sedang dilayani di antrian, yang paling baru dipanggil dulu.
+func (r *TicketRepository) ServingByQueue(
+	ctx context.Context,
+	queueID int64,
+) ([]model.Ticket, error) {
+	tickets := []model.Ticket{}
+	const query = `
+		SELECT
+			id, queue_id, ticket_number, sort_key, user_id, status, skip_count,
+			last_notified_at, created_at, completed_at, cancelled_at, called_counter_id, called_at, recalled_at
+		FROM tickets
+		WHERE queue_id = $1 AND status = 'currently_served'
+		ORDER BY called_at DESC, id DESC
+	`
+	if err := r.db.SelectContext(ctx, &tickets, query, queueID); err != nil {
+		return nil, err
+	}
+	return tickets, nil
 }
 
 // ServingOfCounter mengunci nomor yang sedang dilayani counter ini (FOR UPDATE). Tidak ada: ErrNotFound.

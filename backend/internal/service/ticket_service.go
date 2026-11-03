@@ -58,8 +58,19 @@ type TicketRepository interface {
 	CurrentServing(
 		ctx context.Context,
 		tx *sqlx.Tx,
-		queueID int64,
+		queueID,
+		counterID int64,
 	) (model.Ticket, error)
+	LockCounter(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		queueID,
+		counterID int64,
+	) error
+	ServingByQueue(
+		ctx context.Context,
+		queueID int64,
+	) ([]model.Ticket, error)
 	MarkSkipped(
 		ctx context.Context,
 		tx *sqlx.Tx,
@@ -329,108 +340,42 @@ func (s *TicketService) JoinQueue(
 	return ticket, nil
 }
 
+// resolveCounter: counter yang dipilih. counter_id 0 = counter default antrian. Counter lain harus milik antrian
+// ini, bila tidak ErrNotFound.
+func (s *TicketService) resolveCounter(
+	ctx context.Context,
+	queueID,
+	counterID int64,
+) (model.Counter, error) {
+	if counterID == 0 {
+		return s.repository.GetCounterByQueue(ctx, queueID)
+	}
+	return s.repository.GetCounter(ctx, queueID, counterID)
+}
+
+// checkExpected: pengaman aksi ganda (D9). expected nil = klien lama, tanpa pengecekan. Bila tidak nil, harus sama
+// dengan nomor yang sedang dilayani counter ini (0 bila counter kosong), jika tidak 409 tanpa perubahan data.
+func checkExpected(expected *int64, serving model.Ticket, servingFound bool) error {
+	if expected == nil {
+		return nil
+	}
+	var current int64
+	if servingFound {
+		current = serving.ID
+	}
+	if *expected != current {
+		return apperror.ErrCounterStateChanged
+	}
+	return nil
+}
+
+// NextTicket: counter yang dipilih menyelesaikan nomornya lalu menerima waiting teratas (4.11).
 func (s *TicketService) NextTicket(
 	ctx context.Context,
 	queueID,
-	requesterID int64,
+	requesterID,
 	counterID int64,
-) (model.Ticket, error) {
-	if s.guard == nil {
-		return model.Ticket{}, errNoQueueGuard
-	}
-	if _, err := s.guard.GetQueue(
-		ctx,
-		queueID,
-		requesterID,
-	); err != nil {
-		return model.Ticket{}, err
-	}
-
-	var counter model.Counter
-	var ticket model.Ticket
-	var err error
-
-	// counter_id 0 = counter default antrian. Counter lain harus milik antrian ini (bila tidak, ErrNotFound).
-	if counterID == 0 {
-		counter, err = s.repository.GetCounterByQueue(ctx, queueID)
-	} else {
-		counter, err = s.repository.GetCounter(ctx, queueID, counterID)
-	}
-	if err != nil {
-		return model.Ticket{}, err
-	}
-	counterID = counter.ID
-
-	err = s.tx.WithTx(
-		ctx,
-		func(tx *sqlx.Tx) error {
-			// Urutan kunci: nomor yang sedang dilayani dulu, baru waiting teratas. CancelTicket dan
-			// RemoveTicket memakai urutan yang sama agar tidak terjadi deadlock.
-			serving, servingErr := s.repository.CurrentServing(ctx, tx, queueID)
-			if servingErr != nil && !errors.Is(servingErr, apperror.ErrNotFound) {
-				return servingErr
-			}
-			var err error
-			ticket, err = s.repository.NextWaiting(
-				ctx,
-				tx,
-				queueID,
-			)
-			if err != nil {
-				return err
-			}
-
-			// Nomor yang sedang dilayani selesai, lalu tiket berikutnya mulai dilayani.
-			// Antrian tanpa nomor yang sedang dilayani tetap sah: langkah pertama dilewati.
-			if servingErr == nil {
-				if err := s.repository.MarkCompleted(ctx, tx, serving.ID); err != nil {
-					return err
-				}
-			}
-
-			return s.repository.MarkServing(
-				ctx,
-				tx,
-				ticket.ID,
-				counterID,
-			)
-		})
-
-	if errors.Is(err, apperror.ErrNotFound) {
-		return model.Ticket{}, apperror.ErrQueueEmpty
-	}
-	if err != nil {
-		return model.Ticket{}, err
-	}
-
-	// Payload mengikuti keadaan setelah Next: nomor ini sekarang sedang dilayani (spek 4.3 langkah 3).
-	ticket.Status = "currently_served"
-	ticket.CalledAt = sql.NullTime{
-		Time:  time.Now(),
-		Valid: true,
-	}
-	ticket.CalledCounterID = counterID
-	if !counter.IsDefault {
-		ticket.CounterName = counter.Name
-	}
-
-	notifyEvent(
-		s.notifier,
-		queueID,
-		EventTicketNext,
-		dto.NewTicketEvent(ticket),
-	)
-
-	return ticket, nil
-}
-
-// SkipTicket melewati tiket yang sedang dilayani lalu memanggil tiket waiting berikutnya.
-// Bila tidak ada yang dilayani: ErrNothingToSkip; bila tidak ada yang menunggu: ErrQueueEmpty
-// (transaksi dibatalkan, tiket tetap dilayani). Mengembalikan tiket yang baru dipanggil.
-func (s *TicketService) SkipTicket(
-	ctx context.Context,
-	queueID,
-	requesterID int64,
+	expected *int64,
 ) (model.Ticket, error) {
 	if s.guard == nil {
 		return model.Ticket{}, errNoQueueGuard
@@ -438,8 +383,76 @@ func (s *TicketService) SkipTicket(
 	if _, err := s.guard.GetQueue(ctx, queueID, requesterID); err != nil {
 		return model.Ticket{}, err
 	}
+	counter, err := s.resolveCounter(ctx, queueID, counterID)
+	if err != nil {
+		return model.Ticket{}, err
+	}
 
-	counter, err := s.repository.GetCounterByQueue(ctx, queueID)
+	var ticket model.Ticket
+	err = s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
+		// Urutan kunci: counter (FOR SHARE), nomor yang dilayani counter itu, lalu waiting teratas.
+		if err := s.repository.LockCounter(ctx, tx, queueID, counter.ID); err != nil {
+			return err
+		}
+		serving, servingErr := s.repository.CurrentServing(ctx, tx, queueID, counter.ID)
+		if servingErr != nil && !errors.Is(servingErr, apperror.ErrNotFound) {
+			return servingErr
+		}
+		servingFound := servingErr == nil
+		if err := checkExpected(expected, serving, servingFound); err != nil {
+			return err
+		}
+
+		next, err := s.repository.NextWaiting(ctx, tx, queueID)
+		if errors.Is(err, apperror.ErrNotFound) {
+			return apperror.ErrQueueEmpty
+		}
+		if err != nil {
+			return err
+		}
+		ticket = next
+
+		// Nomor yang dilayani counter ini selesai, lalu tiket berikutnya mulai dilayani di counter ini.
+		if servingFound {
+			if err := s.repository.MarkCompleted(ctx, tx, serving.ID); err != nil {
+				return err
+			}
+		}
+		return s.repository.MarkServing(ctx, tx, ticket.ID, counter.ID)
+	})
+	if err != nil {
+		return model.Ticket{}, err
+	}
+
+	// Payload mengikuti keadaan setelah Next: nomor ini sekarang sedang dilayani (spek 4.3 langkah 3).
+	ticket.Status = "currently_served"
+	ticket.CalledAt = sql.NullTime{Time: time.Now(), Valid: true}
+	ticket.CalledCounterID = counter.ID
+	if !counter.IsDefault {
+		ticket.CounterName = counter.Name
+	}
+
+	notifyEvent(s.notifier, queueID, EventTicketNext, dto.NewTicketEvent(ticket))
+	return ticket, nil
+}
+
+// SkipTicket melewati nomor yang sedang dilayani counter ini, lalu memanggil waiting teratas ke counter yang sama.
+// Bila counter itu tidak melayani: ErrNothingToSkip; bila tidak ada yang menunggu: ErrQueueEmpty (tidak ada
+// perubahan). Mengembalikan tiket yang baru dipanggil.
+func (s *TicketService) SkipTicket(
+	ctx context.Context,
+	queueID,
+	requesterID,
+	counterID int64,
+	expected *int64,
+) (model.Ticket, error) {
+	if s.guard == nil {
+		return model.Ticket{}, errNoQueueGuard
+	}
+	if _, err := s.guard.GetQueue(ctx, queueID, requesterID); err != nil {
+		return model.Ticket{}, err
+	}
+	counter, err := s.resolveCounter(ctx, queueID, counterID)
 	if err != nil {
 		return model.Ticket{}, err
 	}
@@ -448,14 +461,21 @@ func (s *TicketService) SkipTicket(
 	var requeued bool
 	var newSortKey int64
 	err = s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
-		var err error
-		skipped, err = s.repository.CurrentServing(ctx, tx, queueID)
+		if err := s.repository.LockCounter(ctx, tx, queueID, counter.ID); err != nil {
+			return err
+		}
+		serving, err := s.repository.CurrentServing(ctx, tx, queueID, counter.ID)
 		if errors.Is(err, apperror.ErrNotFound) {
 			return apperror.ErrNothingToSkip
 		}
 		if err != nil {
 			return err
 		}
+		if err := checkExpected(expected, serving, true); err != nil {
+			return err
+		}
+		skipped = serving
+
 		called, err = s.repository.NextWaiting(ctx, tx, queueID)
 		if errors.Is(err, apperror.ErrNotFound) {
 			return apperror.ErrQueueEmpty
@@ -521,8 +541,8 @@ type retireOutcome struct {
 	hasPromoted bool
 }
 
-// retireTicket mengeluarkan satu tiket aktif dari antrian dalam satu transaksi. Bila tiket itu sedang dilayani,
-// waiting teratas naik ke currently_served. Tiket yang sudah tidak aktif menghasilkan no-op tanpa menulis apa pun.
+// retireTicket mengeluarkan satu tiket aktif dari antrian dalam satu transaksi. Bila tiket itu sedang dilayani
+// counter C, waiting teratas naik ke counter C yang sama. Tiket tidak aktif: no-op tanpa menulis apa pun.
 // mark menulis status akhir (MarkCancelled atau MarkDeleted); status adalah nilai yang dipakai di payload.
 func (s *TicketService) retireTicket(
 	ctx context.Context,
@@ -531,17 +551,9 @@ func (s *TicketService) retireTicket(
 	mark func(ctx context.Context, tx *sqlx.Tx, ticketID int64) error,
 	status string,
 ) (retireOutcome, error) {
-	counter, err := s.repository.GetCounterByQueue(ctx, queueID)
-	if err != nil {
-		return retireOutcome{}, err
-	}
-
 	var out retireOutcome
-	err = s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
-		// Urutan kunci sama dengan NextTicket: nomor yang sedang dilayani dulu, lalu tiket target.
-		if _, err := s.repository.CurrentServing(ctx, tx, queueID); err != nil && !errors.Is(err, apperror.ErrNotFound) {
-			return err
-		}
+	err := s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
+		// Tiket target dikunci dulu (bila sedang dilayani, baris itu adalah nomor counter-nya).
 		target, err := s.repository.GetForUpdate(ctx, tx, queueID, ticketID)
 		if err != nil {
 			return err
@@ -551,7 +563,6 @@ func (s *TicketService) retireTicket(
 		if target.Status != "waiting" && target.Status != "currently_served" {
 			return nil
 		}
-
 		if err := mark(ctx, tx, target.ID); err != nil {
 			return err
 		}
@@ -562,19 +573,25 @@ func (s *TicketService) retireTicket(
 		if target.Status != "currently_served" {
 			return nil
 		}
+		// Counter yang melepas nomor ini menerima waiting teratas.
+		counterID := target.CalledCounterID
+		counter, err := s.repository.GetCounter(ctx, queueID, counterID)
+		if err != nil {
+			return err
+		}
 		next, err := s.repository.NextWaiting(ctx, tx, queueID)
 		if errors.Is(err, apperror.ErrNotFound) {
-			return nil // tidak ada yang menunggu: antrian kosong, tidak ada yang dilayani
+			return nil // tidak ada yang menunggu: counter ini kosong
 		}
 		if err != nil {
 			return err
 		}
-		if err := s.repository.MarkServing(ctx, tx, next.ID, counter.ID); err != nil {
+		if err := s.repository.MarkServing(ctx, tx, next.ID, counterID); err != nil {
 			return err
 		}
 		next.Status = "currently_served"
 		next.CalledAt = sql.NullTime{Time: time.Now(), Valid: true}
-		next.CalledCounterID = counter.ID
+		next.CalledCounterID = counterID
 		if !counter.IsDefault {
 			next.CounterName = counter.Name
 		}
@@ -737,12 +754,14 @@ func (s *TicketService) InsertTicket(
 // RecallDelay: jeda minimal setelah sebuah nomor dipanggil sebelum owner boleh memanggil ulang.
 const RecallDelay = 3 * time.Second
 
-// RecallTicket memanggil ulang nomor yang sedang dilayani: hanya push ke pemiliknya (lewat trigger database),
-// tidak mengubah status. Boleh sekali per pemanggilan dan baru 3 detik setelah dipanggil.
+// RecallTicket memanggil ulang nomor yang sedang dilayani counter ini: hanya push ke pemiliknya (lewat trigger
+// database), tidak mengubah status. Boleh sekali per pemanggilan dan baru 3 detik setelah dipanggil.
 func (s *TicketService) RecallTicket(
 	ctx context.Context,
 	queueID,
-	requesterID int64,
+	requesterID,
+	counterID int64,
+	expected *int64,
 ) (model.Ticket, error) {
 	if s.guard == nil {
 		return model.Ticket{}, errNoQueueGuard
@@ -750,15 +769,24 @@ func (s *TicketService) RecallTicket(
 	if _, err := s.guard.GetQueue(ctx, queueID, requesterID); err != nil {
 		return model.Ticket{}, err
 	}
+	counter, err := s.resolveCounter(ctx, queueID, counterID)
+	if err != nil {
+		return model.Ticket{}, err
+	}
 
 	var serving model.Ticket
-	err := s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
-		var err error
-		serving, err = s.repository.CurrentServing(ctx, tx, queueID)
+	err = s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
+		if err := s.repository.LockCounter(ctx, tx, queueID, counter.ID); err != nil {
+			return err
+		}
+		serving, err = s.repository.CurrentServing(ctx, tx, queueID, counter.ID)
 		if errors.Is(err, apperror.ErrNotFound) {
 			return apperror.ErrNothingToRecall
 		}
 		if err != nil {
+			return err
+		}
+		if err := checkExpected(expected, serving, true); err != nil {
 			return err
 		}
 		if serving.RecalledAt.Valid {
@@ -913,21 +941,24 @@ func (s *TicketService) QueueStatus(
 
 	status := model.QueueStatus{Queue: queue}
 
-	number, ok, err := s.repository.CurrentServedNumber(
-		ctx,
-		queueID,
-	)
+	// Semua counter yang sedang melayani. Nomor yang paling baru dipanggil menjadi current_number (kompatibel
+	// dengan klien lama). Nama counter default disembunyikan (is_default).
+	servings, err := s.repository.ServingByQueue(ctx, queueID)
 	if err != nil {
 		return model.QueueStatus{}, err
 	}
-	if ok {
-		status.CurrentNumber = &number
-		// Nama counter default disembunyikan (is_default); bila counter non-default
-		// hadir, nama-nya ikut tampil untuk customer & owner.
-		if counter, cerr := s.repository.GetCounterByQueue(ctx, queueID); cerr == nil && counter.ID != 0 && !counter.IsDefault {
-			counterName := counter.Name
-			status.CurrentCounterName = &counterName
+	for _, t := range servings {
+		entry := model.ServingEntry{CounterID: t.CalledCounterID, TicketNumber: t.TicketNumber}
+		if counter, cerr := s.repository.GetCounter(ctx, queueID, t.CalledCounterID); cerr == nil && !counter.IsDefault {
+			name := counter.Name
+			entry.CounterName = &name
 		}
+		status.Serving = append(status.Serving, entry)
+	}
+	if len(status.Serving) > 0 {
+		number := status.Serving[0].TicketNumber
+		status.CurrentNumber = &number
+		status.CurrentCounterName = status.Serving[0].CounterName
 	}
 
 	// Sebelumnya (completed terbaru, karena nomor yang sedang dilayani tidak ada di daftar completed) dan

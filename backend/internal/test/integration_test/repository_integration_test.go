@@ -381,7 +381,7 @@ func TestJoinQueue_TwiceBySameUserReturnsSameTicket(t *testing.T) {
 	assert.Equal(t, 1, again.TicketNumber)
 
 	// Tiket yang sedang dilayani masih aktif: join ulang tetap mengembalikan tiket yang sama.
-	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
 	afterNext, err := svc.JoinQueue(ctx, q.ID, customer)
 	require.NoError(t, err)
@@ -398,7 +398,7 @@ func TestJoinQueue_TwiceBySameUserReturnsSameTicket(t *testing.T) {
 	q2 := createQueue(t, db, owner, "Q2")
 	_, err = svc.JoinQueue(ctx, q2.ID, customer)
 	require.NoError(t, err)
-	_, err = svc.NextTicket(ctx, q2.ID, customer, 0)
+	_, err = svc.NextTicket(ctx, q2.ID, customer, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
 
@@ -445,9 +445,9 @@ func TestQueueStatus_AgainstPostgres(t *testing.T) {
 	assert.Equal(t, 2, *st.WaitingAhead)
 
 	// Owner memanggil Next dua kali: nomor saat ini = tiket ke-2 (currently_served); tiket ke-1 completed.
-	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
-	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
 
 	st, err = svc.QueueStatus(ctx, q.ID, u3)
@@ -582,7 +582,7 @@ func TestJoinQueue_AfterQueueDrainedStillAcceptsJoin(t *testing.T) {
 
 	_, err := svc.JoinQueue(ctx, q.ID, first)
 	require.NoError(t, err)
-	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
 
 	tk, err := svc.JoinQueue(ctx, q.ID, second)
@@ -611,13 +611,13 @@ func TestSkipTicket_AgainstPostgres(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	_, err := svc.SkipTicket(ctx, q.ID, owner)
+	_, err := svc.SkipTicket(ctx, q.ID, owner, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrNothingToSkip)
 
-	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
 
-	called, err := svc.SkipTicket(ctx, q.ID, owner)
+	called, err := svc.SkipTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 2, called.TicketNumber)
 
@@ -634,10 +634,10 @@ func TestSkipTicket_AgainstPostgres(t *testing.T) {
 	assert.False(t, skipped[0].CompletedAt.Valid)
 
 	// Skip beruntun: 2 dilewati, 3 dipanggil; lalu tidak ada yang menunggu -> QUEUE_EMPTY, 3 tetap dilayani.
-	called, err = svc.SkipTicket(ctx, q.ID, owner)
+	called, err = svc.SkipTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 3, called.TicketNumber)
-	_, err = svc.SkipTicket(ctx, q.ID, owner)
+	_, err = svc.SkipTicket(ctx, q.ID, owner, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrQueueEmpty)
 
 	st, err = svc.QueueStatus(ctx, q.ID, owner)
@@ -675,10 +675,10 @@ func TestSkipFallback_AgainstPostgres(t *testing.T) {
 	assert.Equal(t, 1, got.N)
 
 	// Persist ulang ke Postgres lalu panggil nomor 1 dan skip berulang di titik sisip yang sama.
-	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
 	for i := 0; i < 25; i++ {
-		_, err = svc.SkipTicket(ctx, q.ID, owner)
+		_, err = svc.SkipTicket(ctx, q.ID, owner, 0, nil)
 		require.NoError(t, err, "skip ke-%d", i)
 	}
 
@@ -694,7 +694,7 @@ func TestSkipFallback_AgainstPostgres(t *testing.T) {
 	// back: tiket yang dilewati ke belakang.
 	_, err = queueSvc.UpdateSkipSettings(ctx, q.ID, owner, model.SkipSettings{Fallback: "back", MaxReturns: 50})
 	require.NoError(t, err)
-	served, err := svc.SkipTicket(ctx, q.ID, owner)
+	served, err := svc.SkipTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
 	waiting, _ = svc.ListTickets(ctx, q.ID, owner, []string{"waiting"})
 	last := waiting[0]
@@ -728,17 +728,17 @@ func TestRecall_AgainstPostgres(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	_, err := svc.RecallTicket(ctx, q.ID, owner)
+	_, err := svc.RecallTicket(ctx, q.ID, owner, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrNothingToRecall)
 
-	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
-	_, err = svc.RecallTicket(ctx, q.ID, owner)
+	_, err = svc.RecallTicket(ctx, q.ID, owner, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrRecallTooSoon)
 
 	_, err = db.ExecContext(ctx, `UPDATE tickets SET called_at = now() - interval '5 seconds' WHERE ticket_number = 1`)
 	require.NoError(t, err)
-	got, err := svc.RecallTicket(ctx, q.ID, owner)
+	got, err := svc.RecallTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, got.TicketNumber)
 
@@ -746,13 +746,13 @@ func TestRecall_AgainstPostgres(t *testing.T) {
 	require.NoError(t, db.GetContext(ctx, &recalled, `SELECT recalled_at IS NOT NULL FROM tickets WHERE ticket_number = 1`))
 	assert.True(t, recalled)
 
-	_, err = svc.RecallTicket(ctx, q.ID, owner)
+	_, err = svc.RecallTicket(ctx, q.ID, owner, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrAlreadyRecalled)
 
 	// Nomor berikutnya dipanggil: kesempatan panggil ulang untuk nomor baru kembali (nomor 2 masih di bawah 3 detik).
-	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
-	_, err = svc.RecallTicket(ctx, q.ID, owner)
+	_, err = svc.RecallTicket(ctx, q.ID, owner, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrRecallTooSoon)
 }
 
@@ -781,7 +781,7 @@ func TestTicketsNotifyTrigger_AgainstPostgres(t *testing.T) {
 	_, err = listener.ExecContext(ctx, "LISTEN queue_events")
 	require.NoError(t, err)
 
-	_, err = svc.NextTicket(ctx, q.ID, owner, 0)
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
 
 	var payload string
@@ -822,9 +822,9 @@ func TestRejoin_AndCloseQueue_AgainstPostgres(t *testing.T) {
 	require.NoError(t, err)
 	_, err = svc.JoinQueue(ctx, q.ID, b)
 	require.NoError(t, err)
-	_, err = svc.NextTicket(ctx, q.ID, owner, 0) // A dilayani
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0, nil) // A dilayani
 	require.NoError(t, err)
-	_, err = svc.NextTicket(ctx, q.ID, owner, 0) // A selesai, B dilayani
+	_, err = svc.NextTicket(ctx, q.ID, owner, 0, nil) // A selesai, B dilayani
 	require.NoError(t, err)
 
 	rejoined, err := svc.JoinQueue(ctx, q.ID, a)
@@ -973,7 +973,7 @@ func TestTicketRepository_GetForUpdateAndNextVsCancel_AgainstPostgres(t *testing
 	}))
 
 	// Nomor pertama sedang dilayani, lalu Next dan Cancel berebut dalam beberapa putaran.
-	_, err := svc.NextTicket(ctx, q.ID, owner, 0)
+	_, err := svc.NextTicket(ctx, q.ID, owner, 0, nil)
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
@@ -982,7 +982,7 @@ func TestTicketRepository_GetForUpdateAndNextVsCancel_AgainstPostgres(t *testing
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			_, err := svc.NextTicket(ctx, q.ID, owner, 0)
+			_, err := svc.NextTicket(ctx, q.ID, owner, 0, nil)
 			if err != nil && !errors.Is(err, apperror.ErrQueueEmpty) {
 				errs <- err
 			}
@@ -1134,3 +1134,92 @@ func TestCounterRepository_AgainstPostgres(t *testing.T) {
 	require.Len(t, waiting, 1)
 	assert.Equal(t, tk.ID, waiting[0].ID)
 }
+
+// Serving per counter (D9): dua Next paralel dengan expected_ticket_id yang sama di counter yang sama, tepat satu
+// berhasil dan counter maju satu nomor. Dua Next paralel di dua counter menghasilkan dua nomor berbeda.
+func TestServingPerCounter_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "spc-o@b.c", time.Now().Add(time.Hour))
+	var users []int64
+	for i := 0; i < 6; i++ {
+		users = append(users, seedUser(t, db, fmt.Sprintf("spc-%d@b.c", i)))
+	}
+	q := createQueue(t, db, owner, "Serving per counter")
+	ticketRepo := repository.NewTicketRepository(db)
+	counterRepo := repository.NewCounterRepository(db)
+	txRunner := database.NewSqlxTxRunner(db)
+	queueSvc := service.NewQueueService(
+		repository.NewQueueRepository(db),
+		repository.NewSubscriptionChecker(db),
+		txRunner,
+	).WithTicketHolderChecker(ticketRepo)
+	svc := service.NewTicketService(ticketRepo, txRunner).WithQueueGuard(queueSvc)
+
+	var second model.Counter
+	require.NoError(t, database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
+		var err error
+		second, err = counterRepo.Insert(ctx, tx, q.ID, "Loket Paralel")
+		return err
+	}))
+	for _, u := range users {
+		_, err := svc.JoinQueue(ctx, q.ID, u)
+		require.NoError(t, err)
+	}
+	first, err := svc.NextTicket(ctx, q.ID, owner, 0, nil) // nomor 1 di counter default
+	require.NoError(t, err)
+
+	// Satu counter, dua perangkat, expected sama: tepat satu berhasil.
+	var wg sync.WaitGroup
+	results := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := svc.NextTicket(ctx, q.ID, owner, 0, ptrInt64(first.ID))
+			results <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+	successes, conflicts := 0, 0
+	for err := range results {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, apperror.ErrCounterStateChanged):
+			conflicts++
+		default:
+			t.Errorf("galat tak terduga: %v", err)
+		}
+	}
+	assert.Equal(t, 1, successes, "tepat satu perangkat berhasil")
+	assert.Equal(t, 1, conflicts, "yang kedua ditolak tanpa mengubah data")
+
+	// Dua counter berbeda, Next paralel: dua nomor berbeda, tidak ada nomor ganda.
+	results = make(chan error, 2)
+	var got []model.Ticket
+	var mu sync.Mutex
+	for _, cid := range []int64{0, second.ID} {
+		wg.Add(1)
+		go func(c int64) {
+			defer wg.Done()
+			tk, err := svc.NextTicket(ctx, q.ID, owner, c, nil)
+			mu.Lock()
+			if err == nil {
+				got = append(got, tk)
+			}
+			mu.Unlock()
+			results <- err
+		}(cid)
+	}
+	wg.Wait()
+	close(results)
+	for err := range results {
+		assert.NoError(t, err)
+	}
+	require.Len(t, got, 2)
+	assert.NotEqual(t, got[0].ID, got[1].ID, "dua counter tidak melayani nomor yang sama")
+}
+
+func ptrInt64(v int64) *int64 { return &v }

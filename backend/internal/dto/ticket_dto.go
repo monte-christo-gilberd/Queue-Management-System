@@ -99,13 +99,21 @@ func counterNamePtr(name string) *string {
 }
 
 type QueueStatusResponse struct {
-	Queue              PublicQueueResponse `json:"queue"`
-	MyTicket           *TicketResponse     `json:"my_ticket"`
-	CurrentNumber      *int                `json:"current_number"`
-	CurrentCounterName *string             `json:"current_counter_name"`
-	WaitingAhead       *int                `json:"waiting_ahead"`
-	PreviousNumber     *int                `json:"previous_number"`
-	NextNumber         *int                `json:"next_number"`
+	Queue              PublicQueueResponse    `json:"queue"`
+	MyTicket           *TicketResponse        `json:"my_ticket"`
+	CurrentNumber      *int                   `json:"current_number"`
+	CurrentCounterName *string                `json:"current_counter_name"`
+	WaitingAhead       *int                   `json:"waiting_ahead"`
+	PreviousNumber     *int                   `json:"previous_number"`
+	NextNumber         *int                   `json:"next_number"`
+	Serving            []ServingEntryResponse `json:"serving"`
+}
+
+// ServingEntryResponse: satu counter yang sedang melayani nomor (status antrian).
+type ServingEntryResponse struct {
+	CounterID    int64   `json:"counter_id"`
+	CounterName  *string `json:"counter_name"`
+	TicketNumber int     `json:"ticket_number"`
 }
 
 func NewQueueStatusResponse(s model.QueueStatus) QueueStatusResponse {
@@ -126,7 +134,16 @@ func NewQueueStatusResponse(s model.QueueStatus) QueueStatusResponse {
 		WaitingAhead:       s.WaitingAhead,
 		PreviousNumber:     s.PreviousNumber,
 		NextNumber:         s.NextNumber,
+		Serving:            servingResponses(s.Serving),
 	}
+}
+
+func servingResponses(entries []model.ServingEntry) []ServingEntryResponse {
+	out := make([]ServingEntryResponse, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, ServingEntryResponse{CounterID: e.CounterID, CounterName: e.CounterName, TicketNumber: e.TicketNumber})
+	}
+	return out
 }
 
 // UserTicketResponse: tiket saya + info antriannya.

@@ -184,17 +184,17 @@ func (s *specTicketSvc) JoinQueue(_ context.Context, queueID, userID int64) (mod
 	return s.ticket, s.joinErr
 }
 
-func (s *specTicketSvc) NextTicket(_ context.Context, queueID, requesterID int64, counterID int64) (model.Ticket, error) {
+func (s *specTicketSvc) NextTicket(_ context.Context, queueID, requesterID, counterID int64, expected *int64) (model.Ticket, error) {
 	s.record(queueID, requesterID)
 	return s.ticket, s.err
 }
 
-func (s *specTicketSvc) RecallTicket(_ context.Context, queueID, requesterID int64) (model.Ticket, error) {
+func (s *specTicketSvc) RecallTicket(_ context.Context, queueID, requesterID, counterID int64, expected *int64) (model.Ticket, error) {
 	s.record(queueID, requesterID)
 	return s.ticket, s.err
 }
 
-func (s *specTicketSvc) SkipTicket(_ context.Context, queueID, requesterID int64) (model.Ticket, error) {
+func (s *specTicketSvc) SkipTicket(_ context.Context, queueID, requesterID, counterID int64, expected *int64) (model.Ticket, error) {
 	s.record(queueID, requesterID)
 	return s.ticket, s.err
 }

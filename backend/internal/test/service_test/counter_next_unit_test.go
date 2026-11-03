@@ -20,7 +20,7 @@ func TestNext_UsesRequestedCounterAndItsName(t *testing.T) {
 	}
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 
-	got, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 2)
+	got, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 2, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), got.CalledCounterID, "nomor dicatat ke counter yang memanggil")
@@ -35,7 +35,7 @@ func TestNext_CounterFromAnotherQueueIsNotFoundAndChangesNothing(t *testing.T) {
 	}
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 3)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 3, nil)
 
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 	assert.Equal(t, 0, env.tickets.completes, "tidak ada perubahan status")
@@ -47,7 +47,7 @@ func TestNext_UnknownCounterIsNotFound(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 999)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 999, nil)
 
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
@@ -57,7 +57,7 @@ func TestNext_CounterZeroIsDefaultAndHidesName(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 
-	got, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	got, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), got.CalledCounterID, "counter 0 = counter default")

@@ -37,7 +37,7 @@ func TestCancel_ServingTicketAdvancesNextWaiting(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
 	_, err = env.ts.CancelTicket(ctx, env.queueID, specCustomerA)
@@ -55,7 +55,7 @@ func TestCancel_ServingTicketWithNobodyWaitingIsNotAnError(t *testing.T) {
 	env := newSpecEnv(t)
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
 	_, err = env.ts.CancelTicket(ctx, env.queueID, specCustomerA)
@@ -85,8 +85,8 @@ func TestCancel_CompletedTicketIsNoOp(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0) // A selesai
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil) // A selesai
 
 	got, err := env.ts.CancelTicket(ctx, env.queueID, specCustomerA)
 
@@ -166,7 +166,7 @@ func TestRemove_ServingTicketAdvancesNextWaiting(t *testing.T) {
 	ctx := context.Background()
 	first, _ := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
 	got, err := env.ts.RemoveTicket(ctx, env.queueID, specOwnerID, first.ID)
@@ -185,7 +185,7 @@ func TestRemove_ServingTicketWithNobodyWaiting(t *testing.T) {
 	env := newSpecEnv(t)
 	ctx := context.Background()
 	first, _ := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
 	_, err = env.ts.RemoveTicket(ctx, env.queueID, specOwnerID, first.ID)
@@ -216,8 +216,8 @@ func TestRemove_SkippedTicketIsNoOp(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	second, _ := env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
-	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID) // A dilewati (fallback remove)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID, 0, nil) // A dilewati (fallback remove)
 	require.NoError(t, err)
 
 	first, err := env.ts.ListTickets(ctx, env.queueID, specOwnerID, []string{"skipped"})
@@ -286,10 +286,10 @@ func TestNext_LockOrderChangeKeepsNextAndSkipWorking(t *testing.T) {
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
 
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
-	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
-	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrQueueEmpty)
 }

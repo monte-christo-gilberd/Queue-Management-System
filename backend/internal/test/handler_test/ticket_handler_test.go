@@ -39,11 +39,11 @@ func (s *stubTicketService) ResolveJoinToken(_ context.Context, token string) (m
 	return s.joinQueue, s.resolveErr
 }
 
-func (s *stubTicketService) NextTicket(context.Context, int64, int64, int64) (model.Ticket, error) {
+func (s *stubTicketService) NextTicket(context.Context, int64, int64, int64, *int64) (model.Ticket, error) {
 	return model.Ticket{}, s.nextErr
 }
 
-func (s *stubTicketService) RecallTicket(context.Context, int64, int64) (model.Ticket, error) {
+func (s *stubTicketService) RecallTicket(context.Context, int64, int64, int64, *int64) (model.Ticket, error) {
 	return model.Ticket{}, s.nextErr
 }
 
@@ -55,7 +55,7 @@ func (s *stubTicketService) InsertTicket(context.Context, int64, int64, string, 
 	return model.Ticket{}, s.err
 }
 
-func (s *stubTicketService) SkipTicket(context.Context, int64, int64) (model.Ticket, error) {
+func (s *stubTicketService) SkipTicket(context.Context, int64, int64, int64, *int64) (model.Ticket, error) {
 	return model.Ticket{}, s.nextErr
 }
 
@@ -179,6 +179,7 @@ func TestNext_ErrorMapping(t *testing.T) {
 	}{
 		{apperror.ErrNotFound, http.StatusNotFound, "NOT_FOUND"},
 		{apperror.ErrQueueEmpty, http.StatusConflict, "QUEUE_EMPTY"},
+		{apperror.ErrCounterStateChanged, http.StatusConflict, "COUNTER_STATE_CHANGED"},
 	}
 	for _, c := range cases {
 		w := doPost(newListEngine(&stubTicketService{nextErr: c.err}), "/queues/5/next")

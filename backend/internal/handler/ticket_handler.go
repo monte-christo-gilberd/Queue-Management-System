@@ -22,18 +22,23 @@ type TicketService interface {
 	NextTicket(
 		ctx context.Context,
 		queueID,
-		requesterID int64,
+		requesterID,
 		counterID int64,
+		expected *int64,
 	) (model.Ticket, error)
 	RecallTicket(
 		ctx context.Context,
 		queueID,
-		requesterID int64,
+		requesterID,
+		counterID int64,
+		expected *int64,
 	) (model.Ticket, error)
 	SkipTicket(
 		ctx context.Context,
 		queueID,
-		requesterID int64,
+		requesterID,
+		counterID int64,
+		expected *int64,
 	) (model.Ticket, error)
 	CancelTicket(
 		ctx context.Context,
@@ -253,18 +258,19 @@ func (h *TicketHandler) Next(
 		return
 	}
 
-	var req dto.NextTicketRequest
-	var counterID int64
-	if err := c.ShouldBindJSON(&req); err == nil {
-		counterID = req.CounterID
-	}
+	counterID, expected := counterActionBody(c)
 
 	ticket, err := h.service.NextTicket(
 		ctx,
 		queueID,
 		c.GetInt64("user_id"),
 		counterID,
+		expected,
 	)
+	if errors.Is(err, apperror.ErrCounterStateChanged) {
+		respondError(c, http.StatusConflict, "COUNTER_STATE_CHANGED", "this counter was just advanced from another device")
+		return
+	}
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			respondError(
@@ -308,7 +314,12 @@ func (h *TicketHandler) Skip(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
 		return
 	}
-	ticket, err := h.service.SkipTicket(c.Request.Context(), queueID, c.GetInt64("user_id"))
+	counterID, expected := counterActionBody(c)
+	ticket, err := h.service.SkipTicket(c.Request.Context(), queueID, c.GetInt64("user_id"), counterID, expected)
+	if errors.Is(err, apperror.ErrCounterStateChanged) {
+		respondError(c, http.StatusConflict, "COUNTER_STATE_CHANGED", "this counter was just advanced from another device")
+		return
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, apperror.ErrNotFound):
@@ -400,7 +411,12 @@ func (h *TicketHandler) Recall(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
 		return
 	}
-	ticket, err := h.service.RecallTicket(c.Request.Context(), queueID, c.GetInt64("user_id"))
+	counterID, expected := counterActionBody(c)
+	ticket, err := h.service.RecallTicket(c.Request.Context(), queueID, c.GetInt64("user_id"), counterID, expected)
+	if errors.Is(err, apperror.ErrCounterStateChanged) {
+		respondError(c, http.StatusConflict, "COUNTER_STATE_CHANGED", "this counter was just advanced from another device")
+		return
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, apperror.ErrNotFound):
@@ -601,4 +617,14 @@ func (h *TicketHandler) MyTickets(
 			"tickets": dto.NewUserTicketResponses(tickets),
 		},
 	)
+}
+
+// counterActionBody: counter_id dan expected_ticket_id dari body Next, Skip, dan Recall. Body kosong atau rusak
+// berarti counter default tanpa pengecekan (klien lama).
+func counterActionBody(c *gin.Context) (int64, *int64) {
+	var req dto.NextTicketRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		return 0, nil
+	}
+	return req.CounterID, req.ExpectedTicketID
 }

@@ -61,7 +61,7 @@ func TestInsert_PositionOneWhileServingBecomesNextNotCurrent(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
 	_, err = newInsertSvc(env, oneUser(specCustomerC)).InsertTicket(ctx, env.queueID, specOwnerID, "c@test.com", 1)
@@ -189,8 +189,8 @@ func TestInsert_AccountWhoAlreadyCompletedGetsNewNumber(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0) // A selesai
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil) // A selesai
 
 	got, err := newInsertSvc(env, oneUser(specCustomerA)).InsertTicket(ctx, env.queueID, specOwnerID, "a", 1)
 

@@ -180,7 +180,7 @@ func TestSpec_Next_ServesInJoinOrder(t *testing.T) {
 
 	var served []int
 	for i := 0; i < 3; i++ {
-		tk, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+		tk, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 		require.NoError(t, err)
 		served = append(served, tk.TicketNumber)
 	}
@@ -194,7 +194,7 @@ func TestSpec_Next_ServesHeadAndPublishesTicketNext(t *testing.T) {
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
 
-	served, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	served, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, served.TicketNumber)
 	assert.Equal(t, specCustomerA, served.UserID)
@@ -211,7 +211,7 @@ func TestSpec_Next_EmptyQueueReturnsQueueEmptyWithoutStateChange(t *testing.T) {
 	env := newSpecEnv(t)
 	ctx := context.Background()
 
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrQueueEmpty)
 	assert.Equal(t, 0, env.tickets.completes)
 	assert.Equal(t, 0, env.events.count(service.EventTicketNext))
@@ -223,10 +223,10 @@ func TestSpec_Next_AfterLastServedIsQueueEmpty(t *testing.T) {
 	env := newSpecEnv(t)
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
-	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrQueueEmpty)
 	assert.Equal(t, 0, env.tickets.completes)
 
@@ -242,10 +242,10 @@ func TestSpec_Next_TwiceCompletesFirstAndServesSecond(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
-	second, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	second, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 2, second.TicketNumber)
 	assert.Equal(t, "currently_served", second.Status)
@@ -267,7 +267,7 @@ func TestSpec_Next_CustomerIsDeniedWithoutStateChange(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 
-	_, err := env.ts.NextTicket(ctx, env.queueID, specCustomerA, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specCustomerA, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 	assert.Equal(t, 0, env.tickets.completes)
 	assert.Equal(t, 0, env.events.count(service.EventTicketNext))
@@ -296,7 +296,7 @@ func TestSpec_Status_NextCustomerSeesUpdateWithoutRejoin(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
 	st, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerB)
@@ -314,7 +314,7 @@ func TestSpec_Status_ServedCustomerSeesCurrentlyServed(t *testing.T) {
 	env := newSpecEnv(t)
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
 	st, err := env.ts.QueueStatus(ctx, env.queueID, specCustomerA)
@@ -383,10 +383,10 @@ func TestSpec_Skip_SkipsServingAndCallsNext(t *testing.T) {
 	for _, c := range []int64{specCustomerA, specCustomerB, specCustomerC} {
 		_, _ = env.ts.JoinQueue(ctx, env.queueID, c)
 	}
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
-	called, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	called, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 2, called.TicketNumber)
 	assert.Equal(t, "currently_served", called.Status)
@@ -409,7 +409,7 @@ func TestSpec_Skip_NothingServedIsNothingToSkip(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 
-	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrNothingToSkip)
 	assert.Equal(t, 0, env.events.count(service.EventTicketSkipped))
 }
@@ -418,9 +418,9 @@ func TestSpec_Skip_NobodyWaitingKeepsServing(t *testing.T) {
 	env := newSpecEnv(t)
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 
-	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrQueueEmpty)
 
 	// fake tx tidak rollback, jadi cek lewat event: tidak ada yang disiarkan
@@ -432,7 +432,7 @@ func TestSpec_Skip_CustomerIsDenied(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 
-	_, err := env.ts.SkipTicket(ctx, env.queueID, specCustomerA)
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specCustomerA, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
 
@@ -463,9 +463,9 @@ func TestSkipFallback_BackRequeuesAtTheEnd(t *testing.T) {
 	ctx := context.Background()
 	setSkip(env, model.SkipSettings{Fallback: model.SkipFallbackBack, MaxReturns: 1})
 	joinN(env, 3)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 
-	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []int{3, 1}, waitingNumbers(t, env))
 }
@@ -475,9 +475,9 @@ func TestSkipFallback_AfterNPlacesBehindN(t *testing.T) {
 	ctx := context.Background()
 	setSkip(env, model.SkipSettings{Fallback: model.SkipFallbackAfterN, N: 1, MaxReturns: 1})
 	joinN(env, 3)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 
-	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 	// 2 dipanggil; sisa menunggu [3]; tiket 1 mundur 1 -> [3,1]
 	assert.Equal(t, []int{3, 1}, waitingNumbers(t, env))
@@ -488,9 +488,9 @@ func TestSkipFallback_AfterNMoreThanWaitingGoesToBack(t *testing.T) {
 	ctx := context.Background()
 	setSkip(env, model.SkipSettings{Fallback: model.SkipFallbackAfterN, N: 5, MaxReturns: 1})
 	joinN(env, 3)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 
-	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID)
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []int{3, 1}, waitingNumbers(t, env))
 }
@@ -500,14 +500,14 @@ func TestSkipFallback_MaxReturnsMakesSkipPermanent(t *testing.T) {
 	ctx := context.Background()
 	setSkip(env, model.SkipSettings{Fallback: model.SkipFallbackBack, MaxReturns: 1})
 	joinN(env, 3)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
-	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID) // 1 kembali, 2 dilayani
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
+	_, err := env.ts.SkipTicket(ctx, env.queueID, specOwnerID, 0, nil) // 1 kembali, 2 dilayani
 	require.NoError(t, err)
-	_, err = env.ts.SkipTicket(ctx, env.queueID, specOwnerID) // 2 kembali (skip_count 0), 3 dilayani
+	_, err = env.ts.SkipTicket(ctx, env.queueID, specOwnerID, 0, nil) // 2 kembali (skip_count 0), 3 dilayani
 	require.NoError(t, err)
-	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0) // 1 dilayani
+	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil) // 1 dilayani
 	require.NoError(t, err)
-	_, err = env.ts.SkipTicket(ctx, env.queueID, specOwnerID) // 1 sudah 1x kembali -> permanen
+	_, err = env.ts.SkipTicket(ctx, env.queueID, specOwnerID, 0, nil) // 1 sudah 1x kembali -> permanen
 	require.NoError(t, err)
 
 	sk, _ := env.ts.ListTickets(ctx, env.queueID, specOwnerID, []string{"skipped"})
@@ -517,21 +517,21 @@ func TestSkipFallback_MaxReturnsMakesSkipPermanent(t *testing.T) {
 
 func serveFirst(t *testing.T, env *specEnv, customers int) {
 	joinN(env, customers)
-	_, err := env.ts.NextTicket(context.Background(), env.queueID, specOwnerID, 0)
+	_, err := env.ts.NextTicket(context.Background(), env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 }
 
 func TestRecall_NothingServed(t *testing.T) {
 	env := newSpecEnv(t)
 	joinN(env, 1)
-	_, err := env.ts.RecallTicket(context.Background(), env.queueID, specOwnerID)
+	_, err := env.ts.RecallTicket(context.Background(), env.queueID, specOwnerID, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrNothingToRecall)
 }
 
 func TestRecall_TooSoonBeforeThreeSeconds(t *testing.T) {
 	env := newSpecEnv(t)
 	serveFirst(t, env, 2)
-	_, err := env.ts.RecallTicket(context.Background(), env.queueID, specOwnerID)
+	_, err := env.ts.RecallTicket(context.Background(), env.queueID, specOwnerID, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrRecallTooSoon)
 	assert.Equal(t, 0, env.tickets.recalls)
 }
@@ -542,12 +542,12 @@ func TestRecall_AllowedOnceAfterThreeSeconds(t *testing.T) {
 	serveFirst(t, env, 2)
 	env.tickets.backdateCall(1, service.RecallDelay+time.Second)
 
-	got, err := env.ts.RecallTicket(ctx, env.queueID, specOwnerID)
+	got, err := env.ts.RecallTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, got.TicketNumber)
 	assert.Equal(t, 1, env.tickets.recalls)
 
-	_, err = env.ts.RecallTicket(ctx, env.queueID, specOwnerID)
+	_, err = env.ts.RecallTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrAlreadyRecalled)
 	assert.Equal(t, 1, env.tickets.recalls)
 }
@@ -557,20 +557,20 @@ func TestRecall_ResetsAfterNextCall(t *testing.T) {
 	ctx := context.Background()
 	serveFirst(t, env, 2)
 	env.tickets.backdateCall(1, service.RecallDelay+time.Second)
-	_, err := env.ts.RecallTicket(ctx, env.queueID, specOwnerID)
+	_, err := env.ts.RecallTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
-	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0) // nomor 2 dipanggil
+	_, err = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil) // nomor 2 dipanggil
 	require.NoError(t, err)
 	env.tickets.backdateCall(2, service.RecallDelay+time.Second)
-	_, err = env.ts.RecallTicket(ctx, env.queueID, specOwnerID)
+	_, err = env.ts.RecallTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	assert.NoError(t, err)
 }
 
 func TestRecall_CustomerIsDenied(t *testing.T) {
 	env := newSpecEnv(t)
 	serveFirst(t, env, 2)
-	_, err := env.ts.RecallTicket(context.Background(), env.queueID, specCustomerA)
+	_, err := env.ts.RecallTicket(context.Background(), env.queueID, specCustomerA, 0, nil)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
 
@@ -580,8 +580,8 @@ func TestSpec_Rejoin_AfterCompletedGetsNewNumberAndOldStaysCompleted(t *testing.
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
-	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
+	_, err := env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	require.NoError(t, err)
 
 	rejoined, err := env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
@@ -617,8 +617,8 @@ func TestSpec_ListMyTickets_OneRowPerQueue(t *testing.T) {
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
-	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
+	_, _ = env.ts.NextTicket(ctx, env.queueID, specOwnerID, 0, nil)
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 
 	mine, err := env.ts.ListMyTickets(ctx, specCustomerA)

@@ -3,20 +3,28 @@ package model
 // QueueStatus: gambaran satu queue untuk pemegang tiket (atau owner).
 type QueueStatus struct {
 	Queue              Queue
-	MyTicket           *Ticket // nil bila requester tidak punya tiket di queue ini
-	CurrentNumber      *int    // ticket_number yang sedang dilayani (currently_served); nil bila belum ada
-	CurrentCounterName *string // nama counter yang memanggil nomor ini; nil bila counter default disembunyikan / belum ada
-	WaitingAhead       *int    // jumlah tiket waiting di depan tiket requester; nil bila tiket tidak sedang waiting
-	PreviousNumber     *int    // ticket_number completed terbaru; nil bila belum ada
-	NextNumber         *int    // ticket_number waiting pertama; nil bila tidak ada yang menunggu
+	MyTicket           *Ticket        // nil bila requester tidak punya tiket di queue ini
+	CurrentNumber      *int           // ticket_number yang sedang dilayani (currently_served); nil bila belum ada
+	CurrentCounterName *string        // nama counter yang memanggil nomor ini; nil bila counter default disembunyikan / belum ada
+	WaitingAhead       *int           // jumlah tiket waiting di depan tiket requester; nil bila tiket tidak sedang waiting
+	PreviousNumber     *int           // ticket_number completed terbaru; nil bila belum ada
+	NextNumber         *int           // ticket_number waiting pertama; nil bila tidak ada yang menunggu
+	Serving            []ServingEntry // semua counter yang sedang melayani, yang paling baru dipanggil dulu
+}
+
+// ServingEntry: satu counter yang sedang melayani nomor.
+type ServingEntry struct {
+	CounterID    int64
+	CounterName  *string // nil untuk counter default (disembunyikan)
+	TicketNumber int
 }
 
 // UserTicket: tiket milik satu user beserta info antriannya (untuk daftar "tiket saya").
 type UserTicket struct {
 	Ticket
-	QueueName   string `db:"queue_name"`
+	QueueName    string `db:"queue_name"`
 	TicketPrefix string `db:"ticket_prefix"`
-	QueueStatus string `db:"queue_status"`
+	QueueStatus  string `db:"queue_status"`
 	// CurrentNumber: ticket_number yang sedang dilayani di antrian ini (completed terbaru); nil bila belum ada.
 	CurrentNumber *int `db:"current_number"`
 }
