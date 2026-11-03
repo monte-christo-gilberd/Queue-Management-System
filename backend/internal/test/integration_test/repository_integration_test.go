@@ -1061,3 +1061,23 @@ func TestInsertTicket_AgainstPostgres(t *testing.T) {
 		seen[tk.SortKey] = true
 	}
 }
+
+// GetCounter hanya mengembalikan counter milik antrian yang diminta; counter antrian lain = ErrNotFound.
+func TestTicketRepository_GetCounter_ScopedToQueue_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "gc-o@b.c", time.Now().Add(time.Hour))
+	q1 := createQueue(t, db, owner, "GC1")
+	q2 := createQueue(t, db, owner, "GC2")
+	repo := repository.NewTicketRepository(db)
+
+	own, err := repo.GetCounterByQueue(ctx, q1.ID)
+	require.NoError(t, err)
+
+	got, err := repo.GetCounter(ctx, q1.ID, own.ID)
+	require.NoError(t, err)
+	assert.Equal(t, own.ID, got.ID)
+
+	_, err = repo.GetCounter(ctx, q2.ID, own.ID)
+	assert.ErrorIs(t, err, apperror.ErrNotFound, "counter antrian lain harus ditolak")
+}

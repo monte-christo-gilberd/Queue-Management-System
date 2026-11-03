@@ -632,6 +632,28 @@ func (r *TicketRepository) FindByUser(
 	return ticket, nil
 }
 
+// GetCounter mengembalikan counter milik antrian ini. Counter antrian lain atau id tidak dikenal: ErrNotFound.
+func (r *TicketRepository) GetCounter(
+	ctx context.Context,
+	queueID,
+	counterID int64,
+) (model.Counter, error) {
+	var counter model.Counter
+	const query = `
+		SELECT id, queue_id, name, created_at, is_default
+		FROM counters
+		WHERE id = $1 AND queue_id = $2
+	`
+	err := r.db.GetContext(ctx, &counter, query, counterID, queueID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Counter{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return model.Counter{}, err
+	}
+	return counter, nil
+}
+
 // CurrentServedNumber: ticket_number tiket yang sedang dilayani; ok=false bila belum ada.
 func (r *TicketRepository) CurrentServedNumber(
 	ctx context.Context,

@@ -255,6 +255,17 @@ func (f *fakeTicketRepo) GetCounterByQueue(
 	return model.Counter{ID: 1, QueueID: queueID, Name: "Counter 1", IsDefault: true}, nil
 }
 
+func (f *fakeTicketRepo) GetCounter(
+	ctx context.Context,
+	queueID,
+	counterID int64,
+) (model.Counter, error) {
+	if counterID == 1 {
+		return model.Counter{ID: 1, QueueID: queueID, Name: "Counter 1", IsDefault: true}, nil
+	}
+	return model.Counter{}, apperror.ErrNotFound
+}
+
 type fakeQueueGuard struct {
 	ownerID int64
 	closed  bool

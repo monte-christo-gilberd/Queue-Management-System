@@ -33,6 +33,9 @@ type memTicketRepo struct {
 	skipSettings map[int64]model.SkipSettings
 	rebalances   int
 	recalls      int
+
+	// counters: counter tambahan selain default (ID 1). Kunci = ID counter.
+	counters map[int64]model.Counter
 }
 
 func newMemTicketRepo() *memTicketRepo {
@@ -292,6 +295,19 @@ func (m *memTicketRepo) GetCounterByQueue(_ context.Context, _ int64) (model.Cou
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return model.Counter{ID: 1, QueueID: 1, Name: "Counter 1", IsDefault: true}, nil
+}
+
+// GetCounter: counter default (ID 1) dan counter tambahan milik antrian yang sama; selain itu ErrNotFound.
+func (m *memTicketRepo) GetCounter(_ context.Context, queueID, counterID int64) (model.Counter, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if c, ok := m.counters[counterID]; ok && c.QueueID == queueID {
+		return c, nil
+	}
+	if counterID == 1 {
+		return model.Counter{ID: 1, QueueID: queueID, Name: "Counter 1", IsDefault: true}, nil
+	}
+	return model.Counter{}, apperror.ErrNotFound
 }
 
 func (m *memTicketRepo) ListByQueue(_ context.Context, queueID int64, statuses []string) ([]model.Ticket, error) {

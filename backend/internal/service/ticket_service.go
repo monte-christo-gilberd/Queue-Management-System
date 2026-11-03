@@ -131,6 +131,11 @@ type TicketRepository interface {
 		ctx context.Context,
 		queueID int64,
 	) (model.Counter, error)
+	GetCounter(
+		ctx context.Context,
+		queueID,
+		counterID int64,
+	) (model.Counter, error)
 	CountWaitingBefore(
 		ctx context.Context,
 		queueID,
@@ -331,13 +336,16 @@ func (s *TicketService) NextTicket(
 	var ticket model.Ticket
 	var err error
 
-	counter, err = s.repository.GetCounterByQueue(ctx, queueID)
+	// counter_id 0 = counter default antrian. Counter lain harus milik antrian ini (bila tidak, ErrNotFound).
+	if counterID == 0 {
+		counter, err = s.repository.GetCounterByQueue(ctx, queueID)
+	} else {
+		counter, err = s.repository.GetCounter(ctx, queueID, counterID)
+	}
 	if err != nil {
 		return model.Ticket{}, err
 	}
-	if counterID == 0 {
-		counterID = counter.ID
-	}
+	counterID = counter.ID
 
 	err = s.tx.WithTx(
 		ctx,
