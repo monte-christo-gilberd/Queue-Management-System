@@ -28,6 +28,8 @@ function TicketQueueContent() {
   const closed = queue?.status === 'closed';
   // Customer hanya bisa membatalkan nomor yang masih aktif di antrian yang masih buka (4.9).
   const canCancel = canCancelTicket(ticket, closed);
+  // Counter tempat nomor saya dilayani (multi-counter): cocokkan nomor di daftar serving, bukan counter terakhir memanggil.
+  const myCounter = ticket ? status?.serving?.find((s) => s.ticket_number === ticket.ticket_number) : undefined;
 
   return (
     <CustomerQueueScreen
@@ -37,7 +39,7 @@ function TicketQueueContent() {
       ticketStatus={(ticket?.status as CustomerTicketStatus | undefined) ?? null}
       servingNow={ticket?.status === 'currently_served' && !closed}
       currentNumber={status?.current_number != null ? formatTicketNumber(status.current_number, queue?.ticket_prefix) : null}
-      counterName={status?.current_counter_name ?? null}
+      counterName={myCounter?.counter_name ?? null}
       waitingAhead={status?.waiting_ahead ?? null}
       closed={closed}
       loading={loading}

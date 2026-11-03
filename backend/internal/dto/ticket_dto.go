@@ -36,6 +36,14 @@ func NewTicketResponse(t model.Ticket) TicketResponse {
 		CreatedAt:      t.CreatedAt,
 		CompletedAt:    nullTimePtr(t.CompletedAt),
 		CancelledAt:    nullTimePtr(t.CancelledAt),
+		CalledCounterID: func() *int64 {
+			if t.CalledCounterID == 0 {
+				return nil
+			}
+			v := t.CalledCounterID
+			return &v
+		}(),
+		CalledAt: nullTimePtr(t.CalledAt),
 	}
 }
 

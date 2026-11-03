@@ -6,6 +6,8 @@ import QueueDetail from '@/components/QueueDetail';
 import { QueueQRCard } from '@/components/QueueQRCard';
 import type { TimelineItem } from '@/components/QueueTimeline';
 import ResponsiveScreenLayout from '@/components/layout/ResponsiveScreenLayout';
+import { CounterBar } from '@/components/CounterBar';
+import { useCounterSession } from '@/hooks/use-counter-session';
 import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useTicketNote } from '@/hooks/use-ticket-note';
 import { AppendNoteModal } from '@/components/ui/AppendNoteModal';
@@ -72,7 +74,8 @@ function QueueDetailEditor({
   const skipCfg = useSkipSettings(queue.id);
 
   // Papan tiket: daftar tiket + SKIP/NEXT. Antrian ditutup dari sini memuat ulang detail.
-  const board = useQueueBoard(queue.id, () => void reload());
+  const counters = useCounterSession(queue.id);
+  const board = useQueueBoard(queue.id, () => void reload(), counters.counterId);
   const currentId = board.view.current?.ticket.id ?? null;
   const timeline: TimelineItem[] = board.tickets.flatMap((t): TimelineItem[] => {
     // Tiket yang dihapus owner tidak ikut ditampilkan di timeline.
@@ -134,7 +137,9 @@ function QueueDetailEditor({
       onChangeTicketPrefix={setTicketPrefix}
       onSave={save}
       saving={saving}
-      errorMessage={errorMessage ?? board.nextError ?? board.skipError ?? board.recallError ?? board.error}
+      errorMessage={errorMessage ?? board.nextError ?? board.skipError ?? board.recallError ?? board.syncNotice ?? board.error}
+      // Antrian tidak bisa diakses (board.error): tab counter ikut disembunyikan agar pesan galat tidak ganda.
+      counterBar={board.error ? undefined : <CounterBar session={counters} tickets={board.tickets} prefix={queue.ticket_prefix} />}
       timeline={timeline}
       currentNumber={currentNumber}
       onSkip={() => void board.skip()}

@@ -64,6 +64,8 @@ export type QueueDetailProps = {
 
   /** Slot kartu pengaturan Skip (dirender route dari `useSkipSettings`). */
   skipSettingsCard?: React.ReactNode;
+  /** Tab counter di atas timeline (hanya owner, dari CounterBar). */
+  counterBar?: React.ReactNode;
 
   /** Tutup antrian (POST /close). Dipanggil setelah pengguna mengonfirmasi di popup. */
   onCloseQueue?: () => void;
@@ -101,6 +103,7 @@ export default function QueueDetail({
   defaultInsertPosition = 1,
   qrCard,
   skipSettingsCard,
+  counterBar,
   onCloseQueue,
   closing = false,
 }: QueueDetailProps) {
@@ -125,6 +128,7 @@ export default function QueueDetail({
       <View className={isWide ? "flex-row gap-6" : "gap-4"}>
         {/* Kolom kiri: QR, Skip/Next, tampilan customer, dan catatan. Di desktop tidak di-scroll. */}
         <View className={cn("gap-4", isWide && "w-[38%]")}>
+          {counterBar}
           {qrCard}
 
           {!isClosed ? (

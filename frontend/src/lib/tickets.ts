@@ -14,9 +14,12 @@ export async function listTickets(queueId: number): Promise<Ticket[]> {
  * Respons join/next tidak dibungkus `action`, langsung objek tiket di dalam `data`.
  * 409 QUEUE_EMPTY bila tidak ada yang menunggu.
  */
-export async function nextTicket(queueId: number, counterId = 0): Promise<Ticket> {
-  // counter_id 0 = counter default milik queue (backend mengalaminya).
-  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/next`, { method: 'POST', body: { counter_id: counterId } });
+export async function nextTicket(queueId: number, counterId = 0, expectedTicketId?: number): Promise<Ticket> {
+  // counter_id 0 = counter default milik queue. expected_ticket_id: nomor yang dilihat counter ini (D9); 0 = kosong.
+  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/next`, {
+    method: 'POST',
+    body: { counter_id: counterId, expected_ticket_id: expectedTicketId },
+  });
 }
 
 /**
@@ -25,12 +28,18 @@ export async function nextTicket(queueId: number, counterId = 0): Promise<Ticket
  * 409 QUEUE_EMPTY bila tidak ada yang menunggu (nomor tetap dilayani).
  */
 /** POST /api/v1/queues/:id/recall — owner memanggil ulang nomor yang sedang dilayani (push saja). */
-export async function recallTicket(queueId: number): Promise<Ticket> {
-  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/recall`, { method: 'POST' });
+export async function recallTicket(queueId: number, counterId = 0, expectedTicketId?: number): Promise<Ticket> {
+  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/recall`, {
+    method: 'POST',
+    body: { counter_id: counterId, expected_ticket_id: expectedTicketId },
+  });
 }
 
-export async function skipTicket(queueId: number): Promise<Ticket> {
-  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/skip`, { method: 'POST' });
+export async function skipTicket(queueId: number, counterId = 0, expectedTicketId?: number): Promise<Ticket> {
+  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/skip`, {
+    method: 'POST',
+    body: { counter_id: counterId, expected_ticket_id: expectedTicketId },
+  });
 }
 
 /**
@@ -44,6 +53,7 @@ export async function getQueueStatus(queueId: number): Promise<QueueStatus> {
     my_ticket: data.my_ticket,
     current_number: data.current_number,
     current_counter_name: data.current_counter_name,
+    serving: data.serving,
     waiting_ahead: data.waiting_ahead,
     previous_number: data.previous_number,
     next_number: data.next_number,

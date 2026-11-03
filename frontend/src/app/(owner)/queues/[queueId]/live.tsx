@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 
 import QueueLiveScreen from '@/components/QueueLiveScreen';
+import { useCounterSession } from '@/hooks/use-counter-session';
 import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useQueueDetail } from '@/hooks/use-queues';
 import type { TicketEntry } from '@/types/api';
@@ -13,7 +14,9 @@ export default function QueueLiveRoute() {
   const validId = Number.isInteger(id) && id > 0 ? id : null;
 
   const { queue } = useQueueDetail(id);
-  const board = useQueueBoard(validId);
+  // Layar live tanpa tab: memakai counter yang dipilih perangkat ini (dari dashboard atau detail).
+  const counters = useCounterSession(validId);
+  const board = useQueueBoard(validId, undefined, counters.counterId);
   const { previous, current, next } = board.view;
   // Nama counter hanya ditampilkan bila counter non-default memanggil (default disembunyikan backend).
   const counterName = current?.counterName ?? null;

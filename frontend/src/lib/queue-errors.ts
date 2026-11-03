@@ -1,6 +1,23 @@
 import { ApiError } from './api';
 import { describeQrError, isQrErrorCode } from './qr-errors';
 
+/** Pesan untuk aksi counter (buat, ganti nama, hapus). Kode lain jatuh ke pesan antrian umum. */
+export function describeCounterError(error: unknown): string {
+  if (error instanceof ApiError) {
+    switch (error.code) {
+      case 'DUPLICATE_COUNTER_NAME':
+        return 'Nama counter sudah dipakai';
+      case 'COUNTER_LIMIT':
+        return 'Maksimal 10 counter per antrian';
+      case 'DEFAULT_COUNTER':
+        return 'Counter default tidak bisa dihapus';
+      case 'QUEUE_CLOSED':
+        return 'Antrian sudah ditutup';
+    }
+  }
+  return describeQueueError(error);
+}
+
 /**
  * Pesan untuk sisip customer (US-10). Kalimatnya ditujukan ke owner, bukan customer:
  * ALREADY_JOINED dan NOT_FOUND di sini berarti akun yang dicari, bukan user yang sedang login.
@@ -41,6 +58,8 @@ export function describeQueueError(error: unknown): string {
       return 'Belum ada nomor yang sedang dilayani';
     case 'RECALL_TOO_SOON':
       return 'Panggil ulang tersedia 3 detik setelah nomor dipanggil';
+    case 'COUNTER_STATE_CHANGED':
+      return 'Counter ini baru saja dilanjutkan dari perangkat lain';
     case 'ALREADY_RECALLED':
       return 'Nomor ini sudah dipanggil ulang';
     case 'QUEUE_CLOSED':

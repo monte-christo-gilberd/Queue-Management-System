@@ -580,13 +580,15 @@ func (h *TicketHandler) Status(
 		c,
 		http.StatusOK,
 		gin.H{
-			"action":          "queue_status",
-			"queue":           body.Queue,
-			"my_ticket":       body.MyTicket,
-			"current_number":  body.CurrentNumber,
-			"waiting_ahead":   body.WaitingAhead,
-			"previous_number": body.PreviousNumber,
-			"next_number":     body.NextNumber,
+			"action":               "queue_status",
+			"queue":                body.Queue,
+			"my_ticket":            body.MyTicket,
+			"current_number":       body.CurrentNumber,
+			"current_counter_name": body.CurrentCounterName,
+			"serving":              body.Serving,
+			"waiting_ahead":        body.WaitingAhead,
+			"previous_number":      body.PreviousNumber,
+			"next_number":          body.NextNumber,
 		},
 	)
 }

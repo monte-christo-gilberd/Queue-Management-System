@@ -467,7 +467,9 @@ func (r *TicketRepository) ListByQueue(
 			last_notified_at,
 			created_at,
 			completed_at,
-			cancelled_at
+			cancelled_at,
+			COALESCE(called_counter_id, 0) AS called_counter_id,
+			called_at
 		FROM tickets
 		WHERE queue_id = ?
 	`
@@ -602,7 +604,9 @@ func (r *TicketRepository) FindByUser(
 			last_notified_at,
 			created_at,
 			completed_at,
-			cancelled_at
+			cancelled_at,
+			COALESCE(called_counter_id, 0) AS called_counter_id,
+			called_at
 		FROM tickets
 		WHERE queue_id = $1 AND user_id = $2
 		ORDER BY
@@ -738,6 +742,8 @@ func (r *TicketRepository) ListByUser(
 				t.created_at,
 				t.completed_at,
 				t.cancelled_at,
+				COALESCE(t.called_counter_id, 0) AS called_counter_id,
+				t.called_at,
 				q.queue_name,
 				q.ticket_prefix,
 				q.status AS queue_status,

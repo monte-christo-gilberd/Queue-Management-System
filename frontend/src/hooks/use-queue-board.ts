@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useQueueEvents } from '@/hooks/use-queue-events';
+import { ApiError } from '@/lib/api';
 import { describeInsertError, describeQueueError } from '@/lib/queue-errors';
 import { insertTicket, listTickets, nextTicket, recallTicket, skipTicket } from '@/lib/tickets';
 import type { Ticket } from '@/types/api';
@@ -9,15 +10,18 @@ import { deriveQueueView } from '@/utils/queue-view';
 /** Jeda sebelum mengambil ulang setelah event, supaya lonjakan join/next hanya memicu satu request. */
 const RELOAD_DEBOUNCE_MS = 300;
 
-type Result<T> = { ok: true; data: T } | { ok: false; message: string };
+type Result<T> = { ok: true; data: T } | { ok: false; message: string; code?: string };
 
 async function run<T>(fn: () => Promise<T>): Promise<Result<T>> {
   try {
     return { ok: true, data: await fn() };
   } catch (e) {
-    return { ok: false, message: describeQueueError(e) };
+    return { ok: false, message: describeQueueError(e), code: e instanceof ApiError ? e.code : undefined };
   }
 }
+
+/** Kode 409 dari server: counter ini sudah berubah di perangkat lain sejak papan dimuat. */
+const COUNTER_CHANGED = 'COUNTER_STATE_CHANGED';
 
 /**
  * Papan antrian satu queue: tiket dari server + pembaruan lewat SSE.
@@ -28,8 +32,10 @@ async function run<T>(fn: () => Promise<T>): Promise<Result<T>> {
  */
 const RECALL_DELAY_MS = 3000;
 
-export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void) {
+export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void, counterId = 0) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  // Pemberitahuan (bukan galat) bila counter ini dilanjutkan dari perangkat lain; papan sudah dimuat ulang.
+  const [syncNotice, setSyncNotice] = useState<string>();
   const [loading, setLoading] = useState(queueId !== null);
   const [error, setError] = useState<string>();
   const [nextLoading, setNextLoading] = useState(false);
@@ -114,7 +120,12 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
 
   useQueueEvents(queueId, {
     onEvent: (event) => {
-      if (event.type === 'ticket_joined' || event.type === 'ticket_next' || event.type === 'ticket_skipped') {
+      if (
+        event.type === 'ticket_joined' ||
+        event.type === 'ticket_next' ||
+        event.type === 'ticket_skipped' ||
+        event.type === 'counter_updated'
+      ) {
         scheduleReload(event.queue_id);
       } else if (event.type === 'queue_closed') {
         closedRef.current?.();
@@ -128,33 +139,47 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     },
   });
 
-  const next = useCallback(async (counterId = 0) => {
+  /** Nomor yang sedang dilayani counter ini menurut tampilan perangkat; 0 bila counter kosong. */
+  const expectedServing = useCallback(
+    () => deriveQueueView(tickets, counterId).current?.ticket.id ?? 0,
+    [tickets, counterId],
+  );
+
+  /** Menangani hasil aksi counter: 409 COUNTER_STATE_CHANGED memuat ulang diam-diam dan memberi pemberitahuan. */
+  const settleCounter = useCallback(
+    async (r: Result<unknown>, onOk: () => void, onError: (message: string) => void) => {
+      if (queueId === null) return;
+      if (r.ok) {
+        setSyncNotice(undefined);
+        onOk();
+        await reload(queueId);
+      } else if (r.code === COUNTER_CHANGED) {
+        setSyncNotice(r.message);
+        await reload(queueId);
+      } else {
+        onError(r.message);
+      }
+    },
+    [queueId, reload],
+  );
+
+  const next = useCallback(async () => {
     if (queueId === null) return;
     setNextLoading(true);
     setNextError(undefined);
-    const r = await run(() => nextTicket(queueId, counterId));
-    if (r.ok) {
-      armRecall();
-      await reload(queueId);
-    } else {
-      setNextError(r.message);
-    }
+    const r = await run(() => nextTicket(queueId, counterId, expectedServing()));
+    await settleCounter(r, armRecall, setNextError);
     setNextLoading(false);
-  }, [queueId, reload, armRecall]);
+  }, [queueId, counterId, expectedServing, settleCounter, armRecall]);
 
   const skip = useCallback(async () => {
     if (queueId === null) return;
     setSkipLoading(true);
     setSkipError(undefined);
-    const r = await run(() => skipTicket(queueId));
-    if (r.ok) {
-      armRecall();
-      await reload(queueId);
-    } else {
-      setSkipError(r.message);
-    }
+    const r = await run(() => skipTicket(queueId, counterId, expectedServing()));
+    await settleCounter(r, armRecall, setSkipError);
     setSkipLoading(false);
-  }, [queueId, reload, armRecall]);
+  }, [queueId, counterId, expectedServing, settleCounter, armRecall]);
 
   /**
    * Sisip customer ke posisi tertentu (US-10). Mengembalikan true bila berhasil, agar modal tahu kapan menutup diri.
@@ -180,20 +205,18 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     if (queueId === null) return;
     setRecallLoading(true);
     setRecallError(undefined);
-    const r = await run(() => recallTicket(queueId));
-    if (r.ok) {
-      armSkip();
-    } else {
-      setRecallError(r.message);
-    }
+    const r = await run(() => recallTicket(queueId, counterId, expectedServing()));
+    await settleCounter(r, armSkip, setRecallError);
     setRecallLoading(false);
-  }, [queueId, armSkip]);
+  }, [queueId, counterId, expectedServing, settleCounter, armSkip]);
 
-  const view = useMemo(() => deriveQueueView(tickets), [tickets]);
+  const view = useMemo(() => deriveQueueView(tickets, counterId), [tickets, counterId]);
 
   return {
     view,
     tickets,
+    counterId,
+    syncNotice,
     loading,
     error,
     next,

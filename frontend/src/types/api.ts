@@ -86,6 +86,8 @@ export type QueueStatus = {
   previous_number: number | null;
   /** ticket_number waiting pertama; null bila tidak ada yang menunggu. */
   next_number: number | null;
+  /** Semua counter yang sedang melayani, yang paling baru dipanggil dulu. */
+  serving?: { counter_id: number; counter_name: string | null; ticket_number: number }[];
 };
 
 /** Pengaturan nomor yang dilewati (Skip). `n` hanya terisi untuk `after_n`. */

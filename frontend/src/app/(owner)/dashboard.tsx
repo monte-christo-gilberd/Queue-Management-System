@@ -13,6 +13,8 @@ import { useMe } from '@/hooks/use-me';
 import { useQueueSpot } from '@/hooks/use-queue-spot';
 import { useMyTickets } from '@/hooks/use-my-tickets';
 import { isOnHome } from '@/lib/tickets';
+import { CounterBar } from '@/components/CounterBar';
+import { useCounterSession } from '@/hooks/use-counter-session';
 import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useTicketNote } from '@/hooks/use-ticket-note';
 import { useQueueList } from '@/hooks/use-queues';
@@ -142,7 +144,8 @@ function OwnerQueueBoard({
   onOpen: () => void;
   onQueueClosed: () => void;
 }) {
-  const board = useQueueBoard(queue.id, onQueueClosed);
+  const counters = useCounterSession(queue.id);
+  const board = useQueueBoard(queue.id, onQueueClosed, counters.counterId);
   // Catatan menempel ke nomor yang sedang dilayani; tanpa nomor itu, tombol catatan nonaktif.
   const note = useTicketNote(queue.id);
   const currentTicketId = board.view.current?.ticket.id ?? null;
@@ -161,11 +164,12 @@ function OwnerQueueBoard({
       status: 'waiting' as const,
     })),
   ];
-  const message = board.nextError ?? board.skipError ?? board.error;
+  const message = board.nextError ?? board.skipError ?? board.syncNotice ?? board.error;
 
   return (
     <>
       {message ? <Text className="text-[12px] font-normal text-live">{message}</Text> : null}
+      {board.error ? null : <CounterBar session={counters} tickets={board.tickets} prefix={queue.ticket_prefix} />}
       <QueueTimeline
         title={queue.queue_name}
         items={items}
