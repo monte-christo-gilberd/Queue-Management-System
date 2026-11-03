@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext } from '@playwright/test';
 
 import {
   action,
+  clickSkip,
   createQueueViaApi,
   joinQueueViaApi,
   nextViaApi,
@@ -79,7 +80,7 @@ test.describe('TS-11 Skip nomor (TC-09-02)', () => {
     await signInWithToken(page, session.token, session.displayName);
     await expect(page.getByText('A-001', { exact: true }).first()).toBeVisible();
 
-    await action(page, 'Skip').first().click();
+    await clickSkip(page);
 
     await expect(page.getByText('dilewati').first()).toBeVisible();
   });

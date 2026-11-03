@@ -2,6 +2,7 @@ import { useLocalSearchParams } from 'expo-router';
 
 import QueueLiveScreen from '@/components/QueueLiveScreen';
 import { useCounterSession } from '@/hooks/use-counter-session';
+import { useNextSkipConfirm } from '@/hooks/use-next-skip-confirm';
 import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useQueueDetail } from '@/hooks/use-queues';
 import type { TicketEntry } from '@/types/api';
@@ -20,18 +21,27 @@ export default function QueueLiveRoute() {
   const { previous, current, next } = board.view;
   // Nama counter hanya ditampilkan bila counter non-default memanggil (default disembunyikan backend).
   const counterName = current?.counterName ?? null;
+  const confirm = useNextSkipConfirm({
+    current: current ? formatTicketNumber(current.ticket.ticket_number, queue?.ticket_prefix) : null,
+    counterName: counters.counters.length > 1 ? counters.current?.name : undefined,
+    onNext: board.next,
+    onSkip: board.skip,
+  });
 
   return (
+    <>
     <QueueLiveScreen
       queueName={queue?.queue_name ?? 'Antrian'}
       counterName={counterName ?? undefined}
       previousTicket={toLive(previous, queue?.ticket_prefix)}
       currentTicket={toLive(current, queue?.ticket_prefix)}
       nextTicket={toLive(next, queue?.ticket_prefix)}
-      onSkip={() => void board.skip()}
-      onNext={() => void board.next()}
+      onSkip={confirm.requestSkip}
+      onNext={confirm.requestNext}
       onMenuItemPress={handleOwnerMenuItemPress}
     />
+    {confirm.modal}
+    </>
   );
 }
 

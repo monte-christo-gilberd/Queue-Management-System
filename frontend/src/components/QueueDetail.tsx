@@ -15,6 +15,7 @@ import { AppButton } from "@/components/ui/AppButton";
 import { Icon } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FormField } from "@/components/ui/FormField";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { ModalCard } from "@/components/ui/ModalCard";
 import { MySpotCard } from "@/components/MySpotCard";
 import { AppendNoteRow, TimelineList, type TimelineItem } from "@/components/QueueTimeline";
@@ -292,22 +293,18 @@ export default function QueueDetail({
         />
       ) : null}
 
-      <ModalCard visible={removeTarget !== null} onRequestClose={() => setRemoveTarget(null)}>
-        <Text className="text-[20px] font-extrabold text-foreground">Hapus {removeTarget?.number} dari antrian?</Text>
-        <Text className="text-[13px] text-muted">
-          Customer dikeluarkan dari antrian dan tidak dikembalikan. Nomor berikutnya naik bila nomor ini sedang dilayani.
-        </Text>
-        <AppButton
-          label="Ya, Hapus"
-          variant="dark"
-          loading={removeLoading}
-          onPress={() => {
-            if (removeTarget) onRemoveTicket?.(removeTarget.id);
-            setRemoveTarget(null);
-          }}
-        />
-        <AppButton label="Batal" variant="outline" onPress={() => setRemoveTarget(null)} />
-      </ModalCard>
+      <ConfirmModal
+        visible={removeTarget !== null}
+        title={`Hapus ${removeTarget?.number ?? ''} dari antrian?`}
+        message="Customer dikeluarkan dari antrian dan tidak dikembalikan. Nomor berikutnya naik bila nomor ini sedang dilayani."
+        confirmLabel="Ya, Hapus"
+        loading={removeLoading}
+        onConfirm={() => {
+          if (removeTarget) onRemoveTicket?.(removeTarget.id);
+          setRemoveTarget(null);
+        }}
+        onCancel={() => setRemoveTarget(null)}
+      />
 
       <ModalCard visible={closeConfirmOpen} onRequestClose={() => setCloseConfirmOpen(false)}>
         <Text className="text-[20px] font-extrabold text-foreground">Tutup antrian ini?</Text>

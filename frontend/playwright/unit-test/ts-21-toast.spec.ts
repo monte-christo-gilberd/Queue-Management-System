@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
-import { action, createQueueViaApi, signInWithToken, subscribedOwnerSession, uniqueName } from './support';
+import { action, clickNext, createQueueViaApi, signInWithToken, subscribedOwnerSession, uniqueName } from './support';
 
 const EMPTY_QUEUE_ERROR = 'Tidak ada yang menunggu di antrian ini';
 
@@ -21,7 +21,7 @@ test.describe('TS-21 Toast galat', () => {
   test('TC-21-01 Galat tampil sebagai toast dan bisa ditutup dengan tombol ×', async ({ page, request }) => {
     await openEmptyQueue(request, page);
 
-    await action(page, 'NEXT').click();
+    await clickNext(page, 'NEXT');
     const toast = page.getByRole('alert').filter({ hasText: EMPTY_QUEUE_ERROR });
     await expect(toast).toBeVisible();
 
@@ -32,7 +32,7 @@ test.describe('TS-21 Toast galat', () => {
   test('TC-21-02 Toast hilang sendiri setelah sekitar 5 detik', async ({ page, request }) => {
     await openEmptyQueue(request, page);
 
-    await action(page, 'NEXT').click();
+    await clickNext(page, 'NEXT');
     const toast = page.getByRole('alert').filter({ hasText: EMPTY_QUEUE_ERROR });
     await expect(toast).toBeVisible();
     // Masih tampil sebelum 5 detik, lalu hilang tanpa diklik.
@@ -49,7 +49,7 @@ test.describe('TS-21 Toast galat', () => {
     await card.getByRole('radio', { name: /Mundur N nomor/ }).click();
     await card.getByRole('textbox').first().fill('0');
     await card.getByText('SIMPAN PENGATURAN').click();
-    await action(page, 'NEXT').click();
+    await clickNext(page, 'NEXT');
 
     const first = page.getByRole('alert').filter({ hasText: 'Jumlah nomor harus angka 1 atau lebih' });
     const second = page.getByRole('alert').filter({ hasText: EMPTY_QUEUE_ERROR });
@@ -65,9 +65,9 @@ test.describe('TS-21 Toast galat', () => {
   test('TC-21-04 Galat yang sama tidak ditumpuk dua kali', async ({ page, request }) => {
     await openEmptyQueue(request, page);
 
-    await action(page, 'NEXT').click();
+    await clickNext(page, 'NEXT');
     await expect(page.getByRole('alert').filter({ hasText: EMPTY_QUEUE_ERROR })).toHaveCount(1);
-    await action(page, 'NEXT').click();
+    await clickNext(page, 'NEXT');
     await expect(page.getByRole('alert').filter({ hasText: EMPTY_QUEUE_ERROR })).toHaveCount(1);
   });
 });

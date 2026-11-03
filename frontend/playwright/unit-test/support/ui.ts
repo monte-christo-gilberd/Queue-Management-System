@@ -13,6 +13,21 @@ export function action(page: Page, label: string) {
   return page.getByText(label, { exact: true }).filter({ visible: true });
 }
 
+/**
+ * Klik Next lalu konfirmasi di popup (4.21). `label` mengikuti tombol di layar: "Next" di papan dashboard
+ * dan layar live, "NEXT" di detail antrian.
+ */
+export async function clickNext(page: Page, label = 'Next') {
+  await action(page, label).first().click();
+  await action(page, 'Ya, Lanjut').click();
+}
+
+/** Klik Skip lalu konfirmasi di popup (4.21). */
+export async function clickSkip(page: Page, label = 'Skip') {
+  await action(page, label).first().click();
+  await action(page, 'Ya, Lewati').click();
+}
+
 /** Input berdasarkan placeholder (mengikuti yang dipakai komponen form). */
 export function field(page: Page, placeholder: string) {
   // Halaman sebelumnya bisa masih ada di tumpukan navigasi (mis. login -> register), jadi ambil yang terlihat.

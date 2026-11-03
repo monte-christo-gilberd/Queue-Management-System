@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
-import { action, API_URL, closeQueueViaApi, openCreateQueue, createQueueViaApi, field, joinPathViaApi, joinTokenOf, loginViaApi, WEB_URL } from './support';
+import { action, clickNext, API_URL, closeQueueViaApi, openCreateQueue, createQueueViaApi, field, joinPathViaApi, joinTokenOf, loginViaApi, WEB_URL } from './support';
 
 /**
  * TS-10 — Skenario antrian end-to-end dengan akun seed (db/scripts/reset_seed_dev.sql).
@@ -176,7 +176,7 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
   test('TC-10-08 Dashboard menampilkan antrian A; Next pada antrian kosong menampilkan pesan', async () => {
     await owner.page.goto(`${WEB_URL}/dashboard`);
     await expect(owner.page.getByText(NAME_A, { exact: true })).toBeVisible();
-    await action(owner.page, 'Next').click();
+    await clickNext(owner.page);
     await expect(owner.page.getByText('Tidak ada yang menunggu di antrian ini')).toBeVisible();
   });
 
@@ -273,7 +273,7 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
     await expect(ticketCard(u1.page)).toContainText('A-001');
 
     await owner.page.goto(`${WEB_URL}/dashboard`);
-    await action(owner.page, 'Next').click();
+    await clickNext(owner.page);
     await expect(owner.page.getByText('sedang dilayani', { exact: true })).toBeVisible();
 
     await expect(rowValue(u1.page, 'Sedang dilayani')).toHaveText('A-001', { timeout: 15_000 });
@@ -284,7 +284,7 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
   });
 
   test('TC-10-17 Next kedua: A-002 dilayani, A-001 menjadi sudah dilayani', async () => {
-    await action(owner.page, 'Next').click();
+    await clickNext(owner.page);
     await expect(rowValue(u2.page, 'Sedang dilayani')).toHaveText('A-002', { timeout: 15_000 });
     await expect(ticketCard(u2.page)).toContainText('Sedang dilayani');
     await expect(ticketCard(u1.page)).toContainText('Sudah dilayani', { timeout: 15_000 });

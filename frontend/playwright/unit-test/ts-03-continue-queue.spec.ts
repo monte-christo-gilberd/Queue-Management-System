@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 
 import {
   action,
+  clickNext,
   createQueueViaApi,
   joinQueueViaApi,
   registerAccount,
@@ -46,7 +47,7 @@ test.describe('TS-03 Melanjutkan antrian (owner)', () => {
   test('TC-03-01 Next pada antrian kosong', async ({ page, request }) => {
     await openOwnerDashboardWithNewQueue(page, request, 0);
 
-    await action(page, 'Next').first().click();
+    await clickNext(page);
 
     await expect(page.getByText('Tidak ada yang menunggu di antrian ini')).toBeVisible();
     await expect(page.getByText(/sedang dilayani/)).toHaveCount(0);
@@ -55,16 +56,17 @@ test.describe('TS-03 Melanjutkan antrian (owner)', () => {
   test('TC-03-02 Next memajukan nomor yang dilayani', async ({ page, request }) => {
     await openOwnerDashboardWithNewQueue(page, request, 2);
 
-    await action(page, 'Next').first().click();
+    await clickNext(page);
 
     await expect(servingMarker(page, 1)).toBeVisible();
     await expect(page.getByText(ticketLabel(2), { exact: true }).first()).toBeVisible();
   });
 
-  test('TC-03-03 Klik ganda tidak memajukan dua nomor', async ({ page, request }) => {
+  test('TC-03-03 Klik ganda pada tombol konfirmasi tidak memajukan dua nomor', async ({ page, request }) => {
     await openOwnerDashboardWithNewQueue(page, request, 3);
 
-    await action(page, 'Next').first().dblclick();
+    await action(page, 'Next').first().click();
+    await action(page, 'Ya, Lanjut').dblclick();
 
     await expect(servingMarker(page, 1)).toBeVisible();
     await page.waitForTimeout(1000);
@@ -75,7 +77,7 @@ test.describe('TS-03 Melanjutkan antrian (owner)', () => {
     await openOwnerDashboardWithNewQueue(page, request, 3);
 
     for (const n of [1, 2, 3]) {
-      await action(page, 'Next').first().click();
+      await clickNext(page);
       await expect(servingMarker(page, n)).toBeVisible();
     }
   });

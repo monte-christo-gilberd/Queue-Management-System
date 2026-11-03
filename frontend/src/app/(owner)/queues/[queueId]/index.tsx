@@ -8,6 +8,7 @@ import type { TimelineItem } from '@/components/QueueTimeline';
 import ResponsiveScreenLayout from '@/components/layout/ResponsiveScreenLayout';
 import { CounterBar } from '@/components/CounterBar';
 import { useCounterSession } from '@/hooks/use-counter-session';
+import { useNextSkipConfirm } from '@/hooks/use-next-skip-confirm';
 import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useTicketNote } from '@/hooks/use-ticket-note';
 import { AppendNoteModal } from '@/components/ui/AppendNoteModal';
@@ -99,6 +100,12 @@ function QueueDetailEditor({
           current: t.status === 'currently_served',
         }));
   const currentNumber = board.view.current ? formatTicketNumber(board.view.current.ticket.ticket_number, queue.ticket_prefix) : null;
+  const confirm = useNextSkipConfirm({
+    current: currentNumber,
+    counterName: counters.counters.length > 1 ? counters.current?.name : undefined,
+    onNext: board.next,
+    onSkip: board.skip,
+  });
 
   async function save() {
     const name = queueName.trim();
@@ -155,9 +162,9 @@ function QueueDetailEditor({
       removeLoading={board.removeLoading}
       timeline={timeline}
       currentNumber={currentNumber}
-      onSkip={() => void board.skip()}
+      onSkip={confirm.requestSkip}
       skipLoading={board.skipLoading}
-      onNext={() => void board.next()}
+      onNext={confirm.requestNext}
       onRecall={() => void board.recall()}
       recallDisabled={!board.recallReady}
       recallLoading={board.recallLoading}
@@ -198,6 +205,7 @@ function QueueDetailEditor({
       closing={closing}
       onOpenNote={currentTicketId !== null ? () => void note.open(currentTicketId) : undefined}
     />
+    {confirm.modal}
     <AppendNoteModal
       visible={note.visible}
       onCancel={note.close}
