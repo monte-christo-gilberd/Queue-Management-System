@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useQueueEvents } from '@/hooks/use-queue-events';
 import { describeQueueError } from '@/lib/queue-errors';
-import { listTickets, nextTicket, recallTicket, skipTicket } from '@/lib/tickets';
+import { listTickets, nextTicket, recallTicket, removeTicket, skipTicket } from '@/lib/tickets';
 import type { Ticket } from '@/types/api';
 import { deriveQueueView } from '@/utils/queue-view';
 
@@ -36,6 +36,8 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
   const [nextError, setNextError] = useState<string>();
   const [skipLoading, setSkipLoading] = useState(false);
   const [skipError, setSkipError] = useState<string>();
+  const [removeLoading, setRemoveLoading] = useState(false);
+  const [removeError, setRemoveError] = useState<string>();
   const [recallLoading, setRecallLoading] = useState(false);
   const [recallError, setRecallError] = useState<string>();
   // Setelah Next/Skip: tombol Panggil ulang menggantikan Skip (mati 3 detik). Setelah dipanggil ulang,
@@ -112,7 +114,13 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
 
   useQueueEvents(queueId, {
     onEvent: (event) => {
-      if (event.type === 'ticket_joined' || event.type === 'ticket_next' || event.type === 'ticket_skipped') {
+      if (
+        event.type === 'ticket_joined' ||
+        event.type === 'ticket_next' ||
+        event.type === 'ticket_skipped' ||
+        event.type === 'ticket_cancelled' ||
+        event.type === 'ticket_removed'
+      ) {
         scheduleReload(event.queue_id);
       } else if (event.type === 'queue_closed') {
         closedRef.current?.();
@@ -154,6 +162,20 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     setSkipLoading(false);
   }, [queueId, reload, armRecall]);
 
+  /** Hapus nomor customer dari antrian (4.10). Backend no-op bila nomor itu sudah tidak aktif. */
+  const remove = useCallback(async (ticketId: number) => {
+    if (queueId === null) return;
+    setRemoveLoading(true);
+    setRemoveError(undefined);
+    const r = await run(() => removeTicket(queueId, ticketId));
+    if (r.ok) {
+      await reload(queueId);
+    } else {
+      setRemoveError(r.message);
+    }
+    setRemoveLoading(false);
+  }, [queueId, reload]);
+
   const recall = useCallback(async () => {
     if (queueId === null) return;
     setRecallLoading(true);
@@ -180,6 +202,9 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     skip,
     skipLoading,
     skipError,
+    remove,
+    removeLoading,
+    removeError,
     recall,
     recallLoading,
     recallReady,

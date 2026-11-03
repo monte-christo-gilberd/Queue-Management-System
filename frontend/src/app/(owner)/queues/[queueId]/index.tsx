@@ -14,6 +14,7 @@ import { useSkipSettings } from '@/hooks/use-skip-settings';
 import { SkipSettingsCard } from '@/components/SkipSettingsCard';
 import { useQueueDetail } from '@/hooks/use-queues';
 import { describeQueueError } from '@/lib/queue-errors';
+import { canRemoveTicket } from '@/lib/tickets';
 import { closeQueue, updateQueue } from '@/lib/queues';
 import { useAuthStore } from '@/store/authStore';
 import type { Queue } from '@/types/api';
@@ -85,6 +86,16 @@ function QueueDetailEditor({
   // Catatan menempel ke nomor yang sedang dilayani; tanpa nomor itu, tombol catatan nonaktif.
   const note = useTicketNote(queue.id);
   const currentTicketId = board.view.current?.ticket.id ?? null;
+  // Nomor yang boleh dihapus owner (4.10). Antrian yang sudah ditutup tidak menawarkan aksi ini.
+  const removableTickets = queue.status === 'closed'
+    ? []
+    : board.tickets
+        .filter(canRemoveTicket)
+        .map((t) => ({
+          id: t.id,
+          number: formatTicketNumber(t.ticket_number, queue.ticket_prefix),
+          current: t.status === 'currently_served',
+        }));
   const currentNumber = board.view.current ? formatTicketNumber(board.view.current.ticket.ticket_number, queue.ticket_prefix) : null;
 
   async function save() {
@@ -134,7 +145,10 @@ function QueueDetailEditor({
       onChangeTicketPrefix={setTicketPrefix}
       onSave={save}
       saving={saving}
-      errorMessage={errorMessage ?? board.nextError ?? board.skipError ?? board.recallError ?? board.error}
+      errorMessage={errorMessage ?? board.nextError ?? board.skipError ?? board.recallError ?? board.removeError ?? board.error}
+      removableTickets={removableTickets}
+      onRemoveTicket={(ticketId) => void board.remove(ticketId)}
+      removeLoading={board.removeLoading}
       timeline={timeline}
       currentNumber={currentNumber}
       onSkip={() => void board.skip()}
