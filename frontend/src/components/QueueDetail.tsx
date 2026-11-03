@@ -13,7 +13,6 @@ import { useThemeColor } from "@/hooks/use-theme-mode";
 import { AppButton } from "@/components/ui/AppButton";
 import { Icon } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { AppendNoteModal } from "@/components/ui/AppendNoteModal";
 import { FormField } from "@/components/ui/FormField";
 import { ModalCard } from "@/components/ui/ModalCard";
 import { MySpotCard } from "@/components/MySpotCard";
@@ -50,8 +49,8 @@ export type QueueDetailProps = {
   showRecall?: boolean;
   skipDisabled?: boolean;
   nextLoading?: boolean;
-  /** TODO: backend belum mendukung ini (catatan antrian) */
-  onSubmitNote?: (note: string) => void;
+  /** Buka popup catatan untuk nomor yang sedang dilayani (popup dirender route). */
+  onOpenNote?: () => void;
 
   /** Slot kartu QR (dirender route dari `useQueueQR`). */
   qrCard?: React.ReactNode;
@@ -88,7 +87,7 @@ export default function QueueDetail({
   showRecall = false,
   skipDisabled = false,
   nextLoading = false,
-  onSubmitNote,
+  onOpenNote,
   qrCard,
   skipSettingsCard,
   onCloseQueue,
@@ -98,8 +97,7 @@ export default function QueueDetail({
   const isClosed = queue.status === "closed";
   const avatarColor = useThemeColor("avatar");
 
-  // State tampilan murni: popup catatan dan popup konfirmasi tutup.
-  const [noteOpen, setNoteOpen] = useState(false);
+  // State tampilan murni: popup daftar tiket dan popup konfirmasi tutup.
   const [ticketsOpen, setTicketsOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
@@ -163,7 +161,7 @@ export default function QueueDetail({
           />
 
           <View className="rounded-[20px] bg-dark p-3 dark:border dark:border-line">
-            <AppendNoteRow onNote={() => setNoteOpen(true)} />
+            <AppendNoteRow onNote={onOpenNote} />
           </View>
         </View>
 
@@ -251,14 +249,6 @@ export default function QueueDetail({
         <AppButton label="Batal" variant="outline" onPress={() => setCloseConfirmOpen(false)} />
       </ModalCard>
 
-      <AppendNoteModal
-        visible={noteOpen}
-        onCancel={() => setNoteOpen(false)}
-        onSubmit={(note) => {
-          onSubmitNote?.(note);
-          setNoteOpen(false);
-        }}
-      />
     </ResponsiveScreenLayout>
   );
 }

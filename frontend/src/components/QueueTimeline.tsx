@@ -85,7 +85,7 @@ export function AppendNoteRow({ onNote }: { onNote?: () => void }) {
     >
       <View className="gap-0.5">
         <Text className="text-[14px] font-bold text-white">Append Note</Text>
-        <Text className="text-[12px] text-[#6b6b6b]">Tambahkan catatan untuk antrian ini</Text>
+        <Text className="text-[12px] text-[#6b6b6b]">Catatan untuk nomor saat ini</Text>
       </View>
       <Text className="text-[22px] font-bold text-primary">+</Text>
     </Pressable>

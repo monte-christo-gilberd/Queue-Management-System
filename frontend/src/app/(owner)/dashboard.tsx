@@ -14,6 +14,7 @@ import { useQueueSpot } from '@/hooks/use-queue-spot';
 import { useMyTickets } from '@/hooks/use-my-tickets';
 import { isOnHome } from '@/lib/tickets';
 import { useQueueBoard } from '@/hooks/use-queue-board';
+import { useTicketNote } from '@/hooks/use-ticket-note';
 import { useQueueList } from '@/hooks/use-queues';
 import { describeQueueError } from '@/lib/queue-errors';
 import { createQueue } from '@/lib/queues';
@@ -142,7 +143,9 @@ function OwnerQueueBoard({
   onQueueClosed: () => void;
 }) {
   const board = useQueueBoard(queue.id, onQueueClosed);
-  const [noteOpen, setNoteOpen] = useState(false);
+  // Catatan menempel ke nomor yang sedang dilayani; tanpa nomor itu, tombol catatan nonaktif.
+  const note = useTicketNote(queue.id);
+  const currentTicketId = board.view.current?.ticket.id ?? null;
   const { previous, current, skipped, next, upcoming } = board.view;
 
   const items: TimelineItem[] = [
@@ -168,16 +171,20 @@ function OwnerQueueBoard({
         items={items}
         onSkip={() => void board.skip()}
         onNext={() => void board.next()}
-        onNote={() => setNoteOpen(true)}
+        onNote={currentTicketId !== null ? () => void note.open(currentTicketId) : undefined}
         onOpen={onOpen}
         nextLoading={board.nextLoading}
         skipLoading={board.skipLoading}
       />
       <AppendNoteModal
-        visible={noteOpen}
-        onCancel={() => setNoteOpen(false)}
-        // TODO: backend belum mendukung catatan antrian; isi catatan belum disimpan.
-        onSubmit={() => setNoteOpen(false)}
+        visible={note.visible}
+        onCancel={note.close}
+        onSubmit={(text) => void note.save(text)}
+        initialNote={note.initialNote}
+        hasNote={note.hasNote}
+        loading={note.loading}
+        saving={note.saving}
+        errorMessage={note.errorMessage}
       />
     </>
   );

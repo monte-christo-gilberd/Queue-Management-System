@@ -179,6 +179,20 @@ Error: 400 `BAD_REQUEST` (mode tidak dikenal, N atau `max_returns` < 1), 402 `SU
 ### POST /api/v1/queues/:queue_id/recall
 Owner memanggil ulang nomor yang sedang dilayani. Hanya push ke pemiliknya (status tidak berubah). Aktif 3 detik setelah nomor dipanggil (Next/Skip) dan hanya sekali per pemanggilan. Error 409: `NOTHING_TO_RECALL`, `RECALL_TOO_SOON`, `ALREADY_RECALLED`. Bukan owner antrian: 404.
 
+### GET /api/v1/queues/:queue_id/tickets/:ticket_id/note
+Catatan owner untuk satu nomor tiket. Hanya owner antrian. Dipakai saat popup Append Note dibuka, supaya catatan yang sudah ada terisi lebih dulu.
+
+200: `{ "data": { "ticket_id": 121, "note": "...", "created_at": "...", "updated_at": "..." } }`. Nomor tanpa catatan: `note` = null dan tanggalnya null (bukan 404).
+Error: 404 `NOT_FOUND` (bukan owner, atau tiket bukan milik antrian ini).
+
+### PUT /api/v1/queues/:queue_id/tickets/:ticket_id/note
+Membuat catatan bila belum ada, atau menimpanya bila sudah ada (maksimal satu catatan per nomor). Body `{ "note": "..." }`. Spasi di awal dan akhir dipangkas.
+
+201: catatan baru dibuat. 200: catatan lama ditimpa. Respons sama seperti GET.
+Error: 400 `BAD_REQUEST` (catatan kosong setelah dipangkas, atau lebih dari 1000 karakter; catatan lama tidak berubah), 404 `NOT_FOUND` (bukan owner, atau tiket bukan milik antrian ini).
+
+Catatan tidak pernah ikut dalam respons tiket dan tidak terlihat oleh customer.
+
 ### Web Push (perlu login)
 - `GET /api/v1/push/public-key` → `{ public_key }` (kunci VAPID publik).
 - `POST /api/v1/push/subscribe` body `{ endpoint, keys: { p256dh, auth } }`; endpoint wajib `https`, 400 bila tidak. Endpoint yang sama dipindah ke user yang sedang login.

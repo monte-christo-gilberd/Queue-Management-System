@@ -76,7 +76,7 @@ Tabel yang sudah dipakai backend:
 | `queues` | Antrian (nama, deskripsi, status, pemilik) |
 | `tickets` | Tiket: nomor, `sort_key`, status, waktu selesai |
 
-Tabel yang sudah ada di skema tetapi belum dipakai backend: `payments`, `queue_settings`, `counters`, `ticket_notes`, `queue_history`. Tabel-tabel ini disiapkan untuk fitur
+Tabel yang sudah ada di skema tetapi belum dipakai backend: `payments`, `queue_settings`, `counters`, `queue_history`. (`ticket_notes` sudah dipakai, lihat endpoint catatan di `api-contract.md`.) Tabel-tabel ini disiapkan untuk fitur
 yang belum dibangun (lihat bagian 7).
 
 Batasan penting di `tickets`:
@@ -239,7 +239,7 @@ Backend: `POST /queues/:id/recall` (`tickets.recalled_at`, 3 detik, sekali per p
 Yang belum ada di backend (lihat product overview):
 - Pembatalan oleh customer, hapus customer oleh owner.
 - Counter kustom (kini satu counter default otomatis per antrian, disembunyikan di UI), penyisipan di posisi tertentu, antrian ulang (requeue).
-- Layar tampilan publik, ekspor riwayat (CSV/Excel), catatan antrian, Google login.
+- Layar tampilan publik, ekspor riwayat (CSV/Excel), Google login.
 - Dihapus dari produk (31 Okt 2026): `registration_limit`, batas harian QR, batas riwayat, dan penghapusan permanen (riwayat selalu ada).
 - Pembayaran langganan, verifikasi email, lupa password.
 

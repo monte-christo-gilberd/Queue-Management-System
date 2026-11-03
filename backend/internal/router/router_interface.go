@@ -42,7 +42,13 @@ type SSEHandler interface {
 	ServeSSE(c *gin.Context)
 }
 
+type NoteHandler interface {
+	Get(c *gin.Context)
+	Save(c *gin.Context)
+}
+
 type AppRouter struct {
+	noteHandler    NoteHandler
 	pushHandler    PushHandler
 	ticketHandler  TicketHandler
 	userHandler    UserHandler

@@ -12,6 +12,7 @@ import (
 	"qms/internal/model"
 	"qms/internal/repository"
 	"qms/internal/service"
+	"sync"
 	"testing"
 	"time"
 
@@ -849,4 +850,50 @@ func TestRejoin_AndCloseQueue_AgainstPostgres(t *testing.T) {
 	for _, tk := range completed {
 		assert.True(t, tk.CompletedAt.Valid, "tiket %d harus punya completed_at", tk.TicketNumber)
 	}
+}
+
+// Catatan per nomor tiket: GET tanpa catatan, upsert membuat lalu menimpa di tempat, dan
+// tiket di antrian lain ditolak. Upsert paralel tetap menghasilkan satu baris.
+func TestNoteRepository_UpsertAgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "note-o@b.c", time.Now().Add(time.Hour))
+	customer := seedUser(t, db, "note-c@b.c")
+	q := createQueue(t, db, owner, "Notes")
+	other := createQueue(t, db, owner, "Notes lain")
+	tk := joinTicket(t, db, q.ID, customer)
+	repo := repository.NewNoteRepository(db)
+
+	got, err := repo.GetNote(ctx, q.ID, tk.ID)
+	require.NoError(t, err)
+	assert.False(t, got.Note.Valid, "belum ada catatan: note null")
+
+	created, err := repo.UpsertNote(ctx, q.ID, tk.ID, owner, "pertama")
+	require.NoError(t, err)
+	assert.True(t, created.Created)
+	assert.Equal(t, "pertama", created.Note.String)
+
+	edited, err := repo.UpsertNote(ctx, q.ID, tk.ID, owner, "kedua")
+	require.NoError(t, err)
+	assert.False(t, edited.Created, "upsert kedua menimpa baris yang sama")
+	assert.Equal(t, "kedua", edited.Note.String)
+	assert.True(t, edited.UpdatedAt.Valid, "updated_at terisi saat edit")
+
+	_, err = repo.UpsertNote(ctx, other.ID, tk.ID, owner, "antrian salah")
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+	_, err = repo.GetNote(ctx, other.ID, tk.ID)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = repo.UpsertNote(ctx, q.ID, tk.ID, owner, "paralel")
+		}()
+	}
+	wg.Wait()
+	var rows int
+	require.NoError(t, db.GetContext(ctx, &rows, `SELECT COUNT(*) FROM ticket_notes WHERE ticket_id = $1`, tk.ID))
+	assert.Equal(t, 1, rows, "upsert paralel tetap satu baris")
 }

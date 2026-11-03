@@ -81,7 +81,7 @@ Dibuka dari Dashboard (ketuk judul antrian) atau dari Daftar Antrian. Layout dua
 | QR antrian | QR digambar di frontend dari `join_url`, mode statis/dinamis, hitung mundur, salin tautan, ganti kode (statis) |
 | Tautan join | Tautan `<origin>/join?t=<token>` berasal dari backend (tombol salin di kartu QR) |
 | SKIP / NEXT | Keduanya berfungsi. SKIP melewati nomor yang dilayani lalu memanggil berikutnya; nomor yang dilewati tampil "dilewati" atau kembali Menunggu sesuai pengaturan "Saat nomor dilewati" (dihapus, mundur ke belakang, mundur N nomor; ada batas pengembalian per nomor) |
-| Append Note | Popup catatan. Belum tersambung ke backend |
+| Append Note | Popup catatan untuk nomor yang sedang dilayani. Dibuka dengan catatan yang sudah ada (GET), simpan membuat atau menimpa (PUT). Tombol nonaktif bila belum ada nomor yang dilayani |
 | Tampilan customer | Nomor yang sedang dilayani (tanpa posisi sebelum/sesudah) |
 | Daftar tiket | Ketuk kartu tampilan customer untuk membuka semua tiket antrian |
 | Nama dan deskripsi | Ubah lalu SIMPAN (PUT) |

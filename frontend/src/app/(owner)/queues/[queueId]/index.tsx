@@ -7,6 +7,8 @@ import { QueueQRCard } from '@/components/QueueQRCard';
 import type { TimelineItem } from '@/components/QueueTimeline';
 import ResponsiveScreenLayout from '@/components/layout/ResponsiveScreenLayout';
 import { useQueueBoard } from '@/hooks/use-queue-board';
+import { useTicketNote } from '@/hooks/use-ticket-note';
+import { AppendNoteModal } from '@/components/ui/AppendNoteModal';
 import { useQueueQR } from '@/hooks/use-queue-qr';
 import { useSkipSettings } from '@/hooks/use-skip-settings';
 import { SkipSettingsCard } from '@/components/SkipSettingsCard';
@@ -80,6 +82,9 @@ function QueueDetailEditor({
       status: t.id === currentId || t.status === 'currently_served' ? 'current' : t.status === 'completed' ? 'done' : t.status,
     }];
   });
+  // Catatan menempel ke nomor yang sedang dilayani; tanpa nomor itu, tombol catatan nonaktif.
+  const note = useTicketNote(queue.id);
+  const currentTicketId = board.view.current?.ticket.id ?? null;
   const currentNumber = board.view.current ? formatTicketNumber(board.view.current.ticket.ticket_number, queue.ticket_prefix) : null;
 
   async function save() {
@@ -116,6 +121,7 @@ function QueueDetailEditor({
   }
 
   return (
+    <>
     <QueueDetail
       shell={{ userName }}
       onMenuItemPress={handleOwnerMenuItemPress}
@@ -168,6 +174,18 @@ function QueueDetailEditor({
       }
       onCloseQueue={close}
       closing={closing}
+      onOpenNote={currentTicketId !== null ? () => void note.open(currentTicketId) : undefined}
     />
+    <AppendNoteModal
+      visible={note.visible}
+      onCancel={note.close}
+      onSubmit={(text) => void note.save(text)}
+      initialNote={note.initialNote}
+      hasNote={note.hasNote}
+      loading={note.loading}
+      saving={note.saving}
+      errorMessage={note.errorMessage}
+    />
+    </>
   );
 }

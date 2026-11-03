@@ -13,6 +13,8 @@ setup-domain.md
 setup-waf-wifi.md
 plan-setelah-live.md
 plan-migrasi.md
+keputusan.md
+plan-cancel-remove.md
 .env.prod
 
 features/

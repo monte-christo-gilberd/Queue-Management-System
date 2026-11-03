@@ -27,6 +27,12 @@ func NewAppRouter(
 	return app
 }
 
+// WithNotes memasang endpoint catatan per nomor tiket (opsional; tanpa ini rute /note tidak ada).
+func (a *AppRouter) WithNotes(h NoteHandler) *AppRouter {
+	a.noteHandler = h
+	return a
+}
+
 // WithPush memasang endpoint Web Push (opsional; tanpa ini rute /push tidak ada).
 func (a *AppRouter) WithPush(h PushHandler) *AppRouter {
 	a.pushHandler = h
@@ -72,6 +78,9 @@ func SetupRouter(
 		queues,
 		router.sseHandler,
 	)
+	if router.noteHandler != nil {
+		registerNoteRoutes(queues, router.noteHandler)
+	}
 
 	if router.pushHandler != nil {
 		push := v1.Group("/push")

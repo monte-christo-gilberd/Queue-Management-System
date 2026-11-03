@@ -15,6 +15,7 @@ var (
 	ErrSubscriptionInactive = errors.New("subscription is inactive")
 	ErrQueueClosed          = errors.New("queue is closed")
 	ErrAlreadyJoined        = errors.New("user already joined this queue")
+	ErrInvalidNote          = errors.New("invalid note")
 
 	// Error QR: token join tidak valid/tidak ada atau qr-service gagal dipakai.
 	ErrQRInvalid           = errors.New("qr token invalid")
