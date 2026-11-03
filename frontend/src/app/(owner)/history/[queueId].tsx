@@ -19,6 +19,8 @@ export default function HistoryDetailRoute() {
       hasMore={history.hasMore}
       loadingMore={history.loadingMore}
       onLoadMore={() => void history.loadMore()}
+      onExport={(format) => void history.exportAs(format)}
+      exporting={history.exporting}
       errorMessage={history.error}
       onMenuItemPress={handleOwnerMenuItemPress}
     />

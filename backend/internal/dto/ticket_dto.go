@@ -84,6 +84,33 @@ func NewTicketEvent(t model.Ticket) TicketEvent {
 	}
 }
 
+// OwnerTicketResponse: tiket untuk daftar tiket milik owner. Menambah catatan owner di atas TicketResponse.
+// Hanya endpoint owner yang boleh memakainya; respons untuk customer tetap TicketResponse tanpa catatan.
+type OwnerTicketResponse struct {
+	TicketResponse
+	Note          *string    `json:"note"`
+	NoteUpdatedAt *time.Time `json:"note_updated_at"`
+}
+
+func NewOwnerTicketResponse(t model.Ticket) OwnerTicketResponse {
+	out := OwnerTicketResponse{TicketResponse: NewTicketResponse(t)}
+	if t.Note.Valid {
+		out.Note = &t.Note.String
+	}
+	if t.NoteUpdatedAt.Valid {
+		out.NoteUpdatedAt = &t.NoteUpdatedAt.Time
+	}
+	return out
+}
+
+func NewOwnerTicketResponses(tickets []model.Ticket) []OwnerTicketResponse {
+	out := make([]OwnerTicketResponse, 0, len(tickets))
+	for _, t := range tickets {
+		out = append(out, NewOwnerTicketResponse(t))
+	}
+	return out
+}
+
 func NewTicketResponses(tickets []model.Ticket) []TicketResponse {
 	out := make([]TicketResponse, 0, len(tickets))
 	for _, t := range tickets {

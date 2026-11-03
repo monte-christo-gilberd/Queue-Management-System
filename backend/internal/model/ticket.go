@@ -23,4 +23,8 @@ type Ticket struct {
 	CalledAt        sql.NullTime `db:"called_at"`
 	// Kapan owner memanggil ulang nomor ini; NULL = belum (boleh sekali per pemanggilan).
 	RecalledAt sql.NullTime `db:"recalled_at"`
+	// Catatan owner untuk nomor ini. Hanya diisi oleh ListByQueue (daftar tiket owner); query lain
+	// tidak memilih kolomnya. Jangan pernah dikirim ke customer: NewTicketResponse sengaja tidak memuatnya.
+	Note          sql.NullString `db:"note"`
+	NoteUpdatedAt sql.NullTime   `db:"note_updated_at"`
 }

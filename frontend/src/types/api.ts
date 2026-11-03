@@ -32,6 +32,9 @@ export type Ticket = {
   called_counter_id?: number | null;
   /** Nama counter yang memanggil tiket ini; null bila counter default disembunyikan. */
   called_counter_name?: string | null;
+  /** Catatan owner; hanya ada di daftar tiket owner (GET /queues/:id/tickets), tidak pernah di respons customer. */
+  note?: string | null;
+  note_updated_at?: string | null;
   /** Waktu tiket dipanggil (null bila belum dipanggil). */
   called_at?: string | null;
 };

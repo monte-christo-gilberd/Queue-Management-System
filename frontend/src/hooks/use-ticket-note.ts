@@ -7,10 +7,11 @@ import { getTicketNote, saveTicketNote } from '@/lib/notes';
  * Catatan satu nomor tiket untuk popup Append Note.
  *
  * Setiap `open` mengambil catatan yang sudah ada dulu, lalu popup terisi dengan catatan itu.
- * `save` membuat catatan bila belum ada, atau menimpanya bila sudah ada (ditentukan backend).
+ * `save` membuat catatan bila belum ada, atau menimpanya bila sudah ada (ditentukan backend), lalu memanggil
+ * `onSaved` (mis. untuk memuat ulang daftar tiket yang menampilkan catatan).
  * Tiket dikunci saat `open`, jadi pindahnya nomor yang dilayani saat popup terbuka tidak mengubah target.
  */
-export function useTicketNote(queueId: number) {
+export function useTicketNote(queueId: number, onSaved?: () => void) {
   const [ticketId, setTicketId] = useState<number | null>(null);
   const [initialNote, setInitialNote] = useState('');
   const [hasNote, setHasNote] = useState(false);
@@ -40,6 +41,7 @@ export function useTicketNote(queueId: number) {
     try {
       await saveTicketNote(queueId, ticketId, text);
       setTicketId(null);
+      onSaved?.();
     } catch (e) {
       setErrorMessage(describeQueueError(e));
     } finally {

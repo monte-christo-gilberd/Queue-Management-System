@@ -561,7 +561,7 @@ func (h *TicketHandler) List(
 		gin.H{
 			"action":   "list_tickets",
 			"queue_id": queueID,
-			"tickets":  dto.NewTicketResponses(tickets),
+			"tickets":  dto.NewOwnerTicketResponses(tickets), // memuat catatan owner; endpoint ini owner saja
 		},
 	)
 }

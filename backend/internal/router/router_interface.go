@@ -60,6 +60,7 @@ type NoteHandler interface {
 type HistoryHandler interface {
 	ListQueues(c *gin.Context)
 	GetQueue(c *gin.Context)
+	Export(c *gin.Context)
 }
 
 type AppRouter struct {

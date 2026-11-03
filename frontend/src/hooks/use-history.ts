@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { getHistoryQueue, listHistoryQueues } from '@/lib/history';
+import { ApiError } from '@/lib/api';
+import { downloadHistoryExport, getHistoryQueue, listHistoryQueues, type ExportFormat } from '@/lib/history';
 import { describeQueueError } from '@/lib/queue-errors';
 import type { HistoryQueue, HistoryTicket } from '@/types/api';
 
@@ -65,6 +66,7 @@ export function useHistoryQueue(queueId: number | null) {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(queueId !== null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -101,5 +103,22 @@ export function useHistoryQueue(queueId: number | null) {
     setLoadingMore(false);
   }, [queueId, nextCursor, loadingMore]);
 
-  return { queue, tickets, loading, loadingMore, hasMore: nextCursor !== null, loadMore, error };
+  /** Unduh seluruh nomor antrian sebagai CSV atau Excel. Galat (termasuk native yang belum didukung) masuk `error`. */
+  const exportAs = useCallback(
+    async (format: ExportFormat) => {
+      if (!queue || exporting) return;
+      setExporting(format);
+      try {
+        await downloadHistoryExport(queue, format);
+        setError(undefined);
+      } catch (e) {
+        setError(e instanceof Error && !(e instanceof ApiError) ? e.message : describeQueueError(e));
+      } finally {
+        setExporting(null);
+      }
+    },
+    [queue, exporting],
+  );
+
+  return { queue, tickets, loading, loadingMore, hasMore: nextCursor !== null, loadMore, exporting, exportAs, error };
 }

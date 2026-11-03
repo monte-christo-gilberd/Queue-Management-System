@@ -120,6 +120,42 @@ func (s *HistoryService) GetQueue(
 	return detail, nil
 }
 
+// exportPageSize: jumlah tiket per halaman saat ekspor. Antrian besar dibaca bertahap, bukan sekaligus.
+const exportPageSize = 500
+
+// TicketSink menerima nomor antrian per halaman saat ekspor (dipenuhi oleh export.Sink).
+type TicketSink interface {
+	WriteTickets(tickets []model.HistoryTicket) error
+}
+
+// ExportQueue memastikan requester adalah owner antrian yang sudah ditutup, dan mengembalikan ringkasannya
+// (untuk nama berkas dan awalan nomor). Bukan owner, masih aktif, atau tidak ada: ErrNotFound.
+func (s *HistoryService) ExportQueue(ctx context.Context, ownerID, queueID int64) (model.HistoryQueue, error) {
+	return s.repository.GetClosedQueue(ctx, ownerID, queueID)
+}
+
+// StreamTickets membaca seluruh nomor antrian, urut nomor naik, per halaman, dan menyerahkannya ke sink.
+// Dipanggil setelah ExportQueue memeriksa kepemilikan.
+func (s *HistoryService) StreamTickets(ctx context.Context, queueID int64, sink TicketSink) error {
+	after := 0
+	for {
+		page, err := s.repository.ListQueueTickets(ctx, queueID, after, exportPageSize)
+		if err != nil {
+			return err
+		}
+		if len(page) == 0 {
+			return nil
+		}
+		if err := sink.WriteTickets(page); err != nil {
+			return err
+		}
+		if len(page) < exportPageSize {
+			return nil
+		}
+		after = page[len(page)-1].TicketNumber
+	}
+}
+
 func clampLimit(limit, def, max int) int {
 	switch {
 	case limit <= 0:

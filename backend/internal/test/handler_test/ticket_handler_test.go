@@ -117,7 +117,8 @@ func TestListTickets_OK(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"action":"list_tickets","queue_id":5,"tickets":[{
 		"id":1,"queue_id":5,"ticket_number":1,"sort_key":0,"user_id":0,"status":"waiting",
 		"skip_count":0,"last_notified_at":null,"created_at":"0001-01-01T00:00:00Z",
-		"completed_at":null,"cancelled_at":null,"called_counter_id":null,"called_counter_name":null,"called_at":null}]}}`, w.Body.String())
+		"completed_at":null,"cancelled_at":null,"called_counter_id":null,"called_counter_name":null,"called_at":null,
+		"note":null,"note_updated_at":null}]}}`, w.Body.String())
 	assert.Equal(t, []string{"waiting", "skipped", "completed"}, svc.statuses)
 }
 

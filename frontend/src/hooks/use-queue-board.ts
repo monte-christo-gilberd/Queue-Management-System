@@ -230,11 +230,17 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
 
   const view = useMemo(() => deriveQueueView(tickets, counterId), [tickets, counterId]);
 
+  /** Muat ulang daftar tiket sekarang (mis. setelah catatan disimpan). */
+  const refresh = useCallback(async () => {
+    if (queueId !== null) await reload(queueId);
+  }, [queueId, reload]);
+
   return {
     view,
     tickets,
     counterId,
     syncNotice,
+    refresh,
     loading,
     error,
     next,

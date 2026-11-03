@@ -88,7 +88,8 @@ function QueueDetailEditor({
     }];
   });
   // Catatan menempel ke nomor yang sedang dilayani; tanpa nomor itu, tombol catatan nonaktif.
-  const note = useTicketNote(queue.id);
+  // Setelah catatan disimpan, daftar tiket dimuat ulang supaya pratinjau catatan ikut berubah.
+  const note = useTicketNote(queue.id, () => void board.refresh());
   const currentTicketId = board.view.current?.ticket.id ?? null;
   // Nomor yang boleh dihapus owner (4.10). Antrian yang sudah ditutup tidak menawarkan aksi ini.
   const removableTickets =
@@ -98,7 +99,12 @@ function QueueDetailEditor({
           id: t.id,
           number: formatTicketNumber(t.ticket_number, queue.ticket_prefix),
           current: t.status === 'currently_served',
+          hasNote: Boolean(t.note),
         }));
+  // Semua nomor yang punya catatan owner, apa pun statusnya (catatan tetap ada walau nomor dibatalkan atau dihapus).
+  const noteItems = board.tickets
+    .filter((t) => t.note)
+    .map((t) => ({ id: t.id, number: formatTicketNumber(t.ticket_number, queue.ticket_prefix), note: t.note as string }));
   const currentNumber = board.view.current ? formatTicketNumber(board.view.current.ticket.ticket_number, queue.ticket_prefix) : null;
   const confirm = useNextSkipConfirm({
     current: currentNumber,
@@ -158,6 +164,8 @@ function QueueDetailEditor({
       // Antrian tidak bisa diakses (board.error): tab counter ikut disembunyikan agar pesan galat tidak ganda.
       counterBar={board.error ? undefined : <CounterBar session={counters} tickets={board.tickets} prefix={queue.ticket_prefix} />}
       removableTickets={removableTickets}
+      noteItems={noteItems}
+      onOpenTicketNote={(ticketId) => void note.open(ticketId)}
       onRemoveTicket={(ticketId) => void board.remove(ticketId)}
       removeLoading={board.removeLoading}
       timeline={timeline}

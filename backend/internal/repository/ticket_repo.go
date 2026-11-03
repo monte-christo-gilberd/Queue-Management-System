@@ -455,28 +455,33 @@ func (r *TicketRepository) ListByQueue(
 
 	tickets := []model.Ticket{}
 
+	// Catatan owner ikut lewat LEFT JOIN supaya daftar tiket bisa menampilkannya tanpa satu query per nomor.
+	// Semua kolom diberi alias t. karena ticket_notes juga punya created_at.
 	const selectTickets = `
 		SELECT
-			id,
-			queue_id,
-			ticket_number,
-			sort_key,
-			user_id,
-			status,
-			skip_count,
-			last_notified_at,
-			created_at,
-			completed_at,
-			cancelled_at,
-			COALESCE(called_counter_id, 0) AS called_counter_id,
-			called_at
-		FROM tickets
-		WHERE queue_id = ?
+			t.id,
+			t.queue_id,
+			t.ticket_number,
+			t.sort_key,
+			t.user_id,
+			t.status,
+			t.skip_count,
+			t.last_notified_at,
+			t.created_at,
+			t.completed_at,
+			t.cancelled_at,
+			COALESCE(t.called_counter_id, 0) AS called_counter_id,
+			t.called_at,
+			n.note,
+			n.updated_at AS note_updated_at
+		FROM tickets t
+		LEFT JOIN ticket_notes n ON n.ticket_id = t.id
+		WHERE t.queue_id = ?
 	`
 	const orderAndLimit = `
 		ORDER BY 
-			sort_key ASC, 
-			id ASC
+			t.sort_key ASC, 
+			t.id ASC
 		LIMIT 500
 	`
 
@@ -496,7 +501,7 @@ func (r *TicketRepository) ListByQueue(
 
 	// sqlx.In memperluas slice menjadi daftar placeholder; Rebind mengubah ? menjadi $1, $2, ...
 	query, args, err := sqlx.In(
-		selectTickets+` AND status IN (?)`+orderAndLimit,
+		selectTickets+` AND t.status IN (?)`+orderAndLimit,
 		queueID,
 		statuses,
 	)

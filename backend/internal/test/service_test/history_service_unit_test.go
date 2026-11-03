@@ -180,3 +180,77 @@ func TestHistory_GetQueue_InvalidCursor(t *testing.T) {
 		assert.ErrorIs(t, err, apperror.ErrInvalidCursor, cursor)
 	}
 }
+
+// captureSink mencatat ukuran tiap halaman yang diterima.
+type captureSink struct {
+	batches []int
+	numbers []int
+	failAt  int
+}
+
+func (c *captureSink) WriteTickets(tickets []model.HistoryTicket) error {
+	if c.failAt > 0 && len(c.batches)+1 == c.failAt {
+		return assertErr
+	}
+	c.batches = append(c.batches, len(tickets))
+	for _, t := range tickets {
+		c.numbers = append(c.numbers, t.TicketNumber)
+	}
+	return nil
+}
+
+var assertErr = apperror.ErrRetryExhausted
+
+func manyTickets(n int) []model.HistoryTicket {
+	out := make([]model.HistoryTicket, n)
+	for i := range out {
+		out[i] = model.HistoryTicket{TicketID: int64(i + 1), TicketNumber: i + 1}
+	}
+	return out
+}
+
+func TestHistory_ExportQueue_OwnerAndClosedOnly(t *testing.T) {
+	svc := service.NewHistoryService(&fakeHistoryRepo{owner: 7, queues: closedQueues(1)})
+
+	q, err := svc.ExportQueue(context.Background(), 7, 100)
+	require.NoError(t, err)
+	assert.Equal(t, int64(100), q.ID)
+
+	_, err = svc.ExportQueue(context.Background(), 99, 100)
+	assert.ErrorIs(t, err, apperror.ErrNotFound, "bukan owner")
+	_, err = svc.ExportQueue(context.Background(), 7, 555)
+	assert.ErrorIs(t, err, apperror.ErrNotFound, "tidak ada atau masih aktif")
+}
+
+func TestHistory_StreamTickets_PagesThroughEverythingInOrder(t *testing.T) {
+	svc := service.NewHistoryService(&fakeHistoryRepo{owner: 7, queues: closedQueues(1), tickets: manyTickets(1200)})
+	sink := &captureSink{}
+
+	require.NoError(t, svc.StreamTickets(context.Background(), 100, sink))
+	assert.Equal(t, []int{500, 500, 200}, sink.batches, "dibaca per halaman 500, bukan sekaligus")
+	require.Len(t, sink.numbers, 1200)
+	for i, n := range sink.numbers {
+		require.Equal(t, i+1, n, "urut nomor naik tanpa duplikat atau lompatan")
+	}
+}
+
+func TestHistory_StreamTickets_ExactMultipleAndEmpty(t *testing.T) {
+	svc := service.NewHistoryService(&fakeHistoryRepo{owner: 7, queues: closedQueues(1), tickets: manyTickets(1000)})
+	sink := &captureSink{}
+	require.NoError(t, svc.StreamTickets(context.Background(), 100, sink))
+	assert.Equal(t, []int{500, 500}, sink.batches, "kelipatan pas: tidak ada halaman kosong tambahan yang ditulis")
+
+	empty := service.NewHistoryService(&fakeHistoryRepo{owner: 7, queues: closedQueues(1)})
+	none := &captureSink{}
+	require.NoError(t, empty.StreamTickets(context.Background(), 100, none))
+	assert.Empty(t, none.batches)
+}
+
+func TestHistory_StreamTickets_SinkErrorStops(t *testing.T) {
+	svc := service.NewHistoryService(&fakeHistoryRepo{owner: 7, queues: closedQueues(1), tickets: manyTickets(1200)})
+	sink := &captureSink{failAt: 2}
+
+	err := svc.StreamTickets(context.Background(), 100, sink)
+	assert.Error(t, err)
+	assert.Equal(t, []int{500}, sink.batches)
+}

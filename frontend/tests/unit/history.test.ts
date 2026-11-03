@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { historyQueuePath, historyQueuesPath } from '@/lib/history';
+import { exportFileName, exportHistoryPath, historyQueuePath, historyQueuesPath } from '@/lib/history';
 import type { HistoryQueue, HistoryTicket } from '@/types/api';
 import { outcomeLabel, summarizeHistoryQueue, ticketTimeline } from '@/utils/history';
 
@@ -63,4 +63,18 @@ test('baris waktu nomor: selalu ada bergabung; selesai dan dibatalkan hanya bila
   assert.match(done[1], /^Selesai /);
   const cancelled = ticketTimeline({ ...base, outcome: 'cancelled', cancelled_at: '2026-11-03T03:00:00Z' });
   assert.match(cancelled[1], /^Dibatalkan /);
+});
+
+test('path ekspor memuat id antrian dan format', () => {
+  assert.equal(exportHistoryPath(54, 'csv'), '/api/v1/history/queues/54/export?format=csv');
+  assert.equal(exportHistoryPath(54, 'xlsx'), '/api/v1/history/queues/54/export?format=xlsx');
+});
+
+test('nama berkas ekspor sama dengan aturan backend', () => {
+  assert.equal(exportFileName('Loket Utama!', 54, 'csv'), 'riwayat-loket-utama-54.csv');
+  assert.equal(exportFileName('  Kasir  ', 7, 'xlsx'), 'riwayat-kasir-7.xlsx');
+  assert.equal(exportFileName('日本語', 9, 'csv'), 'riwayat-antrian-9.csv');
+  assert.equal(exportFileName('', 1, 'csv'), 'riwayat-antrian-1.csv');
+  assert.ok(exportFileName('abc '.repeat(40), 3, 'csv').length <= 'riwayat-'.length + 40 + '-3.csv'.length);
+  assert.doesNotMatch(exportFileName('../../etc/passwd', 1, 'csv'), /[/"\n;]/);
 });

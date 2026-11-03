@@ -9,4 +9,5 @@ func registerHistoryRoutes(
 ) {
 	rg.GET("/queues", historyH.ListQueues)
 	rg.GET("/queues/:queue_id", historyH.GetQueue)
+	rg.GET("/queues/:queue_id/export", historyH.Export)
 }

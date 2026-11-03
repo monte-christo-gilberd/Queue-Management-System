@@ -66,6 +66,27 @@ async function parseBody(res: Response): Promise<unknown> {
   }
 }
 
+/**
+ * Mengunduh berkas (bukan JSON) dengan token auth. Kegagalan tetap dilempar sebagai `ApiError` dari body JSON
+ * galat backend. Dipakai ekspor riwayat.
+ */
+export async function apiDownload(path: string): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, { headers });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Tidak dapat terhubung ke server');
+  }
+  if (!res.ok) {
+    if (res.status === 401 && authToken) onUnauthorized?.();
+    throw toApiError(res.status, await parseBody(res));
+  }
+  return res.blob();
+}
+
 export function toApiError(status: number, body: unknown): ApiError {
   const err = (body as { error?: { code?: string; message?: string } } | null)?.error;
   return new ApiError(status, err?.code ?? 'UNKNOWN', err?.message ?? `Permintaan gagal (${status})`);

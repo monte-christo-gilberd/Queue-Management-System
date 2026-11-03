@@ -16,6 +16,7 @@ import { Icon } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FormField } from "@/components/ui/FormField";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { notePreview } from "@/utils/notes";
 import { ModalCard } from "@/components/ui/ModalCard";
 import { MySpotCard } from "@/components/MySpotCard";
 import { AppendNoteRow, TimelineList, type TimelineItem } from "@/components/QueueTimeline";
@@ -55,7 +56,11 @@ export type QueueDetailProps = {
   /** Buka popup catatan untuk nomor yang sedang dilayani (popup dirender route). */
   onOpenNote?: () => void;
   /** Nomor yang boleh dihapus owner (waiting atau sedang dilayani), tampil di daftar tiket. */
-  removableTickets?: { id: number; number: string; current: boolean }[];
+  removableTickets?: { id: number; number: string; current: boolean; hasNote?: boolean }[];
+  /** Nomor yang punya catatan owner (semua status), tampil di bagian Catatan pada daftar tiket. */
+  noteItems?: { id: number; number: string; note: string }[];
+  /** Buka popup catatan untuk nomor tertentu dari daftar tiket (isi lama dimuat dulu oleh route). */
+  onOpenTicketNote?: (ticketId: number) => void;
   /** Hapus nomor customer dari antrian (4.10). Dipanggil setelah owner mengonfirmasi. */
   onRemoveTicket?: (ticketId: number) => void;
   removeLoading?: boolean;
@@ -105,6 +110,8 @@ export default function QueueDetail({
   nextLoading = false,
   onOpenNote,
   removableTickets = [],
+  noteItems = [],
+  onOpenTicketNote,
   onRemoveTicket,
   removeLoading = false,
   onInsert,
@@ -253,6 +260,26 @@ export default function QueueDetail({
             description="Tiket akan muncul di sini setelah customer bergabung ke antrian."
           />
         )}
+        {noteItems.length > 0 ? (
+          <View className="gap-2">
+            <Text className="text-[13px] font-semibold text-muted">Catatan</Text>
+            {noteItems.map((n) => (
+              <Pressable
+                key={n.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit catatan ${n.number}`}
+                onPress={() => onOpenTicketNote?.(n.id)}
+                className="gap-0.5 rounded-card border border-line p-3"
+              >
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-[15px] font-extrabold text-foreground">{n.number}</Text>
+                  <Text className="text-[12px] text-muted">Edit</Text>
+                </View>
+                <Text className="text-[13px] text-foreground">{notePreview(n.note)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         {removableTickets.length > 0 ? (
           <View className="gap-2">
             <Text className="text-[13px] font-semibold text-muted">Hapus nomor dari antrian</Text>
@@ -262,11 +289,22 @@ export default function QueueDetail({
                   <Text className="text-[15px] font-extrabold text-foreground">{t.number}</Text>
                   <Text className="text-[12px] text-muted">{t.current ? 'Sedang dilayani' : 'Menunggu'}</Text>
                 </View>
-                <AppButton
-                  label="Hapus"
-                  variant="outline"
-                  onPress={() => setRemoveTarget({ id: t.id, number: t.number })}
-                />
+                <View className="flex-row gap-2">
+                  {onOpenTicketNote ? (
+                    <AppButton
+                      label={t.hasNote ? "Edit catatan" : "Tambah catatan"}
+                      variant="outline"
+                      className="h-10"
+                      onPress={() => onOpenTicketNote(t.id)}
+                    />
+                  ) : null}
+                  <AppButton
+                    label="Hapus"
+                    variant="outline"
+                    className="h-10"
+                    onPress={() => setRemoveTarget({ id: t.id, number: t.number })}
+                  />
+                </View>
               </View>
             ))}
           </View>

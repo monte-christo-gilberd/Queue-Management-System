@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 
 import { useIsWide } from '@/hooks/use-is-wide';
+import type { ExportFormat } from '@/lib/history';
 import type { HistoryQueue, HistoryTicket } from '@/types/api';
 import { cn } from '@/utils/cn';
 import { formatDateTime, formatTicketNumber } from '@/utils/format';
@@ -23,6 +24,9 @@ export type HistoryDetailProps = {
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
+  /** Unduh seluruh nomor antrian ini (CSV atau Excel). */
+  onExport?: (format: ExportFormat) => void;
+  exporting?: ExportFormat | null;
   errorMessage?: string;
 };
 
@@ -35,6 +39,8 @@ export default function HistoryDetail({
   hasMore = false,
   loadingMore = false,
   onLoadMore,
+  onExport,
+  exporting = null,
   errorMessage,
 }: HistoryDetailProps) {
   useErrorToast(errorMessage);
@@ -61,6 +67,27 @@ export default function HistoryDetail({
           <Text className="text-[13px] text-muted">{loading ? 'Memuat...' : '-'}</Text>
         )}
       </View>
+
+      {queue && onExport ? (
+        <View className="flex-row gap-3">
+          <AppButton
+            label="Ekspor CSV"
+            variant="outline"
+            className="flex-1"
+            loading={exporting === 'csv'}
+            disabled={exporting !== null}
+            onPress={() => onExport('csv')}
+          />
+          <AppButton
+            label="Ekspor Excel"
+            variant="outline"
+            className="flex-1"
+            loading={exporting === 'xlsx'}
+            disabled={exporting !== null}
+            onPress={() => onExport('xlsx')}
+          />
+        </View>
+      ) : null}
 
       {queue && tickets.length === 0 && !loading ? (
         <Text className="text-[13px] text-muted">Tidak ada nomor di antrian ini.</Text>
