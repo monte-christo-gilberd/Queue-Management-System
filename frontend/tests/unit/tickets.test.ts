@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { canCancelTicket, isOnHome, type MyTicket, validateInsertInput } from '@/lib/tickets';
+import { canCancelTicket, canRemoveTicket, isOnHome, type MyTicket, validateInsertInput } from '@/lib/tickets';
 
 function myTicket(overrides: Partial<MyTicket> = {}): MyTicket {
   return {
@@ -96,4 +96,13 @@ test('sisip: posisi harus bilangan bulat minimal 1', () => {
   assert.equal(validateInsertInput('budi', 2.5), 'Posisi harus bilangan bulat, minimal 1');
   assert.equal(validateInsertInput('budi', Number.NaN), 'Posisi harus bilangan bulat, minimal 1');
   assert.equal(validateInsertInput('budi', 3), null);
+});
+
+test('owner hanya bisa menghapus nomor waiting atau currently_served (4.10)', () => {
+  assert.equal(canRemoveTicket({ status: 'waiting' }), true);
+  assert.equal(canRemoveTicket({ status: 'currently_served' }), true);
+  assert.equal(canRemoveTicket({ status: 'completed' }), false);
+  assert.equal(canRemoveTicket({ status: 'skipped' }), false, 'sudah dilewati: no-op di backend');
+  assert.equal(canRemoveTicket({ status: 'cancelled' }), false);
+  assert.equal(canRemoveTicket({ status: 'deleted' }), false);
 });

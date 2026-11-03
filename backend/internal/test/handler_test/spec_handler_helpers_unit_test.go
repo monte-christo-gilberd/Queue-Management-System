@@ -209,6 +209,11 @@ func (s *specTicketSvc) InsertTicket(_ context.Context, queueID, requesterID int
 	return model.Ticket{}, nil
 }
 
+func (s *specTicketSvc) RemoveTicket(_ context.Context, queueID, requesterID, ticketID int64) (model.Ticket, error) {
+	s.record(queueID, requesterID)
+	return model.Ticket{}, nil
+}
+
 func (s *specTicketSvc) ListTickets(_ context.Context, queueID, requesterID int64, statuses []string) ([]model.Ticket, error) {
 	s.record(queueID, requesterID)
 	s.gotStatus = statuses

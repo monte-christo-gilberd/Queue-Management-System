@@ -53,6 +53,11 @@ export type QueueDetailProps = {
   nextLoading?: boolean;
   /** Buka popup catatan untuk nomor yang sedang dilayani (popup dirender route). */
   onOpenNote?: () => void;
+  /** Nomor yang boleh dihapus owner (waiting atau sedang dilayani), tampil di daftar tiket. */
+  removableTickets?: { id: number; number: string; current: boolean }[];
+  /** Hapus nomor customer dari antrian (4.10). Dipanggil setelah owner mengonfirmasi. */
+  onRemoveTicket?: (ticketId: number) => void;
+  removeLoading?: boolean;
   /** Sisip customer ke posisi tertentu (US-10). Mengembalikan true bila berhasil. */
   onInsert?: (identifier: string, position: number) => Promise<boolean>;
   insertLoading?: boolean;
@@ -98,6 +103,9 @@ export default function QueueDetail({
   skipDisabled = false,
   nextLoading = false,
   onOpenNote,
+  removableTickets = [],
+  onRemoveTicket,
+  removeLoading = false,
   onInsert,
   insertLoading = false,
   insertError,
@@ -117,6 +125,7 @@ export default function QueueDetail({
   const [ticketsOpen, setTicketsOpen] = useState(false);
   const [insertOpen, setInsertOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<{ id: number; number: string } | null>(null);
 
   return (
     <ResponsiveScreenLayout
@@ -243,6 +252,24 @@ export default function QueueDetail({
             description="Tiket akan muncul di sini setelah customer bergabung ke antrian."
           />
         )}
+        {removableTickets.length > 0 ? (
+          <View className="gap-2">
+            <Text className="text-[13px] font-semibold text-muted">Hapus nomor dari antrian</Text>
+            {removableTickets.map((t) => (
+              <View key={t.id} className="flex-row items-center justify-between rounded-card border border-line p-3">
+                <View>
+                  <Text className="text-[15px] font-extrabold text-foreground">{t.number}</Text>
+                  <Text className="text-[12px] text-muted">{t.current ? 'Sedang dilayani' : 'Menunggu'}</Text>
+                </View>
+                <AppButton
+                  label="Hapus"
+                  variant="outline"
+                  onPress={() => setRemoveTarget({ id: t.id, number: t.number })}
+                />
+              </View>
+            ))}
+          </View>
+        ) : null}
         {onInsert ? (
           <AppButton
             label="Sisip customer"
@@ -264,6 +291,23 @@ export default function QueueDetail({
           onSubmit={onInsert}
         />
       ) : null}
+
+      <ModalCard visible={removeTarget !== null} onRequestClose={() => setRemoveTarget(null)}>
+        <Text className="text-[20px] font-extrabold text-foreground">Hapus {removeTarget?.number} dari antrian?</Text>
+        <Text className="text-[13px] text-muted">
+          Customer dikeluarkan dari antrian dan tidak dikembalikan. Nomor berikutnya naik bila nomor ini sedang dilayani.
+        </Text>
+        <AppButton
+          label="Ya, Hapus"
+          variant="dark"
+          loading={removeLoading}
+          onPress={() => {
+            if (removeTarget) onRemoveTicket?.(removeTarget.id);
+            setRemoveTarget(null);
+          }}
+        />
+        <AppButton label="Batal" variant="outline" onPress={() => setRemoveTarget(null)} />
+      </ModalCard>
 
       <ModalCard visible={closeConfirmOpen} onRequestClose={() => setCloseConfirmOpen(false)}>
         <Text className="text-[20px] font-extrabold text-foreground">Tutup antrian ini?</Text>

@@ -55,6 +55,10 @@ func (s *stubTicketService) InsertTicket(context.Context, int64, int64, string, 
 	return model.Ticket{}, s.err
 }
 
+func (s *stubTicketService) RemoveTicket(context.Context, int64, int64, int64) (model.Ticket, error) {
+	return model.Ticket{}, s.err
+}
+
 func (s *stubTicketService) SkipTicket(context.Context, int64, int64, int64, *int64) (model.Ticket, error) {
 	return model.Ticket{}, s.nextErr
 }
@@ -93,6 +97,7 @@ func newListEngine(svc *stubTicketService) *gin.Engine {
 	e.POST("/join", h.Join)
 	e.POST("/queues/:queue_id/next", h.Next)
 	e.POST("/queues/:queue_id/cancel", h.Cancel)
+	e.POST("/queues/:queue_id/tickets/:ticket_id/remove", h.Remove)
 	e.POST("/queues/:queue_id/insert", h.Insert)
 	return e
 }
@@ -338,5 +343,35 @@ func TestInsert_RejectsBadInput(t *testing.T) {
 func TestInsert_BadQueueID(t *testing.T) {
 	w := doPostJSON(newListEngine(&stubTicketService{}), "/queues/abc/insert", `{"identifier":"budi","position":1}`)
 
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestRemove_ErrorMapping(t *testing.T) {
+	cases := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"ok", nil, http.StatusOK, ""},
+		{"not_found", apperror.ErrNotFound, http.StatusNotFound, "NOT_FOUND"},
+		{"queue_closed", apperror.ErrQueueClosed, http.StatusConflict, "QUEUE_CLOSED"},
+		{"internal", errors.New("db down"), http.StatusInternalServerError, "INTERNAL_ERROR"},
+	}
+	for _, c := range cases {
+		w := doPost(newListEngine(&stubTicketService{err: c.err}), "/queues/5/tickets/9/remove")
+
+		assert.Equal(t, c.status, w.Code, c.name)
+		if c.code != "" {
+			assert.Contains(t, w.Body.String(), `"`+c.code+`"`)
+		}
+	}
+}
+
+func TestRemove_BadIDs(t *testing.T) {
+	w := doPost(newListEngine(&stubTicketService{}), "/queues/abc/tickets/9/remove")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	w = doPost(newListEngine(&stubTicketService{}), "/queues/5/tickets/xyz/remove")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

@@ -109,6 +109,20 @@ export async function insertTicket(queueId: number, identifier: string, position
   });
 }
 
+/** Owner boleh menghapus nomor yang masih aktif di antrian (waiting atau currently_served), 4.10. */
+export function canRemoveTicket(ticket: { status: string }): boolean {
+  return ticket.status === 'waiting' || ticket.status === 'currently_served';
+}
+
+/**
+ * POST /api/v1/queues/:id/tickets/:ticket_id/remove — owner menghapus nomor customer (4.10).
+ * Status menjadi `deleted`, tanpa fallback; nomor yang sedang dilayani membuat nomor berikutnya naik
+ * di counter yang sama.
+ */
+export async function removeTicket(queueId: number, ticketId: number): Promise<Ticket> {
+  return apiFetch<Ticket>(`/api/v1/queues/${queueId}/tickets/${ticketId}/remove`, { method: 'POST' });
+}
+
 /** GET /api/v1/users/me/tickets — tiket saya (login diperlukan). */
 export async function listMyTickets(): Promise<MyTicket[]> {
   const data = await apiFetch<MyTicketsResponse>('/api/v1/users/me/tickets');

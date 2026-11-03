@@ -83,6 +83,7 @@ export function useTicketQueue(queueId: number) {
         event.type === 'ticket_next' ||
         event.type === 'ticket_skipped' ||
         event.type === 'ticket_cancelled' ||
+        event.type === 'ticket_removed' ||
         event.type === 'queue_closed' ||
         event.type === 'queue_updated'
       ) {

@@ -8,6 +8,7 @@ type TicketHandler interface {
 	Next(c *gin.Context)
 	Skip(c *gin.Context)
 	Cancel(c *gin.Context)
+	Remove(c *gin.Context)
 	Insert(c *gin.Context)
 	Recall(c *gin.Context)
 	List(c *gin.Context)

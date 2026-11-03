@@ -45,6 +45,12 @@ type TicketService interface {
 		queueID,
 		userID int64,
 	) (model.Ticket, error)
+	RemoveTicket(
+		ctx context.Context,
+		queueID,
+		requesterID,
+		ticketID int64,
+	) (model.Ticket, error)
 	InsertTicket(
 		ctx context.Context,
 		queueID,
@@ -402,6 +408,34 @@ func (h *TicketHandler) Insert(c *gin.Context) {
 		return
 	}
 	respondData(c, http.StatusCreated, dto.NewTicketResponse(ticket))
+}
+
+// Remove: POST /api/v1/queues/:queue_id/tickets/:ticket_id/remove — owner menghapus nomor customer (4.10).
+// Tiket sudah tidak aktif: 200 dengan keadaan tiket sekarang (no-op).
+func (h *TicketHandler) Remove(c *gin.Context) {
+	queueID, err := strconv.ParseInt(c.Param("queue_id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid queue id")
+		return
+	}
+	ticketID, err := strconv.ParseInt(c.Param("ticket_id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid ticket id")
+		return
+	}
+	ticket, err := h.service.RemoveTicket(c.Request.Context(), queueID, c.GetInt64("user_id"), ticketID)
+	if err != nil {
+		switch {
+		case errors.Is(err, apperror.ErrNotFound):
+			respondError(c, http.StatusNotFound, "NOT_FOUND", "queue or ticket not found")
+		case errors.Is(err, apperror.ErrQueueClosed):
+			respondError(c, http.StatusConflict, "QUEUE_CLOSED", "queue is closed")
+		default:
+			respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		}
+		return
+	}
+	respondData(c, http.StatusOK, dto.NewTicketResponse(ticket))
 }
 
 // Recall: POST /api/v1/queues/:queue_id/recall — owner memanggil ulang nomor yang sedang dilayani (push saja).

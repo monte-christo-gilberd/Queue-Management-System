@@ -48,7 +48,7 @@ export function useQueueSpot(queueId: number, onChanged?: () => void) {
 
   useQueueEvents(queueId, {
     onEvent: (event) => {
-      if (event.type === 'ticket_joined' || event.type === 'ticket_next' || event.type === 'ticket_skipped' || event.type === 'queue_closed') {
+      if (event.type === 'ticket_joined' || event.type === 'ticket_next' || event.type === 'ticket_skipped' || event.type === 'ticket_removed' || event.type === 'queue_closed') {
         scheduleReload();
         onChanged?.();
       }

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueueEvents } from '@/hooks/use-queue-events';
 import { ApiError } from '@/lib/api';
 import { describeInsertError, describeQueueError } from '@/lib/queue-errors';
-import { insertTicket, listTickets, nextTicket, recallTicket, skipTicket } from '@/lib/tickets';
+import { insertTicket, listTickets, nextTicket, recallTicket, removeTicket, skipTicket } from '@/lib/tickets';
 import type { Ticket } from '@/types/api';
 import { deriveQueueView } from '@/utils/queue-view';
 
@@ -42,6 +42,8 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
   const [nextError, setNextError] = useState<string>();
   const [skipLoading, setSkipLoading] = useState(false);
   const [skipError, setSkipError] = useState<string>();
+  const [removeLoading, setRemoveLoading] = useState(false);
+  const [removeError, setRemoveError] = useState<string>();
   const [insertLoading, setInsertLoading] = useState(false);
   const [insertError, setInsertError] = useState<string>();
   const [recallLoading, setRecallLoading] = useState(false);
@@ -124,6 +126,8 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
         event.type === 'ticket_joined' ||
         event.type === 'ticket_next' ||
         event.type === 'ticket_skipped' ||
+        event.type === 'ticket_cancelled' ||
+        event.type === 'ticket_removed' ||
         event.type === 'counter_updated'
       ) {
         scheduleReload(event.queue_id);
@@ -181,6 +185,20 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     setSkipLoading(false);
   }, [queueId, counterId, expectedServing, settleCounter, armRecall]);
 
+  /** Hapus nomor customer dari antrian (4.10). Backend no-op bila nomor itu sudah tidak aktif. */
+  const remove = useCallback(async (ticketId: number) => {
+    if (queueId === null) return;
+    setRemoveLoading(true);
+    setRemoveError(undefined);
+    const r = await run(() => removeTicket(queueId, ticketId));
+    if (r.ok) {
+      await reload(queueId);
+    } else {
+      setRemoveError(r.message);
+    }
+    setRemoveLoading(false);
+  }, [queueId, reload]);
+
   /**
    * Sisip customer ke posisi tertentu (US-10). Mengembalikan true bila berhasil, agar modal tahu kapan menutup diri.
    * Galat ditampilkan dengan kalimat khusus sisip (describeInsertError), bukan pesan aksi antrian umum.
@@ -225,6 +243,9 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     skip,
     skipLoading,
     skipError,
+    remove,
+    removeLoading,
+    removeError,
     recall,
     insert,
     insertLoading,

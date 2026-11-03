@@ -210,6 +210,20 @@ Error:
 
 Akun yang tiket lamanya sudah selesai boleh disisipkan lagi, dengan nomor baru.
 
+### POST /api/v1/queues/:queue_id/cancel
+Customer membatalkan nomornya sendiri (4.9). Login customer, tanpa body. Tiket aktif (`waiting` atau `currently_served`) milik user dari token dibatalkan; bila nomor itu sedang dilayani, waiting teratas naik ke `currently_served`. Nomor tidak dihapus: statusnya menjadi `cancelled`, dan user boleh bergabung lagi dengan nomor baru.
+
+200: objek tiket setelah dibatalkan (`status` = `"cancelled"`, `cancelled_at` terisi). Tanpa tiket aktif, atau sudah dibatalkan: 200 dengan keadaan tiket terakhir (no-op, klik ganda aman).
+Error: 404 `NOT_FOUND` (antrian tidak ada, atau user belum pernah punya tiket di antrian itu), 409 `QUEUE_CLOSED`.
+
+### POST /api/v1/queues/:queue_id/tickets/:ticket_id/remove
+Owner menghapus nomor customer dari antrian (4.10). Hanya owner antrian. Perilakunya seperti skip tanpa fallback: nomor keluar dari urutan tunggu dan tidak dikembalikan ke `waiting`; `skip_count` tidak naik. Nomor yang sedang dilayani membuat waiting teratas naik ke `currently_served`. Status akhirnya `deleted`, dan nomor itu tidak tampil di daftar `skipped`.
+
+200: objek tiket setelah dihapus (`status` = `"deleted"`). Tiket yang sudah tidak aktif (`skipped`, `cancelled`, `deleted`, `completed`): 200 dengan keadaan tiket sekarang (no-op).
+Error: 404 `NOT_FOUND` (bukan owner, atau tiket milik antrian lain), 409 `QUEUE_CLOSED`, 400 `BAD_REQUEST` (id tidak valid).
+
+Push ke customer untuk penghapusan belum ada; akan ditambahkan di pekerjaan berikutnya.
+
 ### Web Push (perlu login)
 - `GET /api/v1/push/public-key` → `{ public_key }` (kunci VAPID publik).
 - `POST /api/v1/push/subscribe` body `{ endpoint, keys: { p256dh, auth } }`; endpoint wajib `https`, 400 bila tidak. Endpoint yang sama dipindah ke user yang sedang login.
@@ -225,7 +239,7 @@ Error: 404 `NOT_FOUND` (bukan owner), 409 `NOTHING_TO_SKIP` (belum ada nomor yan
 ### GET /api/v1/queues/:queue_id/tickets
 Semua tiket antrian, urut `sort_key`. Hanya owner. Maksimal 500 baris.
 
-Query opsional: `status` (`waiting`, `currently_served`, `completed`, `cancelled`, `skipped`, `deleted`), boleh diulang atau dipisah koma. `deleted` belum ditulis kode mana pun dan selalu menghasilkan daftar kosong (bukan 400).
+Query opsional: `status` (`waiting`, `currently_served`, `completed`, `cancelled`, `skipped`, `deleted`), boleh diulang atau dipisah koma. `deleted` = nomor yang dihapus owner (4.10).
 
 200:
 ```json
@@ -370,6 +384,8 @@ data: {"type":"ticket_next","queue_id":122,"payload":{...},"ts":"2026-10-17T09:2
 | `ticket_joined` | Customer berhasil join (tiket baru) | TicketEvent |
 | `ticket_next` | Owner menekan Next | TicketEvent dengan `status` = `currently_served` |
 | `ticket_skipped` | Owner menekan Skip | TicketEvent dengan `status` akhir tiket (`skipped`, atau `waiting` bila dikembalikan); disusul `ticket_next` untuk nomor yang dipanggil |
+| `ticket_cancelled` | Customer membatalkan nomornya | TicketEvent dengan `status` = `cancelled`; disusul `ticket_next` bila nomor berikutnya naik |
+| `ticket_removed` | Owner menghapus nomor customer | TicketEvent dengan `status` = `deleted`; disusul `ticket_next` bila nomor berikutnya naik |
 | `queue_updated` | Nama atau deskripsi antrian diubah | `{ "queue_id": 122 }` |
 | `queue_closed` | Antrian ditutup | `{ "queue_id": 122 }` |
 | `queue_qr_updated` | Mode QR diubah atau token statis diganti | `{ "queue_id": 122 }` |
