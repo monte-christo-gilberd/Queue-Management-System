@@ -18,6 +18,10 @@ var (
 	ErrInvalidNote          = errors.New("invalid note")
 	ErrAmbiguousAccount     = errors.New("account identifier matches more than one account")
 	ErrInvalidPosition      = errors.New("position must be at least 1")
+	ErrInvalidCounterName   = errors.New("counter name must be 1-30 characters")
+	ErrDuplicateCounterName = errors.New("a counter with this name already exists")
+	ErrCounterLimit         = errors.New("a queue can have at most 10 counters")
+	ErrDefaultCounter       = errors.New("the default counter cannot be deleted")
 
 	// Error QR: token join tidak valid/tidak ada atau qr-service gagal dipakai.
 	ErrQRInvalid           = errors.New("qr token invalid")

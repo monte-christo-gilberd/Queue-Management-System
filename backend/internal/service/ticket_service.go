@@ -136,6 +136,18 @@ type TicketRepository interface {
 		queueID,
 		counterID int64,
 	) (model.Counter, error)
+	ServingOfCounter(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		queueID,
+		counterID int64,
+	) (model.Ticket, error)
+	ReturnToWaiting(
+		ctx context.Context,
+		tx *sqlx.Tx,
+		ticketID,
+		sortKey int64,
+	) error
 	CountWaitingBefore(
 		ctx context.Context,
 		queueID,
@@ -178,6 +190,8 @@ type QueueGuard interface {
 }
 
 var errNoAccountFinder = errors.New("ticket service: account finder is not configured")
+
+var errNoTicketReleaser = errors.New("counter service: ticket releaser is not configured")
 
 var errNoQueueGuard = errors.
 	New("ticket service: queue guard is not configured")
@@ -775,6 +789,29 @@ func (s *TicketService) requeueSortKey(
 		return s.backSortKey(ctx, tx, queueID)
 	}
 	return s.sortKeyAt(ctx, tx, queueID, settings.N+1)
+}
+
+// ReleaseCounterTicket melepas nomor yang sedang dilayani counter ini sebelum counter dihapus (4.11, D2): nomor
+// kembali ke posisi 1 urutan tunggu, skip_count tidak naik. Counter tanpa nomor yang dilayani: tidak ada yang
+// dilakukan. Dipanggil dalam transaksi penghapusan counter.
+func (s *TicketService) ReleaseCounterTicket(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID,
+	counterID int64,
+) error {
+	ticket, err := s.repository.ServingOfCounter(ctx, tx, queueID, counterID)
+	if errors.Is(err, apperror.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	sortKey, err := s.sortKeyAt(ctx, tx, queueID, 1)
+	if err != nil {
+		return err
+	}
+	return s.repository.ReturnToWaiting(ctx, tx, ticket.ID, sortKey)
 }
 
 // backSortKey: sort_key di paling belakang antrian.

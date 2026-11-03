@@ -850,6 +850,60 @@ func (r *TicketRepository) GetForUpdate(
 	return t, nil
 }
 
+// ServingOfCounter mengunci nomor yang sedang dilayani counter ini (FOR UPDATE). Tidak ada: ErrNotFound.
+func (r *TicketRepository) ServingOfCounter(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID,
+	counterID int64,
+) (model.Ticket, error) {
+	var t model.Ticket
+	const query = `
+		SELECT
+			id, queue_id, ticket_number, sort_key, user_id, status, skip_count,
+			last_notified_at, created_at, completed_at, cancelled_at, called_counter_id, called_at, recalled_at
+		FROM tickets
+		WHERE queue_id = $1 AND called_counter_id = $2 AND status = 'currently_served'
+		FOR UPDATE
+	`
+	err := tx.GetContext(ctx, &t, query, queueID, counterID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Ticket{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return model.Ticket{}, err
+	}
+	return t, nil
+}
+
+// ReturnToWaiting mengembalikan nomor yang sedang dilayani ke urutan tunggu dengan sort_key baru. Tidak menaikkan
+// skip_count (bukan skip); penanda panggilan dikosongkan. Trigger tidak memancarkan sinyal untuk perubahan ini.
+func (r *TicketRepository) ReturnToWaiting(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID,
+	sortKey int64,
+) error {
+	const query = `
+		UPDATE tickets
+		SET status = 'waiting', sort_key = $2,
+			called_counter_id = NULL, called_at = NULL, completed_at = NULL, recalled_at = NULL
+		WHERE id = $1 AND status = 'currently_served'
+	`
+	result, err := tx.ExecContext(ctx, query, ticketID, sortKey)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
+}
+
 // MarkDeleted menghapus nomor dari antrian atas perintah owner (4.10). Perilakunya seperti skip tanpa fallback:
 // status deleted, tidak dikembalikan ke waiting, dan skip_count tidak naik. called_at dipertahankan.
 func (r *TicketRepository) MarkDeleted(

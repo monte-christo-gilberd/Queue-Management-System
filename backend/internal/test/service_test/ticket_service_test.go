@@ -255,6 +255,24 @@ func (f *fakeTicketRepo) GetCounterByQueue(
 	return model.Counter{ID: 1, QueueID: queueID, Name: "Counter 1", IsDefault: true}, nil
 }
 
+func (f *fakeTicketRepo) ServingOfCounter(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	queueID,
+	counterID int64,
+) (model.Ticket, error) {
+	return model.Ticket{}, apperror.ErrNotFound // tidak dipakai di test ini
+}
+
+func (f *fakeTicketRepo) ReturnToWaiting(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	ticketID,
+	sortKey int64,
+) error {
+	return nil // tidak dipakai di test ini
+}
+
 func (f *fakeTicketRepo) GetCounter(
 	ctx context.Context,
 	queueID,

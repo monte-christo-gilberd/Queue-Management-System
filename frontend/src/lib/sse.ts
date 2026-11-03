@@ -13,6 +13,7 @@ export type QueueEventType =
   | 'ticket_next'
   | 'ticket_skipped'
   | 'ticket_cancelled'
+  | 'counter_updated'
   | 'queue_updated'
   | 'queue_closed'
   | 'queue_qr_updated';
@@ -29,6 +30,7 @@ const EVENT_TYPES: readonly QueueEventType[] = [
   'ticket_next',
   'ticket_skipped',
   'ticket_cancelled',
+  'counter_updated',
   'queue_updated',
   'queue_closed',
   'queue_qr_updated',

@@ -1081,3 +1081,56 @@ func TestTicketRepository_GetCounter_ScopedToQueue_AgainstPostgres(t *testing.T)
 	_, err = repo.GetCounter(ctx, q2.ID, own.ID)
 	assert.ErrorIs(t, err, apperror.ErrNotFound, "counter antrian lain harus ditolak")
 }
+
+// CRUD counter di Postgres: daftar dengan nomor yang dilayani, nama ganda ditolak sebagai ErrDuplicateCounterName,
+// dan nomor yang sedang dilayani counter bisa dilepas ke urutan tunggu.
+func TestCounterRepository_AgainstPostgres(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	owner := seedOwner(t, db, "cr-o@b.c", time.Now().Add(time.Hour))
+	customer := seedUser(t, db, "cr-c@b.c")
+	q := createQueue(t, db, owner, "Counter Repo")
+	counters := repository.NewCounterRepository(db)
+	tickets := repository.NewTicketRepository(db)
+	txRunner := database.NewSqlxTxRunner(db)
+
+	var second model.Counter
+	require.NoError(t, database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
+		var err error
+		second, err = counters.Insert(ctx, tx, q.ID, "Loket Dua")
+		return err
+	}))
+
+	// Duplikat nama antrian yang sama: ErrDuplicateCounterName, bukan galat mentah.
+	err := database.WithTx(ctx, db, func(tx *sqlx.Tx) error {
+		_, err := counters.Insert(ctx, tx, q.ID, "Loket Dua")
+		return err
+	})
+	assert.ErrorIs(t, err, apperror.ErrDuplicateCounterName)
+
+	tk := joinTicket(t, db, q.ID, customer)
+	require.NoError(t, txRunner.WithTx(ctx, func(tx *sqlx.Tx) error {
+		return tickets.MarkServing(ctx, tx, tk.ID, second.ID)
+	}))
+
+	listed, err := counters.ListWithServing(ctx, q.ID)
+	require.NoError(t, err)
+	require.Len(t, listed, 2)
+	assert.True(t, listed[0].IsDefault, "counter default dulu")
+	assert.True(t, listed[1].ServingNumber.Valid)
+	assert.Equal(t, int64(1), listed[1].ServingNumber.Int64)
+
+	// Nomor yang dilayani counter kedua dilepas ke urutan tunggu.
+	require.NoError(t, txRunner.WithTx(ctx, func(tx *sqlx.Tx) error {
+		serving, err := tickets.ServingOfCounter(ctx, tx, q.ID, second.ID)
+		if err != nil {
+			return err
+		}
+		assert.Equal(t, tk.ID, serving.ID)
+		return tickets.ReturnToWaiting(ctx, tx, serving.ID, 65536)
+	}))
+	waiting, err := tickets.ListByQueue(ctx, q.ID, []string{"waiting"})
+	require.NoError(t, err)
+	require.Len(t, waiting, 1)
+	assert.Equal(t, tk.ID, waiting[0].ID)
+}

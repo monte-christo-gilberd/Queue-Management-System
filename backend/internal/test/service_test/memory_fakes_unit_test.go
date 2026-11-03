@@ -186,6 +186,36 @@ func (m *memTicketRepo) MarkDeleted(_ context.Context, _ *sqlx.Tx, ticketID int6
 	return apperror.ErrNotFound
 }
 
+// ServingOfCounter: nomor yang sedang dilayani counter ini di antrian ini; tidak ada: ErrNotFound.
+func (m *memTicketRepo) ServingOfCounter(_ context.Context, _ *sqlx.Tx, queueID, counterID int64) (model.Ticket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.QueueID == queueID && t.Status == "currently_served" && t.CalledCounterID == counterID {
+			return *t, nil
+		}
+	}
+	return model.Ticket{}, apperror.ErrNotFound
+}
+
+// ReturnToWaiting: nomor yang sedang dilayani kembali ke waiting dengan sort_key baru; skip_count tidak naik.
+func (m *memTicketRepo) ReturnToWaiting(_ context.Context, _ *sqlx.Tx, ticketID, sortKey int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tickets {
+		if t.ID == ticketID && t.Status == "currently_served" {
+			t.Status = "waiting"
+			t.SortKey = sortKey
+			t.CalledCounterID = 0
+			t.CalledAt = sql.NullTime{}
+			t.CompletedAt = sql.NullTime{}
+			t.RecalledAt = sql.NullTime{}
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
 // GetForUpdate: tiket milik antrian ini; antrian lain atau id tidak dikenal = ErrNotFound.
 func (m *memTicketRepo) GetForUpdate(_ context.Context, _ *sqlx.Tx, queueID, ticketID int64) (model.Ticket, error) {
 	m.mu.Lock()

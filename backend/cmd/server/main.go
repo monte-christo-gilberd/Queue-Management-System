@@ -108,6 +108,11 @@ func main() {
 		WithQueueGuard(queueService)
 
 	appRouter.WithNotes(handler.NewNoteHandler(noteService))
+	counterService := service.
+		NewCounterService(repository.NewCounterRepository(db), txRunner, hub).
+		WithQueueGuard(queueService).
+		WithTicketReleaser(ticketService)
+	appRouter.WithCounters(handler.NewCounterHandler(counterService))
 
 	if cfg.VAPIDPublicKey != "" {
 		appRouter.WithPush(handler.NewPushHandler(

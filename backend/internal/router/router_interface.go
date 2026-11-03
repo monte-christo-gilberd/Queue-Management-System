@@ -44,12 +44,20 @@ type SSEHandler interface {
 	ServeSSE(c *gin.Context)
 }
 
+type CounterHandler interface {
+	List(c *gin.Context)
+	Create(c *gin.Context)
+	Rename(c *gin.Context)
+	Delete(c *gin.Context)
+}
+
 type NoteHandler interface {
 	Get(c *gin.Context)
 	Save(c *gin.Context)
 }
 
 type AppRouter struct {
+	counterHandler CounterHandler
 	noteHandler    NoteHandler
 	pushHandler    PushHandler
 	ticketHandler  TicketHandler

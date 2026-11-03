@@ -18,6 +18,7 @@ const (
 	EventTicketSkipped   = "ticket_skipped"
 	EventTicketCancelled = "ticket_cancelled"
 	EventTicketRemoved   = "ticket_removed"
+	EventCounterUpdated  = "counter_updated"
 	EventQueueClosed     = "queue_closed"
 	EventQueueUpdated    = "queue_updated"
 	EventQueueQRUpdated  = "queue_qr_updated"

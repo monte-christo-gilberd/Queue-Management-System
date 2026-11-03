@@ -27,6 +27,12 @@ func NewAppRouter(
 	return app
 }
 
+// WithCounters memasang endpoint CRUD counter (opsional; tanpa ini rute /counters tidak ada).
+func (a *AppRouter) WithCounters(h CounterHandler) *AppRouter {
+	a.counterHandler = h
+	return a
+}
+
 // WithNotes memasang endpoint catatan per nomor tiket (opsional; tanpa ini rute /note tidak ada).
 func (a *AppRouter) WithNotes(h NoteHandler) *AppRouter {
 	a.noteHandler = h
@@ -80,6 +86,9 @@ func SetupRouter(
 	)
 	if router.noteHandler != nil {
 		registerNoteRoutes(queues, router.noteHandler)
+	}
+	if router.counterHandler != nil {
+		registerCounterRoutes(queues, router.counterHandler)
 	}
 
 	if router.pushHandler != nil {
