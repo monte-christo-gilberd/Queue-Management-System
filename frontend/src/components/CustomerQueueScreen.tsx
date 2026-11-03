@@ -38,7 +38,7 @@ export type CustomerQueueScreenProps = {
   onBack?: () => void;
 };
 
-const STATUS_LABEL: Record<CustomerTicketStatus, string> = {
+export const STATUS_LABEL: Record<CustomerTicketStatus, string> = {
   waiting: 'Menunggu',
   currently_served: 'Sedang dilayani',
   completed: 'Sudah dilayani',

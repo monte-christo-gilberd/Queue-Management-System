@@ -8,6 +8,8 @@ import Dashboard from '@/components/Dashboard';
 import { MySpotCard, NotQueuingCard } from '@/components/MySpotCard';
 import { QueueTimeline, type TimelineItem } from '@/components/QueueTimeline';
 import { AppendNoteModal } from '@/components/ui/AppendNoteModal';
+import { MyTicketModal } from '@/components/ui/MyTicketModal';
+import type { CustomerTicketStatus } from '@/components/CustomerQueueScreen';
 import { useIsWide } from '@/hooks/use-is-wide';
 import { useMe } from '@/hooks/use-me';
 import { useQueueSpot } from '@/hooks/use-queue-spot';
@@ -207,13 +209,32 @@ function QueueSpot({
   onChanged: () => void;
 }) {
   const status = useQueueSpot(queueId, onChanged);
+  const [ticketOpen, setTicketOpen] = useState(false);
   if (!status) return null;
+  const format = (n: number | null | undefined) => (n != null ? formatTicketNumber(n, ticketPrefix) : null);
+  const ticket = status.my_ticket;
+  // Counter tempat nomor saya dilayani: cocokkan nomor di daftar serving (multi-counter).
+  const myCounter = ticket ? status.serving?.find((s) => s.ticket_number === ticket.ticket_number) : undefined;
   return (
-    <MySpotCard
-      queueName={queueName}
-      currentNumber={status.current_number != null ? formatTicketNumber(status.current_number, ticketPrefix) : null}
-      previousNumber={status.previous_number != null ? formatTicketNumber(status.previous_number, ticketPrefix) : null}
-      nextNumber={status.next_number != null ? formatTicketNumber(status.next_number, ticketPrefix) : null}
-    />
+    <>
+      <MySpotCard
+        queueName={queueName}
+        currentNumber={format(status.current_number)}
+        previousNumber={format(status.previous_number)}
+        nextNumber={format(status.next_number)}
+        onPress={() => setTicketOpen(true)}
+        hint="ketuk untuk melihat tiket Anda ▾"
+      />
+      <MyTicketModal
+        visible={ticketOpen}
+        onClose={() => setTicketOpen(false)}
+        queueName={queueName}
+        ticketNumber={ticket ? format(ticket.ticket_number) : null}
+        ticketStatus={(ticket?.status as CustomerTicketStatus | undefined) ?? null}
+        currentNumber={format(status.current_number)}
+        counterName={myCounter?.counter_name ?? null}
+        waitingAhead={status.waiting_ahead}
+      />
+    </>
   );
 }

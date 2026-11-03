@@ -16,6 +16,8 @@ export type MySpotCardProps = {
   showNeighbors?: boolean;
   /** Ketuk kartu (mis. buka daftar tiket). Tanpa ini kartu tidak bisa ditekan. */
   onPress?: () => void;
+  /** Teks petunjuk di bawah kartu bila `onPress` ada. */
+  hint?: string;
 };
 
 /** Kartu antrian aktif (customer). Gaya sama dengan papan layar live owner. */
@@ -26,6 +28,7 @@ export function MySpotCard({
   nextNumber,
   showNeighbors = true,
   onPress,
+  hint = 'ketuk untuk daftar tiket ▾',
 }: MySpotCardProps) {
   return (
     <Pressable
@@ -71,7 +74,7 @@ export function MySpotCard({
 
       {onPress ? (
         <Text className="text-center text-[12px] text-boardDim" style={{ fontFamily: MONO }}>
-          ketuk untuk daftar tiket ▾
+          {hint}
         </Text>
       ) : null}
     </Pressable>
