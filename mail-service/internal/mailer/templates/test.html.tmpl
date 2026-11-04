@@ -1,0 +1,6 @@
+{{define "content"}}
+      <h1 style="font-size:20px;margin:0 0 12px;">Email uji</h1>
+      <p style="margin:0 0 12px;">Ini email uji dari notify-service. Jika Anda membacanya, pengiriman email lewat SMTP berfungsi.</p>
+      <p style="margin:0 0 12px;">Dikirim ke: <strong>{{.To}}</strong><br>Waktu: {{.SentAt}}</p>
+      <p style="margin:0;"><a href="{{.Link}}" style="color:#2563eb;">Buka tautan uji</a></p>
+{{end}}

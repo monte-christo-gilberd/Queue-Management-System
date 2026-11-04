@@ -85,6 +85,61 @@ services:
       - internal
     restart: unless-stopped
 
+  # mail-service: satu-satunya pengirim email (SMTP, templat, coba ulang). Stateless, tanpa database, hanya di
+  # jaringan internal (tidak ada rute nginx). Pemanggil (backend, nanti) memakai POST /internal/v1/send dengan
+  # header X-Service-Token. notify-service tidak mengirim email.
+  mail-service:
+    build:
+      context: ./mail-service
+      target: dev
+    environment:
+      PORT: "8092"
+      MAIL_SERVICE_TOKEN: ${MAIL_SERVICE_TOKEN:?set MAIL_SERVICE_TOKEN in .env}
+      # Dev: semua email ditangkap Mailpit, tidak ada yang keluar ke internet.
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-Antrian <no-reply@qms.local>}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS: ${SMTP_TLS:-none}
+    volumes:
+      - ./mail-service:/src
+      - go_build_cache:/root/.cache/go-build
+      - go_mod_cache:/go/pkg/mod
+    stop_grace_period: 3s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8092/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    depends_on:
+      mailpit:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # Mailpit: server SMTP palsu untuk development. Menangkap semua email dari notify-service dan menampilkannya
+  # di UI web. Di host, SMTP (1025) dan UI (8025) hanya diikat ke 127.0.0.1 dan TIDAK lewat nginx, jadi tidak
+  # terjangkau dari luar mesin ini; notify-service memakai mailpit:1025 lewat jaringan internal.
+  # Port 1025 adalah bawaan umum Mailpit: bila proyek lain di mesin ini juga memakainya, ubah MAILPIT_SMTP_PORT. Pesan hilang saat container dibuat ulang (tanpa volume, disengaja).
+  # Produksi memakai SMTP nyata dan tidak punya service ini (docker-compose.prod.yml).
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    environment:
+      MP_MAX_MESSAGES: "500"
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend

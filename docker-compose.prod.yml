@@ -43,6 +43,52 @@ services:
       - internal
     restart: unless-stopped
 
+  # mail-service: satu-satunya pengirim email. SMTP nyata (tanpa Mailpit di produksi); service menolak start
+  # bila SMTP_* atau MAIL_SERVICE_TOKEN tidak lengkap.
+  mail-service:
+    build:
+      context: ./mail-service
+      target: prod
+    environment:
+      PORT: "8092"
+      MAIL_SERVICE_TOKEN: ${MAIL_SERVICE_TOKEN:?set MAIL_SERVICE_TOKEN in .env}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in .env}
+      SMTP_PORT: ${SMTP_PORT:?set SMTP_PORT in .env}
+      SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM in .env}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS: ${SMTP_TLS:-starttls}
+    depends_on:
+      # Hanya bila MAIL_MODE=mailpit (profile aktif); selain itu tidak ada Mailpit dan ini diabaikan.
+      mailpit:
+        condition: service_healthy
+        required: false
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # Mailpit untuk demo/uji (MAIL_MODE=mailpit; make prod-up menyalakan profile ini). Email ditangkap dan TIDAK
+  # dikirim ke penerima sebenarnya. SMTP hanya di jaringan internal; UI hanya di 127.0.0.1 host dan tidak lewat
+  # nginx/Cloudflare: buka dengan SSH tunnel. Pesan disimpan di volume supaya bertahan saat restart.
+  mailpit:
+    profiles: ["mailpit"]
+    image: axllent/mailpit:v1.31.6
+    environment:
+      MP_MAX_MESSAGES: "1000"
+      MP_DATABASE: /data/mailpit.db
+    volumes:
+      - mailpit_data_prod:/data
+    ports:
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+    restart: unless-stopped
+
   notify-service:
     build:
       context: ./notify-service
@@ -130,6 +176,7 @@ services:
 
 volumes:
   db_data_prod:
+  mailpit_data_prod:
 
 networks:
   internal:
