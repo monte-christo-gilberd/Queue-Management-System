@@ -30,6 +30,12 @@ type HistoryService interface {
 		cursor string,
 		limit int,
 	) (service.HistoryQueueDetail, error)
+	ListMyHistory(
+		ctx context.Context,
+		userID int64,
+		cursor string,
+		limit int,
+	) (service.MyHistoryPage, error)
 	exportService
 }
 
@@ -60,6 +66,21 @@ func (h *HistoryHandler) ListQueues(c *gin.Context) {
 		return
 	}
 	respondData(c, http.StatusOK, dto.NewHistoryQueuesResponse(page.Queues, page.NextCursor))
+}
+
+// ListMine: GET /api/v1/users/me/history?cursor=&limit= — riwayat tiket milik user yang login (customer), satu
+// baris per tiket, terbaru dulu. Tidak ada parameter user: hanya tiket milik token yang dikembalikan.
+func (h *HistoryHandler) ListMine(c *gin.Context) {
+	limit, ok := historyLimit(c)
+	if !ok {
+		return
+	}
+	page, err := h.service.ListMyHistory(c.Request.Context(), c.GetInt64("user_id"), c.Query("cursor"), limit)
+	if err != nil {
+		respondHistoryError(c, err)
+		return
+	}
+	respondData(c, http.StatusOK, dto.NewMyHistoryResponse(page.Tickets, page.NextCursor))
 }
 
 // GetQueue: GET /api/v1/history/queues/:queue_id?cursor=&limit= — ringkasan dan nomor satu antrian yang sudah

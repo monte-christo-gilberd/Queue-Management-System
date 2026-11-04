@@ -53,3 +53,21 @@ func HistoryOutcome(status string) string {
 		return status
 	}
 }
+
+// UserHistoryTicket: satu tiket milik user di riwayat customer. Tanpa catatan owner: catatan tidak pernah
+// dilihat customer.
+type UserHistoryTicket struct {
+	TicketID     int64          `db:"ticket_id"`
+	QueueID      int64          `db:"queue_id"`
+	QueueName    string         `db:"queue_name"`
+	TicketPrefix string         `db:"ticket_prefix"`
+	TicketNumber int            `db:"ticket_number"`
+	Status       string         `db:"status"`
+	QueueStatus  string         `db:"queue_status"`
+	SkipCount    int            `db:"skip_count"`
+	JoinedAt     time.Time      `db:"joined_at"`
+	CalledAt     sql.NullTime   `db:"called_at"`
+	CompletedAt  sql.NullTime   `db:"completed_at"`
+	CancelledAt  sql.NullTime   `db:"cancelled_at"`
+	CounterName  sql.NullString `db:"counter_name"`
+}

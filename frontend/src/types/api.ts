@@ -146,3 +146,22 @@ export type QueueQRErrorCode =
   | 'QR_TYPE_INVALID'
   | 'QR_UNAVAILABLE'
   | 'QR_REPLACE_NOT_ALLOWED';
+
+/** Satu tiket di riwayat customer (GET /api/v1/users/me/history). Tanpa catatan owner dan data user lain. */
+export type MyHistoryTicket = {
+  ticket_id: number;
+  queue_id: number;
+  queue_name: string;
+  ticket_prefix: string;
+  ticket_number: number;
+  outcome: HistoryOutcome;
+  /** Antrian sudah ditutup (tiket yang belum dilayani saat itu berhasil `unserved`). */
+  queue_closed: boolean;
+  skip_count: number;
+  joined_at: string;
+  called_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  /** Hanya terisi bila antrian punya lebih dari satu counter. */
+  counter_name: string | null;
+};

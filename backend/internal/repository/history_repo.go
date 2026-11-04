@@ -138,3 +138,51 @@ func (r *HistoryRepository) ListQueueTickets(
 	}
 	return tickets, nil
 }
+
+// ListUserTickets mengembalikan riwayat tiket satu user, terbaru dulu (waktu bergabung menurun, lalu id), per
+// halaman (keyset). Riwayat = tiket yang sudah punya hasil akhir (selesai, dilewati, dibatalkan, dihapus) atau
+// yang antriannya sudah ditutup. Tiket yang masih aktif di antrian aktif tidak masuk (itu ada di beranda).
+// Nama counter hanya diisi bila antrian punya lebih dari satu counter, sama dengan UI.
+func (r *HistoryRepository) ListUserTickets(
+	ctx context.Context,
+	userID int64,
+	after *model.HistoryQueueCursor,
+	limit int,
+) ([]model.UserHistoryTicket, error) {
+
+	afterTime := time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+	afterID := int64(math.MaxInt64)
+	if after != nil {
+		afterTime, afterID = after.ClosedAt, after.ID
+	}
+
+	tickets := []model.UserHistoryTicket{}
+	const query = `
+		SELECT
+			t.id AS ticket_id,
+			t.queue_id,
+			q.queue_name,
+			q.ticket_prefix,
+			t.ticket_number,
+			t.status,
+			q.status AS queue_status,
+			t.skip_count,
+			t.created_at AS joined_at,
+			t.called_at,
+			t.completed_at,
+			t.cancelled_at,
+			CASE WHEN (SELECT COUNT(*) FROM counters c0 WHERE c0.queue_id = t.queue_id) > 1 THEN c.name END AS counter_name
+		FROM tickets t
+		JOIN queues q ON q.id = t.queue_id
+		LEFT JOIN counters c ON c.id = t.called_counter_id
+		WHERE t.user_id = $1
+		  AND (t.status IN ('completed', 'skipped', 'cancelled', 'deleted') OR q.status = 'closed')
+		  AND (t.created_at, t.id) < ($2, $3)
+		ORDER BY t.created_at DESC, t.id DESC
+		LIMIT $4
+	`
+	if err := r.db.SelectContext(ctx, &tickets, query, userID, afterTime, afterID, limit); err != nil {
+		return nil, err
+	}
+	return tickets, nil
+}

@@ -16,6 +16,8 @@ const (
 	MaxHistoryQueuesLimit      = 100
 	DefaultHistoryTicketsLimit = 50
 	MaxHistoryTicketsLimit     = 200
+	DefaultMyHistoryLimit      = 20
+	MaxMyHistoryLimit          = 100
 )
 
 type HistoryRepository interface {
@@ -36,11 +38,23 @@ type HistoryRepository interface {
 		afterNumber,
 		limit int,
 	) ([]model.HistoryTicket, error)
+	ListUserTickets(
+		ctx context.Context,
+		userID int64,
+		after *model.HistoryQueueCursor,
+		limit int,
+	) ([]model.UserHistoryTicket, error)
 }
 
 // HistoryQueuesPage: satu halaman daftar riwayat. NextCursor kosong = tidak ada halaman berikutnya.
 type HistoryQueuesPage struct {
 	Queues     []model.HistoryQueue
+	NextCursor string
+}
+
+// MyHistoryPage: satu halaman riwayat tiket customer. NextCursor kosong = tidak ada halaman berikutnya.
+type MyHistoryPage struct {
+	Tickets    []model.UserHistoryTicket
 	NextCursor string
 }
 
@@ -85,6 +99,35 @@ func (s *HistoryService) ListQueues(
 		page.Queues = rows[:limit]
 		last := page.Queues[limit-1]
 		page.NextCursor = encodeQueueCursor(last.ClosedAt, last.ID)
+	}
+	return page, nil
+}
+
+// ListMyHistory mengembalikan riwayat tiket milik user (customer), terbaru dulu, per halaman. Hanya tiket user itu
+// sendiri; tidak ada parameter user lain, jadi tidak ada jalan membaca tiket orang lain. Kursor tidak valid:
+// ErrInvalidCursor.
+func (s *HistoryService) ListMyHistory(
+	ctx context.Context,
+	userID int64,
+	cursor string,
+	limit int,
+) (MyHistoryPage, error) {
+	limit = clampLimit(limit, DefaultMyHistoryLimit, MaxMyHistoryLimit)
+	after, err := decodeQueueCursor(cursor)
+	if err != nil {
+		return MyHistoryPage{}, err
+	}
+
+	rows, err := s.repository.ListUserTickets(ctx, userID, after, limit+1)
+	if err != nil {
+		return MyHistoryPage{}, err
+	}
+	page := MyHistoryPage{Tickets: rows}
+	if len(rows) > limit {
+		page.Tickets = rows[:limit]
+		last := page.Tickets[limit-1]
+		// Kursor memakai pasangan (waktu bergabung, id tiket): sama bentuknya dengan kursor daftar riwayat owner.
+		page.NextCursor = encodeQueueCursor(last.JoinedAt, last.TicketID)
 	}
 	return page, nil
 }

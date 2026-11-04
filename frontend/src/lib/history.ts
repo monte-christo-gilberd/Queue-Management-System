@@ -1,6 +1,6 @@
 import { apiDownload, apiFetch } from './api';
 import { saveBlobAsFile } from './download';
-import type { HistoryQueue, HistoryTicket } from '@/types/api';
+import type { HistoryQueue, HistoryTicket, MyHistoryTicket } from '@/types/api';
 
 export type HistoryQueuesPage = { queues: HistoryQueue[]; next_cursor: string | null };
 export type HistoryQueueDetail = { queue: HistoryQueue; tickets: HistoryTicket[]; next_cursor: string | null };
@@ -58,4 +58,16 @@ export async function downloadHistoryExport(
 ): Promise<void> {
   const blob = await apiDownload(exportHistoryPath(queue.id, format));
   saveBlobAsFile(blob, exportFileName(queue.queue_name, queue.id, format));
+}
+
+export type MyHistoryPage = { tickets: MyHistoryTicket[]; next_cursor: string | null };
+
+/** Path riwayat tiket customer (fungsi murni, untuk tes). */
+export function myHistoryPath(cursor?: string | null, limit?: number): string {
+  return `/api/v1/users/me/history${query(cursor, limit)}`;
+}
+
+/** GET /api/v1/users/me/history — riwayat tiket saya, satu baris per tiket, terbaru dulu, per halaman. */
+export async function listMyHistory(cursor?: string | null, limit?: number): Promise<MyHistoryPage> {
+  return apiFetch<MyHistoryPage>(myHistoryPath(cursor, limit));
 }

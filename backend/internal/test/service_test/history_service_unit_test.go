@@ -19,6 +19,9 @@ type fakeHistoryRepo struct {
 	tickets []model.HistoryTicket
 	owner   int64
 
+	myTickets []model.UserHistoryTicket // urut terbaru dulu
+	myUser    int64
+
 	gotAfter     *model.HistoryQueueCursor
 	gotLimit     int
 	gotTicketCut int
@@ -35,6 +38,24 @@ func (f *fakeHistoryRepo) ListClosedQueues(_ context.Context, ownerID int64, aft
 			continue
 		}
 		out = append(out, q)
+		if len(out) == limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeHistoryRepo) ListUserTickets(_ context.Context, userID int64, after *model.HistoryQueueCursor, limit int) ([]model.UserHistoryTicket, error) {
+	f.gotAfter, f.gotLimit = after, limit
+	out := []model.UserHistoryTicket{}
+	if userID != f.myUser {
+		return out, nil // user lain tidak pernah melihat tiket ini
+	}
+	for _, t := range f.myTickets {
+		if after != nil && !(t.JoinedAt.Before(after.ClosedAt) || (t.JoinedAt.Equal(after.ClosedAt) && t.TicketID < after.ID)) {
+			continue
+		}
+		out = append(out, t)
 		if len(out) == limit {
 			break
 		}
@@ -253,4 +274,57 @@ func TestHistory_StreamTickets_SinkErrorStops(t *testing.T) {
 	err := svc.StreamTickets(context.Background(), 100, sink)
 	assert.Error(t, err)
 	assert.Equal(t, []int{500}, sink.batches)
+}
+
+func myTickets(n int) []model.UserHistoryTicket {
+	base := time.Date(2026, 11, 3, 12, 0, 0, 654321000, time.UTC)
+	out := make([]model.UserHistoryTicket, n)
+	for i := range out {
+		out[i] = model.UserHistoryTicket{TicketID: int64(500 - i), QueueName: "Q", JoinedAt: base.Add(-time.Duration(i) * time.Hour)}
+	}
+	return out
+}
+
+func TestMyHistory_Pagination(t *testing.T) {
+	repo := &fakeHistoryRepo{myUser: 4, myTickets: myTickets(5)}
+	svc := service.NewHistoryService(repo)
+
+	first, err := svc.ListMyHistory(context.Background(), 4, "", 2)
+	require.NoError(t, err)
+	require.Len(t, first.Tickets, 2)
+	assert.Equal(t, int64(500), first.Tickets[0].TicketID)
+	assert.NotEmpty(t, first.NextCursor)
+	assert.Equal(t, 3, repo.gotLimit, "meminta satu baris lebih untuk mendeteksi halaman berikutnya")
+
+	second, err := svc.ListMyHistory(context.Background(), 4, first.NextCursor, 2)
+	require.NoError(t, err)
+	require.Len(t, second.Tickets, 2)
+	assert.Equal(t, int64(498), second.Tickets[0].TicketID, "lanjut tepat setelah baris terakhir, tanpa duplikat")
+	assert.True(t, repo.gotAfter.ClosedAt.Equal(first.Tickets[1].JoinedAt), "presisi mikrodetik terjaga")
+
+	last, err := svc.ListMyHistory(context.Background(), 4, second.NextCursor, 2)
+	require.NoError(t, err)
+	require.Len(t, last.Tickets, 1)
+	assert.Empty(t, last.NextCursor)
+}
+
+func TestMyHistory_OnlyOwnTickets(t *testing.T) {
+	svc := service.NewHistoryService(&fakeHistoryRepo{myUser: 4, myTickets: myTickets(3)})
+	page, err := svc.ListMyHistory(context.Background(), 99, "", 10)
+	require.NoError(t, err)
+	assert.Empty(t, page.Tickets)
+	assert.Empty(t, page.NextCursor)
+}
+
+func TestMyHistory_InvalidCursorAndLimitClamp(t *testing.T) {
+	repo := &fakeHistoryRepo{myUser: 4}
+	svc := service.NewHistoryService(repo)
+	for _, cursor := range []string{"abc", "1.2.3", "5.0", "x.5"} {
+		_, err := svc.ListMyHistory(context.Background(), 4, cursor, 10)
+		assert.ErrorIs(t, err, apperror.ErrInvalidCursor, cursor)
+	}
+	_, _ = svc.ListMyHistory(context.Background(), 4, "", 0)
+	assert.Equal(t, service.DefaultMyHistoryLimit+1, repo.gotLimit)
+	_, _ = svc.ListMyHistory(context.Background(), 4, "", 100000)
+	assert.Equal(t, service.MaxMyHistoryLimit+1, repo.gotLimit)
 }

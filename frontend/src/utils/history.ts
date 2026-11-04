@@ -1,4 +1,4 @@
-import type { HistoryOutcome, HistoryQueue, HistoryTicket } from '@/types/api';
+import type { HistoryOutcome, HistoryQueue, HistoryTicket, MyHistoryTicket } from '@/types/api';
 import { formatDateTime } from '@/utils/format';
 
 const OUTCOME_LABEL: Record<HistoryOutcome, string> = {
@@ -38,4 +38,35 @@ export function ticketTimeline(t: HistoryTicket): string[] {
   if (t.completed_at) lines.push(`Selesai ${formatDateTime(t.completed_at)}`);
   if (t.cancelled_at) lines.push(`Dibatalkan ${formatDateTime(t.cancelled_at)}`);
   return lines;
+}
+
+const CUSTOMER_OUTCOME_LABEL: Record<HistoryOutcome, string> = {
+  completed: 'Sudah dilayani',
+  skipped: 'Dilewati',
+  cancelled: 'Dibatalkan',
+  deleted: 'Dihapus penyelenggara',
+  unserved: 'Tidak sempat dilayani',
+};
+
+/** Label hasil akhir untuk customer (bahasa sisi customer, berbeda dengan label owner). */
+export function customerOutcomeLabel(outcome: HistoryOutcome): string {
+  return CUSTOMER_OUTCOME_LABEL[outcome];
+}
+
+/** Durasi dalam detik menjadi teks: "kurang dari 1 menit", "12 menit", "1 jam 5 menit", "2 jam". */
+export function formatDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 1) return 'kurang dari 1 menit';
+  if (minutes < 60) return `${minutes} menit`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} jam` : `${hours} jam ${rest} menit`;
+}
+
+/** Lama menunggu sampai dipanggil (bergabung ke dipanggil); null bila nomor belum pernah dipanggil. */
+export function waitDuration(t: Pick<MyHistoryTicket, 'joined_at' | 'called_at'>): string | null {
+  if (!t.called_at) return null;
+  const seconds = (Date.parse(t.called_at) - Date.parse(t.joined_at)) / 1000;
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  return formatDuration(seconds);
 }

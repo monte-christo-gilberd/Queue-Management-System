@@ -78,6 +78,9 @@ func SetupRouter(
 	if router.ticketHandler != nil {
 		me.GET("/tickets", router.ticketHandler.MyTickets)
 	}
+	if router.historyHandler != nil {
+		me.GET("/history", router.historyHandler.ListMine)
+	}
 
 	queues := v1.Group("/queues")
 	queues.Use(router.authMiddleware)

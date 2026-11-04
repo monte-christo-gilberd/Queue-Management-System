@@ -81,3 +81,40 @@ func TestHistoryListResponses_CursorAndEmptyArrays(t *testing.T) {
 	assert.Equal(t, []any{}, more["tickets"])
 	assert.Equal(t, "history_queue", more["action"])
 }
+
+func TestUserHistoryTicketResponse_ContractKeysAndPrivacy(t *testing.T) {
+	got := asMap(t, dto.NewUserHistoryTicketResponse(model.UserHistoryTicket{TicketID: 1, Status: "completed", QueueStatus: "active"}))
+	for _, key := range []string{
+		"ticket_id", "queue_id", "queue_name", "ticket_prefix", "ticket_number", "outcome", "queue_closed",
+		"skip_count", "joined_at", "called_at", "completed_at", "cancelled_at", "counter_name",
+	} {
+		assert.Contains(t, got, key)
+	}
+	for _, private := range []string{"note", "note_updated_at", "customer_email", "customer_name", "user_id"} {
+		assert.NotContains(t, got, private, "riwayat customer tidak boleh memuat "+private)
+	}
+	assert.Nil(t, got["counter_name"])
+	assert.Equal(t, false, got["queue_closed"])
+}
+
+func TestUserHistoryTicketResponse_OutcomeAndClosedQueue(t *testing.T) {
+	unserved := asMap(t, dto.NewUserHistoryTicketResponse(model.UserHistoryTicket{Status: "waiting", QueueStatus: "closed"}))
+	assert.Equal(t, "unserved", unserved["outcome"], "masih menunggu saat antrian ditutup")
+	assert.Equal(t, true, unserved["queue_closed"])
+
+	named := asMap(t, dto.NewUserHistoryTicketResponse(model.UserHistoryTicket{
+		Status:      "completed",
+		CounterName: sql.NullString{String: "Counter 2", Valid: true},
+		CalledAt:    sql.NullTime{Time: time.Now(), Valid: true},
+	}))
+	assert.Equal(t, "Counter 2", named["counter_name"])
+	assert.NotNil(t, named["called_at"])
+}
+
+func TestMyHistoryResponse_CursorAndEmptyArray(t *testing.T) {
+	empty := asMap(t, dto.NewMyHistoryResponse(nil, ""))
+	assert.Equal(t, []any{}, empty["tickets"])
+	assert.Nil(t, empty["next_cursor"])
+	assert.Equal(t, "list_my_history", empty["action"])
+	assert.Equal(t, "99.1", asMap(t, dto.NewMyHistoryResponse(nil, "99.1"))["next_cursor"])
+}

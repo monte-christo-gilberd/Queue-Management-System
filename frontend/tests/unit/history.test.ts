@@ -2,9 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { exportFileName, exportHistoryPath, historyQueuePath, historyQueuesPath } from '@/lib/history';
+import { exportFileName, exportHistoryPath, historyQueuePath, historyQueuesPath, myHistoryPath } from '@/lib/history';
 import type { HistoryQueue, HistoryTicket } from '@/types/api';
-import { outcomeLabel, summarizeHistoryQueue, ticketTimeline } from '@/utils/history';
+import { customerOutcomeLabel, formatDuration, outcomeLabel, summarizeHistoryQueue, ticketTimeline, waitDuration } from '@/utils/history';
 
 const queue = (over: Partial<HistoryQueue> = {}): HistoryQueue => ({
   id: 1,
@@ -77,4 +77,32 @@ test('nama berkas ekspor sama dengan aturan backend', () => {
   assert.equal(exportFileName('', 1, 'csv'), 'riwayat-antrian-1.csv');
   assert.ok(exportFileName('abc '.repeat(40), 3, 'csv').length <= 'riwayat-'.length + 40 + '-3.csv'.length);
   assert.doesNotMatch(exportFileName('../../etc/passwd', 1, 'csv'), /[/"\n;]/);
+});
+
+test('path riwayat tiket saya', () => {
+  assert.equal(myHistoryPath(), '/api/v1/users/me/history');
+  assert.equal(myHistoryPath('99.1', 10), '/api/v1/users/me/history?limit=10&cursor=99.1');
+});
+
+test('label hasil akhir untuk customer berbeda dari label owner', () => {
+  assert.equal(customerOutcomeLabel('completed'), 'Sudah dilayani');
+  assert.equal(customerOutcomeLabel('deleted'), 'Dihapus penyelenggara');
+  assert.equal(customerOutcomeLabel('unserved'), 'Tidak sempat dilayani');
+  assert.equal(customerOutcomeLabel('skipped'), 'Dilewati');
+  assert.equal(customerOutcomeLabel('cancelled'), 'Dibatalkan');
+});
+
+test('durasi: menit, jam, dan batas bawah', () => {
+  assert.equal(formatDuration(0), 'kurang dari 1 menit');
+  assert.equal(formatDuration(59), 'kurang dari 1 menit');
+  assert.equal(formatDuration(60), '1 menit');
+  assert.equal(formatDuration(12 * 60 + 30), '12 menit');
+  assert.equal(formatDuration(3600), '1 jam');
+  assert.equal(formatDuration(3600 + 5 * 60), '1 jam 5 menit');
+});
+
+test('lama menunggu: dari bergabung ke dipanggil, null bila belum dipanggil atau waktu tidak masuk akal', () => {
+  assert.equal(waitDuration({ joined_at: '2026-11-03T02:00:00Z', called_at: '2026-11-03T02:12:00Z' }), '12 menit');
+  assert.equal(waitDuration({ joined_at: '2026-11-03T02:00:00Z', called_at: null }), null);
+  assert.equal(waitDuration({ joined_at: '2026-11-03T02:10:00Z', called_at: '2026-11-03T02:00:00Z' }), null);
 });

@@ -18,6 +18,7 @@ import (
 
 type stubHistoryService struct {
 	page   service.HistoryQueuesPage
+	myPage service.MyHistoryPage
 	detail service.HistoryQueueDetail
 	err    error
 
@@ -35,6 +36,11 @@ type stubHistoryService struct {
 func (s *stubHistoryService) ListQueues(_ context.Context, ownerID int64, cursor string, limit int) (service.HistoryQueuesPage, error) {
 	s.gotOwner, s.gotCursor, s.gotLimit = ownerID, cursor, limit
 	return s.page, s.err
+}
+
+func (s *stubHistoryService) ListMyHistory(_ context.Context, userID int64, cursor string, limit int) (service.MyHistoryPage, error) {
+	s.gotOwner, s.gotCursor, s.gotLimit = userID, cursor, limit
+	return s.myPage, s.err
 }
 
 func (s *stubHistoryService) ExportQueue(_ context.Context, ownerID, queueID int64) (model.HistoryQueue, error) {
@@ -65,6 +71,7 @@ func newHistoryEngine(svc *stubHistoryService) *gin.Engine {
 	e.GET("/history/queues", h.ListQueues)
 	e.GET("/history/queues/:queue_id", h.GetQueue)
 	e.GET("/history/queues/:queue_id/export", h.Export)
+	e.GET("/users/me/history", h.ListMine)
 	return e
 }
 
@@ -196,4 +203,35 @@ func TestExport_FailureBeforeFirstByteIsJSON500(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
 	assert.Contains(t, w.Body.String(), `"INTERNAL_ERROR"`)
 	assert.Empty(t, w.Header().Get("Content-Disposition"), "tidak ada header unduhan untuk respons galat")
+}
+
+func TestMyHistory_ForwardsTokenUserCursorAndLimit(t *testing.T) {
+	svc := &stubHistoryService{}
+	w := doGet(newHistoryEngine(svc), "/users/me/history?cursor=123.4&limit=15")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, int64(7), svc.gotOwner, "user dari token, bukan dari parameter")
+	assert.Equal(t, "123.4", svc.gotCursor)
+	assert.Equal(t, 15, svc.gotLimit)
+}
+
+func TestMyHistory_EmptyBodyShapeAndNoPrivateFields(t *testing.T) {
+	w := doGet(newHistoryEngine(&stubHistoryService{}), "/users/me/history")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"tickets":[]`)
+	assert.Contains(t, w.Body.String(), `"next_cursor":null`)
+
+	withRow := &stubHistoryService{myPage: service.MyHistoryPage{Tickets: []model.UserHistoryTicket{{TicketID: 1, QueueName: "Loket", Status: "completed"}}}}
+	body := doGet(newHistoryEngine(withRow), "/users/me/history").Body.String()
+	assert.NotContains(t, body, `"note"`, "catatan owner tidak pernah dikirim ke customer")
+	assert.NotContains(t, body, "customer_email")
+}
+
+func TestMyHistory_BadLimitAndErrorMapping(t *testing.T) {
+	for _, target := range []string{"/users/me/history?limit=abc", "/users/me/history?limit=-1"} {
+		assert.Equal(t, http.StatusBadRequest, doGet(newHistoryEngine(&stubHistoryService{}), target).Code, target)
+	}
+	assert.Equal(t, http.StatusBadRequest, doGet(newHistoryEngine(&stubHistoryService{err: apperror.ErrInvalidCursor}), "/users/me/history").Code)
+	assert.Equal(t, http.StatusInternalServerError, doGet(newHistoryEngine(&stubHistoryService{err: errors.New("db down")}), "/users/me/history").Code)
 }

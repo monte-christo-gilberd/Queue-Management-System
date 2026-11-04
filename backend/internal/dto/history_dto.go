@@ -125,3 +125,68 @@ func NewHistoryQueueDetailResponse(queue model.HistoryQueue, tickets []model.His
 	}
 	return out
 }
+
+// UserHistoryTicketResponse: satu tiket di riwayat customer. Sengaja tanpa catatan owner dan tanpa data user lain.
+type UserHistoryTicketResponse struct {
+	TicketID     int64      `json:"ticket_id"`
+	QueueID      int64      `json:"queue_id"`
+	QueueName    string     `json:"queue_name"`
+	TicketPrefix string     `json:"ticket_prefix"`
+	TicketNumber int        `json:"ticket_number"`
+	Outcome      string     `json:"outcome"`
+	QueueClosed  bool       `json:"queue_closed"`
+	SkipCount    int        `json:"skip_count"`
+	JoinedAt     time.Time  `json:"joined_at"`
+	CalledAt     *time.Time `json:"called_at"`
+	CompletedAt  *time.Time `json:"completed_at"`
+	CancelledAt  *time.Time `json:"cancelled_at"`
+	CounterName  *string    `json:"counter_name"`
+}
+
+func NewUserHistoryTicketResponse(t model.UserHistoryTicket) UserHistoryTicketResponse {
+	out := UserHistoryTicketResponse{
+		TicketID:     t.TicketID,
+		QueueID:      t.QueueID,
+		QueueName:    t.QueueName,
+		TicketPrefix: t.TicketPrefix,
+		TicketNumber: t.TicketNumber,
+		Outcome:      model.HistoryOutcome(t.Status),
+		QueueClosed:  t.QueueStatus == "closed",
+		SkipCount:    t.SkipCount,
+		JoinedAt:     t.JoinedAt,
+	}
+	if t.CalledAt.Valid {
+		out.CalledAt = &t.CalledAt.Time
+	}
+	if t.CompletedAt.Valid {
+		out.CompletedAt = &t.CompletedAt.Time
+	}
+	if t.CancelledAt.Valid {
+		out.CancelledAt = &t.CancelledAt.Time
+	}
+	if t.CounterName.Valid {
+		out.CounterName = &t.CounterName.String
+	}
+	return out
+}
+
+// MyHistoryResponse: GET /users/me/history. NextCursor null = halaman terakhir.
+type MyHistoryResponse struct {
+	Action     string                      `json:"action"`
+	Tickets    []UserHistoryTicketResponse `json:"tickets"`
+	NextCursor *string                     `json:"next_cursor"`
+}
+
+func NewMyHistoryResponse(tickets []model.UserHistoryTicket, nextCursor string) MyHistoryResponse {
+	out := MyHistoryResponse{
+		Action:  "list_my_history",
+		Tickets: make([]UserHistoryTicketResponse, 0, len(tickets)),
+	}
+	for _, t := range tickets {
+		out.Tickets = append(out.Tickets, NewUserHistoryTicketResponse(t))
+	}
+	if nextCursor != "" {
+		out.NextCursor = &nextCursor
+	}
+	return out
+}

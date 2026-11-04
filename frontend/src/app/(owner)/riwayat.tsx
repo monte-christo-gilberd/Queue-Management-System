@@ -1,29 +1,21 @@
-import { router } from 'expo-router';
+import { Text } from 'react-native';
 
-import { MyTicketsList } from '@/components/MyTicketsList';
+import { MyHistoryList } from '@/components/MyHistoryList';
 import ResponsiveScreenLayout from '@/components/layout/ResponsiveScreenLayout';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Icon } from '@/components/ui/Icon';
+import { useErrorToast } from '@/components/ui/Toast';
+import { useMyHistory } from '@/hooks/use-history';
 import { useThemeColor } from '@/hooks/use-theme-mode';
-import { useMyTickets } from '@/hooks/use-my-tickets';
-import { isOnHome } from '@/lib/tickets';
 import { useAuthStore } from '@/store/authStore';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 
-/** Riwayat tiket saya: antrian yang sudah ditutup, dilewati, atau dibatalkan. */
+/** Riwayat tiket saya: satu baris per tiket (selesai, dilewati, dibatalkan, dihapus, atau antrian ditutup). */
 export default function RiwayatSayaRoute() {
   const displayName = useAuthStore((s) => s.displayName);
   const avatarColor = useThemeColor('avatar');
-  const { tickets } = useMyTickets();
-  const openQueue = (queueId: number) =>
-    router.push({ pathname: '/ticket/[queueId]', params: { queueId: String(queueId) } });
-
-  const closedOrEnded = tickets.filter(
-    (t) => t.queue_status === 'closed' || t.status === 'skipped' || t.status === 'cancelled',
-  );
-  // Sudah dilayani di antrian aktif dan nomornya sudah lewat: masuk riwayat.
-  const served = tickets.filter((t) => t.status === 'completed' && t.queue_status === 'active' && !isOnHome(t));
-  const empty = closedOrEnded.length === 0 && served.length === 0;
+  const history = useMyHistory();
+  useErrorToast(history.error);
 
   return (
     <ResponsiveScreenLayout
@@ -31,15 +23,20 @@ export default function RiwayatSayaRoute() {
       userName={displayName ?? undefined}
       onMenuItemPress={handleOwnerMenuItemPress}
       activeTab="riwayat">
-      {empty ? (
+      {history.loading ? <Text className="text-[13px] text-muted">Memuat riwayat...</Text> : null}
+      {!history.loading && history.items.length === 0 ? (
         <EmptyState
           icon={<Icon name="history" size={44} color={avatarColor} />}
           title="Belum Ada Riwayat"
           description="Riwayat antrian akan muncul di sini setelah antrian Anda selesai atau ditutup."
         />
       ) : null}
-      <MyTicketsList tickets={closedOrEnded} onOpen={openQueue} />
-      <MyTicketsList tickets={served} onOpen={openQueue} />
+      <MyHistoryList
+        items={history.items}
+        hasMore={history.hasMore}
+        loadingMore={history.loadingMore}
+        onLoadMore={() => void history.loadMore()}
+      />
     </ResponsiveScreenLayout>
   );
 }

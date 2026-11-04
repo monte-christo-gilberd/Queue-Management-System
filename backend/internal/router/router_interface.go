@@ -61,6 +61,7 @@ type HistoryHandler interface {
 	ListQueues(c *gin.Context)
 	GetQueue(c *gin.Context)
 	Export(c *gin.Context)
+	ListMine(c *gin.Context)
 }
 
 type AppRouter struct {

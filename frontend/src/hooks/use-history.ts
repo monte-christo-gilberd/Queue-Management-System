@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { ApiError } from '@/lib/api';
-import { downloadHistoryExport, getHistoryQueue, listHistoryQueues, type ExportFormat } from '@/lib/history';
+import {
+  downloadHistoryExport,
+  getHistoryQueue,
+  listHistoryQueues,
+  listMyHistory,
+  type ExportFormat,
+} from '@/lib/history';
 import { describeQueueError } from '@/lib/queue-errors';
-import type { HistoryQueue, HistoryTicket } from '@/types/api';
+import type { HistoryQueue, HistoryTicket, MyHistoryTicket } from '@/types/api';
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -121,4 +127,47 @@ export function useHistoryQueue(queueId: number | null) {
   );
 
   return { queue, tickets, loading, loadingMore, hasMore: nextCursor !== null, loadMore, exporting, exportAs, error };
+}
+
+/** Riwayat tiket saya (customer), satu baris per tiket, dimuat per halaman. `loadMore` menambah halaman berikutnya. */
+export function useMyHistory() {
+  const [items, setItems] = useState<MyHistoryTicket[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    let active = true;
+    void run(() => listMyHistory()).then((r) => {
+      if (!active) return;
+      if (r.ok) {
+        setItems(r.data.tickets);
+        setNextCursor(r.data.next_cursor);
+        setError(undefined);
+      } else {
+        setError(r.message);
+      }
+      setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    const r = await run(() => listMyHistory(nextCursor));
+    if (r.ok) {
+      setItems((cur) => [...cur, ...r.data.tickets]);
+      setNextCursor(r.data.next_cursor);
+      setError(undefined);
+    } else {
+      setError(r.message);
+    }
+    setLoadingMore(false);
+  }, [nextCursor, loadingMore]);
+
+  return { items, loading, loadingMore, hasMore: nextCursor !== null, loadMore, error };
 }
