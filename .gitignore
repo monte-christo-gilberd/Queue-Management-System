@@ -2,21 +2,5 @@
 .vscode
 
 template-for-frontend
-FRONTEND_GENERATION_GUIDE.md
-FRONTEND_PROGRESS.md
-playwright-template
-
-template-nginx
-plan-rombak-utama.md
-plan-live.md
-setup-domain.md
-setup-waf-wifi.md
-plan-setelah-live.md
-plan-migrasi.md
-keputusan.md
-plan-cancel-remove.md
-plan-sisip.md
-plan-sampai-akhir-03-11-2026.md
 .env.prod
 
-features/
