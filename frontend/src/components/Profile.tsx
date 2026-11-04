@@ -6,7 +6,7 @@ import { useErrorToast } from '@/components/ui/Toast';
 import type { AvatarSource } from '@/hooks/use-avatar-source';
 import { USERNAME_MAX } from '@/utils/profile';
 import { router } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Switch, Text, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
 import { useIsWide } from '@/hooks/use-is-wide';
@@ -47,6 +47,10 @@ export type ProfileProps = {
   onPickAvatar?: () => void;
   /** Dipanggil setelah user mengonfirmasi hapus foto. */
   onDeleteAvatar?: () => void;
+  /** Email notifikasi tiket menyala (dari server). */
+  emailNotifications?: boolean;
+  emailNotificationsBusy?: boolean;
+  onToggleEmailNotifications?: (enabled: boolean) => void;
   /** Placeholder: belum ada fungsinya sampai alur ganti password lewat email jadi (plan item 9). */
   onPressChangePassword?: () => void;
 };
@@ -66,6 +70,9 @@ export default function Profile({
   subscriptionPaid = false,
   subscriptionDescription,
   onPressChangePassword,
+  emailNotifications = true,
+  emailNotificationsBusy = false,
+  onToggleEmailNotifications,
   avatarSource = null,
   hasAvatar = false,
   avatarBusy = false,
@@ -176,6 +183,24 @@ export default function Profile({
           {savedMessage ? (
             <Text className="text-[13px] font-semibold text-primary">{savedMessage}</Text>
           ) : null}
+
+          <View className="gap-2 rounded-card border border-line p-4">
+            <View className="flex-row items-center justify-between gap-3">
+              <View className="flex-1 gap-1">
+                <Text className="text-[14px] font-bold text-foreground">Notifikasi email</Text>
+                <Text className="text-[12px] font-normal text-muted">
+                  Kirim email saat Anda masuk antrian, membatalkan, nomor dihapus penyelenggara, atau selesai dilayani.
+                </Text>
+              </View>
+              <Switch
+                accessibilityLabel="Notifikasi email"
+                value={emailNotifications}
+                disabled={emailNotificationsBusy}
+                onValueChange={onToggleEmailNotifications}
+                trackColor={{ true: AppColors.primary }}
+              />
+            </View>
+          </View>
 
           <View className="gap-2 rounded-card border border-line p-4">
             <Text className="text-[14px] font-bold text-foreground">Password</Text>

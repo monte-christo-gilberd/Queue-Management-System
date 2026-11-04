@@ -39,4 +39,6 @@ esac
 tok="$(get MAIL_SERVICE_TOKEN)"
 case "$tok" in *GANTI*|"") fail "MAIL_SERVICE_TOKEN kosong atau masih contoh. Buat: openssl rand -hex 32" ;; esac
 [ "${#tok}" -ge 32 ] || fail "MAIL_SERVICE_TOKEN kurang dari 32 karakter"
+dbpw="$(get MAIL_DB_PASSWORD)"
+case "$dbpw" in *GANTI*|"") fail "MAIL_DB_PASSWORD kosong atau masih contoh. Buat: openssl rand -hex 24" ;; esac
 exit 0

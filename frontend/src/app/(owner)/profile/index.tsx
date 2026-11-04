@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 import Profile from '@/components/Profile';
 import { useAvatarSource } from '@/hooks/use-avatar-source';
-import { deleteAvatar, getMe, updateMe, uploadAvatar, type Me } from '@/lib/users';
+import { deleteAvatar, getMe, setEmailNotifications, updateMe, uploadAvatar, type Me } from '@/lib/users';
 import { shrinkToJpeg } from '@/utils/avatar-image';
 import { useAuthStore } from '@/store/authStore';
 import { useAvatarStore } from '@/store/avatarStore';
@@ -24,6 +24,7 @@ export default function ProfileRoute() {
   const [errorMessage, setErrorMessage] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [emailBusy, setEmailBusy] = useState(false);
   const avatarSource = useAvatarSource(me?.avatar_updated_at);
 
   useEffect(() => {
@@ -109,6 +110,18 @@ export default function ProfileRoute() {
     }
   }
 
+  async function toggleEmail(enabled: boolean) {
+    setErrorMessage('');
+    setEmailBusy(true);
+    try {
+      setMe(await setEmailNotifications(enabled));
+    } catch (e) {
+      setErrorMessage(describeProfileError(e));
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
   async function removeAvatar() {
     setErrorMessage('');
     setAvatarBusy(true);
@@ -143,6 +156,9 @@ export default function ProfileRoute() {
       avatarBusy={avatarBusy}
       onPickAvatar={() => void pickAvatar()}
       onDeleteAvatar={() => void removeAvatar()}
+      emailNotifications={me?.email_notifications ?? true}
+      emailNotificationsBusy={emailBusy || me === null}
+      onToggleEmailNotifications={(v) => void toggleEmail(v)}
       isOwner={me?.is_owner === true}
       subscriptionPaid={subscription?.active ?? false}
       subscriptionDescription={subscription?.description}

@@ -44,6 +44,11 @@ type UserRepository interface {
 		userID int64,
 		username string,
 	) (model.User, error)
+	SetEmailNotifications(
+		ctx context.Context,
+		userID int64,
+		enabled bool,
+	) error
 }
 
 const maxUsernameLen = 50
@@ -241,4 +246,10 @@ func (s *UserService) UpdateUsername(
 		return model.User{}, apperror.ErrInvalidUsername
 	}
 	return s.repository.UpdateUsername(ctx, userID, username)
+}
+
+// SetEmailNotifications menyalakan atau mematikan email notifikasi tiket untuk user ini. Berlaku untuk kejadian
+// berikutnya; email yang sudah masuk antrian kirim tetap terkirim.
+func (s *UserService) SetEmailNotifications(ctx context.Context, userID int64, enabled bool) error {
+	return s.repository.SetEmailNotifications(ctx, userID, enabled)
 }

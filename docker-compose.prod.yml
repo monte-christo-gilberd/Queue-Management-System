@@ -18,6 +18,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-qms_db}
       NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?set NOTIFY_DB_PASSWORD in .env}
+      MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}
     volumes:
       - db_data_prod:/var/lib/postgresql/data
     healthcheck:
@@ -58,7 +59,11 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_TLS: ${SMTP_TLS:-starttls}
+      DATABASE_URL: postgresql://mail_rw:${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+      QMS_PUBLIC_ORIGIN: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
     depends_on:
+      db:
+        condition: service_healthy
       # Hanya bila MAIL_MODE=mailpit (profile aktif); selain itu tidak ada Mailpit dan ini diabaikan.
       mailpit:
         condition: service_healthy

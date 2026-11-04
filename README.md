@@ -191,6 +191,17 @@ Catatan:
 
 `mail-service` adalah satu-satunya pengirim email (`notify-service` hanya Web Push dan tetap jalan walau email mati; dijaga `scripts/check-service-isolation.sh`). Pemanggil memakai `POST /internal/v1/send` dengan header `X-Service-Token` (`MAIL_SERVICE_TOKEN`). Pengaturan SMTP lewat `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_TLS` (`none`, `starttls`, atau `tls`); divalidasi saat start dan service menolak start bila salah atau tidak lengkap.
 
+### Email notifikasi tiket (outbox)
+Empat email ke pemilik tiket (masuk antrian, dibatalkan, nomor dihapus owner, selesai dilayani) ditulis ke tabel `notification_outbox` oleh trigger dalam transaksi yang sama dengan perubahan tiket, lalu dikirim oleh worker di `mail-service` (role database `mail_rw`, `MAIL_DB_PASSWORD`). Email yang gagal dicoba ulang dengan jeda berlipat; bila mail-service atau SMTP mati, email menunggu di outbox dan terkirim setelah hidup lagi, sementara join, cancel, dan push tidak terpengaruh. Pengguna bisa mematikannya di Profil (`Notifikasi email`).
+
+**DB yang sudah berjalan** (skrip init hanya jalan pada data directory kosong): terapkan skema dan buat role:
+```
+docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql
+docker compose exec -T -e MAIL_DB_PASSWORD="$(grep ^MAIL_DB_PASSWORD .env | cut -d= -f2)" db sh < db/migrations/04_mail_role.sh
+docker compose up -d mail-service
+```
+(prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod` dan ambil `MAIL_DB_PASSWORD` dari `.env.prod`). Tes: `QMS_DOCKER_EXEC=1 npx playwright test ts-30` (dua tes ketahanan mematikan dan menyalakan container).
+
 ### Link Mailpit
 Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat nginx**, jadi tidak terbuka lewat IP LAN maupun tunnel Cloudflare. Perangkat lain memakai SSH tunnel: `ssh -L 8025:127.0.0.1:8025 <user>@<IP mesin>`, lalu `http://localhost:8025`. Port diubah lewat `MAILPIT_UI_PORT` dan `MAILPIT_SMTP_PORT`. `make mailpit` menampilkan semua link tanpa menjalankan apa pun.
 
@@ -202,7 +213,7 @@ Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat
 | Prod, Mailpit | `make prod-up-mailpit` (atau `MAIL_MODE=mailpit`) | Mailpit, **tidak terkirim ke siapa pun** | `http://localhost:8025` di server prod; dari jauh pakai SSH tunnel |
 
 ### Memilih mode email produksi
-`MAIL_MODE` di `.env.prod` (`smtp` atau `mailpit`), atau satu kali jalan dari baris perintah: `make prod-up MAIL_MODE=mailpit` / `make prod-up MAIL_MODE=smtp` (menimpa file). Mode `mailpit` menyalakan container Mailpit lewat compose profile `mailpit` dan memaksa `SMTP_*` ke Mailpit (menimpa isi `.env.prod`, jadi kredensial SMTP nyata tidak dipakai). Pesan Mailpit prod disimpan di volume `mailpit_data_prod` (bertahan saat restart). Pindah ke `smtp` menghentikan container Mailpit; `make prod-down` menghentikannya di kedua mode. `scripts/check-mail-mode.sh` dijalankan oleh `make prod-up` dan menolak: mode selain `smtp`/`mailpit`, `SMTP_*` kosong atau masih berisi `GANTI`, `SMTP_HOST=mailpit` pada mode `smtp`, `SMTP_TLS=none` ke host jauh, dan `MAIL_SERVICE_TOKEN` kosong, contoh, atau kurang dari 32 karakter. Menjalankan `docker compose -f docker-compose.prod.yml` langsung (tanpa make) pada mode `mailpit` butuh `--profile mailpit` dan `SMTP_HOST=mailpit SMTP_PORT=1025 SMTP_TLS=none` di lingkungan.
+`MAIL_MODE` di `.env.prod` (`smtp` atau `mailpit`), atau satu kali jalan dari baris perintah: `make prod-up MAIL_MODE=mailpit` / `make prod-up MAIL_MODE=smtp` (menimpa file). Mode `mailpit` menyalakan container Mailpit lewat compose profile `mailpit` dan memaksa `SMTP_*` ke Mailpit (menimpa isi `.env.prod`, jadi kredensial SMTP nyata tidak dipakai). Pesan Mailpit prod disimpan di volume `mailpit_data_prod` (bertahan saat restart). Pindah ke `smtp` menghentikan container Mailpit; `make prod-down` menghentikannya di kedua mode. `scripts/check-mail-mode.sh` dijalankan oleh `make prod-up` dan menolak: mode selain `smtp`/`mailpit`, `SMTP_*` kosong atau masih berisi `GANTI`, `SMTP_HOST=mailpit` pada mode `smtp`, `SMTP_TLS=none` ke host jauh, dan `MAIL_SERVICE_TOKEN` atau `MAIL_DB_PASSWORD` kosong, contoh, atau (token) kurang dari 32 karakter. Menjalankan `docker compose -f docker-compose.prod.yml` langsung (tanpa make) pada mode `mailpit` butuh `--profile mailpit` dan `SMTP_HOST=mailpit SMTP_PORT=1025 SMTP_TLS=none` di lingkungan.
 
 ### Dev dan uji
 - Compose dev sudah mengarahkan ke `mailpit:1025`. Pesan hilang saat container dibuat ulang. Uji jalur email tanpa menunggu peristiwa antrian: `docker compose exec mail-service go run ./cmd/mail-service send-test alamat@contoh.com`.

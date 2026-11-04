@@ -295,3 +295,73 @@ CREATE TABLE user_avatars (
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Email ke pemilik tiket (item 8): preferensi dan outbox. Trigger menulis outbox DALAM transaksi yang sama
+-- dengan perubahan tiket, jadi email tidak hilang walau mail-service mati; mail-service (role mail_rw) mengirimnya.
+-- Terpisah dari tickets_notify: push tidak bergantung pada email sama sekali.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_notifications BOOLEAN NOT NULL DEFAULT TRUE;
+
+CREATE TABLE IF NOT EXISTS notification_outbox (
+    id              BIGSERIAL PRIMARY KEY,
+    kind            TEXT NOT NULL CHECK (kind IN ('joined', 'cancelled', 'removed', 'completed')),
+    ticket_id       BIGINT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    payload         JSONB NOT NULL,   -- snapshot: queue_id, queue_name, prefix, number, name (tanpa catatan owner)
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    sent_at         TIMESTAMPTZ,
+    attempts        INT NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    failed_at       TIMESTAMPTZ,      -- gagal permanen (5xx atau batas percobaan): tidak dicoba lagi
+    UNIQUE (kind, ticket_id)
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_pending ON notification_outbox (next_attempt_at)
+    WHERE sent_at IS NULL AND failed_at IS NULL;
+
+CREATE OR REPLACE FUNCTION tickets_email_outbox() RETURNS trigger AS $fn$
+DECLARE
+    k TEXT;
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        k := 'joined';
+    ELSIF NEW.status = 'cancelled' AND OLD.status IS DISTINCT FROM 'cancelled' THEN
+        k := 'cancelled';
+    ELSIF NEW.status = 'deleted' AND OLD.status IS DISTINCT FROM 'deleted' THEN
+        k := 'removed';
+    ELSIF NEW.status = 'completed' AND OLD.status = 'currently_served' THEN
+        k := 'completed';
+    ELSE
+        RETURN NULL;
+    END IF;
+
+    -- Sakelar pengguna dibaca saat kejadian: mematikan sakelar tidak membatalkan email lama,
+    -- tetapi kejadian sesudahnya tidak masuk outbox.
+    INSERT INTO notification_outbox (kind, ticket_id, user_id, payload)
+    SELECT k, NEW.id, u.id, jsonb_build_object(
+        'queue_id', q.id, 'queue_name', q.queue_name, 'prefix', q.ticket_prefix,
+        'number', NEW.ticket_number, 'name', u.username)
+    FROM users u JOIN queues q ON q.id = NEW.queue_id
+    WHERE u.id = NEW.user_id AND u.email_notifications
+    ON CONFLICT (kind, ticket_id) DO NOTHING;
+
+    IF FOUND THEN
+        PERFORM pg_notify('mail_outbox', '');
+    END IF;
+    RETURN NULL;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS tickets_email_outbox_trg ON tickets;
+CREATE TRIGGER tickets_email_outbox_trg
+    AFTER INSERT OR UPDATE OF status ON tickets
+    FOR EACH ROW EXECUTE FUNCTION tickets_email_outbox();
+
+-- Hak role mail_rw (dibuat oleh 04_mail_role.sh): hanya yang dibutuhkan pengirim email.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mail_rw') THEN
+        GRANT USAGE ON SCHEMA public TO mail_rw;
+        GRANT SELECT ON notification_outbox TO mail_rw;
+        GRANT UPDATE (sent_at, attempts, last_error, next_attempt_at, failed_at) ON notification_outbox TO mail_rw;
+        GRANT SELECT (id, email, username, email_notifications) ON users TO mail_rw;
+    END IF;
+END $$;

@@ -42,11 +42,18 @@ type MeResponse struct {
 	SubscriptionExpiresAt *time.Time `json:"subscription_expires_at"`
 	// AvatarUpdatedAt: null bila belum ada foto; dipakai klien sebagai penanda ada foto dan pemecah cache.
 	AvatarUpdatedAt *time.Time `json:"avatar_updated_at"`
+	// EmailNotifications: sakelar email notifikasi tiket.
+	EmailNotifications bool `json:"email_notifications"`
 }
 
 // UpdateMeRequest: PUT /users/me. Panjang diperiksa service setelah trim.
 type UpdateMeRequest struct {
 	Username string `json:"username" binding:"required,no_html_tags"`
+}
+
+// UpdatePreferencesRequest: PUT /users/me/preferences. Pointer agar "false" dibedakan dari field yang hilang.
+type UpdatePreferencesRequest struct {
+	EmailNotifications *bool `json:"email_notifications" binding:"required"`
 }
 
 // NewMeResponse membentuk respons dari model; satu tempat agar field tidak terlewat.
@@ -58,5 +65,6 @@ func NewMeResponse(p model.Profile) MeResponse {
 		IsOwner:               p.IsOwner,
 		SubscriptionExpiresAt: p.SubscriptionExpiresAt,
 		AvatarUpdatedAt:       p.AvatarUpdatedAt,
+		EmailNotifications:    p.User.EmailNotifications,
 	}
 }

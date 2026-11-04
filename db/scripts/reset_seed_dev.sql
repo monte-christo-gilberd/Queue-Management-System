@@ -35,6 +35,8 @@ END $$;
 -- sehingga tidak perlu CASCADE. Tanpa CASCADE, jika ada tabel lain yang bergantung, TRUNCATE gagal
 -- dan tidak ada yang berubah. RESTART IDENTITY mengembalikan id mulai dari 1.
 TRUNCATE TABLE
+    notification_outbox,
+    user_avatars,
     push_subscriptions,
     ticket_notes,
     counters,

@@ -1255,6 +1255,92 @@ func TestUserRepository_SubscriptionExpiryAndUpdateUsername(t *testing.T) {
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
 
+// Sakelar email: default menyala, bisa dimatikan, dan FindByID melaporkannya.
+func TestUserRepository_EmailNotificationsSwitch(t *testing.T) {
+	db := newTestDB(t)
+	repo := repository.NewUserRepository(db)
+	ctx := context.Background()
+	id := seedUser(t, db, "pref@b.c")
+
+	u, err := repo.FindByID(ctx, id)
+	require.NoError(t, err)
+	assert.True(t, u.EmailNotifications, "default menyala")
+
+	require.NoError(t, repo.SetEmailNotifications(ctx, id, false))
+	u, err = repo.FindByID(ctx, id)
+	require.NoError(t, err)
+	assert.False(t, u.EmailNotifications)
+
+	require.NoError(t, repo.SetEmailNotifications(ctx, id, true))
+	assert.ErrorIs(t, repo.SetEmailNotifications(ctx, 999999, true), apperror.ErrNotFound)
+}
+
+// Trigger outbox: satu baris per (jenis, tiket) dalam transaksi yang sama; sakelar mati tidak menulis;
+// payload tidak memuat catatan; completed hanya dari currently_served.
+func TestEmailOutbox_TriggerWritesOncePerEventAndHonoursSwitch(t *testing.T) {
+	db := newTestDB(t)
+	owner := seedOwner(t, db, "own-ob@b.c", time.Now().Add(time.Hour))
+	on := seedUser(t, db, "on-ob@b.c")
+	off := seedUser(t, db, "off-ob@b.c")
+	_, err := db.Exec(`UPDATE users SET email_notifications = false WHERE id = $1`, off)
+	require.NoError(t, err)
+	q := createQueue(t, db, owner, "Loket <A>")
+
+	var served, cancelled, removed, quiet int64
+	ins := func(n int, uid int64) int64 {
+		var id int64
+		require.NoError(t, db.Get(&id,
+			`INSERT INTO tickets(queue_id, ticket_number, sort_key, user_id) VALUES ($1,$2,$3,$4) RETURNING id`,
+			q.ID, n, n*1000, uid))
+		return id
+	}
+	// pemilik yang sama tidak boleh punya dua tiket aktif, jadi pakai akun berbeda per tiket aktif
+	u2, u3, u4 := seedUser(t, db, "u2-ob@b.c"), seedUser(t, db, "u3-ob@b.c"), seedUser(t, db, "u4-ob@b.c")
+	served, cancelled, removed, quiet = ins(1, on), ins(2, u2), ins(3, u3), ins(4, off)
+	_ = u4
+
+	counts := func() map[string]int {
+		rows, err := db.Queryx(`SELECT kind, count(*) FROM notification_outbox GROUP BY kind`)
+		require.NoError(t, err)
+		defer rows.Close()
+		m := map[string]int{}
+		for rows.Next() {
+			var k string
+			var n int
+			require.NoError(t, rows.Scan(&k, &n))
+			m[k] = n
+		}
+		return m
+	}
+	assert.Equal(t, map[string]int{"joined": 3}, counts(), "tiket milik user dengan sakelar mati tidak masuk outbox")
+
+	// waiting -> completed langsung (bukan dari currently_served) tidak menulis 'completed'.
+	_, err = db.Exec(`UPDATE tickets SET status='completed' WHERE id=$1`, quiet)
+	require.NoError(t, err)
+
+	var counter int64
+	require.NoError(t, db.Get(&counter, `SELECT id FROM counters WHERE queue_id=$1 LIMIT 1`, q.ID))
+	_, err = db.Exec(`UPDATE tickets SET status='currently_served', called_counter_id=$2, called_at=now() WHERE id=$1`, served, counter)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int{"joined": 3}, counts(), "memanggil nomor bukan kejadian email")
+	_, err = db.Exec(`UPDATE tickets SET status='completed', completed_at=now() WHERE id=$1`, served)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE tickets SET status='cancelled', cancelled_at=now() WHERE id=$1`, cancelled)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE tickets SET status='deleted' WHERE id=$1`, removed)
+	require.NoError(t, err)
+	// pembaruan ulang tidak menggandakan
+	_, err = db.Exec(`UPDATE tickets SET status='deleted', skip_count=skip_count WHERE id=$1`, removed)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]int{"joined": 3, "completed": 1, "cancelled": 1, "removed": 1}, counts())
+
+	var payload string
+	require.NoError(t, db.Get(&payload, `SELECT payload::text FROM notification_outbox WHERE kind='completed'`))
+	assert.Contains(t, payload, `"queue_name": "Loket <A>"`)
+	assert.NotContains(t, payload, "note")
+}
+
 // AvatarRepository: upsert satu foto per user, baca, UpdatedAt tanpa membaca data, hapus idempoten,
 // batas 150 KB dijaga CHECK, dan foto ikut terhapus bersama user.
 func TestAvatarRepository_PutGetDelete(t *testing.T) {

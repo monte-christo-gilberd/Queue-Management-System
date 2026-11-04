@@ -1,7 +1,8 @@
-# Kontainer mail-service (Go, tanpa dependensi pihak ketiga). Build context: folder mail-service/
+# Kontainer mail-service (Go; satu dependensi: pgx untuk worker outbox). Build context: folder mail-service/
 FROM golang:1.27-alpine AS base
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+RUN go mod download
 
 FROM base AS dev
 COPY . .

@@ -10,6 +10,8 @@ export type Me = {
   subscription_expires_at: string | null;
   /** Waktu foto profil terakhir diganti (ISO); null bila belum punya foto. Juga pemecah cache. */
   avatar_updated_at: string | null;
+  /** Email notifikasi tiket (masuk, batal, dihapus, selesai) menyala. */
+  email_notifications: boolean;
 };
 
 /** GET /api/v1/users/me (butuh token). */
@@ -20,6 +22,11 @@ export async function getMe(): Promise<Me> {
 /** PUT /api/v1/users/me: ganti username. Mengembalikan profil terbaru. */
 export async function updateMe(username: string): Promise<Me> {
   return apiFetch<Me>('/api/v1/users/me', { method: 'PUT', body: { username } });
+}
+
+/** PUT /api/v1/users/me/preferences: nyalakan atau matikan email notifikasi tiket. Mengembalikan profil terbaru. */
+export async function setEmailNotifications(enabled: boolean): Promise<Me> {
+  return apiFetch<Me>('/api/v1/users/me/preferences', { method: 'PUT', body: { email_notifications: enabled } });
 }
 
 /** Berkas foto untuk diunggah: `File` di web, objek `{ uri, name, type }` di native (bentuk yang dipahami FormData RN). */

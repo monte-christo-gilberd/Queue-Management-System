@@ -857,6 +857,18 @@ func (m *memUserRepo) SubscriptionExpiresAt(_ context.Context, userID int64) (*t
 	return &t, nil
 }
 
+func (m *memUserRepo) SetEmailNotifications(_ context.Context, id int64, enabled bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, u := range m.users {
+		if u.ID == id {
+			m.users[i].EmailNotifications = enabled
+			return nil
+		}
+	}
+	return apperror.ErrNotFound
+}
+
 func (m *memUserRepo) UpdateUsername(_ context.Context, id int64, username string) (model.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

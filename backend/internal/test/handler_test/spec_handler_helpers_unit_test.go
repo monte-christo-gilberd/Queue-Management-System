@@ -270,6 +270,8 @@ func (s *specUserSvc) Avatar(context.Context, int64) (model.Avatar, error) {
 	return model.Avatar{}, s.err
 }
 
+func (s *specUserSvc) SetEmailNotifications(context.Context, int64, bool) error { return s.err }
+
 func (s *specUserSvc) DeleteAvatar(context.Context, int64) error { return s.err }
 
 func (s *specUserSvc) UpdateUsername(_ context.Context, userID int64, username string) (model.User, error) {

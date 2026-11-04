@@ -39,6 +39,17 @@ type stubUserService struct {
 	avatarBytes   []byte
 	deletedCalls  int
 	avatarUpdated *time.Time
+	emailOn       bool
+	gotEmailPref  *bool
+	prefErr       error
+}
+
+func (s *stubUserService) SetEmailNotifications(_ context.Context, _ int64, enabled bool) error {
+	if s.prefErr != nil {
+		return s.prefErr
+	}
+	s.gotEmailPref, s.emailOn = &enabled, enabled
+	return nil
 }
 
 func (s *stubUserService) SetAvatar(_ context.Context, _ int64, r io.Reader) error {
@@ -64,7 +75,7 @@ func (s *stubUserService) Register(context.Context, string, string, string) (str
 
 func (s *stubUserService) Profile(_ context.Context, userID int64) (model.Profile, error) {
 	return model.Profile{
-		User:                  model.User{ID: userID, Email: "me@test.com", Username: "me"},
+		User:                  model.User{ID: userID, Email: "me@test.com", Username: "me", EmailNotifications: s.emailOn},
 		IsOwner:               s.isOwner,
 		SubscriptionExpiresAt: s.expiresAt,
 		AvatarUpdatedAt:       s.avatarUpdated,
@@ -157,7 +168,7 @@ func TestMe_ReturnsProfileAndOwnerFlag(t *testing.T) {
 	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/me", nil))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":false,"subscription_expires_at":null,"avatar_updated_at":null}}`, w.Body.String())
+	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":false,"subscription_expires_at":null,"avatar_updated_at":null,"email_notifications":false}}`, w.Body.String())
 }
 
 func TestMe_OwnerIncludesSubscriptionExpiry(t *testing.T) {
@@ -171,7 +182,7 @@ func TestMe_OwnerIncludesSubscriptionExpiry(t *testing.T) {
 	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/me", nil))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":true,"subscription_expires_at":"2026-12-01T00:00:00Z","avatar_updated_at":null}}`, w.Body.String())
+	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":true,"subscription_expires_at":"2026-12-01T00:00:00Z","avatar_updated_at":null,"email_notifications":false}}`, w.Body.String())
 }
 
 func putMe(t *testing.T, svc *stubUserService, body string) *httptest.ResponseRecorder {
@@ -333,4 +344,45 @@ func TestDeleteAvatar_Is204(t *testing.T) {
 	avatarEngine(svc).ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/avatar", nil))
 	assert.Equal(t, http.StatusNoContent, w.Code)
 	assert.Equal(t, 1, svc.deletedCalls)
+}
+
+func putPrefs(t *testing.T, svc *stubUserService, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	e := gin.New()
+	e.PUT("/prefs", func(c *gin.Context) { c.Set("user_id", int64(9)); handler.NewUserHandler(svc).UpdatePreferences(c) })
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/prefs", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	e.ServeHTTP(w, req)
+	return w
+}
+
+func TestUpdatePreferences_FalseIsAppliedAndEchoedInProfile(t *testing.T) {
+	svc := &stubUserService{emailOn: true}
+	w := putPrefs(t, svc, `{"email_notifications":false}`)
+	assert.Equal(t, http.StatusOK, w.Code)
+	if assert.NotNil(t, svc.gotEmailPref) {
+		assert.False(t, *svc.gotEmailPref, "false harus dibedakan dari field hilang")
+	}
+	assert.Contains(t, w.Body.String(), `"email_notifications":false`)
+
+	w = putPrefs(t, svc, `{"email_notifications":true}`)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"email_notifications":true`)
+}
+
+func TestUpdatePreferences_BadInputIsBadRequest(t *testing.T) {
+	for name, body := range map[string]string{
+		"missing": `{}`, "null": `{"email_notifications":null}`, "string": `{"email_notifications":"yes"}`, "not json": `x`,
+	} {
+		svc := &stubUserService{}
+		assert.Equal(t, http.StatusBadRequest, putPrefs(t, svc, body).Code, name)
+		assert.Nil(t, svc.gotEmailPref, name)
+	}
+}
+
+func TestUpdatePreferences_ServiceErrorsMapToStatus(t *testing.T) {
+	assert.Equal(t, http.StatusUnauthorized, putPrefs(t, &stubUserService{prefErr: apperror.ErrNotFound}, `{"email_notifications":true}`).Code)
+	assert.Equal(t, http.StatusInternalServerError, putPrefs(t, &stubUserService{prefErr: errors.New("boom")}, `{"email_notifications":true}`).Code)
 }

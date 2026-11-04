@@ -23,6 +23,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-qms_db}
       NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?set NOTIFY_DB_PASSWORD in .env}
+      MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -85,9 +86,9 @@ services:
       - internal
     restart: unless-stopped
 
-  # mail-service: satu-satunya pengirim email (SMTP, templat, coba ulang). Stateless, tanpa database, hanya di
-  # jaringan internal (tidak ada rute nginx). Pemanggil (backend, nanti) memakai POST /internal/v1/send dengan
-  # header X-Service-Token. notify-service tidak mengirim email.
+  # mail-service: satu-satunya pengirim email (SMTP, templat, coba ulang). Menjalankan worker outbox (membaca
+  # notification_outbox lewat role mail_rw) dan API POST /internal/v1/send (X-Service-Token). Hanya di jaringan
+  # internal (tidak ada rute nginx). notify-service tidak mengirim email dan tidak bergantung padanya.
   mail-service:
     build:
       context: ./mail-service
@@ -102,6 +103,9 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_TLS: ${SMTP_TLS:-none}
+      # Worker outbox (email ke pemilik tiket). Role mail_rw: baca outbox dan email pengguna, tanpa hak lain.
+      DATABASE_URL: postgresql://mail_rw:${MAIL_DB_PASSWORD}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+      QMS_PUBLIC_ORIGIN: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
     volumes:
       - ./mail-service:/src
       - go_build_cache:/root/.cache/go-build
@@ -112,8 +116,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 40
+    # Hanya menunggu db agar worker bisa menyambung. Mailpit tidak disyaratkan: bila SMTP mati, email menunggu
+    # di outbox dan dicoba ulang, tidak hilang.
     depends_on:
-      mailpit:
+      db:
         condition: service_healthy
     networks:
       - internal

@@ -12,4 +12,6 @@ type User struct {
 	PasswordHash sql.NullString `db:"password_hash"`
 	GoogleID     sql.NullString `db:"google_id"`
 	CreatedAt    time.Time      `db:"created_at"`
+	// EmailNotifications: sakelar email (item 8). Hanya dibaca FindByID; query lain tidak mengisinya.
+	EmailNotifications bool `db:"email_notifications"`
 }

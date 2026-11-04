@@ -22,7 +22,7 @@ QMS_ENV_FILE="$ENV_FILE" scripts/backup-prod.sh backup
 
 psql_ -q <<'SQL'
 BEGIN;
-TRUNCATE TABLE push_subscriptions, ticket_notes, counters, tickets, queue_history, queue_settings, queues RESTART IDENTITY;
+TRUNCATE TABLE notification_outbox, push_subscriptions, ticket_notes, counters, tickets, queue_history, queue_settings, queues RESTART IDENTITY;
 UPDATE owners SET subscription_expires_at = GREATEST(subscription_expires_at, now()) + interval '30 days'
   WHERE subscription_expires_at < now() + interval '30 days';
 COMMIT;

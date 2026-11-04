@@ -152,7 +152,8 @@ func (r *UserRepository) FindByID(
 			username,
 			password_hash,
 			google_id,
-			created_at
+			created_at,
+			email_notifications
 		FROM users
 		WHERE id = $1
 	`
@@ -208,6 +209,23 @@ func (r *UserRepository) UpdateUsername(
 		return model.User{}, fmt.Errorf("update username: %w", err)
 	}
 	return user, nil
+}
+
+// SetEmailNotifications menyalakan atau mematikan email ke user ini. ErrNotFound bila user tidak ada.
+func (r *UserRepository) SetEmailNotifications(
+	ctx context.Context,
+	userID int64,
+	enabled bool,
+) error {
+
+	res, err := r.db.ExecContext(ctx, `UPDATE users SET email_notifications = $2 WHERE id = $1`, userID, enabled)
+	if err != nil {
+		return fmt.Errorf("set email notifications: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
 }
 
 // IsOwner: true bila user punya baris di tabel owners (berlangganan atau pernah berlangganan).

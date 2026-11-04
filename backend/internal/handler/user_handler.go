@@ -35,6 +35,11 @@ type UserService interface {
 		userID int64,
 		username string,
 	) (model.User, error)
+	SetEmailNotifications(
+		ctx context.Context,
+		userID int64,
+		enabled bool,
+	) error
 	SetAvatar(
 		ctx context.Context,
 		userID int64,
@@ -215,6 +220,28 @@ func (h *UserHandler) UpdateMe(
 	}
 
 	// Baca ulang lewat Profile supaya bentuk respons sama persis dengan GET /users/me.
+	h.respondProfile(c, userID)
+}
+
+// UpdatePreferences: PUT /api/v1/users/me/preferences — sakelar email notifikasi tiket.
+func (h *UserHandler) UpdatePreferences(
+	c *gin.Context,
+) {
+	var request dto.UpdatePreferencesRequest
+	if err := c.ShouldBindJSON(&request); err != nil || request.EmailNotifications == nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+		return
+	}
+
+	userID := c.GetInt64("user_id")
+	if err := h.service.SetEmailNotifications(c.Request.Context(), userID, *request.EmailNotifications); err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized user")
+			return
+		}
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
 	h.respondProfile(c, userID)
 }
 

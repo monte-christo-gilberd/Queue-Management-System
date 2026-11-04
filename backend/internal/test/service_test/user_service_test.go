@@ -31,10 +31,17 @@ type fakeUserRepo struct {
 	findByIDErr    error
 	expiresAt      *time.Time
 	gotUsername    string
+	gotEmailPref   *bool
+	prefErr        error
 }
 
 func (r *fakeUserRepo) SubscriptionExpiresAt(context.Context, int64) (*time.Time, error) {
 	return r.expiresAt, nil
+}
+
+func (r *fakeUserRepo) SetEmailNotifications(_ context.Context, _ int64, enabled bool) error {
+	r.gotEmailPref = &enabled
+	return r.prefErr
 }
 
 func (r *fakeUserRepo) UpdateUsername(_ context.Context, id int64, username string) (model.User, error) {
@@ -401,4 +408,17 @@ func TestAvatar_WithoutStoreBehavesAsNoPhoto(t *testing.T) {
 	_, err = svc.Avatar(ctx, 7)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 	assert.NoError(t, svc.DeleteAvatar(ctx, 7))
+}
+
+func TestSetEmailNotifications_PassesValueThroughBothWays(t *testing.T) {
+	repo := &fakeUserRepo{}
+	svc := service.NewUserService(repo, "test-secret")
+	for _, want := range []bool{false, true} {
+		assert.NoError(t, svc.SetEmailNotifications(context.Background(), 7, want))
+		if assert.NotNil(t, repo.gotEmailPref) {
+			assert.Equal(t, want, *repo.gotEmailPref)
+		}
+	}
+	repo.prefErr = apperror.ErrNotFound
+	assert.ErrorIs(t, svc.SetEmailNotifications(context.Background(), 7, true), apperror.ErrNotFound)
 }
