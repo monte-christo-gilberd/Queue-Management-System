@@ -17,10 +17,11 @@ Dokumen lain:
 - Customer: bergabung lewat tautan/QR bertoken, melihat nomor yang sedang dilayani dan posisi di depan, serta riwayat tiket.
 - Notifikasi giliran lewat Web Push (`notify-service`): nomor dipanggil → "Giliran Anda", nomor berikutnya → "Tinggal 1 nomor lagi". Nomor yang dilewati juga diberi tahu. Notifikasi diaktifkan otomatis saat join (tanpa efek bila izin ditolak). Owner bisa "Panggil ulang" (tombol menggantikan Skip di detail antrian, mati 3 detik setelah Next, sekali per nomor). Hanya di browser lewat HTTPS (`make tunnel`); Expo Go tidak mendukung.
 - Pembaruan real-time lewat Server-Sent Events (termasuk `queue_qr_updated`).
+- Layar publik untuk monitor ruang tunggu: di detail antrian, owner menekan "AKTIFKAN LAYAR", mengatur jumlah nomor berikutnya dan dilewati, lalu membuka tautan `/display/<token>` di layar (tanpa login). Satu kartu per counter, berubah langsung saat Next/Skip dan saat counter ditambah atau dihapus. "GANTI TAUTAN" mematikan tautan lama.
 - Mode terang dan gelap.
 
 Yang belum tersedia (lihat [DESIGN.md](docs/DESIGN.md#7-batasan-dan-yang-belum-dibangun)): email,
-pembatalan oleh customer, hapus nomor oleh owner, layar tampilan publik, counter kustom, catatan, ekspor riwayat, login Google,
+pembatalan oleh customer, hapus nomor oleh owner, counter kustom, catatan, ekspor riwayat, login Google,
 dan pembayaran langganan.
 
 ## Teknologi

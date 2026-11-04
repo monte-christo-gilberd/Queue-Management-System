@@ -188,6 +188,16 @@ CREATE TRIGGER tickets_email_outbox_trg
     AFTER INSERT OR UPDATE OF status ON tickets
     FOR EACH ROW EXECUTE FUNCTION tickets_email_outbox();
 
+-- Layar publik antrian (fitur 4.5): lihat 01_Schema.sql.
+CREATE TABLE IF NOT EXISTS queue_displays (
+    queue_id       BIGINT PRIMARY KEY REFERENCES queues(id) ON DELETE CASCADE,
+    token          TEXT NOT NULL UNIQUE,
+    upcoming_count INT NOT NULL DEFAULT 5 CHECK (upcoming_count BETWEEN 0 AND 10),
+    skipped_count  INT NOT NULL DEFAULT 0 CHECK (skipped_count BETWEEN 0 AND 10),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    rotated_at     TIMESTAMPTZ
+);
+
 -- Hak role mail_rw (dibuat oleh 04_mail_role.sh): hanya yang dibutuhkan pengirim email.
 DO $$
 BEGIN

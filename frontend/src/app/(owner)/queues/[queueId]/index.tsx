@@ -13,6 +13,8 @@ import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useTicketNote } from '@/hooks/use-ticket-note';
 import { AppendNoteModal } from '@/components/ui/AppendNoteModal';
 import { useQueueQR } from '@/hooks/use-queue-qr';
+import { useDisplayConfig } from '@/hooks/use-display-config';
+import { DisplaySettingsCard } from '@/components/DisplaySettingsCard';
 import { useSkipSettings } from '@/hooks/use-skip-settings';
 import { SkipSettingsCard } from '@/components/SkipSettingsCard';
 import { useQueueDetail } from '@/hooks/use-queues';
@@ -74,6 +76,7 @@ function QueueDetailEditor({
   // QR antrian: token statis/dinamis + countdown + penggantian kode (qr-service lewat backend).
   const qr = useQueueQR(queue.id);
   const skipCfg = useSkipSettings(queue.id);
+  const display = useDisplayConfig(queue.id);
 
   // Papan tiket: daftar tiket + SKIP/NEXT. Antrian ditutup dari sini memuat ulang detail.
   const counters = useCounterSession(queue.id);
@@ -192,6 +195,18 @@ function QueueDetailEditor({
           onReplace={() => void qr.replace()}
           onRefresh={qr.reload}
           onRetry={qr.refresh}
+        />
+      }
+      displayCard={
+        <DisplaySettingsCard
+          config={display.config}
+          loading={display.loading}
+          busy={display.busy}
+          error={display.error}
+          onEnable={() => void display.enable()}
+          onChangeCounts={(c) => void display.setCounts(c)}
+          onRotate={() => void display.rotate()}
+          onDisable={() => void display.disable()}
         />
       }
       skipSettingsCard={

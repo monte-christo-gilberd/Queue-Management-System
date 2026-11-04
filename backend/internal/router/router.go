@@ -51,6 +51,12 @@ func (a *AppRouter) WithPasswordReset(h PasswordHandler) *AppRouter {
 	return a
 }
 
+// WithDisplay memasang layar publik: konfigurasi owner di /queues/:id/display dan rute publik /display/:token.
+func (a *AppRouter) WithDisplay(h DisplayHandler) *AppRouter {
+	a.displayHandler = h
+	return a
+}
+
 // WithPush memasang endpoint Web Push (opsional; tanpa ini rute /push tidak ada).
 func (a *AppRouter) WithPush(h PushHandler) *AppRouter {
 	a.pushHandler = h
@@ -114,6 +120,17 @@ func SetupRouter(
 	}
 	if router.counterHandler != nil {
 		registerCounterRoutes(queues, router.counterHandler)
+	}
+	if router.displayHandler != nil {
+		queues.GET("/:queue_id/display", router.displayHandler.Get)
+		queues.PUT("/:queue_id/display", router.displayHandler.Update)
+		queues.POST("/:queue_id/display/rotate", router.displayHandler.Rotate)
+		queues.DELETE("/:queue_id/display", router.displayHandler.Disable)
+
+		// Layar publik: TANPA login. Satu-satunya kredensial adalah token acak di path.
+		display := v1.Group("/display")
+		display.GET("/:token", router.displayHandler.Snapshot)
+		display.GET("/:token/event", router.displayHandler.Events)
 	}
 
 	if router.historyHandler != nil {

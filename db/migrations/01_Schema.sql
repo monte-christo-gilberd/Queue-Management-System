@@ -382,3 +382,15 @@ CREATE TABLE IF NOT EXISTS user_action_tokens (
     request_ip  TEXT
 );
 CREATE INDEX IF NOT EXISTS user_action_tokens_user_idx ON user_action_tokens (user_id, purpose, created_at DESC);
+
+-- Layar publik antrian (fitur 4.5): satu baris per antrian yang layarnya diaktifkan. `token` acak 24 byte dan
+-- dipakai di URL publik (/display/<token>); disimpan mentah karena owner perlu melihat URL-nya lagi. Siapa pun yang
+-- memegang token bisa melihat nomor antrian itu, jadi notify_ro dan mail_rw sengaja tidak diberi hak apa pun di sini.
+CREATE TABLE IF NOT EXISTS queue_displays (
+    queue_id       BIGINT PRIMARY KEY REFERENCES queues(id) ON DELETE CASCADE,
+    token          TEXT NOT NULL UNIQUE,
+    upcoming_count INT NOT NULL DEFAULT 5 CHECK (upcoming_count BETWEEN 0 AND 10),
+    skipped_count  INT NOT NULL DEFAULT 0 CHECK (skipped_count BETWEEN 0 AND 10),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    rotated_at     TIMESTAMPTZ
+);

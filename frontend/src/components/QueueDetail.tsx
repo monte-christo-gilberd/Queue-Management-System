@@ -79,6 +79,9 @@ export type QueueDetailProps = {
   /** Slot kartu QR (dirender route dari `useQueueQR`). */
   qrCard?: React.ReactNode;
 
+  /** Slot kartu layar publik (dirender route dari `useDisplayConfig`). */
+  displayCard?: React.ReactNode;
+
   /** Slot kartu pengaturan Skip (dirender route dari `useSkipSettings`). */
   skipSettingsCard?: React.ReactNode;
   /** Tab counter di atas timeline (hanya owner, dari CounterBar). */
@@ -125,6 +128,7 @@ export default function QueueDetail({
   insertError,
   defaultInsertPosition = 1,
   qrCard,
+  displayCard,
   skipSettingsCard,
   counterBar,
   onCloseQueue,
@@ -155,6 +159,7 @@ export default function QueueDetail({
         <View className={cn("gap-4", isWide && "w-[38%]")}>
           {counterBar}
           {qrCard}
+          {displayCard}
 
           {!isClosed ? (
             <View className="flex-row gap-3">

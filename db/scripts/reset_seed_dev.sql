@@ -37,6 +37,7 @@ END $$;
 TRUNCATE TABLE
     notification_outbox,
     user_action_tokens,
+    queue_displays,
     user_avatars,
     push_subscriptions,
     ticket_notes,

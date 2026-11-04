@@ -14,6 +14,8 @@ const (
 	EventCounterUpdated  = "counter_updated"
 	EventQueueClosed     = "queue_closed"
 	EventQueueUpdated    = "queue_updated"
+	// EventDisplayChanged: sinyal tanpa data untuk layar publik ("ambil ulang snapshot").
+	EventDisplayChanged = "display_changed"
 )
 
 // Event adalah kontrak JSON ke browser web & Expo RN.

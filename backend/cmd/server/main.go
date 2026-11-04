@@ -36,6 +36,9 @@ func main() {
 	defer db.Close()
 
 	hub := sse.NewHub()
+	// Cache snapshot layar publik dibatalkan oleh hub SEBELUM tiap event disebar (lihat Hub.Notify).
+	displayCache := service.NewDisplayCache(service.DisplayCacheTTL)
+	hub.SetBeforeNotify(displayCache.Invalidate)
 	go hub.Run()
 
 	txRunner := database.
@@ -119,6 +122,13 @@ func main() {
 		WithQueueGuard(queueService).
 		WithTicketReleaser(ticketService)
 	appRouter.WithCounters(handler.NewCounterHandler(counterService))
+	counterRepo := repository.NewCounterRepository(db)
+	appRouter.WithDisplay(handler.NewDisplayHandler(
+		service.NewDisplayService(repository.NewDisplayRepository(db), counterRepo, displayCache).
+			WithQueueGuard(queueService).
+			WithNotifier(hub),
+		hub,
+	))
 	appRouter.WithHistory(handler.NewHistoryHandler(
 		service.NewHistoryService(repository.NewHistoryRepository(db)),
 	))

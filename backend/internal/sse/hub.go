@@ -11,7 +11,18 @@ type Hub struct {
 	unregister chan *Client               // antrean "mau keluar dari room"
 	broadcast  chan broadcastReq          // antrean "ada pesan buat disebar ke 1 room"
 	mu         sync.RWMutex
+
+	// beforeNotify dipanggil di Notify SEBELUM event disebar. Dipakai membatalkan cache layar publik supaya
+	// klien yang mengambil ulang setelah menerima sinyal tidak mendapat snapshot lama. Diisi sekali saat start.
+	beforeNotify func(queueID int64)
 }
+
+// DisplayRoom: kunci room untuk layar publik antrian ini. Layar publik TIDAK ikut room antrian biasa karena
+// room itu membawa payload tiket lengkap (id user, dst); room ini hanya menerima sinyal tanpa data.
+func DisplayRoom(queueID int64) int64 { return -queueID }
+
+// SetBeforeNotify memasang hook yang dipanggil sebelum tiap event disebar. Panggil sebelum ada lalu lintas.
+func (h *Hub) SetBeforeNotify(fn func(queueID int64)) { h.beforeNotify = fn }
 
 type broadcastReq struct {
 	queueID int64
@@ -108,7 +119,14 @@ func (h *Hub) Broadcast(queueID int64, message []byte) {
 // service mendefinisikan interface Notify(queueID, action, payload),
 // Hub menyediakannya secara struktural.
 func (h *Hub) Notify(queueID int64, action string, payload interface{}) {
+	if h.beforeNotify != nil {
+		h.beforeNotify(queueID)
+	}
 	h.Broadcast(queueID, MarshalEvent(queueID, action, payload))
+	// Perubahan QR tidak mengubah apa pun di layar publik.
+	if action != "queue_qr_updated" {
+		h.Broadcast(DisplayRoom(queueID), MarshalEvent(queueID, EventDisplayChanged, nil))
+	}
 }
 
 // RoomSize untuk observasi/test.

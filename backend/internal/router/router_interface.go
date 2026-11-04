@@ -32,6 +32,15 @@ type PasswordHandler interface {
 	ResetPassword(c *gin.Context)
 }
 
+type DisplayHandler interface {
+	Get(c *gin.Context)
+	Update(c *gin.Context)
+	Rotate(c *gin.Context)
+	Disable(c *gin.Context)
+	Snapshot(c *gin.Context)
+	Events(c *gin.Context)
+}
+
 type QueueHandler interface {
 	Create(c *gin.Context)
 	Get(c *gin.Context)
@@ -78,6 +87,7 @@ type AppRouter struct {
 	counterHandler  CounterHandler
 	historyHandler  HistoryHandler
 	noteHandler     NoteHandler
+	displayHandler  DisplayHandler
 	pushHandler     PushHandler
 	passwordHandler PasswordHandler
 	ticketHandler   TicketHandler

@@ -28,6 +28,8 @@ var (
 	ErrImageTooLarge        = errors.New("image file is larger than 5 MB")
 	ErrUnsupportedImage     = errors.New("image must be JPEG, PNG or WebP")
 	ErrInvalidCursor        = errors.New("invalid pagination cursor")
+	ErrInvalidDisplayConfig = errors.New("display counts must be between 0 and 10")
+	ErrTooManyDisplays      = errors.New("too many public displays are connected to this queue")
 	ErrWeakPassword         = errors.New("password must be 8 to 72 characters")
 	ErrInvalidResetToken    = errors.New("reset token is invalid, expired or already used")
 
