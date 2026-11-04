@@ -132,8 +132,8 @@ services:
   # backend hanya membaca owners.subscription_expires_at dan tidak memanggil service ini, jadi tidak ada depends_on
   # dari/ke backend. Bila ini mati, antrian tetap jalan; hanya perpanjangan yang tertunda (Stripe mengirim ulang
   # webhook). Role payment_rw hanya menyentuh kolom langganan dan tabel pembayaran. Tanpa kunci Stripe, service tetap
-  # hidup dan checkout menjawab 503. Dev: pakai kunci mode uji Stripe (sk_test_..., tanpa uang sungguhan) atau
-  # arahkan STRIPE_API_BASE_URL ke emulator Stripe milik Anda.
+  # hidup dan checkout menjawab 503. Dev: DEV_PAYMENT_SIMULATOR=true (pembayaran palsu, tanpa kunci), atau kunci mode
+  # uji Stripe (sk_test_..., tanpa uang sungguhan).
   payment-service:
     build:
       context: ./payment-service
@@ -150,6 +150,9 @@ services:
       STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
       SUBSCRIPTION_PRICE_AMOUNT: ${SUBSCRIPTION_PRICE_AMOUNT:-50000}
       SUBSCRIPTION_CURRENCY: ${SUBSCRIPTION_CURRENCY:-idr}
+      # HANYA DEV: pembayaran palsu tanpa Stripe (tombol bayar langsung berhasil). Tidak ada di docker-compose.prod.yml,
+      # dan service menolak start bila ini menyala bersama APP_ENV=production atau kunci Stripe.
+      DEV_PAYMENT_SIMULATOR: ${DEV_PAYMENT_SIMULATOR:-}
     volumes:
       - ./payment-service:/src
       - go_build_cache:/root/.cache/go-build

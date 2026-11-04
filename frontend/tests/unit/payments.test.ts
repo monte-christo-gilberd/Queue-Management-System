@@ -18,7 +18,7 @@ test('payment-service mati: pesan ramah, antrian dinyatakan tetap berjalan', () 
 
 test('galat lain dipetakan terpisah', () => {
   assert.match(describePaymentError(new ApiError(429, 'UNKNOWN', 'x')), /Terlalu banyak/);
-  assert.match(describePaymentError(new ApiError(403, 'NOT_OWNER', 'x')), /Hanya owner/);
+  assert.match(describePaymentError(new ApiError(403, 'UNKNOWN_USER', 'x')), /login ulang/);
   assert.match(describePaymentError(new ApiError(500, 'INTERNAL', 'x')), /kesalahan di server/);
   assert.match(describePaymentError(new Error('boom')), /Terjadi kesalahan/);
 });

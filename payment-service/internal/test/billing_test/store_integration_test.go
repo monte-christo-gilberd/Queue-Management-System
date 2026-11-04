@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -59,9 +60,31 @@ func seedOwner(t *testing.T, admin *pgx.Conn, email string, expires time.Time) i
 	return id
 }
 
+// seedUser membuat user biasa (BUKAN owner) dan mengembalikan id-nya.
+func seedUser(t *testing.T, admin *pgx.Conn, email string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	var id int64
+	if err := admin.QueryRow(ctx,
+		`INSERT INTO users (email, username, password_hash) VALUES ($1, 'customer', 'x') RETURNING id`, email).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		admin.Exec(ctx, `DELETE FROM payment_session_credits WHERE payment_id IN (SELECT id FROM payments WHERE owner_id=$1)`, id)
+		admin.Exec(ctx, `DELETE FROM payments WHERE owner_id=$1`, id)
+		admin.Exec(ctx, `DELETE FROM owners WHERE user_id=$1`, id)
+		admin.Exec(ctx, `DELETE FROM users WHERE id=$1`, id)
+	})
+	return id
+}
+
+// runID membuat ID event/sesi unik per proses test, supaya test bisa diulang pada database yang sama
+// (event yang sudah tercatat memang diabaikan, itu justru yang diuji).
+var runID = strconv.FormatInt(time.Now().UnixNano(), 36)
+
 func credit(owner int64, event, session string) billing.Credit {
-	return billing.Credit{EventID: event, EventType: "checkout.session.completed", SessionID: session,
-		OwnerID: owner, Amount: "50000.00", Currency: "IDR"}
+	return billing.Credit{EventID: event + "_" + runID, EventType: "checkout.session.completed", SessionID: session + "_" + runID,
+		UserID: owner, Amount: "50000.00", Currency: "IDR"}
 }
 
 func expiresAt(t *testing.T, admin *pgx.Conn, id int64) time.Time {
@@ -84,6 +107,42 @@ func TestCreditExtendsActiveSubscriptionFromItsEnd(t *testing.T) {
 	}
 	if want := end.AddDate(0, 1, 0); got.Sub(want).Abs() > time.Second {
 		t.Fatalf("expires = %v, want %v (end + 1 month)", got, want)
+	}
+}
+
+// Pembayaran pertama sebuah user biasa menjadikannya owner dengan langganan now + 1 bulan.
+func TestFirstPaymentMakesUserAnOwner(t *testing.T) {
+	admin, store, _ := integrationEnv(t)
+	ctx := context.Background()
+	id := seedUser(t, admin, "newowner-"+t.Name()+"@test.com")
+	var n int
+	admin.QueryRow(ctx, `SELECT count(*) FROM owners WHERE user_id=$1`, id).Scan(&n)
+	if n != 0 {
+		t.Fatal("precondition: user must not be an owner yet")
+	}
+
+	ok, got, err := store.Credit(ctx, credit(id, "evt_n_"+t.Name(), "cs_n_"+t.Name()))
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if want := time.Now().AddDate(0, 1, 0); got.Sub(want).Abs() > time.Minute {
+		t.Fatalf("expires = %v, want about %v", got, want)
+	}
+	admin.QueryRow(ctx, `SELECT count(*) FROM owners WHERE user_id=$1`, id).Scan(&n)
+	if n != 1 {
+		t.Fatalf("owners rows = %d, want 1", n)
+	}
+	admin.QueryRow(ctx, `SELECT count(*) FROM payments WHERE owner_id=$1 AND status='success'`, id).Scan(&n)
+	if n != 1 {
+		t.Fatalf("payments rows = %d, want 1", n)
+	}
+	// Pembayaran kedua memperpanjang dari tanggal tadi (+1 bulan lagi); tidak membuat owner kedua.
+	_, second, err := store.Credit(ctx, credit(id, "evt_n2_"+t.Name(), "cs_n2_"+t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := got.AddDate(0, 1, 0); second.Sub(want).Abs() > time.Second {
+		t.Fatalf("second = %v, want %v", second, want)
 	}
 }
 
@@ -155,8 +214,8 @@ func TestSameSessionFromTwoEventsExtendsOnce(t *testing.T) {
 func TestUnknownOwnerRollsBackEverything(t *testing.T) {
 	admin, store, _ := integrationEnv(t)
 	c := credit(99999999, "evt_u_"+t.Name(), "cs_u_"+t.Name())
-	if _, _, err := store.Credit(context.Background(), c); !errors.Is(err, billing.ErrNotOwner) {
-		t.Fatalf("err = %v, want ErrNotOwner", err)
+	if _, _, err := store.Credit(context.Background(), c); !errors.Is(err, billing.ErrUnknownUser) {
+		t.Fatalf("err = %v, want ErrUnknownUser", err)
 	}
 	var n int
 	admin.QueryRow(context.Background(), `SELECT count(*) FROM payment_webhook_events WHERE event_id=$1`, c.EventID).Scan(&n)
@@ -165,13 +224,18 @@ func TestUnknownOwnerRollsBackEverything(t *testing.T) {
 	}
 }
 
-func TestOwnerEmail(t *testing.T) {
+func TestUserEmail(t *testing.T) {
 	admin, store, _ := integrationEnv(t)
 	id := seedOwner(t, admin, "mail-"+t.Name()+"@test.com", time.Now())
-	if e, err := store.OwnerEmail(context.Background(), id); err != nil || e != "mail-"+t.Name()+"@test.com" {
+	if e, err := store.UserEmail(context.Background(), id); err != nil || e != "mail-"+t.Name()+"@test.com" {
 		t.Fatalf("email=%q err=%v", e, err)
 	}
-	if _, err := store.OwnerEmail(context.Background(), 99999999); !errors.Is(err, billing.ErrNotOwner) {
+	// Calon owner (belum punya baris owners) juga sah.
+	plain := seedUser(t, admin, "plain-"+t.Name()+"@test.com")
+	if e, err := store.UserEmail(context.Background(), plain); err != nil || e != "plain-"+t.Name()+"@test.com" {
+		t.Fatalf("plain user: email=%q err=%v", e, err)
+	}
+	if _, err := store.UserEmail(context.Background(), 99999999); !errors.Is(err, billing.ErrUnknownUser) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -181,14 +245,16 @@ func TestRoleCannotTouchQueueData(t *testing.T) {
 	_, _, rw := integrationEnv(t)
 	ctx := context.Background()
 	for name, q := range map[string]string{
-		"read tickets":            `SELECT 1 FROM tickets LIMIT 1`,
-		"read queues":             `SELECT 1 FROM queues LIMIT 1`,
-		"delete tickets":          `DELETE FROM tickets`,
-		"read password hashes":    `SELECT password_hash FROM users LIMIT 1`,
-		"update user email":       `UPDATE users SET email = email`,
-		"update owner created_at": `UPDATE owners SET created_at = created_at`,
-		"delete payments":         `DELETE FROM payments`,
-		"update payments":         `UPDATE payments SET amount = 0`,
+		"read tickets":                 `SELECT 1 FROM tickets LIMIT 1`,
+		"read queues":                  `SELECT 1 FROM queues LIMIT 1`,
+		"delete tickets":               `DELETE FROM tickets`,
+		"read password hashes":         `SELECT password_hash FROM users LIMIT 1`,
+		"update user email":            `UPDATE users SET email = email`,
+		"update owner created_at":      `UPDATE owners SET created_at = created_at`,
+		"insert owner with created_at": `INSERT INTO owners (user_id, subscription_expires_at, created_at) VALUES (1, now(), now())`,
+		"delete owners":                `DELETE FROM owners`,
+		"delete payments":              `DELETE FROM payments`,
+		"update payments":              `UPDATE payments SET amount = 0`,
 	} {
 		if _, err := rw.Exec(ctx, q); err == nil {
 			t.Errorf("%s: payment_rw was allowed to run %q", name, q)

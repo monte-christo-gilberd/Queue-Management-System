@@ -1,6 +1,7 @@
 #!/bin/sh
 # payment-service: tabel pencatat webhook + role database terbatas payment_rw.
-# Role ini hanya boleh: membaca user_id/subscription_expires_at dan mengubah subscription_expires_at di owners,
+# Role ini hanya boleh: membuat baris owners (pembayaran pertama = jadi owner), membaca user_id/subscription_expires_at
+# dan mengubah subscription_expires_at di owners,
 # membaca email di users, menambah baris payments, dan memakai dua tabel milik payment-service. Tidak ada akses
 # ke antrian, tiket, atau data lain.
 # Idempoten: aman dijalankan ulang pada DB yang sudah ada (membuat tabel/role atau mengganti passwordnya):
@@ -32,7 +33,7 @@ SELECT format('ALTER ROLE payment_rw PASSWORD %L', :'pw') \gexec
 GRANT CONNECT ON DATABASE :"DBNAME" TO payment_rw;
 GRANT USAGE ON SCHEMA public TO payment_rw;
 GRANT SELECT (user_id, subscription_expires_at) ON owners TO payment_rw;
-GRANT UPDATE (subscription_expires_at) ON owners TO payment_rw;
+GRANT INSERT (user_id, subscription_expires_at), UPDATE (subscription_expires_at) ON owners TO payment_rw;
 GRANT SELECT (id, email) ON users TO payment_rw;
 GRANT SELECT, INSERT ON payments TO payment_rw;
 GRANT USAGE ON SEQUENCE payments_id_seq TO payment_rw;

@@ -28,7 +28,7 @@ func TestParseEventValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := billing.Session{ID: "cs_9", OwnerID: 42, PaymentStatus: "paid", AmountTotal: 5000000, Currency: "idr"}
+	want := billing.Session{ID: "cs_9", UserID: 42, PaymentStatus: "paid", AmountTotal: 5000000, Currency: "idr"}
 	if ev.ID != "evt_1" || ev.Type != "checkout.session.completed" || ev.Session != want {
 		t.Fatalf("event = %+v", ev)
 	}

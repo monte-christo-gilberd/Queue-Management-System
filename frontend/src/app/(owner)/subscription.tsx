@@ -7,6 +7,7 @@ import Subscription from '@/components/Subscription';
 import { describePaymentError, startCheckout } from '@/lib/payments';
 import { getMe, type Me } from '@/lib/users';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
+import { useAuthStore } from '@/store/authStore';
 import { subscriptionStatus } from '@/utils/profile';
 
 // Setelah kembali dari Stripe, webhook bisa tiba beberapa detik setelah redirect browser: profil dimuat ulang
@@ -20,6 +21,7 @@ const MSG_CANCEL = 'Pembayaran dibatalkan. Anda bisa mencobanya lagi kapan saja.
 export default function SubscriptionRoute() {
   // Web: Stripe mengembalikan browser ke /subscription?payment=success|cancel.
   const { payment } = useLocalSearchParams<{ payment?: string }>();
+  const displayName = useAuthStore((s) => s.displayName);
   const [me, setMe] = useState<Me | null>(null);
   const [paying, setPaying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -106,11 +108,17 @@ export default function SubscriptionRoute() {
 
   const returnMessage = payment === 'success' ? MSG_SUCCESS : payment === 'cancel' ? MSG_CANCEL : '';
   const status = me?.is_owner ? subscriptionStatus(me.subscription_expires_at) : null;
+  // Calon owner: pembayaran pertama menjadikan akun ini owner (dilakukan payment-service setelah webhook).
+  const prospect = me !== null && !me.is_owner;
   return (
     <Subscription
+      shell={{ userName: displayName ?? undefined }}
       paid={status?.active ?? false}
-      title={status ? (status.active ? 'Langganan Aktif' : 'Langganan Belum Aktif') : ''}
-      subtitle={status?.description ?? ''}
+      title={status ? (status.active ? 'Langganan Aktif' : 'Langganan Belum Aktif') : prospect ? 'Belum Jadi Owner' : ''}
+      subtitle={status?.description ?? (prospect ? 'Bayar langganan 1 bulan pertama untuk menjadi owner dan mulai membuat antrian.' : '')}
+      payTitle={prospect ? 'Jadi Owner' : undefined}
+      payHint={prospect ? 'Pembayaran lewat Stripe. Setelah berhasil, akun Anda menjadi owner dengan langganan aktif 1 bulan.' : undefined}
+      payLabel={prospect ? 'BAYAR & JADI OWNER' : undefined}
       username={me?.username ?? ''}
       onPay={pay}
       paying={paying}

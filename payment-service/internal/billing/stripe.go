@@ -35,14 +35,14 @@ func NewStripeProvider(apiKey, baseURL, webhookSecret, priceID string, amount in
 
 // CreateCheckout membuka sesi pembayaran sekali bayar untuk satu bulan langganan.
 func (p *StripeProvider) CreateCheckout(ctx context.Context, in CheckoutInput) (Checkout, error) {
-	owner := strconv.FormatInt(in.OwnerID, 10)
+	user := strconv.FormatInt(in.UserID, 10)
 	params := &stripe.CheckoutSessionCreateParams{
 		Mode:              stripe.String(string(stripe.CheckoutSessionModePayment)),
 		SuccessURL:        stripe.String(in.SuccessURL),
 		CancelURL:         stripe.String(in.CancelURL),
 		CustomerEmail:     stripe.String(in.CustomerEmail),
-		ClientReferenceID: stripe.String(owner),
-		Metadata:          map[string]string{"owner_id": owner, "purpose": "qms_subscription_1_month"},
+		ClientReferenceID: stripe.String(user),
+		Metadata:          map[string]string{"user_id": user, "purpose": "qms_subscription_1_month"},
 	}
 	item := &stripe.CheckoutSessionCreateLineItemParams{Quantity: stripe.Int64(1)}
 	if p.priceID != "" {
@@ -85,10 +85,10 @@ func (p *StripeProvider) ParseEvent(payload []byte, sigHeader string) (Event, er
 	if ev.Data != nil && len(ev.Data.Raw) > 0 {
 		_ = json.Unmarshal(ev.Data.Raw, &obj)
 	}
-	owner, _ := strconv.ParseInt(obj.ClientReferenceID, 10, 64)
+	user, _ := strconv.ParseInt(obj.ClientReferenceID, 10, 64)
 	out.Session = Session{
 		ID:            obj.ID,
-		OwnerID:       owner,
+		UserID:        user,
 		PaymentStatus: obj.PaymentStatus,
 		AmountTotal:   obj.AmountTotal,
 		Currency:      obj.Currency,

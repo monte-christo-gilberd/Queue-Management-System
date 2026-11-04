@@ -10,7 +10,7 @@ import (
 )
 
 // PGStore: akses database lewat role payment_rw (db/migrations/05_payment_role.sh). Role itu hanya boleh
-// membaca/mengubah owners.subscription_expires_at, menambah baris payments, dan tabel milik payment-service
+// membuat baris owners dan membaca/mengubah owners.subscription_expires_at, menambah baris payments, dan tabel milik payment-service
 // sendiri; tidak ada akses ke antrian, tiket, atau data lain.
 type PGStore struct{ pool *pgxpool.Pool }
 
@@ -18,12 +18,12 @@ func NewPGStore(pool *pgxpool.Pool) *PGStore { return &PGStore{pool: pool} }
 
 func (s *PGStore) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
-func (s *PGStore) OwnerEmail(ctx context.Context, ownerID int64) (string, error) {
+func (s *PGStore) UserEmail(ctx context.Context, userID int64) (string, error) {
 	var email string
 	err := s.pool.QueryRow(ctx,
-		`SELECT u.email FROM owners o JOIN users u ON u.id = o.user_id WHERE o.user_id = $1`, ownerID).Scan(&email)
+		`SELECT email FROM users WHERE id = $1`, userID).Scan(&email)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrNotOwner
+		return "", ErrUnknownUser
 	}
 	return email, err
 }
@@ -68,14 +68,18 @@ func (s *PGStore) Credit(ctx context.Context, c Credit) (bool, time.Time, error)
 	}
 
 	// 3. Perpanjang tepat 1 bulan: dari tanggal berakhir bila masih aktif, dari sekarang bila sudah lewat.
+	// User yang belum owner menjadi owner di sini (pembayaran pertama): baris owners dibuat dengan
+	// now() + 1 bulan. Upsert atomik; baris owners yang ada terkunci sampai commit, jadi dua webhook untuk
+	// user yang sama berjalan berurutan. Tanpa baris users, SELECT kosong dan tidak ada yang tertulis.
 	var expires time.Time
 	err = tx.QueryRow(ctx, `
-		UPDATE owners
-		   SET subscription_expires_at = GREATEST(now(), subscription_expires_at) + interval '1 month'
-		 WHERE user_id = $1
-		RETURNING subscription_expires_at`, c.OwnerID).Scan(&expires)
+		INSERT INTO owners (user_id, subscription_expires_at)
+		SELECT id, now() + interval '1 month' FROM users WHERE id = $1
+		ON CONFLICT (user_id) DO UPDATE
+		   SET subscription_expires_at = GREATEST(now(), owners.subscription_expires_at) + interval '1 month'
+		RETURNING subscription_expires_at`, c.UserID).Scan(&expires)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, time.Time{}, ErrNotOwner
+		return false, time.Time{}, ErrUnknownUser
 	}
 	if err != nil {
 		return false, time.Time{}, err
@@ -86,7 +90,7 @@ func (s *PGStore) Credit(ctx context.Context, c Credit) (bool, time.Time, error)
 	err = tx.QueryRow(ctx, `
 		INSERT INTO payments (owner_id, amount, currency, plan_type, extends_subscription_to, status)
 		VALUES ($1, $2::numeric, $3, 'monthly', $4, 'success')
-		RETURNING id`, c.OwnerID, c.Amount, c.Currency, expires).Scan(&paymentID)
+		RETURNING id`, c.UserID, c.Amount, c.Currency, expires).Scan(&paymentID)
 	if err != nil {
 		return false, time.Time{}, err
 	}

@@ -23,7 +23,7 @@ type fakeStore struct {
 }
 
 func (f *fakeStore) Ping(context.Context) error { return f.pingErr }
-func (f *fakeStore) OwnerEmail(context.Context, int64) (string, error) {
+func (f *fakeStore) UserEmail(context.Context, int64) (string, error) {
 	return "owner@test.com", f.ownerErr
 }
 func (f *fakeStore) Credit(_ context.Context, c billing.Credit) (bool, time.Time, error) {
@@ -59,7 +59,7 @@ func newSvc(st *fakeStore, p *fakeProvider) *billing.Service {
 
 func paidEvent() billing.Event {
 	return billing.Event{ID: "evt_1", Type: "checkout.session.completed", Session: billing.Session{
-		ID: "cs_1", OwnerID: 7, PaymentStatus: "paid", AmountTotal: 5000000, Currency: "idr",
+		ID: "cs_1", UserID: 7, PaymentStatus: "paid", AmountTotal: 5000000, Currency: "idr",
 	}}
 }
 
@@ -73,7 +73,7 @@ func TestPaidSessionExtendsOnce(t *testing.T) {
 		t.Fatalf("credits = %d, want 1", len(st.credits))
 	}
 	c := st.credits[0]
-	if c.OwnerID != 7 || c.SessionID != "cs_1" || c.EventID != "evt_1" || c.Amount != "50000.00" || c.Currency != "IDR" {
+	if c.UserID != 7 || c.SessionID != "cs_1" || c.EventID != "evt_1" || c.Amount != "50000.00" || c.Currency != "IDR" {
 		t.Fatalf("credit = %+v", c)
 	}
 }
@@ -139,7 +139,7 @@ func TestStoreFailureIsRetried(t *testing.T) {
 }
 
 func TestUnknownOwnerNotRetried(t *testing.T) {
-	st := &fakeStore{creditErr: billing.ErrNotOwner}
+	st := &fakeStore{creditErr: billing.ErrUnknownUser}
 	if err := newSvc(st, &fakeProvider{event: paidEvent()}).HandleWebhook(context.Background(), nil, "sig"); err != nil {
 		t.Fatalf("unknown owner needs a human, retrying is pointless; got %v", err)
 	}
@@ -147,7 +147,7 @@ func TestUnknownOwnerNotRetried(t *testing.T) {
 
 func TestPaidWithoutOwnerReferenceIgnored(t *testing.T) {
 	ev := paidEvent()
-	ev.Session.OwnerID = 0
+	ev.Session.UserID = 0
 	st := &fakeStore{}
 	if err := newSvc(st, &fakeProvider{event: ev}).HandleWebhook(context.Background(), nil, "sig"); err != nil {
 		t.Fatal(err)
@@ -176,7 +176,7 @@ func TestStartCheckout(t *testing.T) {
 	if err != nil || co.URL != "https://checkout.stripe.com/x" {
 		t.Fatalf("co=%+v err=%v", co, err)
 	}
-	if p.lastCreate.OwnerID != 7 || p.lastCreate.CustomerEmail != "owner@test.com" ||
+	if p.lastCreate.UserID != 7 || p.lastCreate.CustomerEmail != "owner@test.com" ||
 		p.lastCreate.SuccessURL != "https://qms.example.com/subscription?payment=success" ||
 		p.lastCreate.CancelURL != "https://qms.example.com/subscription?payment=cancel" {
 		t.Fatalf("input = %+v", p.lastCreate)
@@ -184,8 +184,8 @@ func TestStartCheckout(t *testing.T) {
 }
 
 func TestStartCheckoutNotOwner(t *testing.T) {
-	_, err := newSvc(&fakeStore{ownerErr: billing.ErrNotOwner}, &fakeProvider{}).StartCheckout(context.Background(), 9)
-	if !errors.Is(err, billing.ErrNotOwner) {
+	_, err := newSvc(&fakeStore{ownerErr: billing.ErrUnknownUser}, &fakeProvider{}).StartCheckout(context.Background(), 9)
+	if !errors.Is(err, billing.ErrUnknownUser) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -195,5 +195,66 @@ func TestMinorFactor(t *testing.T) {
 		if got := billing.MinorFactor(cur); got != want {
 			t.Errorf("MinorFactor(%s) = %d, want %d", cur, got, want)
 		}
+	}
+}
+
+func TestSimulatorCreditsWithoutStripe(t *testing.T) {
+	st := &fakeStore{extended: true}
+	svc := newSvc(st, nil).WithSimulator(50000, "idr") // tanpa provider Stripe sama sekali
+	if !svc.Enabled() {
+		t.Fatal("simulator must count as enabled")
+	}
+	co, err := svc.StartCheckout(context.Background(), 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if co.URL != "https://qms.example.com/subscription?payment=success" {
+		t.Fatalf("url = %q", co.URL)
+	}
+	if len(st.credits) != 1 {
+		t.Fatalf("credits = %d, want 1", len(st.credits))
+	}
+	c := st.credits[0]
+	if c.UserID != 12 || c.Amount != "50000.00" || c.Currency != "IDR" || c.EventType != "simulated.payment" ||
+		c.EventID == "" || c.SessionID == "" {
+		t.Fatalf("credit = %+v", c)
+	}
+}
+
+func TestSimulatorUsesFreshIDsEachTime(t *testing.T) {
+	st := &fakeStore{extended: true}
+	svc := newSvc(st, nil).WithSimulator(50000, "idr")
+	for i := 0; i < 2; i++ {
+		if _, err := svc.StartCheckout(context.Background(), 12); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st.credits[0].EventID == st.credits[1].EventID || st.credits[0].SessionID == st.credits[1].SessionID {
+		t.Fatal("each simulated payment must be a distinct event+session, or the second click would be ignored as a duplicate")
+	}
+}
+
+func TestSimulatorPropagatesUnknownUser(t *testing.T) {
+	st := &fakeStore{creditErr: billing.ErrUnknownUser}
+	_, err := newSvc(st, nil).WithSimulator(50000, "idr").StartCheckout(context.Background(), 99)
+	if !errors.Is(err, billing.ErrUnknownUser) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSimulatorDoesNotAcceptWebhooks(t *testing.T) {
+	svc := newSvc(&fakeStore{}, nil).WithSimulator(50000, "idr")
+	if err := svc.HandleWebhook(context.Background(), nil, "x"); !errors.Is(err, billing.ErrDisabled) {
+		t.Fatalf("err = %v, want ErrDisabled (no fake webhooks)", err)
+	}
+}
+
+func TestSimulatorZeroDecimalCurrency(t *testing.T) {
+	st := &fakeStore{extended: true}
+	if _, err := newSvc(st, nil).WithSimulator(1500, "jpy").StartCheckout(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if st.credits[0].Amount != "1500.00" || st.credits[0].Currency != "JPY" {
+		t.Fatalf("credit = %+v", st.credits[0])
 	}
 }

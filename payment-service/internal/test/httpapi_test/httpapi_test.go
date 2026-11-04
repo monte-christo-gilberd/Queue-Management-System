@@ -105,7 +105,7 @@ func TestCheckoutErrorMapping(t *testing.T) {
 		code int
 		key  string
 	}{
-		{billing.ErrNotOwner, 403, "NOT_OWNER"},
+		{billing.ErrUnknownUser, 403, "UNKNOWN_USER"},
 		{billing.ErrDisabled, 503, "PAYMENT_UNAVAILABLE"},
 		{errors.New("stripe 500"), 502, "PAYMENT_PROVIDER_ERROR"},
 	}

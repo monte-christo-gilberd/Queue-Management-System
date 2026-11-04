@@ -13,7 +13,7 @@ func setBase(t *testing.T) {
 	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
 	t.Setenv("QMS_PUBLIC_ORIGIN", "https://qms.example.com")
 	for _, k := range []string{"APP_ENV", "STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_API_BASE_URL", "STRIPE_PRICE_ID",
-		"SUBSCRIPTION_PRICE_AMOUNT", "SUBSCRIPTION_CURRENCY", "PORT"} {
+		"SUBSCRIPTION_PRICE_AMOUNT", "SUBSCRIPTION_CURRENCY", "PORT", "DEV_PAYMENT_SIMULATOR"} {
 		t.Setenv(k, "")
 	}
 }
@@ -82,5 +82,44 @@ func TestRequiredAndInvalid(t *testing.T) {
 		if _, err := config.Load(); err == nil {
 			t.Errorf("%s=%q: expected error", k, v)
 		}
+	}
+}
+
+func TestSimulatorOffByDefault(t *testing.T) {
+	setBase(t)
+	cfg, err := config.Load()
+	if err != nil || cfg.DevSimulator {
+		t.Fatalf("cfg.DevSimulator=%v err=%v, want off", cfg.DevSimulator, err)
+	}
+}
+
+func TestSimulatorOnInDev(t *testing.T) {
+	setBase(t)
+	t.Setenv("QMS_PUBLIC_ORIGIN", "http://localhost:8080")
+	t.Setenv("DEV_PAYMENT_SIMULATOR", "true")
+	cfg, err := config.Load()
+	if err != nil || !cfg.DevSimulator {
+		t.Fatalf("cfg.DevSimulator=%v err=%v, want on", cfg.DevSimulator, err)
+	}
+}
+
+// Pembayaran palsu tidak boleh menyala di produksi, apa pun nilai lainnya.
+func TestSimulatorRefusedInProduction(t *testing.T) {
+	setBase(t)
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DEV_PAYMENT_SIMULATOR", "true")
+	if _, err := config.Load(); err == nil || !strings.Contains(err.Error(), "DEV_PAYMENT_SIMULATOR") {
+		t.Fatalf("err = %v, want refusal", err)
+	}
+}
+
+func TestSimulatorAndStripeKeysAreExclusive(t *testing.T) {
+	setBase(t)
+	t.Setenv("QMS_PUBLIC_ORIGIN", "http://localhost:8080")
+	t.Setenv("DEV_PAYMENT_SIMULATOR", "1")
+	t.Setenv("STRIPE_API_KEY", "sk_test_123")
+	t.Setenv("STRIPE_WEBHOOK_SECRET", "whsec_123")
+	if _, err := config.Load(); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("err = %v", err)
 	}
 }

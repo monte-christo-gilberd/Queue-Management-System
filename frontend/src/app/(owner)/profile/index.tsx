@@ -177,6 +177,7 @@ export default function ProfileRoute() {
       emailNotificationsBusy={emailBusy || me === null}
       onToggleEmailNotifications={(v) => void toggleEmail(v)}
       isOwner={me?.is_owner === true}
+      canBecomeOwner={me !== null && !me.is_owner}
       subscriptionPaid={subscription?.active ?? false}
       subscriptionDescription={subscription?.description}
       onPressChangePassword={() => void requestPasswordChange()}

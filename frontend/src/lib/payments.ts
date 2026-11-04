@@ -19,7 +19,7 @@ export function describePaymentError(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Terjadi kesalahan, coba lagi';
   // 429/502/503/504 bisa datang dari nginx tanpa body JSON, jadi dicek lewat status.
   if (error.status === 429) return 'Terlalu banyak permintaan, tunggu sebentar lalu coba lagi';
-  if (error.code === 'NOT_OWNER') return 'Hanya owner yang dapat memperpanjang langganan';
+  if (error.code === 'UNKNOWN_USER') return 'Akun tidak ditemukan, silakan login ulang';
   if (
     error.code === 'NETWORK_ERROR' ||
     error.code === 'PAYMENT_UNAVAILABLE' ||

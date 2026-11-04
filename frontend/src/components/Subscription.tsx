@@ -2,7 +2,6 @@ import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
-import { useIsWide } from '@/hooks/use-is-wide';
 import { cn } from '@/utils/cn';
 import ResponsiveScreenLayout, {
   type OwnerMenuItem,
@@ -21,8 +20,12 @@ export type SubscriptionProps = {
   /** Subjudul, mis. "Lakukan pembayaran sebelum 01 Feb 2025". */
   subtitle: string;
   username: string;
-  /** Buka pembayaran Stripe untuk perpanjangan 1 bulan. */
+  /** Buka pembayaran Stripe untuk 1 bulan (perpanjangan, atau pembayaran pertama = jadi owner). */
   onPay?: () => void;
+  /** Teks kartu dan tombol bayar; bawaan untuk perpanjangan. */
+  payTitle?: string;
+  payHint?: string;
+  payLabel?: string;
   paying?: boolean;
   /** Info setelah kembali dari pembayaran (mis. "Pembayaran diterima..."). */
   message?: string;
@@ -39,13 +42,15 @@ export default function Subscription({
   subtitle,
   username,
   onPay,
+  payTitle = 'Perpanjang 1 Bulan',
+  payHint = 'Pembayaran lewat Stripe. Setelah berhasil, masa langganan bertambah 1 bulan.',
+  payLabel = 'PERPANJANG 1 BULAN',
   paying = false,
   message,
   errorMessage,
   onRefresh,
   refreshing = false,
 }: SubscriptionProps) {
-  const isWide = useIsWide();
   useErrorToast(errorMessage);
 
   return (
@@ -55,11 +60,11 @@ export default function Subscription({
       onMenuItemPress={onMenuItemPress}
       activeTab="home"
       onBack={() => router.back()}>
-      <View className={isWide ? 'flex-row items-start gap-5' : 'gap-4'}>
+      {/* Kartu bertumpuk atas ke bawah di semua lebar layar; di layar lebar dibatasi agar tidak melar. */}
+      <View className="w-full max-w-[720px] gap-4 self-center">
         <View
           className={cn(
             'items-center justify-center gap-1.5 rounded-card p-6',
-            isWide && 'flex-1',
             paid ? 'bg-primary' : 'bg-disabled',
           )}>
           <Icon
@@ -79,13 +84,11 @@ export default function Subscription({
             )}>{subtitle}</Text>
         </View>
 
-        <View className={cn('gap-4', isWide && 'flex-1')}>
+        <View className="gap-4">
           <View className="items-center gap-2.5 rounded-card bg-surface p-4">
-            <Text className="text-[15px] font-extrabold text-foreground">Perpanjang 1 Bulan</Text>
-            <Text className="text-center text-[12px] text-muted">
-              Pembayaran lewat Stripe. Setelah berhasil, masa langganan bertambah 1 bulan.
-            </Text>
-            <AppButton label="PERPANJANG 1 BULAN" variant="primary" onPress={onPay} loading={paying} className="self-stretch" />
+            <Text className="text-[15px] font-extrabold text-foreground">{payTitle}</Text>
+            <Text className="text-center text-[12px] text-muted">{payHint}</Text>
+            <AppButton label={payLabel} variant="primary" onPress={onPay} loading={paying} className="self-stretch" />
             {message ? <Text className="text-center text-[12px] text-foreground">{message}</Text> : null}
             <Text className="text-[11px] text-muted">Username: {username}</Text>
           </View>

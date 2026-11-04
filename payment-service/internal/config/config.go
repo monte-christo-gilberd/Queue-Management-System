@@ -26,6 +26,10 @@ type Config struct {
 	WebhookSecret string
 	PriceID       string // opsional; kosong = harga inline dari Amount + Currency
 
+	// DevSimulator: pembayaran PALSU untuk dev. Checkout langsung "berhasil" tanpa Stripe lewat jalur perpanjangan
+	// yang sama. Ditolak di produksi dan bila kunci Stripe juga terisi.
+	DevSimulator bool
+
 	Amount   int64  // harga satu bulan, satuan utama mata uang (mis. 50000 = Rp50.000)
 	Currency string // huruf kecil, kode ISO 4217
 }
@@ -61,6 +65,9 @@ func Load() (Config, error) {
 		Amount:        50000,
 		Currency:      "idr",
 	}
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("DEV_PAYMENT_SIMULATOR"))); v == "true" || v == "1" {
+		cfg.DevSimulator = true
+	}
 	if cfg.Port == "" {
 		cfg.Port = "8093"
 	}
@@ -79,6 +86,12 @@ func Load() (Config, error) {
 	}
 	if cfg.Production && u.Scheme != "https" {
 		return Config{}, fmt.Errorf("QMS_PUBLIC_ORIGIN must be https when APP_ENV=production, got %q", cfg.PublicOrigin)
+	}
+	if cfg.DevSimulator && cfg.Production {
+		return Config{}, fmt.Errorf("DEV_PAYMENT_SIMULATOR must not be enabled when APP_ENV=production (it fakes payments)")
+	}
+	if cfg.DevSimulator && cfg.StripeConfigured() {
+		return Config{}, fmt.Errorf("DEV_PAYMENT_SIMULATOR and Stripe keys are mutually exclusive: unset one")
 	}
 	if cfg.StripeBaseURL != "" {
 		b, err := url.Parse(cfg.StripeBaseURL)

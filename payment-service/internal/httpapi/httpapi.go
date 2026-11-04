@@ -24,7 +24,7 @@ const maxWebhookBody = 1 << 20 // 1 MiB
 // Billing: yang dibutuhkan API dari lapisan bisnis (dan yang bisa diganti di test).
 type Billing interface {
 	Health(ctx context.Context) error
-	StartCheckout(ctx context.Context, ownerID int64) (billing.Checkout, error)
+	StartCheckout(ctx context.Context, userID int64) (billing.Checkout, error)
 	HandleWebhook(ctx context.Context, payload []byte, sigHeader string) error
 }
 
@@ -55,7 +55,7 @@ func (a *API) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) checkout(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := a.authenticate(r)
+	userID, ok := a.authenticate(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized user")
 		return
@@ -63,14 +63,14 @@ func (a *API) checkout(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
-	co, err := a.svc.StartCheckout(ctx, ownerID)
+	co, err := a.svc.StartCheckout(ctx, userID)
 	switch {
-	case errors.Is(err, billing.ErrNotOwner):
-		writeError(w, http.StatusForbidden, "NOT_OWNER", "only owners can renew a subscription")
+	case errors.Is(err, billing.ErrUnknownUser):
+		writeError(w, http.StatusForbidden, "UNKNOWN_USER", "account not found")
 	case errors.Is(err, billing.ErrDisabled):
 		writeError(w, http.StatusServiceUnavailable, "PAYMENT_UNAVAILABLE", "payments are temporarily unavailable")
 	case err != nil:
-		a.log.Error("start checkout failed", "owner_id", ownerID, "err", err)
+		a.log.Error("start checkout failed", "user_id", userID, "err", err)
 		writeError(w, http.StatusBadGateway, "PAYMENT_PROVIDER_ERROR", "payment provider error, try again later")
 	default:
 		writeJSON(w, http.StatusCreated, map[string]any{"data": map[string]any{

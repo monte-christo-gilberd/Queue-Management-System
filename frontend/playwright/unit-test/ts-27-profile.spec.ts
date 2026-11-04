@@ -28,6 +28,27 @@ test.describe('TS-27 Halaman profil', () => {
     await expect(action(page, 'Status Subscription')).toHaveCount(0);
   });
 
+  test('TC-27-01b Customer melihat ajakan Jadi Owner yang menuju halaman Subscription', async ({ page, request }) => {
+    const acc = await registerAccount(request, 'prof');
+    await signInWithToken(page, acc.token, acc.username, '/profile');
+
+    await expect(action(page, 'Jadi Owner')).toBeVisible();
+    await action(page, 'Jadi Owner & Bayar →').click();
+    await expect(page).toHaveURL(/\/subscription$/);
+    await expect(action(page, 'Belum Jadi Owner')).toBeVisible();
+    await expect(action(page, 'BAYAR & JADI OWNER')).toBeVisible();
+  });
+
+  test('TC-27-01c Owner tidak melihat ajakan Jadi Owner', async ({ page, request }) => {
+    const owner = await subscribedOwnerSession(request);
+    test.skip(owner === null, 'Set QMS_OWNER_EMAIL dan QMS_OWNER_PASSWORD (owner berlangganan).');
+    if (!owner) return;
+    await signInWithToken(page, owner.token, owner.displayName, '/profile');
+
+    await expect(action(page, 'Status Subscription')).toBeVisible();
+    await expect(action(page, 'Jadi Owner')).toHaveCount(0);
+  });
+
   test('TC-27-02 Mengubah nama tersimpan di server dan tampil di header', async ({ page, request }) => {
     const acc = await registerAccount(request, 'prof');
     await signInWithToken(page, acc.token, acc.username, '/profile');
@@ -98,5 +119,17 @@ test.describe('TS-27 Halaman profil', () => {
     await expect(action(page, 'Status Subscription')).toBeVisible();
     await expect(action(page, 'Aktif')).toBeVisible();
     await expect(page.getByText(/^Aktif hingga /).filter({ visible: true })).toBeVisible();
+  });
+
+  test('TC-27-07 Owner aktif tetap bisa membuka halaman Subscription untuk memperpanjang', async ({ page, request }) => {
+    const owner = await subscribedOwnerSession(request);
+    test.skip(owner === null, 'Set QMS_OWNER_EMAIL dan QMS_OWNER_PASSWORD (owner berlangganan).');
+    if (!owner) return;
+    await signInWithToken(page, owner.token, owner.displayName, '/profile');
+
+    await action(page, 'Perpanjang Langganan →').click();
+    await expect(page).toHaveURL(/\/subscription$/);
+    await expect(action(page, 'Langganan Aktif')).toBeVisible();
+    await expect(action(page, 'PERPANJANG 1 BULAN')).toBeVisible();
   });
 });

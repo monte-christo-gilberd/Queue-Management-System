@@ -43,6 +43,8 @@ for name in ("backend", "nginx", "notify-service", "qr-service", "mail-service",
 pay = svcs.get("payment-service")
 if not pay: problems.append("payment-service tidak ada di compose")
 else:
+    if label == "prod" and "DEV_PAYMENT_SIMULATOR" in (pay.get("environment") or {}):
+        problems.append("payment-service prod meneruskan DEV_PAYMENT_SIMULATOR (pembayaran palsu tidak boleh ada di prod)")
     extra = set((pay.get("depends_on") or {}).keys()) - {"db"}
     if extra: problems.append(f"payment-service depends_on {sorted(extra)} (hanya db yang boleh)")
 if problems:
