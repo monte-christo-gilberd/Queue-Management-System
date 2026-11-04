@@ -15,6 +15,8 @@ type Store interface {
 	Ticket(ctx context.Context, ticketID int64) (message.Ticket, error)
 	// FirstWaiting: tiket waiting terdepan di antrian; nil bila tidak ada.
 	FirstWaiting(ctx context.Context, queueID int64) (*message.Ticket, error)
+	// PositionOf: posisi tiket di urutan tunggu (1 = terdepan).
+	PositionOf(ctx context.Context, ticketID int64) (int, error)
 	Subscriptions(ctx context.Context, userID int64) ([]message.Subscription, error)
 	DeleteSubscription(ctx context.Context, endpoint string) error
 }
@@ -39,6 +41,7 @@ type Delivery struct {
 
 // Plan menghitung siapa yang diberi tahu. called: pemilik nomor ("Giliran Anda") dan tiket waiting terdepan
 // ("Tinggal 1 nomor lagi"). recalled: hanya pemilik nomor.
+// requeued: hanya pemilik nomor, dengan posisi baru; skipped: hanya skip permanen.
 func (s *Service) Plan(ctx context.Context, e event.Event) ([]Delivery, error) {
 	t, err := s.store.Ticket(ctx, e.TicketID)
 	if err != nil {
@@ -54,11 +57,23 @@ func (s *Service) Plan(ctx context.Context, e event.Event) ([]Delivery, error) {
 		Msg:    message.Message{Title: t.QueueName, Body: called, URL: url},
 	}}
 	if e.Kind == event.KindSkipped {
-		body := fmt.Sprintf("Nomor %s dilewati.", message.Label(t.Prefix, t.Number))
-		if t.Status == "waiting" {
-			body = fmt.Sprintf("Nomor %s dilewati dan dikembalikan ke antrian.", message.Label(t.Prefix, t.Number))
+		out[0].Msg.Body = fmt.Sprintf("Nomor %s dilewati.", message.Label(t.Prefix, t.Number))
+		return out, nil
+	}
+	if e.Kind == event.KindRequeued {
+		label := message.Label(t.Prefix, t.Number)
+		pos, err := s.store.PositionOf(ctx, e.TicketID)
+		if err != nil {
+			return nil, err
 		}
-		out[0].Msg.Body = body
+		switch {
+		case e.Reason == event.ReasonCounterClosed && e.Counter != "":
+			out[0].Msg.Body = fmt.Sprintf("%s ditutup. Nomor %s kembali ke antrian, posisi Anda sekarang ke-%d.", e.Counter, label, pos)
+		case e.Reason == event.ReasonCounterClosed:
+			out[0].Msg.Body = fmt.Sprintf("Counter ditutup. Nomor %s kembali ke antrian, posisi Anda sekarang ke-%d.", label, pos)
+		default:
+			out[0].Msg.Body = fmt.Sprintf("Nomor %s dilewati dan dikembalikan ke antrian, posisi Anda sekarang ke-%d.", label, pos)
+		}
 		return out, nil
 	}
 	if e.Kind != event.KindCalled {

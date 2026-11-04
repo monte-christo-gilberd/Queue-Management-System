@@ -36,6 +36,16 @@ func (s *PG) Ticket(ctx context.Context, ticketID int64) (message.Ticket, error)
 	return t, err
 }
 
+// PositionOf: posisi tiket di urutan tunggu (1 = terdepan). Dihitung dari sort_key, sama dengan backend.
+func (s *PG) PositionOf(ctx context.Context, ticketID int64) (int, error) {
+	var pos int
+	err := s.pool.QueryRow(ctx, `
+		SELECT 1 + count(*) FROM tickets o
+		JOIN tickets t ON t.id = $1
+		WHERE o.queue_id = t.queue_id AND o.status = 'waiting' AND o.sort_key < t.sort_key`, ticketID).Scan(&pos)
+	return pos, err
+}
+
 func (s *PG) FirstWaiting(ctx context.Context, queueID int64) (*message.Ticket, error) {
 	var t message.Ticket
 	err := s.pool.QueryRow(ctx, `

@@ -14,6 +14,7 @@ import (
 type fakeStore struct {
 	ticket  message.Ticket
 	first   *message.Ticket
+	pos     int
 	subs    map[int64][]message.Subscription
 	deleted []string
 }
@@ -22,6 +23,7 @@ func (f *fakeStore) Ticket(context.Context, int64) (message.Ticket, error) { ret
 func (f *fakeStore) FirstWaiting(context.Context, int64) (*message.Ticket, error) {
 	return f.first, nil
 }
+func (f *fakeStore) PositionOf(context.Context, int64) (int, error) { return f.pos, nil }
 func (f *fakeStore) Subscriptions(_ context.Context, u int64) ([]message.Subscription, error) {
 	return f.subs[u], nil
 }
@@ -104,20 +106,44 @@ func TestGoneDeletedAndOthersStillSent(t *testing.T) {
 	}
 }
 
-func TestSkippedNotifiesOnlyOwnerWithStatusText(t *testing.T) {
-	for status, want := range map[string]string{
-		"skipped": "Nomor A-003 dilewati.",
-		"waiting": "Nomor A-003 dilewati dan dikembalikan ke antrian.",
-	} {
+func TestSkippedPermanentNotifiesOnlyOwner(t *testing.T) {
+	st := &fakeStore{
+		ticket: message.Ticket{ID: 1, QueueID: 9, Number: 3, UserID: 10, Status: "skipped"},
+		first:  &message.Ticket{ID: 2, Number: 4, UserID: 20},
+		subs:   map[int64][]message.Subscription{10: {sub("a")}, 20: {sub("b")}},
+	}
+	sd := &fakeSender{}
+	_ = notify.NewService(st, sd).Handle(context.Background(), event.Event{Kind: "skipped", QueueID: 9, TicketID: 1})
+	if len(sd.sent) != 1 || sd.sent[0] != "a|Nomor A-003 dilewati." {
+		t.Fatalf("got %v", sd.sent)
+	}
+}
+
+func TestRequeuedTextsAndOnlyOwner(t *testing.T) {
+	cases := map[string]struct {
+		ev   event.Event
+		want string
+	}{
+		"skip": {event.Event{Kind: "requeued", QueueID: 9, TicketID: 1, Reason: "skip"},
+			"a|Nomor A-003 dilewati dan dikembalikan ke antrian, posisi Anda sekarang ke-3."},
+		"counter named": {event.Event{Kind: "requeued", QueueID: 9, TicketID: 1, Reason: "counter_closed", Counter: "Counter 2"},
+			"a|Counter 2 ditutup. Nomor A-003 kembali ke antrian, posisi Anda sekarang ke-3."},
+		"counter unnamed": {event.Event{Kind: "requeued", QueueID: 9, TicketID: 1, Reason: "counter_closed"},
+			"a|Counter ditutup. Nomor A-003 kembali ke antrian, posisi Anda sekarang ke-3."},
+	}
+	for name, c := range cases {
 		st := &fakeStore{
-			ticket: message.Ticket{ID: 1, QueueID: 9, Number: 3, UserID: 10, Status: status},
+			ticket: message.Ticket{ID: 1, QueueID: 9, Number: 3, UserID: 10, Status: "waiting"},
 			first:  &message.Ticket{ID: 2, Number: 4, UserID: 20},
+			pos:    3,
 			subs:   map[int64][]message.Subscription{10: {sub("a")}, 20: {sub("b")}},
 		}
 		sd := &fakeSender{}
-		_ = notify.NewService(st, sd).Handle(context.Background(), event.Event{Kind: "skipped", QueueID: 9, TicketID: 1})
-		if len(sd.sent) != 1 || sd.sent[0] != "a|"+want {
-			t.Fatalf("status %s: got %v", status, sd.sent)
+		if err := notify.NewService(st, sd).Handle(context.Background(), c.ev); err != nil {
+			t.Fatal(err)
+		}
+		if len(sd.sent) != 1 || sd.sent[0] != c.want {
+			t.Fatalf("%s: got %v", name, sd.sent)
 		}
 	}
 }

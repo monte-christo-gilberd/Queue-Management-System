@@ -16,3 +16,10 @@ func TestParseEvent(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRequeuedCarriesReasonAndCounter(t *testing.T) {
+	e, err := event.Parse(`{"kind":"requeued","queue_id":1,"ticket_id":2,"reason":"counter_closed","counter":"Counter 2"}`)
+	if err != nil || e.Reason != "counter_closed" || e.Counter != "Counter 2" {
+		t.Fatalf("e=%+v err=%v", e, err)
+	}
+}

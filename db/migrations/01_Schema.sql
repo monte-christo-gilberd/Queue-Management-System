@@ -257,7 +257,16 @@ CREATE INDEX idx_push_subscriptions_user ON push_subscriptions(user_id);
 -- transaksi Next/Skip. NOTIFY dikirim saat COMMIT, jadi transaksi yang dibatalkan tidak mengirim apa pun.
 CREATE FUNCTION tickets_notify() RETURNS trigger AS $$
 BEGIN
-    IF NEW.skip_count > OLD.skip_count THEN
+    -- requeued harus dicek paling awal: skip dengan fallback juga menaikkan skip_count, tetapi hasilnya nomor
+    -- kembali menunggu, bukan skipped. Asal status bisa completed (Skip menurunkan nomor lebih dulu),
+    -- currently_served (counter dihapus), atau skipped. reason membedakan dua sumber; counter dibawa di payload
+    -- karena counter yang dihapus sudah tidak ada saat notify-service membaca.
+    IF NEW.status = 'waiting' AND OLD.status IN ('currently_served', 'completed', 'skipped') THEN
+        PERFORM pg_notify('queue_events', json_build_object(
+            'kind', 'requeued', 'queue_id', NEW.queue_id, 'ticket_id', NEW.id,
+            'reason', CASE WHEN NEW.skip_count > OLD.skip_count THEN 'skip' ELSE 'counter_closed' END,
+            'counter', (SELECT c.name FROM counters c WHERE c.id = OLD.called_counter_id))::text);
+    ELSIF NEW.skip_count > OLD.skip_count THEN
         PERFORM pg_notify('queue_events', json_build_object(
             'kind', 'skipped', 'queue_id', NEW.queue_id, 'ticket_id', NEW.id)::text);
     -- Transisi sementara: 'completed' dibiarkan selama masa transisi (lihat apply_schema.sql).

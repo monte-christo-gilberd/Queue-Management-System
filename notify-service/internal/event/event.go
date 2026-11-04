@@ -14,12 +14,23 @@ const (
 	KindCalled   = "called"
 	KindRecalled = "recalled"
 	KindSkipped  = "skipped"
+	// KindRequeued: nomor kembali menunggu (skip dengan fallback, atau counter dihapus).
+	KindRequeued = "requeued"
+)
+
+const (
+	ReasonSkip          = "skip"
+	ReasonCounterClosed = "counter_closed"
 )
 
 type Event struct {
 	Kind     string `json:"kind"`
 	QueueID  int64  `json:"queue_id"`
 	TicketID int64  `json:"ticket_id"`
+	// Reason dan Counter hanya terisi untuk requeued. Counter dibawa di payload karena counter yang
+	// dihapus sudah tidak bisa dibaca dari database.
+	Reason  string `json:"reason,omitempty"`
+	Counter string `json:"counter,omitempty"`
 }
 
 func Parse(raw string) (Event, error) {
