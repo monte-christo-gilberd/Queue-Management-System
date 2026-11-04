@@ -6,7 +6,7 @@
 #   make mailpit         # tampilkan link Mailpit (dev, tunnel, prod) tanpa menjalankan apa pun
 #   make prod-up [MAIL_MODE=smtp|mailpit]   # stack prod; MAIL_MODE menimpa nilai di .env.prod
 #   make prod-up-mailpit | prod-up-smtp     # singkatan untuk dua mode email prod
-#   make restart         # restart backend, qr-service, notify-service setelah ubah kode Go
+#   make restart         # restart backend, qr-service, notify-service, mail-service, payment-service setelah ubah kode Go
 #   make seed            # reset database ke data seed dev
 # Kamera di browser butuh HTTPS atau localhost, jadi scan QR dari HP lewat IP LAN
 # tidak jalan di web; pakai `make tunnel`. Tunnel butuh cloudflared dan internet.
@@ -84,7 +84,7 @@ mailpit:
 	echo "Ubah mode prod: make prod-up MAIL_MODE=mailpit  atau  MAIL_MODE=smtp  (atau set MAIL_MODE di $(PROD_ENV))"
 
 restart:
-	docker compose restart backend qr-service notify-service mail-service
+	docker compose restart backend qr-service notify-service mail-service payment-service
 
 seed:
 	docker compose exec -T db psql -U qms -d qms_db < db/scripts/reset_seed_dev.sql

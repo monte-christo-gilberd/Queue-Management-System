@@ -10,6 +10,7 @@ import ResponsiveScreenLayout, {
 } from '@/components/layout/ResponsiveScreenLayout';
 import { AppButton } from '@/components/ui/AppButton';
 import { Icon } from '@/components/ui/Icon';
+import { useErrorToast } from '@/components/ui/Toast';
 
 export type SubscriptionProps = {
   shell?: ShellProps;
@@ -20,8 +21,12 @@ export type SubscriptionProps = {
   /** Subjudul, mis. "Lakukan pembayaran sebelum 01 Feb 2025". */
   subtitle: string;
   username: string;
-  /** Nilai yang di-encode ke QR pembayaran. */
-  qrValue?: string;
+  /** Buka pembayaran Stripe untuk perpanjangan 1 bulan. */
+  onPay?: () => void;
+  paying?: boolean;
+  /** Info setelah kembali dari pembayaran (mis. "Pembayaran diterima..."). */
+  message?: string;
+  errorMessage?: string;
   onRefresh?: () => void;
   refreshing?: boolean;
 };
@@ -33,11 +38,15 @@ export default function Subscription({
   title,
   subtitle,
   username,
-  qrValue,
+  onPay,
+  paying = false,
+  message,
+  errorMessage,
   onRefresh,
   refreshing = false,
 }: SubscriptionProps) {
   const isWide = useIsWide();
+  useErrorToast(errorMessage);
 
   return (
     <ResponsiveScreenLayout
@@ -46,7 +55,6 @@ export default function Subscription({
       onMenuItemPress={onMenuItemPress}
       activeTab="home"
       onBack={() => router.back()}>
-      {/* TODO: backend belum mendukung ini (subscription & pembayaran) */}
       <View className={isWide ? 'flex-row items-start gap-5' : 'gap-4'}>
         <View
           className={cn(
@@ -73,24 +81,22 @@ export default function Subscription({
 
         <View className={cn('gap-4', isWide && 'flex-1')}>
           <View className="items-center gap-2.5 rounded-card bg-surface p-4">
-            <Text className="text-[15px] font-extrabold text-foreground">QR Pembayaran</Text>
-            {/* TODO: render QR dari `qrValue` pakai library QR client-side (belum ada di dependency) */}
-            <View
-              className="h-[120px] w-[120px] rounded-lg border border-line bg-white"
-              accessibilityLabel={qrValue}
-            />
+            <Text className="text-[15px] font-extrabold text-foreground">Perpanjang 1 Bulan</Text>
+            <Text className="text-center text-[12px] text-muted">
+              Pembayaran lewat Stripe. Setelah berhasil, masa langganan bertambah 1 bulan.
+            </Text>
+            <AppButton label="PERPANJANG 1 BULAN" variant="primary" onPress={onPay} loading={paying} className="self-stretch" />
+            {message ? <Text className="text-center text-[12px] text-foreground">{message}</Text> : null}
             <Text className="text-[11px] text-muted">Username: {username}</Text>
           </View>
 
-          {paid ? null : (
-            <AppButton
-              label="REFRESH"
-              variant="dark"
-              icon={<Icon name="refresh" size={20} color={AppColors.white} />}
-              onPress={onRefresh}
-              loading={refreshing}
-            />
-          )}
+          <AppButton
+            label="REFRESH"
+            variant="dark"
+            icon={<Icon name="refresh" size={20} color={AppColors.white} />}
+            onPress={onRefresh}
+            loading={refreshing}
+          />
         </View>
       </View>
     </ResponsiveScreenLayout>

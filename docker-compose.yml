@@ -24,6 +24,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-qms_db}
       NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?set NOTIFY_DB_PASSWORD in .env}
       MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}
+      # Kosong = role payment_rw tidak dibuat (db/migrations/05_payment_role.sh): hanya payment-service yang belum bisa
+      # terhubung, database dan antrian tetap start.
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-}
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -118,6 +121,45 @@ services:
       retries: 40
     # Hanya menunggu db agar worker bisa menyambung. Mailpit tidak disyaratkan: bila SMTP mati, email menunggu
     # di outbox dan dicoba ulang, tidak hilang.
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # payment-service: memperpanjang langganan owner 1 bulan setelah pembayaran Stripe. TERPISAH dari antrian:
+  # backend hanya membaca owners.subscription_expires_at dan tidak memanggil service ini, jadi tidak ada depends_on
+  # dari/ke backend. Bila ini mati, antrian tetap jalan; hanya perpanjangan yang tertunda (Stripe mengirim ulang
+  # webhook). Role payment_rw hanya menyentuh kolom langganan dan tabel pembayaran. Tanpa kunci Stripe, service tetap
+  # hidup dan checkout menjawab 503. Dev: pakai kunci mode uji Stripe (sk_test_..., tanpa uang sungguhan) atau
+  # arahkan STRIPE_API_BASE_URL ke emulator Stripe milik Anda.
+  payment-service:
+    build:
+      context: ./payment-service
+      target: dev
+    environment:
+      PORT: "8093"
+      DATABASE_URL: postgresql://payment_rw:${PAYMENT_DB_PASSWORD:-unset}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      APP_ENV: ${APP_ENV:-}
+      QMS_PUBLIC_ORIGIN: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_API_BASE_URL: ${STRIPE_API_BASE_URL:-}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
+      SUBSCRIPTION_PRICE_AMOUNT: ${SUBSCRIPTION_PRICE_AMOUNT:-50000}
+      SUBSCRIPTION_CURRENCY: ${SUBSCRIPTION_CURRENCY:-idr}
+    volumes:
+      - ./payment-service:/src
+      - go_build_cache:/root/.cache/go-build
+      - go_mod_cache:/go/pkg/mod
+    stop_grace_period: 3s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8093/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
     depends_on:
       db:
         condition: service_healthy

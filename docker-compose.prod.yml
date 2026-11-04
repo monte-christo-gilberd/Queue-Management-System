@@ -19,6 +19,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-qms_db}
       NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?set NOTIFY_DB_PASSWORD in .env}
       MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}
+      # Kosong = role payment_rw tidak dibuat (db/migrations/05_payment_role.sh); database dan antrian tetap start.
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-}
     volumes:
       - db_data_prod:/var/lib/postgresql/data
     healthcheck:
@@ -90,6 +92,34 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # payment-service: memperpanjang langganan owner 1 bulan setelah pembayaran Stripe. TERPISAH dari antrian:
+  # backend hanya membaca owners.subscription_expires_at dan tidak memanggil service ini, jadi tidak ada depends_on
+  # dari/ke backend (dijaga scripts/check-service-isolation.sh). Bila ini mati atau Stripe belum dikonfigurasi,
+  # antrian tetap jalan; hanya perpanjangan yang tertunda (Stripe mengirim ulang webhook). Variabel Stripe sengaja
+  # TIDAK diwajibkan agar kekurangan di sini tidak menggagalkan `up` seluruh stack.
+  payment-service:
+    build:
+      context: ./payment-service
+      target: prod
+    environment:
+      PORT: "8093"
+      APP_ENV: production
+      DATABASE_URL: postgresql://payment_rw:${PAYMENT_DB_PASSWORD:-unset}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      QMS_PUBLIC_ORIGIN: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_API_BASE_URL: ${STRIPE_API_BASE_URL:-}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
+      SUBSCRIPTION_PRICE_AMOUNT: ${SUBSCRIPTION_PRICE_AMOUNT:-50000}
+      SUBSCRIPTION_CURRENCY: ${SUBSCRIPTION_CURRENCY:-idr}
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - internal
     restart: unless-stopped
