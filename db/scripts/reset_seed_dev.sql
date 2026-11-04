@@ -36,6 +36,7 @@ END $$;
 -- dan tidak ada yang berubah. RESTART IDENTITY mengembalikan id mulai dari 1.
 TRUNCATE TABLE
     notification_outbox,
+    user_action_tokens,
     user_avatars,
     push_subscriptions,
     ticket_notes,

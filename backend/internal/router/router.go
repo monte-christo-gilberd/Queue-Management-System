@@ -45,6 +45,12 @@ func (a *AppRouter) WithHistory(h HistoryHandler) *AppRouter {
 	return a
 }
 
+// WithPasswordReset memasang endpoint lupa/reset password (opsional; tanpa ini rute tidak ada).
+func (a *AppRouter) WithPasswordReset(h PasswordHandler) *AppRouter {
+	a.passwordHandler = h
+	return a
+}
+
 // WithPush memasang endpoint Web Push (opsional; tanpa ini rute /push tidak ada).
 func (a *AppRouter) WithPush(h PushHandler) *AppRouter {
 	a.pushHandler = h
@@ -68,6 +74,11 @@ func SetupRouter(
 		users,
 		router.userHandler,
 	)
+
+	if router.passwordHandler != nil {
+		users.POST("/forgot-password", router.passwordHandler.ForgotPassword)
+		users.POST("/reset-password", router.passwordHandler.ResetPassword)
+	}
 
 	// Tiket saya: butuh login, tidak ada di bawah /queues karena tidak terkait satu antrian.
 	me := v1.Group("/users/me")

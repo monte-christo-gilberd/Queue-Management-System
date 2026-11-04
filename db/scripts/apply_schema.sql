@@ -199,4 +199,19 @@ BEGIN
     END IF;
 END $$;
 
+-- Reset password (item 9): lihat 01_Schema.sql.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS user_action_tokens (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    purpose     TEXT NOT NULL CHECK (purpose IN ('password_reset', 'email_change')),
+    token_hash  TEXT NOT NULL UNIQUE,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    used_at     TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    request_ip  TEXT
+);
+CREATE INDEX IF NOT EXISTS user_action_tokens_user_idx ON user_action_tokens (user_id, purpose, created_at DESC);
+
 COMMIT;

@@ -118,3 +118,10 @@ func TestSpec_Profile_ReportsOwnerFlagForOwnerOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, p.IsOwner)
 }
+
+func parseClaim(t *testing.T, token, key string) interface{} {
+	t.Helper()
+	parsed, err := jwt.Parse(token, func(*jwt.Token) (interface{}, error) { return []byte(specJWTSecret), nil })
+	require.NoError(t, err)
+	return parsed.Claims.(jwt.MapClaims)[key]
+}

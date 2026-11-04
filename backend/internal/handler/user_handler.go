@@ -95,6 +95,10 @@ func (h *UserHandler) Register(
 		request.Password,
 	)
 	if err != nil {
+		if errors.Is(err, apperror.ErrWeakPassword) {
+			respondError(c, http.StatusBadRequest, "WEAK_PASSWORD", "password must be 8 to 72 characters")
+			return
+		}
 		if errors.Is(err, apperror.ErrDuplicate) {
 			respondError(
 				c,

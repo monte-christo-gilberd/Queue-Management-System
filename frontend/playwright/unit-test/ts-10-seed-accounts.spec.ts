@@ -297,7 +297,8 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
     await expect(u1.page.getByText('Anda tidak sedang mengantri')).toBeVisible();
     await u1.page.goto(`${WEB_URL}/riwayat`);
     await expect(u1.page.getByText(NAME_A, { exact: true })).toBeVisible();
-    await expect(u1.page.getByText('Sudah dilayani', { exact: true })).toBeVisible();
+    // Baris riwayat memuat status, tanggal, dan jam dalam satu teks ("Sudah dilayani · 4 Nov 2026 · 16:49"); bisa ada beberapa.
+    await expect(u1.page.getByText(/^Sudah dilayani/).first()).toBeVisible();
 
     // user2 sedang dilayani: kartu di beranda dan di Antrian Saya.
     await u2.page.goto(`${WEB_URL}/dashboard`);
@@ -335,10 +336,11 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
     await expect(u3.page.getByText('Belum Ikut Antrian')).toBeVisible();
     await u3.page.goto(`${WEB_URL}/riwayat`);
     await expect(u3.page.getByText(NAME_A, { exact: true })).toBeVisible();
-    await expect(u3.page.getByText('Menunggu · antrian ditutup', { exact: true })).toBeVisible();
+    // Nomor yang masih menunggu saat antrian ditutup dicatat "Tidak sempat dilayani" (riwayat per tiket, item 4).
+    await expect(u3.page.getByText(/^Tidak sempat dilayani/).first()).toBeVisible();
 
     await u2.page.goto(`${WEB_URL}/riwayat`);
-    await expect(u2.page.getByText('Sudah dilayani · antrian ditutup', { exact: true })).toBeVisible();
+    await expect(u2.page.getByText(/^Sudah dilayani/).first()).toBeVisible();
   });
 
   test('TC-10-22 Antrian ditutup: customer baru tidak bisa bergabung (UI dan API)', async ({ browser, request }) => {

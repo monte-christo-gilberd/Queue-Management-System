@@ -6,6 +6,7 @@ import (
 	"qms/internal/config"
 	"qms/internal/database"
 	"qms/internal/handler"
+	"qms/internal/mailclient"
 	"qms/internal/middleware"
 	"qms/internal/qrclient"
 	"qms/internal/repository"
@@ -94,12 +95,16 @@ func main() {
 	sseHandler := handler.
 		NewSSEHandler(hub, queueService)
 
+	// Reset password: pencabutan sesi butuh pembacaan password_changed_at, jadi middleware memakai repo ini.
+	resetRepo := repository.NewPasswordResetRepository(db)
+
 	appRouter := router.NewAppRouter(
 		ticketHandler,
 		userHandler,
 		queueHandler,
-		middleware.RequireAuth(
+		middleware.RequireAuthWithRevocation(
 			cfg.JWTSecret,
+			resetRepo,
 		),
 		sseHandler,
 		cfg.AllowedOrigins,
@@ -117,6 +122,18 @@ func main() {
 	appRouter.WithHistory(handler.NewHistoryHandler(
 		service.NewHistoryService(repository.NewHistoryRepository(db)),
 	))
+
+	if cfg.MailServiceURL != "" {
+		appRouter.WithPasswordReset(handler.NewPasswordHandler(
+			service.NewPasswordResetService(
+				resetRepo,
+				mailclient.New(cfg.MailServiceURL, cfg.MailServiceToken, 0),
+				cfg.PublicAppURL,
+			),
+		))
+	} else {
+		log.Println("MAIL_SERVICE_URL kosong: lupa/reset password tidak dipasang")
+	}
 
 	if cfg.VAPIDPublicKey != "" {
 		appRouter.WithPush(handler.NewPushHandler(

@@ -51,8 +51,10 @@ export type ProfileProps = {
   emailNotifications?: boolean;
   emailNotificationsBusy?: boolean;
   onToggleEmailNotifications?: (enabled: boolean) => void;
-  /** Placeholder: belum ada fungsinya sampai alur ganti password lewat email jadi (plan item 9). */
+  /** Minta tautan buat password baru dikirim ke email akun (item 9). */
   onPressChangePassword?: () => void;
+  /** Permintaan tautan sedang berjalan. */
+  changePasswordBusy?: boolean;
 };
 
 export default function Profile({
@@ -70,6 +72,7 @@ export default function Profile({
   subscriptionPaid = false,
   subscriptionDescription,
   onPressChangePassword,
+  changePasswordBusy = false,
   emailNotifications = true,
   emailNotificationsBusy = false,
   onToggleEmailNotifications,
@@ -207,7 +210,13 @@ export default function Profile({
             <Text className="text-[12px] font-normal text-muted">
               Tautan untuk membuat password baru akan dikirim ke email akun Anda.
             </Text>
-            <AppButton label="Minta Ganti Password" variant="outline" onPress={onPressChangePassword} />
+            <AppButton
+              label="Minta Ganti Password"
+              variant="outline"
+              onPress={onPressChangePassword}
+              loading={changePasswordBusy}
+              disabled={changePasswordBusy}
+            />
           </View>
         </View>
       </View>

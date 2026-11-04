@@ -94,6 +94,10 @@ func (s *UserService) Register(
 
 	var user model.User
 
+	if err := ValidatePassword(password); err != nil {
+		return "", err
+	}
+
 	passwordHash, err := bcrypt.GenerateFromPassword(
 		[]byte(password),
 		10,
@@ -156,9 +160,12 @@ func (s *UserService) Login(
 func (s *UserService) issueToken(
 	userID int64,
 ) (string, error) {
+	now := time.Now()
 	claims := jwt.MapClaims{
 		"sub": strconv.FormatInt(userID, 10),
-		"exp": time.Now().Add(24 * time.Hour).Unix(),
+		// iat dipakai pencabutan sesi setelah ganti/reset password (D6).
+		"iat": now.Unix(),
+		"exp": now.Add(24 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(
 		jwt.SigningMethodHS256,

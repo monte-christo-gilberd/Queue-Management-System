@@ -28,6 +28,8 @@ var (
 	ErrImageTooLarge        = errors.New("image file is larger than 5 MB")
 	ErrUnsupportedImage     = errors.New("image must be JPEG, PNG or WebP")
 	ErrInvalidCursor        = errors.New("invalid pagination cursor")
+	ErrWeakPassword         = errors.New("password must be 8 to 72 characters")
+	ErrInvalidResetToken    = errors.New("reset token is invalid, expired or already used")
 
 	// Error QR: token join tidak valid/tidak ada atau qr-service gagal dipakai.
 	ErrQRInvalid           = errors.New("qr token invalid")

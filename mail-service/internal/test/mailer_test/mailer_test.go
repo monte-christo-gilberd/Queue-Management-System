@@ -348,3 +348,26 @@ func TestHas_OnlyCompleteTemplatesWithSafeNames(t *testing.T) {
 		}
 	}
 }
+
+func TestRender_PasswordResetHasLinkAndEscapesName(t *testing.T) {
+	link := "https://app.example/reset-password?token=abc_DEF-123"
+	r, err := mailer.Render("password-reset", map[string]any{"Name": `<img src=x onerror=1>`, "Link": link, "Minutes": 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(r.Text, link) || !strings.Contains(r.Text, "30 menit") {
+		t.Errorf("teks tanpa tautan/masa berlaku: %q", r.Text)
+	}
+	if !strings.Contains(r.HTML, `href="`+link+`"`) {
+		t.Errorf("HTML tanpa tautan utuh: %q", r.HTML)
+	}
+	if strings.Contains(r.HTML, "<img src=x") {
+		t.Errorf("nama pengguna tidak di-escape di HTML")
+	}
+	if strings.ContainsAny(r.Subject, "\r\n") || r.Subject == "" {
+		t.Errorf("subjek tidak sah: %q", r.Subject)
+	}
+	if _, err := mailer.Render("password-reset", map[string]any{"Name": "x"}); !errors.Is(err, mailer.ErrBadData) {
+		t.Errorf("data kurang harus ErrBadData, dapat %v", err)
+	}
+}

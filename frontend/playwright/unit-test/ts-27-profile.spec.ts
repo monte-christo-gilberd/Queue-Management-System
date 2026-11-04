@@ -59,15 +59,10 @@ test.describe('TS-27 Halaman profil', () => {
     expect((await me(request, acc.token)).username).toBe(acc.username);
   });
 
-  test('TC-27-04 Tombol ganti password tampil tetapi belum berfungsi (menunggu email, item 9)', async ({ page, request }) => {
+  test('TC-27-04 Tombol ganti password tampil; alur lengkapnya diuji di ts-31 (item 9)', async ({ page, request }) => {
     const acc = await registerAccount(request, 'prof');
     await signInWithToken(page, acc.token, acc.username, '/profile');
-    const url = page.url();
 
-    await expect(action(page, 'Minta Ganti Password')).toBeVisible();
-    await action(page, 'Minta Ganti Password').click();
-
-    await expect(page).toHaveURL(url);
     await expect(action(page, 'Minta Ganti Password')).toBeVisible();
   });
 

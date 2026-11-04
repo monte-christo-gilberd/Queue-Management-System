@@ -6,6 +6,7 @@ import RegisterScreen from '@/components/RegisterScreen';
 import { describeAuthError } from '@/lib/auth-errors';
 import { DEFAULT_AFTER_LOGIN, sanitizeNext } from '@/lib/safe-next';
 import { useAuthStore } from '@/store/authStore';
+import { validatePassword } from '@/utils/password';
 
 export default function RegisterRoute() {
   const register = useAuthStore((s) => s.register);
@@ -25,6 +26,11 @@ export default function RegisterRoute() {
   async function handleSubmit() {
     if (!username.trim() || !email.trim() || !password) {
       setErrorMessage('Username, email, dan password wajib diisi');
+      return;
+    }
+    const weak = validatePassword(password);
+    if (weak) {
+      setErrorMessage(weak);
       return;
     }
     if (password !== confirmPassword) {

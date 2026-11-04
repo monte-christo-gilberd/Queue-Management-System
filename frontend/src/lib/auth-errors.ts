@@ -14,6 +14,8 @@ export function describeAuthError(error: unknown): string {
       return 'Email/username atau password salah';
     case 'CONFLICT':
       return 'Email sudah terdaftar';
+    case 'WEAK_PASSWORD':
+      return 'Password minimal 8 karakter';
     case 'BAD_REQUEST':
       return 'Data tidak valid, periksa kembali isian Anda';
     default:

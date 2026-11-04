@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import Profile from '@/components/Profile';
 import { useAvatarSource } from '@/hooks/use-avatar-source';
+import { describeForgotError, requestPasswordReset } from '@/lib/password-reset';
 import { deleteAvatar, getMe, setEmailNotifications, updateMe, uploadAvatar, type Me } from '@/lib/users';
 import { shrinkToJpeg } from '@/utils/avatar-image';
 import { useAuthStore } from '@/store/authStore';
@@ -23,6 +24,7 @@ export default function ProfileRoute() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
+  const [passwordBusy, setPasswordBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
   const avatarSource = useAvatarSource(me?.avatar_updated_at);
@@ -110,6 +112,21 @@ export default function ProfileRoute() {
     }
   }
 
+  async function requestPasswordChange() {
+    if (!me?.email) return;
+    setErrorMessage('');
+    setSavedMessage('');
+    setPasswordBusy(true);
+    try {
+      await requestPasswordReset(me.email);
+      setSavedMessage(`Tautan untuk membuat password baru sudah dikirim ke ${me.email}`);
+    } catch (e) {
+      setErrorMessage(describeForgotError(e));
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
   async function toggleEmail(enabled: boolean) {
     setErrorMessage('');
     setEmailBusy(true);
@@ -162,7 +179,8 @@ export default function ProfileRoute() {
       isOwner={me?.is_owner === true}
       subscriptionPaid={subscription?.active ?? false}
       subscriptionDescription={subscription?.description}
-      // Placeholder: belum ada fungsinya sampai alur ganti password lewat email jadi (plan item 9).
+      onPressChangePassword={() => void requestPasswordChange()}
+      changePasswordBusy={passwordBusy || me === null}
     />
   );
 }

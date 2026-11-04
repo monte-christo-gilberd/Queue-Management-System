@@ -14,6 +14,8 @@ export type ForgotPasswordScreenProps = {
   onSubmit: () => void;
   loading: boolean;
   errorMessage?: string;
+  /** Terisi setelah permintaan diterima: form diganti pesan konfirmasi (netral, tidak menyebut email terdaftar). */
+  sentMessage?: string;
 };
 
 export default function ForgotPasswordScreen({
@@ -22,13 +24,27 @@ export default function ForgotPasswordScreen({
   onSubmit,
   loading,
   errorMessage,
+  sentMessage,
 }: ForgotPasswordScreenProps) {
   useErrorToast(errorMessage);
+
+  if (sentMessage) {
+    return (
+      <AuthLayout title="Cek Email Anda" subtitle="Tautan berlaku 30 menit">
+        <Text accessibilityRole="alert" className="text-center text-[13px] leading-5 text-white">
+          {sentMessage}
+        </Text>
+        <View className="mt-2.5">
+          <PrimaryAuthButton label="Kembali ke Login" onPress={() => router.replace('/')} loading={false} />
+        </View>
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout
       title="Lupa Password"
       subtitle="Masukkan email Anda untuk mengatur ulang password">
-      {/* TODO: backend belum mendukung ini (reset password) */}
       <AuthInput
         icon={<AtIcon size={16} color={AppColors.white} />}
         placeholder="EMAIL"
@@ -36,6 +52,7 @@ export default function ForgotPasswordScreen({
         onChangeText={onChangeEmail}
         autoCapitalize="none"
         keyboardType="email-address"
+        onSubmitEditing={onSubmit}
       />
 
       <View className="mt-2.5">

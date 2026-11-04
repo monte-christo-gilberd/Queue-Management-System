@@ -68,3 +68,14 @@ func NewMeResponse(p model.Profile) MeResponse {
 		EmailNotifications:    p.User.EmailNotifications,
 	}
 }
+
+// ForgotPasswordRequest: POST /users/forgot-password. Respons selalu sama (202) apa pun isinya, selama formatnya sah.
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,max=254,no_html_tags"`
+}
+
+// ResetPasswordRequest: POST /users/reset-password. Panjang password diperiksa service.
+type ResetPasswordRequest struct {
+	Token    string `json:"token" binding:"required,max=200"`
+	Password string `json:"password" binding:"required"`
+}

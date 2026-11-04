@@ -27,6 +27,11 @@ type Config struct {
 	QRServiceToken string
 	QRHTTPTimeout  time.Duration
 
+	// mail-service (reset password). Opsional sebagai pasangan: keduanya diisi atau keduanya kosong. Kosong = fitur
+	// lupa password tidak dipasang (rute 404).
+	MailServiceURL   string
+	MailServiceToken string
+
 	// Kunci VAPID publik untuk Web Push (opsional; kosong = fitur push mati).
 	VAPIDPublicKey string
 }
@@ -46,6 +51,12 @@ func Load() (Config, error) {
 		QRServiceURL:   strings.TrimRight(os.Getenv("QR_SERVICE_URL"), "/"),
 		QRServiceToken: os.Getenv("QR_SERVICE_TOKEN"),
 		VAPIDPublicKey: os.Getenv("VAPID_PUBLIC_KEY"),
+
+		MailServiceURL:   strings.TrimRight(os.Getenv("MAIL_SERVICE_URL"), "/"),
+		MailServiceToken: os.Getenv("MAIL_SERVICE_TOKEN"),
+	}
+	if (cfg.MailServiceURL == "") != (cfg.MailServiceToken == "") {
+		return Config{}, fmt.Errorf("MAIL_SERVICE_URL and MAIL_SERVICE_TOKEN must be set together")
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -94,8 +105,9 @@ func Load() (Config, error) {
 }
 
 var weakSecrets = map[string]bool{
-	"change-me-jwt-secret":                      true,
-	"change-me-service-token-at-least-32-bytes": true,
+	"change-me-jwt-secret":                           true,
+	"change-me-service-token-at-least-32-bytes":      true,
+	"change-me-mail-service-token-at-least-32-bytes": true,
 	"secret":   true,
 	"password": true,
 }
@@ -107,6 +119,9 @@ func (c Config) validateProduction() error {
 	}
 	if len(c.QRServiceToken) < 32 || weakSecrets[c.QRServiceToken] {
 		return fmt.Errorf("production: QR_SERVICE_TOKEN must be at least 32 chars and not a default value")
+	}
+	if c.MailServiceToken != "" && (len(c.MailServiceToken) < 32 || weakSecrets[c.MailServiceToken]) {
+		return fmt.Errorf("production: MAIL_SERVICE_TOKEN must be at least 32 chars and not a default value")
 	}
 	for _, o := range c.AllowedOrigins {
 		if o == "*" {

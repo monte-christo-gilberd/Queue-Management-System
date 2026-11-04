@@ -27,6 +27,11 @@ type UserHandler interface {
 	DeleteAvatar(c *gin.Context)
 }
 
+type PasswordHandler interface {
+	ForgotPassword(c *gin.Context)
+	ResetPassword(c *gin.Context)
+}
+
 type QueueHandler interface {
 	Create(c *gin.Context)
 	Get(c *gin.Context)
@@ -70,14 +75,15 @@ type HistoryHandler interface {
 }
 
 type AppRouter struct {
-	counterHandler CounterHandler
-	historyHandler HistoryHandler
-	noteHandler    NoteHandler
-	pushHandler    PushHandler
-	ticketHandler  TicketHandler
-	userHandler    UserHandler
-	queueHandler   QueueHandler
-	sseHandler     SSEHandler
-	authMiddleware gin.HandlerFunc
-	allowedOrigins []string
+	counterHandler  CounterHandler
+	historyHandler  HistoryHandler
+	noteHandler     NoteHandler
+	pushHandler     PushHandler
+	passwordHandler PasswordHandler
+	ticketHandler   TicketHandler
+	userHandler     UserHandler
+	queueHandler    QueueHandler
+	sseHandler      SSEHandler
+	authMiddleware  gin.HandlerFunc
+	allowedOrigins  []string
 }
