@@ -1,6 +1,6 @@
-import { useErrorToast } from '@/components/ui/Toast';
-import { useState } from 'react';
-import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { useErrorToast, useToast } from '@/components/ui/Toast';
+import { useEffect, useState } from 'react';
+import { Platform, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
 import { Icon } from '@/components/ui/Icon';
@@ -53,6 +53,9 @@ export function QueueQRCard({
   useErrorToast(error);
   const { width } = useWindowDimensions();
   const [copied, setCopied] = useState(false);
+  // Salin otomatis gagal: tautan ditampilkan di kolom yang bisa dipilih agar tetap bisa disalin manual.
+  const [copyFailed, setCopyFailed] = useState(false);
+  const toast = useToast();
   const foreground = useThemeColor('foreground');
   const [qrOpen, setQrOpen] = useState(false);
   const [confirmReplace, setConfirmReplace] = useState(false);
@@ -61,9 +64,19 @@ export function QueueQRCard({
   const joinUrl = qr?.join_url ?? null;
   const isDynamic = qr?.type === 'dynamic';
 
+  // Label "TERSALIN" hanya sebentar; tanpa ini tombol terus mengaku sudah menyalin, juga setelah token dinamis berganti.
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
+
   async function handleCopy() {
     if (!joinUrl) return;
-    setCopied(await copyToClipboard(joinUrl));
+    const ok = await copyToClipboard(joinUrl);
+    setCopied(ok);
+    setCopyFailed(!ok);
+    if (!ok) toast.show('Tidak bisa menyalin otomatis. Pilih tautan di bawah lalu salin manual.');
   }
 
   // Unduh hanya di web: PNG digambar dari tautan lewat canvas. Native bisa memakai share sheet nanti.
@@ -204,6 +217,18 @@ export function QueueQRCard({
                 ? 'Token dinamis diganti otomatis setelah kedaluwarsa.'
                 : 'Token statis berlaku sampai Anda mengganti kode.'}
             </Text>
+
+            {joinUrl && copyFailed ? (
+              <TextInput
+                accessibilityLabel="Tautan join"
+                value={joinUrl}
+                editable={false}
+                selectTextOnFocus
+                className="rounded-card border border-line px-3 py-2 text-[12px] text-foreground"
+                // editable=false tidak bisa difokus di web; userSelect membuat teksnya tetap bisa diblok.
+                style={{ userSelect: 'all' } as object}
+              />
+            ) : null}
 
             <View className="flex-row gap-2">
               {joinUrl ? (

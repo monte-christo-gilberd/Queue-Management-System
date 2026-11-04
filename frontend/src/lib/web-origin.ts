@@ -25,14 +25,26 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     }
   }
 
+  const previous = document.activeElement as HTMLElement | null;
+  // Elemen sementara dipasang DI DALAM dialog yang sedang terbuka (bila ada). Di luarnya, halaman di belakang
+  // popup bisa tidak boleh menerima fokus, sehingga select() tidak memilih apa pun dan perintah copy menyalin kosong.
+  const host = (previous?.closest('[role="dialog"], [aria-modal="true"]') as HTMLElement | null) ?? document.body;
   const area = document.createElement('textarea');
   area.value = text;
   area.setAttribute('readonly', '');
-  area.style.position = 'fixed';
-  area.style.opacity = '0';
-  document.body.appendChild(area);
-  area.select();
-  const ok = document.execCommand('copy');
-  document.body.removeChild(area);
-  return ok;
+  // 16px mencegah Safari iOS memperbesar halaman saat fokus.
+  area.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px;';
+  host.appendChild(area);
+  try {
+    area.focus({ preventScroll: true });
+    area.select();
+    // Safari iOS mengabaikan select() pada elemen readonly; rentang eksplisit membuatnya memilih.
+    area.setSelectionRange(0, text.length);
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    host.removeChild(area);
+    previous?.focus?.({ preventScroll: true });
+  }
 }
