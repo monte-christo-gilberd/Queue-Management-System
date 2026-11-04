@@ -3,6 +3,7 @@ package handler_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"qms/internal/apperror"
@@ -11,6 +12,7 @@ import (
 	noHTMLValidator "qms/internal/validator"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -27,14 +29,26 @@ type stubUserService struct {
 	err           error
 	isOwner       bool
 	profileErr    error
+	expiresAt     *time.Time
+	gotUsername   string
+	updateErr     error
 }
 
 func (s *stubUserService) Register(context.Context, string, string, string) (string, error) {
 	return "", nil
 }
 
-func (s *stubUserService) Profile(_ context.Context, userID int64) (model.User, bool, error) {
-	return model.User{ID: userID, Email: "me@test.com", Username: "me"}, s.isOwner, s.profileErr
+func (s *stubUserService) Profile(_ context.Context, userID int64) (model.Profile, error) {
+	return model.Profile{
+		User:                  model.User{ID: userID, Email: "me@test.com", Username: "me"},
+		IsOwner:               s.isOwner,
+		SubscriptionExpiresAt: s.expiresAt,
+	}, s.profileErr
+}
+
+func (s *stubUserService) UpdateUsername(_ context.Context, userID int64, username string) (model.User, error) {
+	s.gotUsername = username
+	return model.User{ID: userID, Username: username}, s.updateErr
 }
 
 func (s *stubUserService) Login(_ context.Context, identifier, _ string) (string, error) {
@@ -118,5 +132,71 @@ func TestMe_ReturnsProfileAndOwnerFlag(t *testing.T) {
 	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/me", nil))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":false}}`, w.Body.String())
+	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":false,"subscription_expires_at":null}}`, w.Body.String())
+}
+
+func TestMe_OwnerIncludesSubscriptionExpiry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	exp := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	svc := &stubUserService{isOwner: true, expiresAt: &exp}
+	e := gin.New()
+	e.GET("/me", func(c *gin.Context) { c.Set("user_id", int64(9)); handler.NewUserHandler(svc).Me(c) })
+
+	w := httptest.NewRecorder()
+	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/me", nil))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":true,"subscription_expires_at":"2026-12-01T00:00:00Z"}}`, w.Body.String())
+}
+
+func putMe(t *testing.T, svc *stubUserService, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	registerValidators.Do(func() {
+		if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+			_ = v.RegisterValidation("no_html_tags", noHTMLValidator.NoHTMLTags)
+		}
+	})
+	e := gin.New()
+	e.PUT("/me", func(c *gin.Context) { c.Set("user_id", int64(9)); handler.NewUserHandler(svc).UpdateMe(c) })
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/me", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	e.ServeHTTP(w, req)
+	return w
+}
+
+func TestUpdateMe_ReturnsSameShapeAsMe(t *testing.T) {
+	svc := &stubUserService{}
+	w := putMe(t, svc, `{"username":"baru"}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "baru", svc.gotUsername)
+	assert.Contains(t, w.Body.String(), `"subscription_expires_at":null`)
+	assert.Contains(t, w.Body.String(), `"email":"me@test.com"`)
+}
+
+func TestUpdateMe_BadInputIsBadRequest(t *testing.T) {
+	for name, body := range map[string]string{
+		"missing":  `{}`,
+		"empty":    `{"username":""}`,
+		"html":     `{"username":"<b>x</b>"}`,
+		"not json": `x`,
+	} {
+		svc := &stubUserService{}
+		w := putMe(t, svc, body)
+		assert.Equal(t, http.StatusBadRequest, w.Code, name)
+		assert.Empty(t, svc.gotUsername, name)
+	}
+}
+
+func TestUpdateMe_ServiceErrorsMapToStatus(t *testing.T) {
+	w := putMe(t, &stubUserService{updateErr: apperror.ErrInvalidUsername}, `{"username":"x"}`)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	w = putMe(t, &stubUserService{updateErr: apperror.ErrNotFound}, `{"username":"x"}`)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	w = putMe(t, &stubUserService{updateErr: errors.New("boom")}, `{"username":"x"}`)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }

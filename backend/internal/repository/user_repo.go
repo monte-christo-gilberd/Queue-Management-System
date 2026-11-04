@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"qms/internal/apperror"
 	"qms/internal/model"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
@@ -163,6 +164,48 @@ func (r *UserRepository) FindByID(
 	}
 	if err != nil {
 		return model.User{}, fmt.Errorf("find user by id: %w", err)
+	}
+	return user, nil
+}
+
+// SubscriptionExpiresAt: akhir masa langganan owner; nil bila user bukan owner.
+func (r *UserRepository) SubscriptionExpiresAt(
+	ctx context.Context,
+	userID int64,
+) (*time.Time, error) {
+
+	const query = `SELECT subscription_expires_at FROM owners WHERE user_id = $1`
+	var expiresAt time.Time
+
+	err := r.db.GetContext(ctx, &expiresAt, query, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get subscription expiry: %w", err)
+	}
+	return &expiresAt, nil
+}
+
+// UpdateUsername mengganti username dan mengembalikan baris user terbaru. Username tidak unik di skema.
+func (r *UserRepository) UpdateUsername(
+	ctx context.Context,
+	userID int64,
+	username string,
+) (model.User, error) {
+
+	const query = `
+		UPDATE users SET username = $2 WHERE id = $1
+		RETURNING id, email, username, password_hash, google_id, created_at
+	`
+	var user model.User
+
+	err := r.db.GetContext(ctx, &user, query, userID, username)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.User{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return model.User{}, fmt.Errorf("update username: %w", err)
 	}
 	return user, nil
 }

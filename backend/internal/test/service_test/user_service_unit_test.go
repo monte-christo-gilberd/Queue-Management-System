@@ -110,11 +110,11 @@ func TestSpec_Profile_ReportsOwnerFlagForOwnerOnly(t *testing.T) {
 	require.NoError(t, err)
 	repo.owners[1] = true
 
-	_, isOwner, err := svc.Profile(ctx, 1)
+	p, err := svc.Profile(ctx, 1)
 	require.NoError(t, err)
-	assert.True(t, isOwner)
+	assert.True(t, p.IsOwner)
 
-	_, isOwner, err = svc.Profile(ctx, 2)
+	p, err = svc.Profile(ctx, 2)
 	require.NoError(t, err)
-	assert.False(t, isOwner)
+	assert.False(t, p.IsOwner)
 }

@@ -5,7 +5,9 @@ import (
 	"qms/internal/apperror"
 	"qms/internal/model"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt"
 	"golang.org/x/crypto/bcrypt"
@@ -30,7 +32,18 @@ type UserRepository interface {
 		ctx context.Context,
 		userID int64,
 	) (bool, error)
+	SubscriptionExpiresAt(
+		ctx context.Context,
+		userID int64,
+	) (*time.Time, error)
+	UpdateUsername(
+		ctx context.Context,
+		userID int64,
+		username string,
+	) (model.User, error)
 }
+
+const maxUsernameLen = 50
 
 type UserService struct {
 	repository UserRepository
@@ -129,21 +142,43 @@ func (s *UserService) issueToken(
 	return token.SignedString([]byte(s.jwtSecret))
 }
 
-// Profile mengembalikan user yang sedang login dan apakah ia owner.
+// Profile mengembalikan user yang sedang login, apakah ia owner, dan (untuk owner) akhir masa langganan.
 func (s *UserService) Profile(
 	ctx context.Context,
 	userID int64,
-) (model.User, bool, error) {
+) (model.Profile, error) {
 
 	user, err := s.repository.FindByID(ctx, userID)
 	if err != nil {
-		return model.User{}, false, err
+		return model.Profile{}, err
 	}
 
 	isOwner, err := s.repository.IsOwner(ctx, userID)
 	if err != nil {
-		return model.User{}, false, err
+		return model.Profile{}, err
 	}
 
-	return user, isOwner, nil
+	profile := model.Profile{User: user, IsOwner: isOwner}
+	if isOwner {
+		profile.SubscriptionExpiresAt, err = s.repository.SubscriptionExpiresAt(ctx, userID)
+		if err != nil {
+			return model.Profile{}, err
+		}
+	}
+	return profile, nil
+}
+
+// UpdateUsername mengganti username user yang login. Spasi di tepi dibuang; panjang 1-50 karakter (rune).
+// Username tidak unik, jadi tidak ada pengecekan duplikat.
+func (s *UserService) UpdateUsername(
+	ctx context.Context,
+	userID int64,
+	username string,
+) (model.User, error) {
+
+	username = strings.TrimSpace(username)
+	if n := utf8.RuneCountInString(username); n < 1 || n > maxUsernameLen {
+		return model.User{}, apperror.ErrInvalidUsername
+	}
+	return s.repository.UpdateUsername(ctx, userID, username)
 }

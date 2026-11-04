@@ -1223,3 +1223,34 @@ func TestServingPerCounter_AgainstPostgres(t *testing.T) {
 }
 
 func ptrInt64(v int64) *int64 { return &v }
+
+// SubscriptionExpiresAt: nil untuk non-owner; UpdateUsername hanya mengubah username user itu.
+func TestUserRepository_SubscriptionExpiryAndUpdateUsername(t *testing.T) {
+	db := newTestDB(t)
+	repo := repository.NewUserRepository(db)
+	ctx := context.Background()
+	expires := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+	owner := seedOwner(t, db, "own3@b.c", expires)
+	plain := seedUser(t, db, "plain3@b.c")
+
+	got, err := repo.SubscriptionExpiresAt(ctx, owner)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.WithinDuration(t, expires, *got, time.Second)
+
+	got, err = repo.SubscriptionExpiresAt(ctx, plain)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+
+	u, err := repo.UpdateUsername(ctx, plain, "nama baru")
+	require.NoError(t, err)
+	assert.Equal(t, "nama baru", u.Username)
+	assert.Equal(t, "plain3@b.c", u.Email)
+
+	other, err := repo.FindByID(ctx, owner)
+	require.NoError(t, err)
+	assert.NotEqual(t, "nama baru", other.Username)
+
+	_, err = repo.UpdateUsername(ctx, 999999, "x")
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+}

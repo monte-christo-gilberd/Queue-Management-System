@@ -847,6 +847,28 @@ func (m *memUserRepo) IsOwner(_ context.Context, userID int64) (bool, error) {
 	return m.owners[userID], nil
 }
 
+func (m *memUserRepo) SubscriptionExpiresAt(_ context.Context, userID int64) (*time.Time, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.owners[userID] {
+		return nil, nil
+	}
+	t := time.Now().Add(24 * time.Hour)
+	return &t, nil
+}
+
+func (m *memUserRepo) UpdateUsername(_ context.Context, id int64, username string) (model.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, u := range m.users {
+		if u.ID == id {
+			m.users[i].Username = username
+			return m.users[i], nil
+		}
+	}
+	return model.User{}, apperror.ErrNotFound
+}
+
 // recordingNotifier: spy untuk service.EventNotifier.
 type notifyCall struct {
 	QueueID int64

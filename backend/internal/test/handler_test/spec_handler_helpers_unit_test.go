@@ -259,8 +259,14 @@ func (s *specUserSvc) Login(_ context.Context, identifier, password string) (str
 	return s.token, s.err
 }
 
-func (s *specUserSvc) Profile(_ context.Context, userID int64) (model.User, bool, error) {
-	return model.User{ID: userID}, false, s.err
+func (s *specUserSvc) Profile(_ context.Context, userID int64) (model.Profile, error) {
+	return model.Profile{User: model.User{ID: userID}}, s.err
+}
+
+func (s *specUserSvc) UpdateUsername(_ context.Context, userID int64, username string) (model.User, error) {
+	s.calls++
+	s.gotID = username
+	return model.User{ID: userID, Username: username}, s.err
 }
 
 // specEngine: router uji dengan user_id dipasang seperti middleware auth.

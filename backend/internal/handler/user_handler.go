@@ -26,7 +26,12 @@ type UserService interface {
 	Profile(
 		ctx context.Context,
 		userID int64,
-	) (model.User, bool, error)
+	) (model.Profile, error)
+	UpdateUsername(
+		ctx context.Context,
+		userID int64,
+		username string,
+	) (model.User, error)
 }
 
 type UserHandler struct {
@@ -151,7 +156,7 @@ func (h *UserHandler) Login(
 func (h *UserHandler) Me(
 	c *gin.Context,
 ) {
-	user, isOwner, err := h.service.Profile(
+	profile, err := h.service.Profile(
 		c.Request.Context(),
 		c.GetInt64("user_id"),
 	)
@@ -164,10 +169,37 @@ func (h *UserHandler) Me(
 		return
 	}
 
-	respondData(c, http.StatusOK, dto.MeResponse{
-		ID:       user.ID,
-		Email:    user.Email,
-		Username: user.Username,
-		IsOwner:  isOwner,
-	})
+	respondData(c, http.StatusOK, dto.NewMeResponse(profile))
+}
+
+// UpdateMe: PUT /api/v1/users/me — ganti username user yang login. Email tidak bisa diubah di sini.
+func (h *UserHandler) UpdateMe(
+	c *gin.Context,
+) {
+	var request dto.UpdateMeRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+		return
+	}
+
+	userID := c.GetInt64("user_id")
+	if _, err := h.service.UpdateUsername(c.Request.Context(), userID, request.Username); err != nil {
+		switch {
+		case errors.Is(err, apperror.ErrInvalidUsername):
+			respondError(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		case errors.Is(err, apperror.ErrNotFound):
+			respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized user")
+		default:
+			respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		}
+		return
+	}
+
+	// Baca ulang lewat Profile supaya bentuk respons sama persis dengan GET /users/me.
+	profile, err := h.service.Profile(c.Request.Context(), userID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+	respondData(c, http.StatusOK, dto.NewMeResponse(profile))
 }

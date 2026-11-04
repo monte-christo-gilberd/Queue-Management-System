@@ -74,6 +74,7 @@ func SetupRouter(
 	me.Use(router.authMiddleware)
 	if router.userHandler != nil {
 		me.GET("", router.userHandler.Me)
+		me.PUT("", router.userHandler.UpdateMe)
 	}
 	if router.ticketHandler != nil {
 		me.GET("/tickets", router.ticketHandler.MyTickets)

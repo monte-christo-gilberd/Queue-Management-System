@@ -18,6 +18,8 @@ export type AuthState = {
   login: (identifier: string, password: string) => Promise<void>;
   register: (email: string, username: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Dipakai setelah username diubah di profil, supaya header ikut berubah. */
+  setDisplayName: (name: string) => void;
 };
 
 export const useAuthStore = create<AuthState>()(
@@ -43,6 +45,8 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => set({ token: null, displayName: null }),
+
+      setDisplayName: (name) => set({ displayName: name }),
     }),
     {
       name: 'qms-auth',

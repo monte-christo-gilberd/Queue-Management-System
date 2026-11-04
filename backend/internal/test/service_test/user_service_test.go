@@ -6,7 +6,9 @@ import (
 	"qms/internal/apperror"
 	"qms/internal/model"
 	"qms/internal/service"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
@@ -23,6 +25,17 @@ type fakeUserRepo struct {
 	lastIdentifier string
 	isOwner        bool
 	findByIDErr    error
+	expiresAt      *time.Time
+	gotUsername    string
+}
+
+func (r *fakeUserRepo) SubscriptionExpiresAt(context.Context, int64) (*time.Time, error) {
+	return r.expiresAt, nil
+}
+
+func (r *fakeUserRepo) UpdateUsername(_ context.Context, id int64, username string) (model.User, error) {
+	r.gotUsername = username
+	return model.User{ID: id, Username: username}, nil
 }
 
 func (r *fakeUserRepo) FindByID(
@@ -228,13 +241,51 @@ func TestLogin_SkipsGoogleOnlyAccounts(t *testing.T) {
 
 func TestProfile_ReportsOwnerFlag(t *testing.T) {
 	svc := service.NewUserService(&fakeUserRepo{isOwner: true}, "test-secret")
-	user, isOwner, err := svc.Profile(context.Background(), 7)
+	p, err := svc.Profile(context.Background(), 7)
 	assert.NoError(t, err)
-	assert.Equal(t, int64(7), user.ID)
-	assert.True(t, isOwner)
+	assert.Equal(t, int64(7), p.User.ID)
+	assert.True(t, p.IsOwner)
 
 	svc = service.NewUserService(&fakeUserRepo{isOwner: false}, "test-secret")
-	_, isOwner, err = svc.Profile(context.Background(), 8)
+	p, err = svc.Profile(context.Background(), 8)
 	assert.NoError(t, err)
-	assert.False(t, isOwner)
+	assert.False(t, p.IsOwner)
+	assert.Nil(t, p.SubscriptionExpiresAt)
+}
+
+func TestProfile_SubscriptionExpiryOnlyForOwner(t *testing.T) {
+	exp := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	svc := service.NewUserService(&fakeUserRepo{isOwner: true, expiresAt: &exp}, "test-secret")
+	p, err := svc.Profile(context.Background(), 7)
+	assert.NoError(t, err)
+	if assert.NotNil(t, p.SubscriptionExpiresAt) {
+		assert.True(t, exp.Equal(*p.SubscriptionExpiresAt))
+	}
+
+	// Customer: expiry tidak dibaca walau repo mengembalikan nilai.
+	svc = service.NewUserService(&fakeUserRepo{isOwner: false, expiresAt: &exp}, "test-secret")
+	p, err = svc.Profile(context.Background(), 8)
+	assert.NoError(t, err)
+	assert.Nil(t, p.SubscriptionExpiresAt)
+}
+
+func TestUpdateUsername_TrimsAndValidatesLength(t *testing.T) {
+	repo := &fakeUserRepo{}
+	svc := service.NewUserService(repo, "test-secret")
+
+	u, err := svc.UpdateUsername(context.Background(), 7, "  Budi Baru  ")
+	assert.NoError(t, err)
+	assert.Equal(t, "Budi Baru", u.Username)
+	assert.Equal(t, "Budi Baru", repo.gotUsername)
+
+	for _, bad := range []string{"", "   ", strings.Repeat("a", 51)} {
+		repo.gotUsername = ""
+		_, err = svc.UpdateUsername(context.Background(), 7, bad)
+		assert.ErrorIs(t, err, apperror.ErrInvalidUsername, "%q", bad)
+		assert.Empty(t, repo.gotUsername, "repo tidak boleh dipanggil untuk input tidak valid")
+	}
+
+	// Batas dihitung per karakter, bukan per byte.
+	_, err = svc.UpdateUsername(context.Background(), 7, strings.Repeat("é", 50))
+	assert.NoError(t, err)
 }
