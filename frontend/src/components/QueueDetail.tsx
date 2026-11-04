@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
-import { useIsWide } from "@/hooks/use-is-wide";
+import { useIsTriple, useIsWide } from "@/hooks/use-is-wide";
 import type { Queue } from "@/types/api";
 import { cn } from "@/utils/cn";
 import ResponsiveScreenLayout, {
@@ -136,6 +136,7 @@ export default function QueueDetail({
 }: QueueDetailProps) {
   useErrorToast(errorMessage);
   const isWide = useIsWide();
+  const isTriple = useIsTriple();
   const isClosed = queue.status === "closed";
   const avatarColor = useThemeColor("avatar");
 
@@ -144,6 +145,84 @@ export default function QueueDetail({
   const [insertOpen, setInsertOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<{ id: number; number: string } | null>(null);
+
+  // Potongan kartu dipakai ulang oleh tata letak satu, dua, dan tiga kolom.
+  const skipNextRow = !isClosed ? (
+    <View className="flex-row gap-3">
+      {showRecall && onRecall ? (
+        <AppButton
+          label="PANGGIL ULANG"
+          variant="outline"
+          className="flex-1"
+          onPress={onRecall}
+          loading={recallLoading}
+          disabled={recallDisabled || !currentNumber}
+        />
+      ) : (
+        <AppButton
+          label="SKIP"
+          variant="outline"
+          className="flex-1"
+          onPress={onSkip}
+          loading={skipLoading}
+          disabled={skipDisabled}
+        />
+      )}
+      <AppButton label="NEXT" variant="dark" className="flex-1" onPress={onNext} loading={nextLoading} />
+    </View>
+  ) : null;
+
+  // Tampilan customer: tanpa counter, sebelumnya, dan berikutnya. Ketuk untuk membuka daftar tiket.
+  const spotCard = (
+    <MySpotCard
+      queueName={queueName}
+      currentNumber={currentNumber}
+      previousNumber={null}
+      nextNumber={null}
+      showNeighbors={false}
+      onPress={() => setTicketsOpen(true)}
+    />
+  );
+
+  const noteRow = (
+    <View className="rounded-[20px] bg-dark p-3 dark:border dark:border-line">
+      <AppendNoteRow onNote={onOpenNote} />
+    </View>
+  );
+
+  const formCard = (
+    <View className="gap-3 rounded-card border border-line p-3.5">
+      <FormField label="Nama Antrian (bisa diedit disini)" value={queueName} onChangeText={onChangeQueueName} />
+      <FormField label="Deskripsi Antrian" value={queueDescription} onChangeText={onChangeQueueDescription} />
+      {onChangeTicketPrefix ? (
+        <FormField
+          label="Awalan Nomor"
+          placeholder="mis. A, VIP"
+          value={ticketPrefix}
+          onChangeText={(v) => onChangeTicketPrefix(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3))}
+          autoCapitalize="characters"
+        />
+      ) : null}
+      {onSave ? <AppButton label="SIMPAN" variant="dark" loading={saving} onPress={onSave} /> : null}
+    </View>
+  );
+
+  const dangerCard = isClosed ? (
+    <Text className="text-[13px] font-bold text-muted">Antrian ini sudah ditutup.</Text>
+  ) : onCloseQueue ? (
+    <View className="gap-3 rounded-card border border-live bg-live/10 p-3.5">
+      <Text className="text-[12px] font-semibold text-live">Zona berbahaya</Text>
+      <Text className="text-[13px] text-foreground">
+        Customer tidak bisa lagi bergabung, dan antrian tidak bisa dibuka kembali.
+      </Text>
+      <Pressable
+        onPress={() => setCloseConfirmOpen(true)}
+        className="h-12 items-center justify-center rounded-button bg-live active:opacity-80"
+      >
+        <Text className="text-[16px] font-bold text-white">TUTUP ANTRIAN</Text>
+      </Pressable>
+    </View>
+  ) : null;
 
   return (
     <ResponsiveScreenLayout
@@ -154,107 +233,60 @@ export default function QueueDetail({
       onBack={() => router.back()}
       fullHeight={isWide}
     >
-      <View className={isWide ? "flex-row gap-6" : "gap-4"}>
-        {/* Kolom kiri: QR, Skip/Next, tampilan customer, dan catatan. Di desktop tidak di-scroll. */}
-        <View className={cn("gap-4", isWide && "w-[38%]")}>
-          {counterBar}
-          {qrCard}
-          {displayCard}
+      <View className={isWide ? "min-h-0 flex-1 flex-row gap-6" : "gap-4"}>
+        {isTriple ? (
+          <>
+            {/* Tiga kolom: operasional, pengaturan layar dan Skip, lalu form dan tutup antrian. Tiap kolom bisa
+                di-scroll sendiri, jadi layar yang lebih pendek tetap bisa menjangkau semua kartu. */}
+            <ScrollColumn className="flex-1">
+              {counterBar}
+              {qrCard}
+              {skipNextRow}
+              {spotCard}
+              {noteRow}
+            </ScrollColumn>
+            <ScrollColumn className="flex-1" panel>
+              {displayCard}
+              {skipSettingsCard}
+            </ScrollColumn>
+            <ScrollColumn className="flex-1" panel>
+              {formCard}
+              {dangerCard}
+            </ScrollColumn>
+          </>
+        ) : (
+          <>
+            {/* Kolom kiri: QR, layar publik, Skip/Next, tampilan customer, dan catatan. */}
+            {isWide ? (
+              <ScrollColumn className="w-[38%]">
+                {counterBar}
+                {qrCard}
+                {displayCard}
+                {skipNextRow}
+                {spotCard}
+                {noteRow}
+              </ScrollColumn>
+            ) : (
+              <View className="gap-4">
+                {counterBar}
+                {qrCard}
+                {displayCard}
+                {skipNextRow}
+                {spotCard}
+                {noteRow}
+              </View>
+            )}
 
-          {!isClosed ? (
-            <View className="flex-row gap-3">
-              {showRecall && onRecall ? (
-                <AppButton
-                  label="PANGGIL ULANG"
-                  variant="outline"
-                  className="flex-1"
-                  onPress={onRecall}
-                  loading={recallLoading}
-                  disabled={recallDisabled || !currentNumber}
-                />
-              ) : (
-                <AppButton
-                  label="SKIP"
-                  variant="outline"
-                  className="flex-1"
-                  onPress={onSkip}
-                  loading={skipLoading}
-                  disabled={skipDisabled}
-                />
-              )}
-              <AppButton
-                label="NEXT"
-                variant="dark"
-                className="flex-1"
-                onPress={onNext}
-                loading={nextLoading}
-              />
+            {/* Kolom kanan: pengaturan dan kontrol antrian. Di desktop satu panel yang di-scroll sendiri. */}
+            <View className={isWide ? "min-h-0 flex-1" : "gap-4"}>
+              <ScrollPanel enabled={isWide}>
+                {formCard}
+                {skipSettingsCard}
+                {dangerCard}
+              </ScrollPanel>
             </View>
-          ) : null}
-
-          {/* Tampilan customer: tanpa counter, sebelumnya, dan berikutnya. Ketuk untuk membuka daftar tiket. */}
-          <MySpotCard
-            queueName={queueName}
-            currentNumber={currentNumber}
-            previousNumber={null}
-            nextNumber={null}
-            showNeighbors={false}
-            onPress={() => setTicketsOpen(true)}
-          />
-
-          <View className="rounded-[20px] bg-dark p-3 dark:border dark:border-line">
-            <AppendNoteRow onNote={onOpenNote} />
-          </View>
-        </View>
-
-        {/* Kolom kanan: pengaturan dan kontrol antrian. Di desktop satu panel yang di-scroll sendiri. */}
-        <View className={isWide ? "min-h-0 flex-1" : "gap-4"}>
-        <ScrollPanel enabled={isWide}>
-          <View className="gap-3 rounded-card border border-line p-3.5">
-            <FormField
-              label="Nama Antrian (bisa diedit disini)"
-              value={queueName}
-              onChangeText={onChangeQueueName}
-            />
-            <FormField
-              label="Deskripsi Antrian"
-              value={queueDescription}
-              onChangeText={onChangeQueueDescription}
-            />
-            {onChangeTicketPrefix ? (
-              <FormField
-                label="Awalan Nomor"
-                placeholder="mis. A, VIP"
-                value={ticketPrefix}
-                onChangeText={(v) => onChangeTicketPrefix(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3))}
-                autoCapitalize="characters"
-              />
-            ) : null}
-            {onSave ? (
-              <AppButton label="SIMPAN" variant="dark" loading={saving} onPress={onSave} />
-            ) : null}
-          </View>
-
-          {skipSettingsCard}
-
-          {isClosed ? (
-            <Text className="text-[13px] font-bold text-muted">Antrian ini sudah ditutup.</Text>
-          ) : onCloseQueue ? (
-            <View className="gap-3 rounded-card border border-live bg-live/10 p-3.5">
-              <Text className="text-[12px] font-semibold text-live">Zona berbahaya</Text>
-              <Text className="text-[13px] text-foreground">
-                Customer tidak bisa lagi bergabung, dan antrian tidak bisa dibuka kembali.
-              </Text>
-              <Pressable
-                onPress={() => setCloseConfirmOpen(true)}
-                className="h-12 items-center justify-center rounded-button bg-live active:opacity-80"
-              >
-                <Text className="text-[16px] font-bold text-white">TUTUP ANTRIAN</Text>
-              </Pressable>
-            </View>
-          ) : null}
-        </ScrollPanel>
-        </View>
+          </>
+        )}
       </View>
 
       {/* Daftar semua tiket yang terdaftar di antrian ini (dibuka dari kartu customer). */}
@@ -381,6 +413,32 @@ export default function QueueDetail({
  * Isi panel diposisikan absolut agar tingginya mengikuti kolom kiri (tidak menambah tinggi baris),
  * sehingga garis bawah kedua kolom selalu sejajar.
  */
+/**
+ * Satu kolom tata letak desktop yang bisa di-scroll sendiri. Tingginya mengikuti ruang yang tersedia (bukan isinya),
+ * jadi isi yang lebih tinggi dari layar di-scroll alih-alih terpotong. `panel` memberi bingkai seperti panel kanan.
+ */
+function ScrollColumn({
+  className,
+  panel = false,
+  children,
+}: {
+  className?: string;
+  panel?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <View className={cn("relative min-h-0 overflow-hidden", panel && "rounded-card border border-line", className)}>
+      <ScrollView
+        className="absolute bottom-0 left-0 right-0 top-0"
+        contentContainerClassName={cn("gap-4", panel && "p-4")}
+        showsVerticalScrollIndicator={false}
+      >
+        {children}
+      </ScrollView>
+    </View>
+  );
+}
+
 function ScrollPanel({ enabled, children }: { enabled: boolean; children: React.ReactNode }) {
   if (!enabled) return <View className="flex-1 gap-4">{children}</View>;
   return (
