@@ -24,6 +24,9 @@ var (
 	ErrDefaultCounter       = errors.New("the default counter cannot be deleted")
 	ErrCounterStateChanged  = errors.New("counter state changed since the device last read it")
 	ErrInvalidUsername      = errors.New("username must be 1-50 characters")
+	ErrInvalidImage         = errors.New("invalid image file")
+	ErrImageTooLarge        = errors.New("image file is larger than 5 MB")
+	ErrUnsupportedImage     = errors.New("image must be JPEG, PNG or WebP")
 	ErrInvalidCursor        = errors.New("invalid pagination cursor")
 
 	// Error QR: token join tidak valid/tidak ada atau qr-service gagal dipakai.

@@ -21,6 +21,9 @@ type UserHandler interface {
 	Login(c *gin.Context)
 	Me(c *gin.Context)
 	UpdateMe(c *gin.Context)
+	UploadAvatar(c *gin.Context)
+	GetAvatar(c *gin.Context)
+	DeleteAvatar(c *gin.Context)
 }
 
 type QueueHandler interface {

@@ -120,5 +120,32 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     throw toApiError(res.status, json);
   }
 
+  // 204 No Content (mis. hapus foto profil): tidak ada body.
+  if (res.status === 204) return undefined as T;
+
+  return (json as { data: T }).data;
+}
+
+/**
+ * Mengunggah form multipart (mis. foto profil) dengan token auth dan mengembalikan isi `data`.
+ * Content-Type sengaja tidak diatur: fetch mengisinya lengkap dengan batas multipart.
+ * Galat dari nginx (mis. 413 berbentuk HTML) tidak punya body JSON; kodenya tetap lewat `status`.
+ */
+export async function apiUpload<T>(path: string, form: FormData, method: 'PUT' | 'POST' = 'PUT'): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, { method, headers, body: form });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Tidak dapat terhubung ke server');
+  }
+
+  const json = await parseBody(res);
+  if (!res.ok) {
+    if (res.status === 401 && authToken) onUnauthorized?.();
+    throw toApiError(res.status, json);
+  }
   return (json as { data: T }).data;
 }

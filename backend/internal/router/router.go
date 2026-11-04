@@ -75,6 +75,9 @@ func SetupRouter(
 	if router.userHandler != nil {
 		me.GET("", router.userHandler.Me)
 		me.PUT("", router.userHandler.UpdateMe)
+		me.PUT("/avatar", router.userHandler.UploadAvatar)
+		me.GET("/avatar", router.userHandler.GetAvatar)
+		me.DELETE("/avatar", router.userHandler.DeleteAvatar)
 	}
 	if router.ticketHandler != nil {
 		me.GET("/tickets", router.ticketHandler.MyTickets)

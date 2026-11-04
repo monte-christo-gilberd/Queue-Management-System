@@ -5,6 +5,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { apiFetch, setAuthToken, setOnUnauthorized } from '@/lib/api';
 import type { AuthResponse } from '@/types/api';
 
+import { useAvatarStore } from './avatarStore';
 import { createSafeStorage } from './safe-storage';
 
 /**
@@ -44,7 +45,11 @@ export const useAuthStore = create<AuthState>()(
         set({ token, displayName: username });
       },
 
-      logout: () => set({ token: null, displayName: null }),
+      logout: () => {
+        // Foto user sebelumnya tidak boleh sempat tampil untuk user berikutnya.
+        useAvatarStore.getState().setUpdatedAt(null);
+        set({ token: null, displayName: null });
+      },
 
       setDisplayName: (name) => set({ displayName: name }),
     }),

@@ -19,10 +19,11 @@ import { useHydrated } from '@/hooks/use-hydrated';
 import { useIsWide } from '@/hooks/use-is-wide';
 import { useThemeMode } from '@/hooks/use-theme-mode';
 import ResponsiveContainer from '@/components/ResponsiveContainer';
-import { Icon, PersonIcon, ScanIcon, type IconName } from '@/components/ui/Icon';
+import { Icon, ScanIcon, type IconName } from '@/components/ui/Icon';
 import { JoinQueueModals } from '@/components/ui/JoinQueueModals';
 import { PageWatermark } from '@/components/ui/PageWatermark';
 import { OwnerContext } from '@/components/layout/owner-context';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 export type TabKey = 'home' | 'antrian' | 'riwayat' | 'profile';
 
@@ -180,7 +181,7 @@ function WideLayout({
           <View className="flex-row items-center gap-3.5">
             <Text className="text-[17px] font-bold text-white">{userName}</Text>
             <Pressable hitSlop={12} onPress={() => setMenuOpen((open) => !open)}>
-              <PersonIcon size={32} color={AppColors.white} />
+              <UserAvatar size={36} iconSize={32} />
             </Pressable>
           </View>
         </View>
@@ -318,7 +319,7 @@ function MobileLayout({
             onPress={() => setPanelOpen(true)}
             hitSlop={12}
             className="w-11 items-center justify-center">
-            <PersonIcon size={32} color={AppColors.white} />
+            <UserAvatar size={36} iconSize={32} />
           </Pressable>
         </View>
         <View className="h-1 bg-primarySoft" />
@@ -461,9 +462,7 @@ function PanelHeader({
         accessibilityRole="button"
         accessibilityLabel="Buka profil"
         className="flex-1 flex-row items-center gap-3">
-        <View className="h-14 w-14 items-center justify-center rounded-full bg-dark">
-          <PersonIcon size={22} color={AppColors.white} />
-        </View>
+        <UserAvatar size={56} iconSize={22} background />
         <Text className="flex-shrink text-[18px] font-extrabold text-foreground">{userName}</Text>
       </Pressable>
       {/* Mode terang: ikon matahari. Mode gelap: ikon bulan sabit. */}

@@ -1254,3 +1254,45 @@ func TestUserRepository_SubscriptionExpiryAndUpdateUsername(t *testing.T) {
 	_, err = repo.UpdateUsername(ctx, 999999, "x")
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
+
+// AvatarRepository: upsert satu foto per user, baca, UpdatedAt tanpa membaca data, hapus idempoten,
+// batas 150 KB dijaga CHECK, dan foto ikut terhapus bersama user.
+func TestAvatarRepository_PutGetDelete(t *testing.T) {
+	db := newTestDB(t)
+	repo := repository.NewAvatarRepository(db)
+	ctx := context.Background()
+	uid := seedUser(t, db, "avatar@b.c")
+
+	got, err := repo.UpdatedAt(ctx, uid)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+	_, err = repo.Get(ctx, uid)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+
+	first, err := repo.Put(ctx, uid, []byte("satu"))
+	require.NoError(t, err)
+	second, err := repo.Put(ctx, uid, []byte("dua"))
+	require.NoError(t, err)
+	assert.False(t, second.Before(first))
+
+	a, err := repo.Get(ctx, uid)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("dua"), a.Data, "upsert mengganti, bukan menambah")
+	assert.Equal(t, "image/jpeg", a.ContentType)
+
+	_, err = repo.Put(ctx, uid, make([]byte, 150<<10+1))
+	assert.Error(t, err, "CHECK 150 KB")
+
+	require.NoError(t, repo.Delete(ctx, uid))
+	require.NoError(t, repo.Delete(ctx, uid))
+	_, err = repo.Get(ctx, uid)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+
+	_, err = repo.Put(ctx, uid, []byte("lagi"))
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, uid)
+	require.NoError(t, err)
+	var n int
+	require.NoError(t, db.GetContext(ctx, &n, `SELECT count(*) FROM user_avatars WHERE user_id = $1`, uid))
+	assert.Zero(t, n, "ON DELETE CASCADE")
+}

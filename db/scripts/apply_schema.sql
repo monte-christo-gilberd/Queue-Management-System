@@ -119,4 +119,13 @@ SET closed_at = COALESCE(
     q.created_at)
 WHERE q.status = 'closed' AND q.closed_at IS NULL;
 
+-- Foto profil: JPEG 512x512 hasil olahan server, satu per user. Disimpan di database supaya ikut backup.
+-- Batas 150 KB dijaga CHECK; notify_ro sengaja tidak diberi hak apa pun di tabel ini.
+CREATE TABLE IF NOT EXISTS user_avatars (
+    user_id      BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+    data         BYTEA NOT NULL CHECK (octet_length(data) <= 153600),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 COMMIT;

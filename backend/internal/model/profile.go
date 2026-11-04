@@ -7,4 +7,13 @@ type Profile struct {
 	User                  User
 	IsOwner               bool
 	SubscriptionExpiresAt *time.Time
+	// AvatarUpdatedAt: nil bila user belum punya foto profil.
+	AvatarUpdatedAt *time.Time
+}
+
+// Avatar: foto profil hasil olahan (JPEG).
+type Avatar struct {
+	Data        []byte
+	ContentType string
+	UpdatedAt   time.Time
 }

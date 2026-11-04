@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
+	"io"
 	"qms/internal/apperror"
+	"qms/internal/imageproc"
 	"qms/internal/model"
 	"strconv"
 	"strings"
@@ -45,9 +48,26 @@ type UserRepository interface {
 
 const maxUsernameLen = 50
 
+// AvatarStore: penyimpanan foto profil. Implementasi sekarang di Postgres (repository.AvatarRepository);
+// antarmuka ini jalur pindah ke object storage bila foto sudah puluhan ribu.
+type AvatarStore interface {
+	Put(ctx context.Context, userID int64, data []byte) (time.Time, error)
+	Get(ctx context.Context, userID int64) (model.Avatar, error)
+	Delete(ctx context.Context, userID int64) error
+	UpdatedAt(ctx context.Context, userID int64) (*time.Time, error)
+}
+
 type UserService struct {
 	repository UserRepository
 	jwtSecret  string
+	avatars    AvatarStore
+}
+
+// WithAvatars memasang penyimpanan foto profil. Tanpa ini, Profile tidak melaporkan foto dan
+// operasi foto mengembalikan ErrNotFound.
+func (s *UserService) WithAvatars(store AvatarStore) *UserService {
+	s.avatars = store
+	return s
 }
 
 func NewUserService(
@@ -165,7 +185,47 @@ func (s *UserService) Profile(
 			return model.Profile{}, err
 		}
 	}
+	if s.avatars != nil {
+		profile.AvatarUpdatedAt, err = s.avatars.UpdatedAt(ctx, userID)
+		if err != nil {
+			return model.Profile{}, err
+		}
+	}
 	return profile, nil
+}
+
+// SetAvatar mengolah unggahan (validasi isi, crop, perkecil, encode ulang) lalu menggantikan foto user.
+func (s *UserService) SetAvatar(ctx context.Context, userID int64, upload io.Reader) error {
+	if s.avatars == nil {
+		return apperror.ErrNotFound
+	}
+	data, err := imageproc.Process(upload)
+	switch {
+	case errors.Is(err, imageproc.ErrTooLarge):
+		return apperror.ErrImageTooLarge
+	case errors.Is(err, imageproc.ErrUnsupported):
+		return apperror.ErrUnsupportedImage
+	case err != nil:
+		return apperror.ErrInvalidImage
+	}
+	_, err = s.avatars.Put(ctx, userID, data)
+	return err
+}
+
+// Avatar mengembalikan foto user; ErrNotFound bila belum ada.
+func (s *UserService) Avatar(ctx context.Context, userID int64) (model.Avatar, error) {
+	if s.avatars == nil {
+		return model.Avatar{}, apperror.ErrNotFound
+	}
+	return s.avatars.Get(ctx, userID)
+}
+
+// DeleteAvatar menghapus foto user. Idempoten.
+func (s *UserService) DeleteAvatar(ctx context.Context, userID int64) error {
+	if s.avatars == nil {
+		return nil
+	}
+	return s.avatars.Delete(ctx, userID)
 }
 
 // UpdateUsername mengganti username user yang login. Spasi di tepi dibuang; panjang 1-50 karakter (rune).

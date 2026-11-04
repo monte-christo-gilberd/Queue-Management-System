@@ -1,4 +1,9 @@
+import { Image } from 'expo-image';
+import { useState } from 'react';
+
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { useErrorToast } from '@/components/ui/Toast';
+import type { AvatarSource } from '@/hooks/use-avatar-source';
 import { USERNAME_MAX } from '@/utils/profile';
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
@@ -33,6 +38,15 @@ export type ProfileProps = {
   subscriptionPaid?: boolean;
   /** Keterangan di bawah status, mis. "Aktif hingga 1 Feb 2025". */
   subscriptionDescription?: string;
+  /** Foto profil; null = tampilkan ikon. */
+  avatarSource?: AvatarSource | null;
+  /** Server menyimpan foto untuk user ini (menentukan tombol Hapus Foto). */
+  hasAvatar?: boolean;
+  /** Unggah atau hapus foto sedang berjalan. */
+  avatarBusy?: boolean;
+  onPickAvatar?: () => void;
+  /** Dipanggil setelah user mengonfirmasi hapus foto. */
+  onDeleteAvatar?: () => void;
   /** Placeholder: belum ada fungsinya sampai alur ganti password lewat email jadi (plan item 9). */
   onPressChangePassword?: () => void;
 };
@@ -52,8 +66,14 @@ export default function Profile({
   subscriptionPaid = false,
   subscriptionDescription,
   onPressChangePassword,
+  avatarSource = null,
+  hasAvatar = false,
+  avatarBusy = false,
+  onPickAvatar,
+  onDeleteAvatar,
 }: ProfileProps) {
   useErrorToast(errorMessage);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const isWide = useIsWide();
 
   return (
@@ -64,14 +84,41 @@ export default function Profile({
       activeTab="profile">
       <View className={isWide ? 'flex-row items-start gap-6' : 'gap-4'}>
         <View className={cn('gap-4', isWide && 'w-80')}>
-          {/* Foto profil di luar cakupan (butuh penyimpanan berkas): hanya ikon. */}
+          {/* Foto profil: hanya terlihat oleh pemiliknya. Tanpa foto, tampil ikon. */}
           <View
             className={cn(
-              'items-center gap-2.5 rounded-card bg-surface',
+              'items-center gap-3 rounded-card bg-surface',
               isWide ? 'w-80 py-8' : 'py-3.5',
             )}>
-            <View className="h-[88px] w-[88px] items-center justify-center rounded-full bg-dark">
-              <PersonIcon size={40} color={AppColors.white} />
+            <View className="h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-full bg-dark">
+              {avatarSource ? (
+                <Image
+                  source={avatarSource}
+                  style={{ width: 88, height: 88 }}
+                  contentFit="cover"
+                  accessibilityLabel="Foto profil"
+                />
+              ) : (
+                <PersonIcon size={40} color={AppColors.white} />
+              )}
+            </View>
+            <View className="flex-row gap-2">
+              <AppButton
+                label={hasAvatar ? 'Ganti Foto' : 'Unggah Foto'}
+                variant="outline"
+                onPress={onPickAvatar}
+                loading={avatarBusy}
+                className="h-10 px-4"
+              />
+              {hasAvatar ? (
+                <AppButton
+                  label="Hapus Foto"
+                  variant="outline"
+                  onPress={() => setConfirmDelete(true)}
+                  disabled={avatarBusy}
+                  className="h-10 px-4"
+                />
+              ) : null}
             </View>
           </View>
 
@@ -139,6 +186,18 @@ export default function Profile({
           </View>
         </View>
       </View>
+      <ConfirmModal
+        visible={confirmDelete}
+        title="Hapus foto profil?"
+        message="Foto profil Anda akan dihapus dan diganti ikon. Anda bisa mengunggah foto lagi kapan saja."
+        confirmLabel="Ya, Hapus"
+        loading={avatarBusy}
+        onConfirm={() => {
+          setConfirmDelete(false);
+          onDeleteAvatar?.();
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </ResponsiveScreenLayout>
   );
 }

@@ -42,7 +42,8 @@ func main() {
 	userRepo := repository.
 		NewUserRepository(db)
 	userService := service.
-		NewUserService(userRepo, cfg.JWTSecret)
+		NewUserService(userRepo, cfg.JWTSecret).
+		WithAvatars(repository.NewAvatarRepository(db))
 	userHandler := handler.
 		NewUserHandler(userService)
 

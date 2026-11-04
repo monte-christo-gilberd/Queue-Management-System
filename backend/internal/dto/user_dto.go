@@ -40,6 +40,8 @@ type MeResponse struct {
 	Username              string     `json:"username"`
 	IsOwner               bool       `json:"is_owner"`
 	SubscriptionExpiresAt *time.Time `json:"subscription_expires_at"`
+	// AvatarUpdatedAt: null bila belum ada foto; dipakai klien sebagai penanda ada foto dan pemecah cache.
+	AvatarUpdatedAt *time.Time `json:"avatar_updated_at"`
 }
 
 // UpdateMeRequest: PUT /users/me. Panjang diperiksa service setelah trim.
@@ -55,5 +57,6 @@ func NewMeResponse(p model.Profile) MeResponse {
 		Username:              p.User.Username,
 		IsOwner:               p.IsOwner,
 		SubscriptionExpiresAt: p.SubscriptionExpiresAt,
+		AvatarUpdatedAt:       p.AvatarUpdatedAt,
 	}
 }

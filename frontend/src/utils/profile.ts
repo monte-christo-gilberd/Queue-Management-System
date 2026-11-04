@@ -31,12 +31,27 @@ export function subscriptionStatus(
 /** Pesan untuk galat dari GET/PUT /users/me. */
 export function describeProfileError(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Terjadi kesalahan, coba lagi';
+  // 413 dan 415 bisa datang dari nginx tanpa body JSON, jadi dicek lewat status.
+  if (error.status === 413) return 'Ukuran foto terlalu besar (maksimal 5 MB)';
+  if (error.status === 415) return 'Foto harus berformat JPEG, PNG, atau WebP';
   switch (error.code) {
     case 'NETWORK_ERROR':
       return error.message;
     case 'BAD_REQUEST':
-      return 'Nama tidak valid, periksa kembali isian Anda';
+      return error.message.toLowerCase().includes('image')
+        ? 'Foto tidak bisa dibaca, coba foto lain'
+        : 'Nama tidak valid, periksa kembali isian Anda';
     default:
       return 'Terjadi kesalahan di server, coba lagi';
   }
+}
+
+/** Batas ukuran foto sebelum diunggah; sama dengan backend dan nginx. */
+export const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Pesan galat bila foto yang dipilih jelas tidak bisa diterima, atau null. `size` boleh tidak diketahui. */
+export function validateAvatarPick(size: number | null | undefined, mimeType?: string | null): string | null {
+  if (mimeType && !/^image\/(jpeg|png|webp)$/i.test(mimeType)) return 'Foto harus berformat JPEG, PNG, atau WebP';
+  if (typeof size === 'number' && size > AVATAR_MAX_BYTES) return 'Ukuran foto terlalu besar (maksimal 5 MB)';
+  return null;
 }

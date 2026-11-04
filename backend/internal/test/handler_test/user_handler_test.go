@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"qms/internal/apperror"
@@ -32,6 +34,28 @@ type stubUserService struct {
 	expiresAt     *time.Time
 	gotUsername   string
 	updateErr     error
+	avatarErr     error
+	avatar        model.Avatar
+	avatarBytes   []byte
+	deletedCalls  int
+	avatarUpdated *time.Time
+}
+
+func (s *stubUserService) SetAvatar(_ context.Context, _ int64, r io.Reader) error {
+	if s.avatarErr != nil {
+		return s.avatarErr
+	}
+	s.avatarBytes, _ = io.ReadAll(r)
+	return nil
+}
+
+func (s *stubUserService) Avatar(context.Context, int64) (model.Avatar, error) {
+	return s.avatar, s.avatarErr
+}
+
+func (s *stubUserService) DeleteAvatar(context.Context, int64) error {
+	s.deletedCalls++
+	return s.avatarErr
 }
 
 func (s *stubUserService) Register(context.Context, string, string, string) (string, error) {
@@ -43,6 +67,7 @@ func (s *stubUserService) Profile(_ context.Context, userID int64) (model.Profil
 		User:                  model.User{ID: userID, Email: "me@test.com", Username: "me"},
 		IsOwner:               s.isOwner,
 		SubscriptionExpiresAt: s.expiresAt,
+		AvatarUpdatedAt:       s.avatarUpdated,
 	}, s.profileErr
 }
 
@@ -132,7 +157,7 @@ func TestMe_ReturnsProfileAndOwnerFlag(t *testing.T) {
 	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/me", nil))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":false,"subscription_expires_at":null}}`, w.Body.String())
+	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":false,"subscription_expires_at":null,"avatar_updated_at":null}}`, w.Body.String())
 }
 
 func TestMe_OwnerIncludesSubscriptionExpiry(t *testing.T) {
@@ -146,7 +171,7 @@ func TestMe_OwnerIncludesSubscriptionExpiry(t *testing.T) {
 	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/me", nil))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":true,"subscription_expires_at":"2026-12-01T00:00:00Z"}}`, w.Body.String())
+	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":true,"subscription_expires_at":"2026-12-01T00:00:00Z","avatar_updated_at":null}}`, w.Body.String())
 }
 
 func putMe(t *testing.T, svc *stubUserService, body string) *httptest.ResponseRecorder {
@@ -199,4 +224,113 @@ func TestUpdateMe_ServiceErrorsMapToStatus(t *testing.T) {
 
 	w = putMe(t, &stubUserService{updateErr: errors.New("boom")}, `{"username":"x"}`)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func avatarEngine(svc *stubUserService) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	e := gin.New()
+	h := handler.NewUserHandler(svc)
+	e.Use(func(c *gin.Context) { c.Set("user_id", int64(9)) })
+	e.PUT("/avatar", h.UploadAvatar)
+	e.GET("/avatar", h.GetAvatar)
+	e.DELETE("/avatar", h.DeleteAvatar)
+	return e
+}
+
+func multipartBody(t *testing.T, field, filename string, content []byte) (*bytes.Buffer, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	if field != "" {
+		part, err := w.CreateFormFile(field, filename)
+		assert.NoError(t, err)
+		_, _ = part.Write(content)
+	}
+	assert.NoError(t, w.Close())
+	return &buf, w.FormDataContentType()
+}
+
+func putAvatar(e *gin.Engine, body *bytes.Buffer, contentType string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPut, "/avatar", body)
+	req.Header.Set("Content-Type", contentType)
+	w := httptest.NewRecorder()
+	e.ServeHTTP(w, req)
+	return w
+}
+
+func TestUploadAvatar_PassesFileAndReturnsProfile(t *testing.T) {
+	svc := &stubUserService{}
+	body, ct := multipartBody(t, "file", "a.jpg", []byte("isi-gambar"))
+
+	w := putAvatar(avatarEngine(svc), body, ct)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, []byte("isi-gambar"), svc.avatarBytes)
+	assert.Contains(t, w.Body.String(), `"avatar_updated_at"`)
+}
+
+func TestUploadAvatar_MissingFileIsBadRequest(t *testing.T) {
+	body, ct := multipartBody(t, "", "", nil)
+	w := putAvatar(avatarEngine(&stubUserService{}), body, ct)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	body, ct = multipartBody(t, "bukan-file", "a.jpg", []byte("x"))
+	w = putAvatar(avatarEngine(&stubUserService{}), body, ct)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUploadAvatar_ServiceErrorsMapToStatus(t *testing.T) {
+	for err, want := range map[error]int{
+		apperror.ErrImageTooLarge:    http.StatusRequestEntityTooLarge,
+		apperror.ErrUnsupportedImage: http.StatusUnsupportedMediaType,
+		apperror.ErrInvalidImage:     http.StatusBadRequest,
+		errors.New("boom"):           http.StatusInternalServerError,
+	} {
+		body, ct := multipartBody(t, "file", "a.jpg", []byte("x"))
+		w := putAvatar(avatarEngine(&stubUserService{avatarErr: err}), body, ct)
+		assert.Equal(t, want, w.Code, err.Error())
+	}
+}
+
+func TestUploadAvatar_OversizedRequestIs413(t *testing.T) {
+	body, ct := multipartBody(t, "file", "a.jpg", bytes.Repeat([]byte("a"), 6<<20))
+	w := putAvatar(avatarEngine(&stubUserService{}), body, ct)
+	assert.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+}
+
+func TestGetAvatar_ServesImageWithETagAnd304(t *testing.T) {
+	updated := time.Date(2026, 11, 4, 1, 2, 3, 0, time.UTC)
+	svc := &stubUserService{avatar: model.Avatar{Data: []byte("jpegbytes"), ContentType: "image/jpeg", UpdatedAt: updated}}
+	e := avatarEngine(svc)
+
+	w := httptest.NewRecorder()
+	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/avatar", nil))
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "image/jpeg", w.Header().Get("Content-Type"))
+	assert.Equal(t, "private, no-cache", w.Header().Get("Cache-Control"))
+	assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"))
+	assert.Equal(t, "jpegbytes", w.Body.String())
+	etag := w.Header().Get("ETag")
+	assert.NotEmpty(t, etag)
+
+	req := httptest.NewRequest(http.MethodGet, "/avatar", nil)
+	req.Header.Set("If-None-Match", etag)
+	w = httptest.NewRecorder()
+	e.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotModified, w.Code)
+	assert.Empty(t, w.Body.String())
+}
+
+func TestGetAvatar_NoneIs404(t *testing.T) {
+	w := httptest.NewRecorder()
+	avatarEngine(&stubUserService{avatarErr: apperror.ErrNotFound}).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/avatar", nil))
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestDeleteAvatar_Is204(t *testing.T) {
+	svc := &stubUserService{}
+	w := httptest.NewRecorder()
+	avatarEngine(svc).ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/avatar", nil))
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Equal(t, 1, svc.deletedCalls)
 }

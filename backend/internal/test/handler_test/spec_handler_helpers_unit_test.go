@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http/httptest"
 	"qms/internal/model"
 	noHTMLValidator "qms/internal/validator"
@@ -262,6 +263,14 @@ func (s *specUserSvc) Login(_ context.Context, identifier, password string) (str
 func (s *specUserSvc) Profile(_ context.Context, userID int64) (model.Profile, error) {
 	return model.Profile{User: model.User{ID: userID}}, s.err
 }
+
+func (s *specUserSvc) SetAvatar(context.Context, int64, io.Reader) error { return s.err }
+
+func (s *specUserSvc) Avatar(context.Context, int64) (model.Avatar, error) {
+	return model.Avatar{}, s.err
+}
+
+func (s *specUserSvc) DeleteAvatar(context.Context, int64) error { return s.err }
 
 func (s *specUserSvc) UpdateUsername(_ context.Context, userID int64, username string) (model.User, error) {
 	s.calls++
