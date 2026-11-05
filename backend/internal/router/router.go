@@ -70,7 +70,16 @@ func SetupRouter(
 	engine.Use(middleware.CORS(router.allowedOrigins))
 
 	// Liveness untuk healthcheck kontainer: tidak menyentuh database atau logika antrian.
-	engine.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+	engine.GET("/health",
+		func(c *gin.Context) {
+			c.JSON(
+				http.StatusOK,
+				gin.H{
+					"status": "ok",
+				},
+			)
+		},
+	)
 
 	api := engine.Group("/api")
 	v1 := api.Group("/v1")

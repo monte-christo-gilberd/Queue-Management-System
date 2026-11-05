@@ -6,16 +6,24 @@ import (
 )
 
 type Counter struct {
-	ID        int64     `db:"id"`
-	QueueID   int64     `db:"queue_id"`
-	Name      string    `db:"name"`
+	// id loket
+	ID int64 `db:"id"`
+	// id antrian
+	QueueID int64 `db:"queue_id"`
+	// nama loket
+	Name string `db:"name"`
+	// waktu loket dibuat
 	CreatedAt time.Time `db:"created_at"`
-	IsDefault bool      `db:"is_default"`
+	// apakah loket ini loket default
+	IsDefault bool `db:"is_default"`
 }
 
 // CounterWithServing: counter beserta nomor yang sedang dilayaninya (LEFT JOIN tickets). Kosong bila tidak melayani.
 type CounterWithServing struct {
+	// counternya sendiri
 	Counter
+	// id tiket yang sedang dilayani
 	ServingTicketID sql.NullInt64 `db:"serving_ticket_id"`
-	ServingNumber   sql.NullInt64 `db:"serving_number"`
+	// nomor yang sedang dilayani
+	ServingNumber sql.NullInt64 `db:"serving_number"`
 }
