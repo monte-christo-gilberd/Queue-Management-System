@@ -135,6 +135,15 @@ func (h *QueueHandler) Create(
 			}
 		}
 	}
+	if errors.Is(err, apperror.ErrEmailNotVerified) {
+		respondError(
+			c,
+			http.StatusForbidden,
+			"EMAIL_NOT_VERIFIED",
+			"verify your email before creating a queue",
+		)
+		return
+	}
 	if errors.Is(err, apperror.ErrSubscriptionInactive) {
 		respondError(
 			c,

@@ -215,7 +215,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
 CREATE TABLE IF NOT EXISTS user_action_tokens (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    purpose     TEXT NOT NULL CHECK (purpose IN ('password_reset', 'email_change')),
+    purpose     TEXT NOT NULL CHECK (purpose IN ('password_reset', 'email_verify', 'email_change')),
     token_hash  TEXT NOT NULL UNIQUE,
     expires_at  TIMESTAMPTZ NOT NULL,
     used_at     TIMESTAMPTZ,
@@ -223,5 +223,24 @@ CREATE TABLE IF NOT EXISTS user_action_tokens (
     request_ip  TEXT
 );
 CREATE INDEX IF NOT EXISTS user_action_tokens_user_idx ON user_action_tokens (user_id, purpose, created_at DESC);
+
+-- Verifikasi email: tabel yang sudah ada tidak mengubah CHECK-nya lewat CREATE TABLE IF NOT EXISTS,
+-- jadi constraint diganti agar menerima purpose 'email_verify'. Aman dijalankan berulang.
+ALTER TABLE user_action_tokens DROP CONSTRAINT IF EXISTS user_action_tokens_purpose_check;
+ALTER TABLE user_action_tokens
+    ADD CONSTRAINT user_action_tokens_purpose_check CHECK (purpose IN ('password_reset', 'email_verify', 'email_change'));
+
+-- Kolom email_verified_at dan backfill dilakukan SEKALI, saat kolom belum ada. Semua akun yang sudah ada dianggap
+-- terverifikasi agar tidak terkunci; menjalankan skrip ini lagi tidak memverifikasi akun baru yang belum terverifikasi.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'email_verified_at'
+    ) THEN
+        ALTER TABLE users ADD COLUMN email_verified_at TIMESTAMPTZ;
+        UPDATE users SET email_verified_at = created_at;
+    END IF;
+END $$;
 
 COMMIT;

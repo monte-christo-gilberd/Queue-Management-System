@@ -44,6 +44,8 @@ type MeResponse struct {
 	AvatarUpdatedAt *time.Time `json:"avatar_updated_at"`
 	// EmailNotifications: sakelar email notifikasi tiket.
 	EmailNotifications bool `json:"email_notifications"`
+	// EmailVerified: false = klien menampilkan banner verifikasi di Profil. Selalu true bila verifikasi dimatikan.
+	EmailVerified bool `json:"email_verified"`
 }
 
 // UpdateMeRequest: PUT /users/me. Panjang diperiksa service setelah trim.
@@ -66,12 +68,18 @@ func NewMeResponse(p model.Profile) MeResponse {
 		SubscriptionExpiresAt: p.SubscriptionExpiresAt,
 		AvatarUpdatedAt:       p.AvatarUpdatedAt,
 		EmailNotifications:    p.User.EmailNotifications,
+		EmailVerified:         p.EmailVerified,
 	}
 }
 
 // ForgotPasswordRequest: POST /users/forgot-password. Respons selalu sama (202) apa pun isinya, selama formatnya sah.
 type ForgotPasswordRequest struct {
 	Email string `json:"email" binding:"required,max=254,no_html_tags"`
+}
+
+// VerifyEmailRequest: POST /users/verify-email. Token dari tautan di email.
+type VerifyEmailRequest struct {
+	Token string `json:"token" binding:"required,max=200"`
 }
 
 // ResetPasswordRequest: POST /users/reset-password. Panjang password diperiksa service.

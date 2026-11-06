@@ -100,6 +100,7 @@ type QueueService struct {
 	tx           TxRunner
 	notifier     EventNotifier
 	holders      TicketHolderChecker
+	verification VerificationGuard
 }
 
 func NewQueueService(
@@ -127,12 +128,29 @@ func (s *QueueService) WithTicketHolderChecker(
 	return s
 }
 
+// WithVerificationGuard mewajibkan email terverifikasi untuk membuat antrian (apperror.ErrEmailNotVerified).
+// Tanpa guard (verifikasi email mati), tidak ada pemeriksaan.
+func (s *QueueService) WithVerificationGuard(
+	guard VerificationGuard,
+) *QueueService {
+	s.verification = guard
+	return s
+}
+
 func (s *QueueService) CreateQueue(
 	ctx context.Context,
 	ownerID int64,
 	queueName,
 	queueDescription string,
 ) (model.Queue, error) {
+
+	// Verifikasi email diperiksa lebih dulu daripada langganan: user yang belum terverifikasi tidak perlu
+	// diminta membayar sebelum tahu bahwa emailnya harus diverifikasi.
+	if s.verification != nil {
+		if err := s.verification.RequireVerified(ctx, ownerID); err != nil {
+			return model.Queue{}, err
+		}
+	}
 
 	err := s.isSubscribed(
 		ctx,

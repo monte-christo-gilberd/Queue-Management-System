@@ -23,8 +23,14 @@ export type ProfileProps = {
   shell?: ShellProps;
   onMenuItemPress?: (item: OwnerMenuItem) => void;
   username: string;
-  /** Email hanya ditampilkan; mengubahnya menunggu verifikasi lewat email (plan item 9). */
+  /** Email hanya ditampilkan; mengubahnya belum didukung (verifikasi ganti email belum dibangun). */
   email: string;
+  /** false = email belum diverifikasi: tampilkan banner dan tombol kirim ulang. Bawaan true (tidak ada banner). */
+  emailVerified?: boolean;
+  /** Minta tautan verifikasi dikirim ulang ke email akun. */
+  onPressResendVerification?: () => void;
+  /** Permintaan kirim ulang sedang berjalan. */
+  resendVerificationBusy?: boolean;
   onChangeUsername: (value: string) => void;
   onSubmit: () => void;
   /** Tombol simpan nonaktif bila nama tidak berubah atau tidak valid. */
@@ -64,6 +70,9 @@ export default function Profile({
   onMenuItemPress,
   username,
   email,
+  emailVerified = true,
+  onPressResendVerification,
+  resendVerificationBusy = false,
   onChangeUsername,
   onSubmit,
   canSave,
@@ -191,6 +200,27 @@ export default function Profile({
             maxLength={USERNAME_MAX}
           />
           <FormField label="Email User" value={email} editable={false} placeholder="Email User" />
+
+          {/* Banner verifikasi: hanya saat server mewajibkan verifikasi dan email belum terverifikasi. */}
+          {emailVerified ? null : (
+            <View
+              accessibilityRole="alert"
+              accessibilityLabel="Email belum diverifikasi"
+              className="gap-2 rounded-card border border-line bg-surface p-4">
+              <Text className="text-[14px] font-bold text-foreground">Email belum diverifikasi</Text>
+              <Text className="text-[12px] font-normal text-muted">
+                Verifikasi email Anda lewat tautan yang kami kirim agar bisa bergabung ke antrian dan membuat antrian.
+                Periksa juga folder spam.
+              </Text>
+              <AppButton
+                label="Kirim Ulang Email Verifikasi"
+                variant="outline"
+                onPress={onPressResendVerification}
+                loading={resendVerificationBusy}
+                disabled={resendVerificationBusy}
+              />
+            </View>
+          )}
 
           <AppButton
             label="Simpan Perubahan"

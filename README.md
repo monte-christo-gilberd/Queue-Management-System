@@ -18,22 +18,24 @@ Isi dokumen:
 ### Alur pengguna
 
 **Owner**
-1. Daftar atau masuk, lalu buat antrian baru. Membuat antrian butuh langganan aktif.
+1. Daftar, verifikasi email lewat tautan yang dikirim (lihat catatan di bawah), lalu buat antrian baru. Membuat antrian butuh email terverifikasi dan langganan aktif.
 2. Di detail antrian, bagikan QR atau tautan join ke customer. QR statis berisi kode tetap yang bisa diganti; QR dinamis kodenya berubah berkala.
 3. Di Dashboard, tekan **Next** untuk memanggil nomor berikutnya. **Skip** melewati nomor yang sedang dilayani, dan **Panggil ulang** mengulang panggilan.
 4. Tutup antrian saat layanan selesai. Customer yang belum bergabung tidak bisa join lagi.
 
 **Customer**
-1. Scan QR atau buka tautan join. Login dulu bila belum masuk, lalu kembali ke halaman join.
+1. Daftar dan verifikasi email (banner di halaman Profil, ada tombol kirim ulang). Scan QR atau buka tautan join. Login dulu bila belum masuk, lalu kembali ke halaman join.
 2. Tekan Gabung untuk mendapat nomor antrian. Scan berulang tidak membuat tiket kedua.
 3. Pantau posisi dan nomor yang sedang dilayani di Beranda atau Antrian Saya. Notifikasi "Giliran Anda" datang saat nomor dipanggil.
+
+Verifikasi email: login tetap bisa sebelum diverifikasi, tetapi bergabung ke antrian (nomor baru) dan membuat antrian ditolak (403 `EMAIL_NOT_VERIFIED`) sampai tautan di email dibuka. Di dev email masuk ke Mailpit; di produksi ikut `MAIL_MODE` ([bagian 2](#verifikasi-email)).
 
 Diagram dan detail lengkap ada di [FLOW.md](docs/FLOW.md).
 
 ### Asumsi
 
 - Layanan tatap muka: customer hadir langsung dan membawa HP. Owner memanggil nomor satu per satu.
-- Customer wajib login sebelum bergabung. Tidak ada join anonim.
+- Customer wajib login dan memverifikasi email sebelum bergabung. Tidak ada join anonim. Verifikasi hanya membuktikan kepemilikan email lewat tautan; domain email tidak diperiksa (tanpa cek MX atau allowlist).
 - Join hanya lewat token QR atau tautan. Token statis bisa diganti owner, token dinamis kedaluwarsa.
 - Owner butuh langganan aktif untuk membuat antrian. User biasa menjadi owner lewat pembayaran pertama.
 - Layar publik hanya menampilkan nomor, tanpa nama customer (privasi).
@@ -102,6 +104,7 @@ Variabel penting:
 | `QR_SERVICE_URL` | Alamat qr-service, mis. `http://localhost:8090` |
 | `QR_SERVICE_TOKEN` | Sama dengan `QR_SERVICE_TOKEN` milik qr-service |
 | `QR_HTTP_TIMEOUT` | Timeout panggilan internal (detik, default 1) |
+| `EMAIL_VERIFICATION_REQUIRED` | Verifikasi email. Kosong = nyala bila `MAIL_SERVICE_URL` terisi; `false` mematikan (semua akun dianggap terverifikasi); `true` tanpa mail-service ditolak saat start |
 | `SHUTDOWN_TIMEOUT` | Detik menunggu request selesai saat backend berhenti (default 8; compose dev 2). Harus lebih kecil dari `stop_grace_period` |
 
 Catatan: `PUBLIC_APP_URL` harus bisa dibuka dari HP yang memindai QR (jangan `localhost` untuk uji perangkat).
@@ -173,7 +176,7 @@ Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) ata
 cp .env.prod.example .env.prod && chmod 600 .env.prod   # isi rahasia (openssl rand -hex 32) dan kunci VAPID baru; .env dev tidak tersentuh
 make down                   # stack dev memakai port 8080 yang sama
 make prod-up                # docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
-scripts/create-demo-accounts.sh   # 1 owner + 4 customer, sandi acak di ~/qms-demo-accounts.txt
+scripts/create-demo-accounts.sh   # 1 owner + 4 customer (sudah terverifikasi emailnya), sandi acak di ~/qms-demo-accounts.txt
 make prod-guard             # setelah akun demo dibuat: seed/reset ditolak di DB ini
 make prod-backup            # ~/qms-backups/qms-<waktu>.sql.gz; restore: scripts/backup-prod.sh restore <file>
 make prod-reset             # kosongkan antrian/tiket/push untuk demo ulang; akun dipertahankan, backup otomatis dulu
@@ -245,6 +248,20 @@ docker compose up -d mail-service
 ```
 (prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod` dan ambil `MAIL_DB_PASSWORD` dari `.env.prod`). Tes: `QMS_DOCKER_EXEC=1 npx playwright test ts-30` (dua tes ketahanan mematikan dan menyalakan container).
 
+##### Verifikasi email
+Akun baru dikirimi tautan `/verify-email?token=...` (berlaku 24 jam, sekali pakai, maksimal 3 kiriman per jam per akun; yang disimpan hanya hash tokennya di `user_action_tokens`). Pengiriman di latar belakang: bila gagal, registrasi tetap berhasil dan user bisa kirim ulang dari halaman Profil. Akun yang belum terverifikasi tidak bisa bergabung ke antrian (nomor baru) atau membuat antrian (403 `EMAIL_NOT_VERIFIED`); status dibaca dari database, jadi berlaku tanpa login ulang. Menyala bila `EMAIL_VERIFICATION_REQUIRED` kosong atau `true` (bawaan: ikut adanya mail-service).
+
+| Lingkungan | Email verifikasi | Cara memverifikasi |
+|---|---|---|
+| Dev (`make up`) | Ditangkap Mailpit | Buka `http://localhost:8025`, klik tautan di email |
+| Prod `MAIL_MODE=smtp` (bawaan) | Dikirim ke inbox asli lewat SMTP, mis. Gmail (`smtp.gmail.com`, 587, `starttls`, kata sandi aplikasi) | Pengguna klik tautan di inbox-nya |
+| Prod `MAIL_MODE=mailpit` | Ditangkap Mailpit, **tidak terkirim ke siapa pun** | Ambil tautan dari Mailpit (SSH tunnel), atau `make verify-user EMAIL=<email> STACK=prod` |
+
+- `make verify-user EMAIL=<email> [STACK=prod]` (`scripts/verify-user.sh`) menandai satu akun terverifikasi langsung di database. Idempoten dan aman terhadap karakter aneh di email.
+- `scripts/check-mail-mode.sh` (dijalankan `make prod-up`) memperingatkan bahwa pengguna baru tidak bisa memverifikasi di mode `mailpit`, kecuali `EMAIL_VERIFICATION_REQUIRED=false`.
+- **DB yang sudah berjalan:** `db/scripts/apply_schema.sql` menambah kolom `users.email_verified_at`, memperluas CHECK `purpose`, dan **sekali saja** menandai semua akun yang sudah ada terverifikasi (agar tidak terkunci); menjalankannya ulang tidak memverifikasi akun baru. Lalu restart backend dan mail-service (templat `email-verify` ada di image mail-service). Seed dev dan akun demo dibuat sudah terverifikasi.
+- Tes: `ts-33-email-verification.spec.ts` (butuh Mailpit dan owner berlangganan). Helper `registerAccount` di tes e2e memverifikasi akun lewat Mailpit dan menghapus email verifikasinya; beri `{ verify: false }` untuk akun yang belum terverifikasi.
+
 ##### Link Mailpit
 Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat nginx**, jadi tidak terbuka lewat IP LAN maupun tunnel Cloudflare. Perangkat lain memakai SSH tunnel: `ssh -L 8025:127.0.0.1:8025 <user>@<IP mesin>`, lalu `http://localhost:8025`. Port diubah lewat `MAILPIT_UI_PORT` dan `MAILPIT_SMTP_PORT`. `make mailpit` menampilkan semua link tanpa menjalankan apa pun.
 
@@ -284,6 +301,7 @@ Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat
 | Fitur | Penjelasan singkat |
 |---|---|
 | Akun | Daftar, masuk dengan email atau username, keluar, profil, avatar, dan preferensi. Lupa dan reset password lewat email bila mail-service dipasang. |
+| Verifikasi email | Tautan verifikasi saat registrasi, halaman publik `/verify-email`, banner dan tombol kirim ulang di Profil. Belum terverifikasi: tidak bisa bergabung ke antrian atau membuat antrian. Dev lewat Mailpit, prod lewat `MAIL_MODE`. |
 | Antrian | Owner membuat antrian (butuh langganan aktif), mengubah nama dan deskripsi, dan menutup antrian. |
 | Panggilan nomor | Owner memakai Next, Skip (dengan aturan nomor yang dilewati), dan Panggil ulang. Customer bisa membatalkan tiketnya, dan owner bisa menghapus tiket. |
 | QR dan tautan join | QR statis atau dinamis dengan token dari `qr-service`, penggantian kode statis, dan salin tautan join. Customer hanya bisa join lewat token. |
@@ -331,7 +349,7 @@ queue-management-system/
 ├── payment-service/          perpanjang langganan lewat Stripe, :8093
 ├── db/                       Dockerfile, migrations (skema, indeks, role per service), dan scripts
 ├── deploy/nginx/             konfigurasi nginx (reverse proxy, rate limit)
-├── scripts/                  backup-prod.sh dan create-demo-accounts.sh
+├── scripts/                  backup-prod.sh, create-demo-accounts.sh, dan verify-user.sh
 ├── docker-compose.yml        stack development (hot reload)
 ├── docker-compose.prod.yml   stack demo/produksi (nginx hanya di 127.0.0.1)
 ├── Makefile                  perintah umum: make up, make tunnel, make prod-up, dan lainnya
@@ -347,7 +365,6 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 
 | Item | Kondisi sekarang | Pilihan? | Alasan atau catatan |
 |---|---|---|---|
-| Verifikasi email | Belum ada | Belum | Tercantum "belum dibangun" di `DESIGN.md` §7. `mail-service` sudah menjadi fondasinya. |
 | Backend lebih dari satu instance | Hub SSE di memori | Ya | Butuh pub/sub bersama (LISTEN/NOTIFY atau Redis). Demo memakai satu instance (`DESIGN.md` §2.7). |
 | Outbox untuk Web Push | Push yang terjadi saat `notify-service` mati hilang | Ya | Email sudah memakai outbox; push dibuat lebih sederhana dulu. Tercatat di `plan-setelah-live.md`. |
 | Migration runner | `01_Schema.sql` hanya jalan pada data directory kosong; DB lama memakai `db/scripts/apply_schema.sql` yang idempoten | Ya | Cukup selama skema jarang berubah. Tercatat di `plan-setelah-live.md`. |
@@ -358,6 +375,7 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 | Login Google | Tombol di layar masuk dan daftar hanya tampilan; kolom `google_id` sudah ada | Ya | Tidak diperlukan; login email/username sudah cukup untuk demo. Bila dikerjakan, butuh Google OAuth di backend (komentar TODO di `LoginScreen.tsx`), Tier 2 di `plan-setelah-live.md`. |
 | Backup otomatis | Hanya manual lewat `make prod-backup`, tanpa jadwal, retensi, atau salinan di luar mesin | Ya | Tidak diperlukan; cukup untuk demo. |
 | Tes render komponen frontend | Tidak ada; hanya unit test logika dan Playwright | Ya | Logika murni diuji unit dan layar diuji Playwright; render test butuh `jest-expo` plus mock Reanimated/router dengan nilai tambah kecil. |
+| Cek MX atau allowlist domain email | Tidak ada; verifikasi hanya lewat tautan | Ya | Kepemilikan email terbukti dengan klik tautan; domain yang tidak ada gagal terkirim dan akunnya tetap belum terverifikasi. |
 
 ## 5. Architecture
 
@@ -429,6 +447,7 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 | 404 untuk akses yang tidak diizinkan | Keberadaan data orang lain tidak bocor | Pesan error tidak membedakan "tidak ada" dari "bukan milik Anda" |
 | Layar publik hanya menampilkan nomor | Privasi | Tidak ada nama customer di layar |
 | Tanpa `WriteTimeout` di backend | Koneksi SSE berumur panjang tidak terputus | Batas tulis untuk rute biasa dipegang nginx (`proxy_read_timeout`), bukan backend |
+| Verifikasi email membatasi aksi (bergabung, membuat antrian), bukan login | User yang salah ketik email tidak terkunci dan masih bisa membuka Profil untuk kirim ulang | Akun belum terverifikasi tetap bisa masuk dan melihat; status dibaca dari database tiap permintaan (bukan JWT), satu query tambahan pada join dan buat antrian |
 | Rate limit login dan `/join` hanya di nginx | Satu tempat untuk membatasi, tanpa kode tambahan di backend | Backend yang dijangkau tanpa nginx tidak membatasi login |
 | Interface didefinisikan di tiap lapisan | Service bisa diuji dengan fake tanpa database | Ada interface ganda yang tidak dipakai (mis. `database.TxRunnerInterface` dan `handler_interface.go`) |
 | Pembayaran satu jenis (perpanjang 1 bulan) | Alur dan idempotensi webhook sederhana | Tidak ada plan lain atau penagihan berulang |
@@ -445,4 +464,4 @@ Urutan menurut dampak terhadap keandalan, dari yang paling dekat. Rencana lengka
 6. **Keamanan produksi**: HSTS setelah HTTPS stabil, Cloudflare Access, IP WiFi kantor di aturan WAF, dan `VAPID_SUBJECT` dengan email asli.
 7. **Backup otomatis** dengan jadwal, retensi, salinan di luar mesin, dan role database ikut tercakup.
 8. **Kebersihan kode dan tes**: hapus `handler_interface.go` dan `database.TxRunnerInterface` yang tidak dipakai; bersihkan 14 `test.fixme` usang di `ts-09-backlog-features.spec.ts`; tambah tes `note_handler`, `mailclient`, dan `database`; perbarui komentar usang di `docker-compose.yml` dan `deploy/nginx/README.md`.
-9. **Verifikasi email** dan plan langganan tambahan bila dibutuhkan produk.
+9. **Plan langganan tambahan** bila dibutuhkan produk.

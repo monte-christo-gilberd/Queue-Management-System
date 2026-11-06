@@ -6,6 +6,7 @@
 #   make mailpit         # tampilkan link Mailpit (dev, tunnel, prod) tanpa menjalankan apa pun
 #   make prod-up [MAIL_MODE=smtp|mailpit]   # stack prod; MAIL_MODE menimpa nilai di .env.prod
 #   make prod-up-mailpit | prod-up-smtp     # singkatan untuk dua mode email prod
+#   make verify-user EMAIL=a@b.com [STACK=prod]   # tandai email satu akun terverifikasi (tanpa menunggu email)
 #   make restart         # restart backend, qr-service, notify-service, mail-service, payment-service setelah ubah kode Go
 #   make seed            # reset database ke data seed dev
 # Kamera di browser butuh HTTPS atau localhost, jadi scan QR dari HP lewat IP LAN
@@ -14,7 +15,7 @@
 SHELL := bash
 .SHELLFLAGS := -euo pipefail -c
 .ONESHELL:
-.PHONY: up tunnel down restart seed logs ps mailpit prod-up prod-up-mailpit prod-up-smtp prod-down prod-guard prod-backup prod-reset
+.PHONY: up tunnel down restart seed logs ps mailpit verify-user prod-up prod-up-mailpit prod-up-smtp prod-down prod-guard prod-backup prod-reset
 
 PIDFILE := /tmp/qms-tunnel.pid
 LOG := /tmp/qms-tunnel.log
@@ -88,6 +89,11 @@ restart:
 
 seed:
 	docker compose exec -T db psql -U qms -d qms_db < db/scripts/reset_seed_dev.sql
+
+# Tandai email satu akun terverifikasi langsung di DB. Berguna untuk demo MAIL_MODE=mailpit atau email yang tidak sampai.
+verify-user:
+	[ -n "$(EMAIL)" ] || { echo "pakai: make verify-user EMAIL=alamat@contoh.com [STACK=prod]" >&2; exit 1; }
+	QMS_ENV_FILE=$(PROD_ENV) scripts/verify-user.sh "$(EMAIL)" $(if $(filter prod,$(STACK)),prod)
 
 logs:
 	docker compose logs -f --tail 50

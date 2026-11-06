@@ -94,3 +94,40 @@ func TestShutdownTimeout(t *testing.T) {
 		})
 	}
 }
+
+func TestEmailVerificationRequired(t *testing.T) {
+	cases := map[string]struct {
+		env     map[string]string
+		want    bool
+		wantErr string
+	}{
+		"default ikut mail-service": {env: map[string]string{"MAIL_SERVICE_URL": "http://mail:8092", "MAIL_SERVICE_TOKEN": strong}, want: true},
+		"default tanpa mail":        {env: map[string]string{}, want: false},
+		"dimatikan eksplisit":       {env: map[string]string{"MAIL_SERVICE_URL": "http://mail:8092", "MAIL_SERVICE_TOKEN": strong, "EMAIL_VERIFICATION_REQUIRED": "false"}, want: false},
+		"dinyalakan eksplisit":      {env: map[string]string{"MAIL_SERVICE_URL": "http://mail:8092", "MAIL_SERVICE_TOKEN": strong, "EMAIL_VERIFICATION_REQUIRED": "true"}, want: true},
+		"nyala tanpa mail ditolak":  {env: map[string]string{"EMAIL_VERIFICATION_REQUIRED": "true"}, wantErr: "MAIL_SERVICE_URL"},
+		"bukan boolean ditolak":     {env: map[string]string{"EMAIL_VERIFICATION_REQUIRED": "mungkin"}, wantErr: "EMAIL_VERIFICATION_REQUIRED"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			// t.Setenv pada nilai kosong tetap mengosongkan variabel dari lingkungan luar
+			for _, k := range []string{"MAIL_SERVICE_URL", "MAIL_SERVICE_TOKEN", "EMAIL_VERIFICATION_REQUIRED"} {
+				t.Setenv(k, "")
+			}
+			setEnv(t, tc.env)
+			cfg, err := config.Load()
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.EmailVerificationRequired != tc.want {
+				t.Fatalf("EmailVerificationRequired = %v, want %v", cfg.EmailVerificationRequired, tc.want)
+			}
+		})
+	}
+}

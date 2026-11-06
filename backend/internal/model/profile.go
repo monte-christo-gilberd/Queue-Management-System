@@ -9,6 +9,8 @@ type Profile struct {
 	SubscriptionExpiresAt *time.Time
 	// AvatarUpdatedAt: nil bila user belum punya foto profil.
 	AvatarUpdatedAt *time.Time
+	// EmailVerified: true bila email sudah diverifikasi, atau bila verifikasi email dimatikan (tidak ada yang perlu dilakukan user).
+	EmailVerified bool
 }
 
 // Avatar: foto profil hasil olahan (JPEG).

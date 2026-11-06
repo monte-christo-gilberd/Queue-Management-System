@@ -67,6 +67,9 @@ INSERT INTO users (email, username, password_hash) VALUES
     ('user9@test.com',  'user9',  :'pw'),
     ('user10@test.com', 'user10', :'pw');
 
+-- Akun seed dianggap sudah terverifikasi emailnya (tidak ada kotak surat sungguhan di balik @test.com).
+UPDATE users SET email_verified_at = now();
+
 -- Dua owner, dengan langganan aktif.
 INSERT INTO owners (user_id, subscription_expires_at)
 SELECT id, now() + interval '30 days'

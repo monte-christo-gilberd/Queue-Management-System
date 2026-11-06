@@ -164,6 +164,9 @@ services:
       QR_HTTP_TIMEOUT: ${QR_HTTP_TIMEOUT:-1}
       # Batas menunggu request selesai saat berhenti; harus lebih kecil dari stop_grace_period di bawah.
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-8}
+      # Verifikasi email: kosong = nyala (mail-service selalu terpasang di prod). `false` mematikan.
+      # Email terkirim lewat MAIL_MODE: smtp (inbox asli) atau mailpit (ditangkap Mailpit, tidak terkirim).
+      EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       # Lupa/reset password: backend memanggil mail-service (jaringan internal). Email yang macet tidak boleh
       # menahan backend, jadi tidak ada depends_on.

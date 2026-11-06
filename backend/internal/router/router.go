@@ -51,6 +51,13 @@ func (a *AppRouter) WithPasswordReset(h PasswordHandler) *AppRouter {
 	return a
 }
 
+// WithEmailVerification memasang endpoint verifikasi email: POST /users/verify-email (publik, token di tautan email)
+// dan POST /users/me/verify-email/resend (butuh login). Opsional; tanpa ini rutenya tidak ada.
+func (a *AppRouter) WithEmailVerification(h EmailVerificationHandler) *AppRouter {
+	a.verifyHandler = h
+	return a
+}
+
 // WithDisplay memasang layar publik: konfigurasi owner di /queues/:id/display dan rute publik /display/:token.
 func (a *AppRouter) WithDisplay(h DisplayHandler) *AppRouter {
 	a.displayHandler = h
@@ -95,9 +102,16 @@ func SetupRouter(
 		users.POST("/reset-password", router.passwordHandler.ResetPassword)
 	}
 
+	if router.verifyHandler != nil {
+		users.POST("/verify-email", router.verifyHandler.Verify)
+	}
+
 	// Tiket saya: butuh login, tidak ada di bawah /queues karena tidak terkait satu antrian.
 	me := v1.Group("/users/me")
 	me.Use(router.authMiddleware)
+	if router.verifyHandler != nil {
+		me.POST("/verify-email/resend", router.verifyHandler.Resend)
+	}
 	if router.userHandler != nil {
 		me.GET("", router.userHandler.Me)
 		me.PUT("", router.userHandler.UpdateMe)

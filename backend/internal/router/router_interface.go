@@ -32,6 +32,11 @@ type PasswordHandler interface {
 	ResetPassword(c *gin.Context)
 }
 
+type EmailVerificationHandler interface {
+	Verify(c *gin.Context)
+	Resend(c *gin.Context)
+}
+
 type DisplayHandler interface {
 	Get(c *gin.Context)
 	Update(c *gin.Context)
@@ -90,10 +95,12 @@ type AppRouter struct {
 	displayHandler  DisplayHandler
 	pushHandler     PushHandler
 	passwordHandler PasswordHandler
-	ticketHandler   TicketHandler
-	userHandler     UserHandler
-	queueHandler    QueueHandler
-	sseHandler      SSEHandler
-	authMiddleware  gin.HandlerFunc
-	allowedOrigins  []string
+	// verifyHandler: verifikasi email (opsional; tanpa ini rute /users/verify-email tidak ada).
+	verifyHandler  EmailVerificationHandler
+	ticketHandler  TicketHandler
+	userHandler    UserHandler
+	queueHandler   QueueHandler
+	sseHandler     SSEHandler
+	authMiddleware gin.HandlerFunc
+	allowedOrigins []string
 }

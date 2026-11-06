@@ -101,6 +101,33 @@ func run() error {
 	// goroutine = fungsi yang berjalan bersamaan dengan program utama
 	go hub.Run()
 
+	// verifikasi email: hanya dibuat bila EMAIL_VERIFICATION_REQUIRED (bawaan: ikut ada-tidaknya mail-service).
+	// nil berarti fitur mati: tidak ada email dikirim, tidak ada guard, dan semua akun dilaporkan terverifikasi.
+	// Dibuat sebelum service lain karena user, queue, dan ticket service memakainya.
+	var verification *service.EmailVerificationService
+	if cfg.EmailVerificationRequired {
+
+		verifyRepo := repository.
+			NewEmailVerificationRepository(db)
+
+		verifyService := service.
+			NewEmailVerificationService(
+				verifyRepo,
+
+				// klien HTTP ke mail-service
+				mailclient.New(
+					cfg.MailServiceURL,
+					cfg.MailServiceToken,
+					0,
+				),
+				cfg.PublicAppURL,
+			)
+		verification = verifyService
+
+	} else {
+		log.Println("verifikasi email mati: akun baru tidak perlu verifikasi")
+	}
+
 	// inisialisasi transaksi sqlx
 	txRunner := database.
 		NewSqlxTxRunner(db)
@@ -120,6 +147,11 @@ func run() error {
 
 		// memasang fitur avatar
 		WithAvatars(avatarRepo)
+
+	// memasang pengirim email verifikasi (registrasi) dan status verifikasi di profil
+	if verification != nil {
+		userService.WithEmailVerifier(verification)
+	}
 
 	// inisialisasi layer handler user
 	userHandler := handler.
@@ -148,6 +180,11 @@ func run() error {
 
 		// memasang ticketRepo agar pemegang tiket (pelanggan yang punya tiket di antrian) boleh membaca antriannya (lihat ViewQueue)
 		WithTicketHolderChecker(ticketRepo)
+
+	// membuat antrian butuh email terverifikasi
+	if verification != nil {
+		queueService.WithVerificationGuard(verification)
+	}
 
 	// service QR: memanggil microservice qr-service lewat qrclient
 	// microservice = layanan terpisah yang dipanggil lewat HTTP
@@ -186,6 +223,11 @@ func run() error {
 		// memasang pencarian akun untuk fitur sisip; tanpa ini, InsertTicket ditolak
 		// fitur sisip = menambahkan pelanggan ke antrian secara manual oleh owner
 		WithAccountFinder(userRepo)
+
+	// bergabung ke antrian (nomor baru) butuh email terverifikasi
+	if verification != nil {
+		ticketService.WithVerificationGuard(verification)
+	}
 
 	// inisialisasi layer handler ticket dengan qr-service
 	ticketHandler := handler.
@@ -236,6 +278,16 @@ func run() error {
 		sseHandler,
 		cfg.AllowedOrigins,
 	)
+
+	// memasang endpoint verifikasi email (verify publik dan resend untuk user login) hanya bila verifikasi menyala
+	if verification != nil {
+
+		verifyHandler := handler.
+			NewEmailVerificationHandler(verification)
+
+		appRouter.
+			WithEmailVerification(verifyHandler)
+	}
 
 	// inisialisasi layer repository note
 	noteRepo := repository.

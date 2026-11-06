@@ -225,6 +225,9 @@ func (h *TicketHandler) respondJoinError(
 	case errors.Is(err, apperror.ErrNotFound):
 		respondError(c, http.StatusNotFound, "NOT_FOUND", "queue not found")
 		return
+	case errors.Is(err, apperror.ErrEmailNotVerified):
+		respondError(c, http.StatusForbidden, "EMAIL_NOT_VERIFIED", "verify your email before joining a queue")
+		return
 	case errors.Is(err, apperror.ErrAlreadyJoined):
 		respondError(c, http.StatusConflict, "ALREADY_JOINED", "you have already joined this queue")
 		return

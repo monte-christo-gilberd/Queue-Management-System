@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"qms/internal/apperror"
 	"qms/internal/imageproc"
 	"qms/internal/model"
@@ -62,10 +63,26 @@ type AvatarStore interface {
 	UpdatedAt(ctx context.Context, userID int64) (*time.Time, error)
 }
 
+// EmailVerifier mengirim email verifikasi ke akun. Dipenuhi *EmailVerificationService.
+type EmailVerifier interface {
+	SendVerification(ctx context.Context, userID int64, requestIP string) error
+}
+
+// verificationSendTimeout membatasi pengiriman email verifikasi di latar belakang saat registrasi.
+const verificationSendTimeout = 45 * time.Second
+
 type UserService struct {
 	repository UserRepository
 	jwtSecret  string
 	avatars    AvatarStore
+	verifier   EmailVerifier
+}
+
+// WithEmailVerifier menyalakan verifikasi email: Register mengirim tautan verifikasi dan Profile melaporkan
+// status verifikasi. Tanpa ini (verifikasi mati), setiap akun dilaporkan terverifikasi dan tidak ada email dikirim.
+func (s *UserService) WithEmailVerifier(v EmailVerifier) *UserService {
+	s.verifier = v
+	return s
 }
 
 // WithAvatars memasang penyimpanan foto profil. Tanpa ini, Profile tidak melaporkan foto dan
@@ -121,7 +138,24 @@ func (s *UserService) Register(
 		return "", err
 	}
 
+	s.sendVerificationInBackground(user.ID)
+
 	return token, nil
+}
+
+// sendVerificationInBackground mengirim email verifikasi tanpa menahan respons registrasi (SMTP bisa lambat).
+// Gagal kirim hanya dicatat di log tanpa alamat email: registrasi tetap berhasil dan user bisa kirim ulang dari Profil.
+func (s *UserService) sendVerificationInBackground(userID int64) {
+	if s.verifier == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), verificationSendTimeout)
+		defer cancel()
+		if err := s.verifier.SendVerification(ctx, userID, ""); err != nil {
+			slog.Error("send verification email after register failed", "user_id", userID, "err", err)
+		}
+	}()
 }
 
 // Login menerima email atau username. Kandidat dicocokkan satu per satu dengan password;
@@ -190,7 +224,12 @@ func (s *UserService) Profile(
 		return model.Profile{}, err
 	}
 
-	profile := model.Profile{User: user, IsOwner: isOwner}
+	profile := model.Profile{
+		User:    user,
+		IsOwner: isOwner,
+		// Verifikasi mati (tanpa verifier) = tidak ada yang perlu diverifikasi, jadi klien tidak menampilkan banner.
+		EmailVerified: user.EmailVerifiedAt.Valid || s.verifier == nil,
+	}
 	if isOwner {
 		profile.SubscriptionExpiresAt, err = s.repository.SubscriptionExpiresAt(ctx, userID)
 		if err != nil {

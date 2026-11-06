@@ -213,6 +213,8 @@ type TicketService struct {
 	notifier   EventNotifier
 	guard      QueueGuard
 	accounts   AccountFinder
+	// verification: bila terpasang, JoinQueue menolak user yang emailnya belum diverifikasi.
+	verification VerificationGuard
 }
 
 func NewTicketService(
@@ -243,6 +245,15 @@ func (s *TicketService) WithAccountFinder(
 	accounts AccountFinder,
 ) *TicketService {
 	s.accounts = accounts
+	return s
+}
+
+// WithVerificationGuard mewajibkan email terverifikasi untuk mendapat nomor baru lewat JoinQueue
+// (apperror.ErrEmailNotVerified). Tanpa guard (verifikasi email mati), tidak ada pemeriksaan.
+func (s *TicketService) WithVerificationGuard(
+	guard VerificationGuard,
+) *TicketService {
+	s.verification = guard
 	return s
 }
 
@@ -287,6 +298,14 @@ func (s *TicketService) JoinQueue(
 				queueID,
 				userID,
 			)
+		}
+
+		// Hanya untuk nomor baru: user yang sudah punya tiket di atas tetap dikembalikan tiketnya walau
+		// emailnya (belum) terverifikasi, jadi scan ulang tidak berubah menjadi galat.
+		if s.verification != nil {
+			if err := s.verification.RequireVerified(ctx, userID); err != nil {
+				return model.Ticket{}, err
+			}
 		}
 
 		if err := s.tx.WithTx(

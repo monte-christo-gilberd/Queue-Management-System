@@ -98,6 +98,12 @@ export async function waitForMail(
   }
 }
 
+/** Menghapus satu email dari Mailpit (mis. email verifikasi yang sudah dipakai, agar tes lain tidak ikut menghitungnya). */
+export async function deleteMail(request: APIRequestContext, id: string): Promise<void> {
+  const res = await request.delete(`${MAILPIT_URL}/api/v1/messages`, { data: { IDs: [id] } });
+  expect(res.ok(), `DELETE message ${id}`).toBeTruthy();
+}
+
 /** Memastikan TIDAK ada email ke `to` dalam `windowMs` (mis. join ulang tidak boleh mengirim email ganda). */
 export async function expectNoMail(request: APIRequestContext, to: string, windowMs = 2000): Promise<void> {
   await new Promise((r) => setTimeout(r, windowMs));

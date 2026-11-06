@@ -48,6 +48,8 @@ export function describeQueueError(error: unknown): string {
   switch (error.code) {
     case 'SUBSCRIPTION_INACTIVE':
       return 'Langganan Anda tidak aktif. Aktifkan langganan untuk membuat atau mengubah antrian.';
+    case 'EMAIL_NOT_VERIFIED':
+      return 'Verifikasi email Anda dulu di halaman Profil untuk bergabung atau membuat antrian.';
     case 'NOT_FOUND':
       return 'Antrian tidak ditemukan';
     case 'QUEUE_EMPTY':

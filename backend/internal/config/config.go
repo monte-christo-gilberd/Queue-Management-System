@@ -21,6 +21,7 @@ import (
 // Opsional: MAIL_SERVICE_URL dan MAIL_SERVICE_TOKEN (harus keduanya atau tidak sama sekali), VAPID_PUBLIC_KEY,
 // APP_ENV, TRUSTED_PROXIES, dan PORT (bawaan 8080).
 // Opsional dengan nilai bawaan dalam detik: QR_HTTP_TIMEOUT (1) dan SHUTDOWN_TIMEOUT (8).
+// EMAIL_VERIFICATION_REQUIRED: bawaan ikut ada-tidaknya MAIL_SERVICE_URL.
 type Config struct {
 	// Env: APP_ENV. Bila "production", validateProduction() menolak secret lemah (terlalu pendek atau nilai contoh) dan origin/URL yang tidak https.
 	Env string
@@ -54,6 +55,12 @@ type Config struct {
 	// Bila kosong atau nilai <= 0, 8 detik. Harus lebih kecil dari stop_grace_period backend di compose.
 	// Nilai yang bukan angka membuat Load() gagal.
 	ShutdownTimeout time.Duration
+
+	// EmailVerificationRequired: bila true, email baru dikirimi tautan verifikasi saat registrasi dan akun yang belum
+	// terverifikasi tidak bisa bergabung ke antrian atau membuat antrian (EMAIL_VERIFICATION_REQUIRED).
+	// Bila kosong: true jika MAIL_SERVICE_URL terisi, selain itu false. true tanpa mail-service membuat Load() gagal,
+	// karena tidak ada yang bisa mengirim tautan dan semua user baru akan terkunci.
+	EmailVerificationRequired bool
 
 	// mail-service (reset password): microservice terpisah yang mengirim email. Opsional sebagai pasangan: keduanya diisi atau keduanya kosong. Kosong = fitur
 	// lupa password tidak dipasang (rute 404).
@@ -163,6 +170,19 @@ func Load() (Config, error) {
 		shutdownTimeout = 8 * time.Second
 	}
 	cfg.ShutdownTimeout = shutdownTimeout
+
+	// EMAIL_VERIFICATION_REQUIRED: kosong = ikut ada-tidaknya mail-service. Bukan boolean = error.
+	cfg.EmailVerificationRequired = cfg.MailServiceURL != ""
+	if raw := strings.TrimSpace(os.Getenv("EMAIL_VERIFICATION_REQUIRED")); raw != "" {
+		required, err := strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("invalid EMAIL_VERIFICATION_REQUIRED: %w", err)
+		}
+		cfg.EmailVerificationRequired = required
+	}
+	if cfg.EmailVerificationRequired && cfg.MailServiceURL == "" {
+		return Config{}, fmt.Errorf("EMAIL_VERIFICATION_REQUIRED needs MAIL_SERVICE_URL and MAIL_SERVICE_TOKEN")
+	}
 
 	// pengecekan apakah cfg.Env adalah "production"
 	if cfg.Env == "production" {

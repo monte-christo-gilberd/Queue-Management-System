@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import Profile from '@/components/Profile';
 import { useAvatarSource } from '@/hooks/use-avatar-source';
+import { describeResendError, resendSuccessMessage, resendVerification } from '@/lib/email-verification';
 import { describeForgotError, requestPasswordReset } from '@/lib/password-reset';
 import { deleteAvatar, getMe, setEmailNotifications, updateMe, uploadAvatar, type Me } from '@/lib/users';
 import { shrinkToJpeg } from '@/utils/avatar-image';
@@ -27,6 +28,7 @@ export default function ProfileRoute() {
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
   const avatarSource = useAvatarSource(me?.avatar_updated_at);
 
   useEffect(() => {
@@ -127,6 +129,21 @@ export default function ProfileRoute() {
     }
   }
 
+  async function resendVerificationEmail() {
+    if (!me?.email) return;
+    setErrorMessage('');
+    setSavedMessage('');
+    setResendBusy(true);
+    try {
+      await resendVerification();
+      setSavedMessage(resendSuccessMessage(me.email));
+    } catch (e) {
+      setErrorMessage(describeResendError(e));
+    } finally {
+      setResendBusy(false);
+    }
+  }
+
   async function toggleEmail(enabled: boolean) {
     setErrorMessage('');
     setEmailBusy(true);
@@ -159,6 +176,10 @@ export default function ProfileRoute() {
       onMenuItemPress={handleOwnerMenuItemPress}
       username={username}
       email={me?.email ?? ''}
+      // Tampilkan banner hanya setelah profil dimuat dan server menyatakan belum terverifikasi.
+      emailVerified={me === null ? true : me.email_verified}
+      onPressResendVerification={() => void resendVerificationEmail()}
+      resendVerificationBusy={resendBusy}
       onChangeUsername={(value) => {
         setUsername(value);
         setSavedMessage('');

@@ -153,7 +153,8 @@ func (r *UserRepository) FindByID(
 			password_hash,
 			google_id,
 			created_at,
-			email_notifications
+			email_notifications,
+			email_verified_at
 		FROM users
 		WHERE id = $1
 	`

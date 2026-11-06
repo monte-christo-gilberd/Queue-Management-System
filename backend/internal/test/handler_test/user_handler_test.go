@@ -168,7 +168,7 @@ func TestMe_ReturnsProfileAndOwnerFlag(t *testing.T) {
 	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/me", nil))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":false,"subscription_expires_at":null,"avatar_updated_at":null,"email_notifications":false}}`, w.Body.String())
+	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":false,"subscription_expires_at":null,"avatar_updated_at":null,"email_notifications":false,"email_verified":false}}`, w.Body.String())
 }
 
 func TestMe_OwnerIncludesSubscriptionExpiry(t *testing.T) {
@@ -182,7 +182,7 @@ func TestMe_OwnerIncludesSubscriptionExpiry(t *testing.T) {
 	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/me", nil))
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":true,"subscription_expires_at":"2026-12-01T00:00:00Z","avatar_updated_at":null,"email_notifications":false}}`, w.Body.String())
+	assert.JSONEq(t, `{"data":{"id":9,"email":"me@test.com","username":"me","is_owner":true,"subscription_expires_at":"2026-12-01T00:00:00Z","avatar_updated_at":null,"email_notifications":false,"email_verified":false}}`, w.Body.String())
 }
 
 func putMe(t *testing.T, svc *stubUserService, body string) *httptest.ResponseRecorder {

@@ -36,11 +36,14 @@ var (
 	ErrCounterLimit        = errors.New("a queue can have at most 10 counters")
 	ErrDefaultCounter      = errors.New("the default counter cannot be deleted")
 	ErrTooManyDisplays     = errors.New("too many public displays are connected to this queue")
+	ErrTooManyVerifyEmails = errors.New("too many verification emails requested, try again later")
 
-	// 5. Langganan / izin: owner tidak punya langganan aktif.
+	// 5. Langganan / izin: owner tidak punya langganan aktif, atau email akun belum diverifikasi.
 	ErrSubscriptionInactive = errors.New("subscription is inactive")
+	ErrEmailNotVerified     = errors.New("email is not verified")
 
 	// 6. Autentikasi token dan QR: token atau kode tidak valid, kedaluwarsa, atau tidak boleh dipakai untuk aksi itu.
+	// ErrInvalidResetToken dipakai bersama oleh reset password dan verifikasi email (token sekali pakai yang sama bentuknya).
 	ErrInvalidResetToken   = errors.New("reset token is invalid, expired or already used")
 	ErrQRInvalid           = errors.New("qr token invalid")
 	ErrQRExpired           = errors.New("qr token expired")

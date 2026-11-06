@@ -29,5 +29,8 @@ for i in 1 2 3 4; do
   printf 'CUSTOMER  demo-user%s@montechristo.my.id   %s\n' "$i" "$p" >> "$OUT"
   sleep 1
 done
+# Akun demo ditandai terverifikasi langsung (tanpa menunggu email), supaya tidak bergantung pada kotak surat atau Mailpit.
+"${DC[@]}" exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 -q -c \
+  "UPDATE users SET email_verified_at = now() WHERE username = 'demo-owner' OR username LIKE 'demo-user%'"
 chmod 600 "$OUT"
-echo "OK: 5 akun dibuat, daftar di $OUT"
+echo "OK: 5 akun dibuat dan ditandai terverifikasi, daftar di $OUT"

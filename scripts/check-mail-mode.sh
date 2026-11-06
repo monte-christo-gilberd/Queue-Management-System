@@ -17,6 +17,15 @@ case "$mode" in
   mailpit)
     echo "PERINGATAN: MAIL_MODE=mailpit. Email ditangkap Mailpit dan TIDAK dikirim ke penerima sebenarnya."
     echo "            Buka UI lewat SSH tunnel: ssh -L 8025:127.0.0.1:8025 <user>@<host>, lalu http://localhost:8025"
+    evr="${EMAIL_VERIFICATION_REQUIRED:-$(get EMAIL_VERIFICATION_REQUIRED)}"
+    case "$evr" in
+      false|FALSE|False|0|f|F) ;;
+      *)
+        echo "PERINGATAN: verifikasi email menyala. Pengguna baru TIDAK menerima tautan verifikasi dan tidak bisa bergabung/membuat antrian"
+        echo "            sebelum diverifikasi. Ambil tautan dari Mailpit, atau jalankan: make verify-user EMAIL=<email> STACK=prod"
+        echo "            (akun dari scripts/create-demo-accounts.sh sudah terverifikasi). Matikan lewat EMAIL_VERIFICATION_REQUIRED=false."
+        ;;
+    esac
     ;;
   smtp)
     host="$(get SMTP_HOST)"; port="$(get SMTP_PORT)"; from="$(get SMTP_FROM)"; tls="$(get SMTP_TLS)"; tls="${tls:-starttls}"

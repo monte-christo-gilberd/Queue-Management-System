@@ -1,6 +1,7 @@
 import { expect, type APIRequestContext } from '@playwright/test';
 
 import { API_URL, hasSubscribedOwner, SUBSCRIBED_OWNER } from './env';
+import { deleteMail, waitForMail, type Mail } from './mailpit';
 
 export const DEFAULT_PASSWORD = 'Password123!';
 
@@ -15,8 +16,42 @@ export function uniqueName(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-/** Mendaftarkan akun baru lewat API. Akun baru belum punya langganan owner. */
-export async function registerAccount(request: APIRequestContext, prefix = 'user'): Promise<Account> {
+/** Token verifikasi dari tautan di email verifikasi (`/verify-email?token=...`); null bila email tanpa tautan itu. */
+export function verificationTokenOf(mail: Mail): string | null {
+  const link = mail.links.find((l) => l.includes('/verify-email?token='));
+  return link ? new URL(link).searchParams.get('token') : null;
+}
+
+/**
+ * Memverifikasi email akun lewat tautan di email (Mailpit), seperti yang dilakukan pengguna sungguhan.
+ * Dilewati bila server sudah menyatakan akun terverifikasi (mis. verifikasi dimatikan di stack ini).
+ * Butuh Mailpit; tanpa itu gagal dengan pesan jelas dari waitForMail.
+ */
+export async function verifyAccountViaMail(request: APIRequestContext, account: Account): Promise<void> {
+  const meRes = await request.get(`${API_URL}/api/v1/users/me`, { headers: { Authorization: `Bearer ${account.token}` } });
+  expect(meRes.ok(), await meRes.text()).toBeTruthy();
+  if (((await meRes.json()) as { data: { email_verified: boolean } }).data.email_verified) return;
+
+  const mail = await waitForMail(request, account.email, { subject: /verifikasi/i });
+  const token = verificationTokenOf(mail);
+  expect(token, `email verifikasi tanpa tautan: ${mail.text}`).toBeTruthy();
+  const res = await request.post(`${API_URL}/api/v1/users/verify-email`, { data: { token } });
+  expect(res.status(), await res.text()).toBe(200);
+  // Email verifikasi sudah terpakai. Dihapus agar tes lain yang menghitung email ke akun ini (mis. TS-30) tidak
+  // ikut menghitungnya.
+  await deleteMail(request, mail.id);
+}
+
+/**
+ * Mendaftarkan akun baru lewat API. Akun baru belum punya langganan owner.
+ * Secara bawaan emailnya langsung diverifikasi lewat Mailpit supaya tes yang bukan tentang verifikasi bisa
+ * bergabung ke antrian; beri `{ verify: false }` untuk mendapat akun yang belum terverifikasi.
+ */
+export async function registerAccount(
+  request: APIRequestContext,
+  prefix = 'user',
+  opts: { verify?: boolean } = {},
+): Promise<Account> {
   const username = uniqueName(prefix);
   const email = `${username}@qms-test.local`;
   const password = DEFAULT_PASSWORD;
@@ -26,7 +61,9 @@ export async function registerAccount(request: APIRequestContext, prefix = 'user
   });
   expect(res.status(), await res.text()).toBe(200);
   const body = (await res.json()) as { data: { token: string } };
-  return { email, username, password, token: body.data.token };
+  const account = { email, username, password, token: body.data.token };
+  if (opts.verify !== false) await verifyAccountViaMail(request, account);
+  return account;
 }
 
 /** Login lewat API (dipakai untuk akun seed, mis. owner berlangganan). */

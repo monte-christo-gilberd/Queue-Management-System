@@ -368,13 +368,17 @@ END $$;
 
 -- Reset password (item 9). password_changed_at: sesi (JWT) yang diterbitkan sebelum waktu ini dicabut.
 -- user_action_tokens menyimpan HASH token sekali pakai (SHA-256), tidak pernah token mentahnya. Satu tabel untuk
--- reset password dan (nanti) verifikasi ganti email. notify_ro dan mail_rw tidak diberi hak apa pun di sini.
+-- reset password, verifikasi email, dan (nanti) verifikasi ganti email. notify_ro dan mail_rw tidak diberi hak apa pun di sini.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
+
+-- Verifikasi email: kapan pemilik membuktikan email-nya lewat tautan; NULL = belum terverifikasi.
+-- Skema baru kosong, jadi tidak ada akun lama yang perlu di-backfill (lihat apply_schema.sql untuk DB yang sudah berjalan).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS user_action_tokens (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    purpose     TEXT NOT NULL CHECK (purpose IN ('password_reset', 'email_change')),
+    purpose     TEXT NOT NULL CHECK (purpose IN ('password_reset', 'email_verify', 'email_change')),
     token_hash  TEXT NOT NULL UNIQUE,
     expires_at  TIMESTAMPTZ NOT NULL,
     used_at     TIMESTAMPTZ,

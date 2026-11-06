@@ -12,6 +12,8 @@ export type Me = {
   avatar_updated_at: string | null;
   /** Email notifikasi tiket (masuk, batal, dihapus, selesai) menyala. */
   email_notifications: boolean;
+  /** Email sudah diverifikasi. Selalu true bila server mematikan verifikasi. false = tampilkan banner di Profil. */
+  email_verified: boolean;
 };
 
 /** GET /api/v1/users/me (butuh token). */

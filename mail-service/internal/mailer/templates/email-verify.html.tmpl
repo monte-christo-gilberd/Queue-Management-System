@@ -1,0 +1,8 @@
+{{define "content"}}
+      <h1 style="font-size:20px;margin:0 0 12px;">Verifikasi email Anda</h1>
+      <p style="margin:0 0 12px;">Halo {{.Name}},</p>
+      <p style="margin:0 0 16px;">Terima kasih sudah mendaftar di Antrian. Verifikasi email Anda agar bisa bergabung ke antrian dan membuat antrian. Tautan berlaku {{.Hours}} jam dan hanya bisa dipakai sekali.</p>
+      <p style="margin:0 0 16px;"><a href="{{.Link}}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;">Verifikasi email</a></p>
+      <p style="margin:0 0 12px;color:#6b7280;font-size:12px;">Jika tombol tidak berfungsi, salin tautan ini ke browser:<br>{{.Link}}</p>
+      <p style="margin:0;color:#6b7280;font-size:12px;">Jika Anda tidak merasa mendaftar, abaikan email ini.</p>
+{{end}}
