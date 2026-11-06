@@ -1,4 +1,3 @@
-// Package database berisi pembukaan koneksi ke PostgreSQL memakai sqlx dan driver pgx.
 package database
 
 import (
