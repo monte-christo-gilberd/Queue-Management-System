@@ -1,7 +1,22 @@
-# Queue Management System
+# Queue Management System (Sistem Antrian)
 
 Sistem antrian untuk layanan tatap muka. Owner membuat antrian dan memanggil nomor berikutnya. Customer bergabung
 lewat tautan dan melihat posisi serta nomor yang sedang dilayani secara real-time, tanpa perlu refresh.
+
+## Alur pengguna
+
+**Owner**
+1. Daftar atau masuk, lalu buat antrian baru. Membuat antrian butuh langganan aktif.
+2. Di detail antrian, bagikan QR atau tautan join ke customer. QR statis berisi kode tetap yang bisa diganti; QR dinamis kodenya berubah berkala.
+3. Di Dashboard, tekan **Next** untuk memanggil nomor berikutnya. **Skip** melewati nomor yang sedang dilayani, dan **Panggil ulang** mengulang panggilan.
+4. Tutup antrian saat layanan selesai. Customer yang belum bergabung tidak bisa join lagi.
+
+**Customer**
+1. Scan QR atau buka tautan join. Login dulu bila belum masuk, lalu kembali ke halaman join.
+2. Tekan Gabung untuk mendapat nomor antrian. Scan berulang tidak membuat tiket kedua.
+3. Pantau posisi dan nomor yang sedang dilayani di Beranda atau Antrian Saya. Notifikasi "Giliran Anda" datang saat nomor dipanggil.
+
+Diagram dan detail lengkap ada di [FLOW.md](docs/FLOW.md).
 
 Dokumen lain:
 - [DESIGN.md](docs/DESIGN.md): arsitektur, keputusan desain, dan batasan.
@@ -9,20 +24,26 @@ Dokumen lain:
 - [api-contract.md](docs/api-contract.md): kontrak HTTP dan SSE.
 - [deploy/nginx/README.md](deploy/nginx/README.md): pemasangan nginx.
 
-## Fitur yang sudah berjalan
+## Fitur yang ada
 
-- Daftar, masuk, dan keluar. Masuk dengan email atau username.
-- Owner: buat antrian (perlu langganan aktif), ubah nama dan deskripsi, panggil Next, tutup antrian.
-- Owner: QR antrian statis/dinamis (token dibuat `qr-service`, gambar digambar di frontend dari `join_url`), penggantian kode statis, salin tautan join.
-- Customer: bergabung lewat tautan/QR bertoken, melihat nomor yang sedang dilayani dan posisi di depan, serta riwayat tiket.
-- Notifikasi giliran lewat Web Push (`notify-service`): nomor dipanggil → "Giliran Anda", nomor berikutnya → "Tinggal 1 nomor lagi". Nomor yang dilewati juga diberi tahu. Notifikasi diaktifkan otomatis saat join (tanpa efek bila izin ditolak). Owner bisa "Panggil ulang" (tombol menggantikan Skip di detail antrian, mati 3 detik setelah Next, sekali per nomor). Hanya di browser lewat HTTPS (`make tunnel`); Expo Go tidak mendukung.
-- Pembaruan real-time lewat Server-Sent Events (termasuk `queue_qr_updated`).
-- Layar publik untuk monitor ruang tunggu: di detail antrian, owner menekan "AKTIFKAN LAYAR", mengatur jumlah nomor berikutnya dan dilewati, lalu membuka tautan `/display/<token>` di layar (tanpa login). Satu kartu per counter, berubah langsung saat Next/Skip dan saat counter ditambah atau dihapus. "GANTI TAUTAN" mematikan tautan lama.
-- Mode terang dan gelap.
+| Fitur | Penjelasan singkat |
+|---|---|
+| Akun | Daftar, masuk dengan email atau username, keluar, profil, avatar, dan preferensi. Lupa dan reset password lewat email bila mail-service dipasang. |
+| Antrian | Owner membuat antrian (butuh langganan aktif), mengubah nama dan deskripsi, dan menutup antrian. |
+| Panggilan nomor | Owner memakai Next, Skip (dengan aturan nomor yang dilewati), dan Panggil ulang. Customer bisa membatalkan tiketnya, dan owner bisa menghapus tiket. |
+| QR dan tautan join | QR statis atau dinamis dengan token dari `qr-service`, penggantian kode statis, dan salin tautan join. Customer hanya bisa join lewat token. |
+| Customer | Bergabung lewat QR atau tautan, melihat nomor yang sedang dilayani dan posisi di depan, serta riwayat tiket. |
+| Catatan | Owner menulis catatan untuk nomor yang sedang dilayani. |
+| Counter | API untuk menambah, mengganti nama, dan menghapus counter per antrian. Di UI saat ini hanya ada satu counter default. |
+| Layar publik | Owner mengaktifkan layar di `/display/<token>` untuk monitor ruang tunggu, tanpa login. Satu kartu per counter, langsung berubah saat Next atau Skip. "GANTI TAUTAN" mematikan tautan lama. |
+| Notifikasi giliran | Web Push dari `notify-service`: "Giliran Anda" saat dipanggil, "Tinggal 1 nomor lagi" untuk nomor berikutnya, dan pemberitahuan untuk nomor yang dilewati. Aktif otomatis saat join bila izin diberikan. Hanya di browser lewat HTTPS (`make tunnel`). |
+| Email | `mail-service` mengirim email dari outbox dan mencoba ulang bila gagal. Pengguna bisa mematikannya di Profil. |
+| Riwayat dan ekspor | Owner melihat riwayat antrian dan bisa mengekspornya ke CSV atau XLSX. Customer melihat riwayat tiketnya. |
+| Langganan | Owner memperpanjang langganan 1 bulan lewat Stripe (`payment-service`). |
+| Real-time | Pembaruan lewat Server-Sent Events, termasuk `queue_qr_updated`. |
+| Tampilan | Mode terang dan gelap. |
 
-Yang belum tersedia (lihat [DESIGN.md](docs/DESIGN.md#7-batasan-dan-yang-belum-dibangun)): email,
-pembatalan oleh customer, hapus nomor oleh owner, counter kustom, catatan, ekspor riwayat, login Google,
-dan pembayaran langganan.
+Yang belum tersedia (lihat [DESIGN.md](docs/DESIGN.md#7-batasan-dan-yang-belum-dibangun)): login Google.
 
 ## Teknologi
 
@@ -37,20 +58,42 @@ dan pembayaran langganan.
 ## Struktur folder
 
 ```
-backend/          API Go (cmd/server, internal/{handler,service,repository,dto,sse,qrclient,...})
-qr-service/       Microservice QR (cmd/qr-service, internal/{config,joinlink,httpapi,qr}), Dockerfile
-frontend/         Aplikasi Expo (src/app rute, src/components, src/hooks, src/lib, src/store), Dockerfile
-db/               Dockerfile dan skema PostgreSQL (migrations/01_Schema.sql, 02_Indexes.sql)
-deploy/nginx/     Konfigurasi nginx untuk pemasangan di host, Dockerfile, dan template konfigurasi
-payment-service/  Perpanjang langganan owner 1 bulan lewat Stripe (cmd/payment-service, internal/{config,billing,httpapi}), :8093
-docker-compose.yml  Stack development (hot reload): db, qr-service, notify-service, mail-service, payment-service, mailpit, backend, frontend; hanya nginx yang membuka port (Mailpit: 127.0.0.1:1025 dan :8025)
-docker-compose.prod.yml  Stack demo/produksi (target prod, nginx hanya di 127.0.0.1)
-notify-service/   Web Push (LISTEN Postgres), /health :8091, log JSON
-scripts/          backup-prod.sh (backup/restore DB prod)
-.env.example      Template env dev, plus bagian per service untuk menjalankan di luar Docker
-.env.prod.example Template env produksi
-docs/             DESIGN.md, FLOW.md, api-contract.md, plan-live.md, plan-setelah-live.md, setup-domain.md, setup-waf-wifi.md
+queue-management-system/
+├── backend/                  API Go (Gin, sqlx)
+│   ├── cmd/server/           titik masuk (main.go): merangkai semua komponen
+│   └── internal/
+│       ├── apperror/         error bersama (sentinel) untuk repository, service, dan handler
+│       ├── config/           membaca dan memvalidasi env var
+│       ├── database/         koneksi PostgreSQL dan pembungkus transaksi (WithTx)
+│       ├── dto/              bentuk request dan response JSON
+│       ├── export/           ekspor riwayat antrian ke CSV dan XLSX
+│       ├── handler/          endpoint HTTP
+│       ├── imageproc/        validasi, crop, dan perkecil foto profil
+│       ├── mailclient/       klien HTTP ke mail-service
+│       ├── middleware/       autentikasi JWT dan pencabutan sesi
+│       ├── model/            struct data (User, Queue, Ticket, Counter)
+│       ├── qrclient/         klien HTTP ke qr-service
+│       ├── repository/       akses data ke PostgreSQL
+│       ├── router/           pendaftaran rute HTTP
+│       ├── service/          logika bisnis dan aturan antrian
+│       ├── sse/              hub Server-Sent Events (di memori)
+│       └── validator/        aturan validasi kustom, mis. no_html_tags
+├── frontend/                 aplikasi Expo: src/app (rute), components, hooks, lib, store
+├── qr-service/               microservice token join QR (HMAC), hanya jaringan internal
+├── notify-service/           Web Push (LISTEN Postgres), /health :8091
+├── mail-service/             pengirim email (outbox dan SMTP), :8092
+├── payment-service/          perpanjang langganan lewat Stripe, :8093
+├── db/                       Dockerfile, migrations (skema, indeks, role per service), dan scripts
+├── deploy/nginx/             konfigurasi nginx (reverse proxy, rate limit)
+├── scripts/                  backup-prod.sh dan create-demo-accounts.sh
+├── docker-compose.yml        stack development (hot reload)
+├── docker-compose.prod.yml   stack demo/produksi (nginx hanya di 127.0.0.1)
+├── Makefile                  perintah umum: make up, make tunnel, make prod-up, dan lainnya
+├── .env.example              template env dev
+└── .env.prod.example         template env produksi
 ```
+
+Dokumen desain (DESIGN.md, FLOW.md, api-contract.md, dan lainnya) berada di folder `documentation/docs`, di luar folder ini.
 
 ## Menjalankan secara lokal
 
