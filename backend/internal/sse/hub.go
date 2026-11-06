@@ -4,7 +4,7 @@ import "sync"
 
 // Hub menyimpan koneksi per queue_id (room).
 // Satu goroutine Run() memproses register/unregister/broadcast
-// agar tidak ada race pada map.
+// agar tidak ada race pada map. Run berjalan sampai Shutdown dipanggil (saat server berhenti).
 type Hub struct {
 	rooms      map[int64]map[*Client]bool // queue_id -> daftar koneksi yang "nonton" queue itu
 	register   chan *Client               // antrean "mau gabung room ini"
@@ -15,6 +15,11 @@ type Hub struct {
 	// beforeNotify dipanggil di Notify SEBELUM event disebar. Dipakai membatalkan cache layar publik supaya
 	// klien yang mengambil ulang setelah menerima sinyal tidak mendapat snapshot lama. Diisi sekali saat start.
 	beforeNotify func(queueID int64)
+
+	// done ditutup oleh Shutdown. Client.Serve berhenti saat done tertutup agar http.Server.Shutdown tidak
+	// menunggu koneksi SSE yang berumur panjang; Run berhenti, dan Subscribe menolak klien baru.
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
 // DisplayRoom: kunci room untuk layar publik antrian ini. Layar publik TIDAK ikut room antrian biasa karena
@@ -35,12 +40,21 @@ func NewHub() *Hub {
 		register:   make(chan *Client, 256),
 		unregister: make(chan *Client, 256),
 		broadcast:  make(chan broadcastReq, 1024),
+		done:       make(chan struct{}),
 	}
+}
+
+// Shutdown memberi tahu semua koneksi SSE untuk berhenti dan menghentikan Run. Aman dipanggil berkali-kali.
+// Dipanggil saat server akan berhenti, sebelum http.Server.Shutdown.
+func (h *Hub) Shutdown() {
+	h.stopOnce.Do(func() { close(h.done) })
 }
 
 func (h *Hub) Run() {
 	for {
 		select {
+		case <-h.done:
+			return
 		case client := <-h.register:
 			h.mu.Lock()
 			room, ok := h.rooms[client.queueID]
@@ -88,8 +102,14 @@ func (h *Hub) remove(client *Client) bool {
 	}
 }
 
-// Subscribe mendaftarkan koneksi baru ke room queueID.
+// Subscribe mendaftarkan koneksi baru ke room queueID. Mengembalikan false bila antrean register penuh atau hub
+// sudah di-Shutdown; handler membalas 503 untuk kasus ini.
 func (h *Hub) Subscribe(client *Client) bool {
+	select {
+	case <-h.done:
+		return false
+	default:
+	}
 	select {
 	case h.register <- client:
 		return true

@@ -44,6 +44,8 @@ func (c *Client) flush() {
 	}
 }
 
+// Serve menulis event ke klien sampai koneksi putus (konteks request selesai), hub menutup channel send
+// (klien terlalu lambat), atau hub di-Shutdown (server berhenti).
 func (c *Client) Serve(r *http.Request) {
 	// Komentar pembuka: memaksa header+body terkirim sehingga fetch() klien langsung resolve,
 	// bukan menunggu event pertama.
@@ -64,6 +66,8 @@ func (c *Client) Serve(r *http.Request) {
 		case <-ticker.C:
 			fmt.Fprint(c.w, ": ping\n\n")
 			c.flush()
+		case <-c.hub.done:
+			return
 		case <-r.Context().Done():
 			return
 		}

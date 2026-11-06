@@ -102,6 +102,7 @@ Variabel penting:
 | `QR_SERVICE_URL` | Alamat qr-service, mis. `http://localhost:8090` |
 | `QR_SERVICE_TOKEN` | Sama dengan `QR_SERVICE_TOKEN` milik qr-service |
 | `QR_HTTP_TIMEOUT` | Timeout panggilan internal (detik, default 1) |
+| `SHUTDOWN_TIMEOUT` | Detik menunggu request selesai saat backend berhenti (default 8; compose dev 2). Harus lebih kecil dari `stop_grace_period` |
 
 Catatan: `PUBLIC_APP_URL` harus bisa dibuka dari HP yang memindai QR (jangan `localhost` untuk uji perangkat).
 
@@ -296,6 +297,7 @@ Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat
 | Langganan | Owner memperpanjang langganan 1 bulan lewat Stripe (`payment-service`). |
 | Real-time | Pembaruan lewat Server-Sent Events, termasuk `queue_qr_updated`. |
 | Tampilan | Mode terang dan gelap. |
+| Shutdown rapi | Backend menangani SIGINT/SIGTERM: koneksi SSE ditutup, request yang berjalan dituntaskan (paling lama `SHUTDOWN_TIMEOUT`), lalu database ditutup. `ReadHeaderTimeout` 5 dtk, `ReadTimeout` 30 dtk, `IdleTimeout` 120 dtk. |
 
 Yang belum ada dan alasannya ada di [bagian 4](#4-what-was-deferred-and-why).
 
@@ -346,7 +348,6 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 | Item | Kondisi sekarang | Pilihan? | Alasan atau catatan |
 |---|---|---|---|
 | Verifikasi email | Belum ada | Belum | Tercantum "belum dibangun" di `DESIGN.md` §7. `mail-service` sudah menjadi fondasinya. |
-| Graceful shutdown dan timeout HTTP backend | `engine.Run` dipanggil langsung, tanpa `http.Server` kustom | Belum | Tercatat di `plan-setelah-live.md` (D8). Tidak memengaruhi fungsi, tetapi koneksi lambat tidak dibatasi. |
 | Backend lebih dari satu instance | Hub SSE di memori | Ya | Butuh pub/sub bersama (LISTEN/NOTIFY atau Redis). Demo memakai satu instance (`DESIGN.md` §2.7). |
 | Outbox untuk Web Push | Push yang terjadi saat `notify-service` mati hilang | Ya | Email sudah memakai outbox; push dibuat lebih sederhana dulu. Tercatat di `plan-setelah-live.md`. |
 | Migration runner | `01_Schema.sql` hanya jalan pada data directory kosong; DB lama memakai `db/scripts/apply_schema.sql` yang idempoten | Ya | Cukup selama skema jarang berubah. Tercatat di `plan-setelah-live.md`. |
@@ -427,6 +428,7 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 | SSE lewat `fetch` stream | Header `Authorization` tetap dikirim, token tidak masuk URL | Tidak memakai `EventSource` bawaan browser |
 | 404 untuk akses yang tidak diizinkan | Keberadaan data orang lain tidak bocor | Pesan error tidak membedakan "tidak ada" dari "bukan milik Anda" |
 | Layar publik hanya menampilkan nomor | Privasi | Tidak ada nama customer di layar |
+| Tanpa `WriteTimeout` di backend | Koneksi SSE berumur panjang tidak terputus | Batas tulis untuk rute biasa dipegang nginx (`proxy_read_timeout`), bukan backend |
 | Rate limit login dan `/join` hanya di nginx | Satu tempat untuk membatasi, tanpa kode tambahan di backend | Backend yang dijangkau tanpa nginx tidak membatasi login |
 | Interface didefinisikan di tiap lapisan | Service bisa diuji dengan fake tanpa database | Ada interface ganda yang tidak dipakai (mis. `database.TxRunnerInterface` dan `handler_interface.go`) |
 | Pembayaran satu jenis (perpanjang 1 bulan) | Alur dan idempotensi webhook sederhana | Tidak ada plan lain atau penagihan berulang |
@@ -436,12 +438,11 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 Urutan menurut dampak terhadap keandalan, dari yang paling dekat. Rencana lengkap ada di `docs/plan-setelah-live.md`.
 
 1. **Perbaiki `scripts/reset-demo.sh`.** `TRUNCATE` di sana tidak menyertakan `queue_displays`, padahal tabel itu mereferensikan `queues` lewat foreign key. Postgres menolak truncate semacam itu, jadi reset demo kemungkinan gagal (belum dijalankan untuk memastikan).
-2. **Graceful shutdown dan timeout HTTP backend**: pakai `http.Server` dengan `ReadHeaderTimeout` dan penanganan sinyal.
-3. **Login Google**: OAuth di backend, lalu sambungkan tombol yang sudah ada di frontend.
-4. **Pub/sub untuk SSE** agar backend bisa lebih dari satu instance.
-5. **Outbox untuk Web Push** dan worker pool terbatas di notify-service.
-6. **Migration runner**, dan jadikan `03_notify_role.sh` idempoten seperti skrip role lain.
-7. **Keamanan produksi**: HSTS setelah HTTPS stabil, Cloudflare Access, IP WiFi kantor di aturan WAF, dan `VAPID_SUBJECT` dengan email asli.
-8. **Backup otomatis** dengan jadwal, retensi, salinan di luar mesin, dan role database ikut tercakup.
-9. **Kebersihan kode dan tes**: hapus `handler_interface.go` dan `database.TxRunnerInterface` yang tidak dipakai; bersihkan 14 `test.fixme` usang di `ts-09-backlog-features.spec.ts`; tambah tes `note_handler`, `mailclient`, dan `database`; perbarui komentar usang di `docker-compose.yml` dan `deploy/nginx/README.md`.
-10. **Verifikasi email** dan plan langganan tambahan bila dibutuhkan produk.
+2. **Login Google**: OAuth di backend, lalu sambungkan tombol yang sudah ada di frontend.
+3. **Pub/sub untuk SSE** agar backend bisa lebih dari satu instance.
+4. **Outbox untuk Web Push** dan worker pool terbatas di notify-service.
+5. **Migration runner**, dan jadikan `03_notify_role.sh` idempoten seperti skrip role lain.
+6. **Keamanan produksi**: HSTS setelah HTTPS stabil, Cloudflare Access, IP WiFi kantor di aturan WAF, dan `VAPID_SUBJECT` dengan email asli.
+7. **Backup otomatis** dengan jadwal, retensi, salinan di luar mesin, dan role database ikut tercakup.
+8. **Kebersihan kode dan tes**: hapus `handler_interface.go` dan `database.TxRunnerInterface` yang tidak dipakai; bersihkan 14 `test.fixme` usang di `ts-09-backlog-features.spec.ts`; tambah tes `note_handler`, `mailclient`, dan `database`; perbarui komentar usang di `docker-compose.yml` dan `deploy/nginx/README.md`.
+9. **Verifikasi email** dan plan langganan tambahan bila dibutuhkan produk.

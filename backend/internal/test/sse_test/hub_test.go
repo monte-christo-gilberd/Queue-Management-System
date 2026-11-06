@@ -137,3 +137,28 @@ func TestServe_SendsOpeningCommentAndHeartbeat(t *testing.T) {
 
 	assert.Empty(t, parseEvents(t, w.String()), "komentar bukan event")
 }
+
+func TestHubShutdown_EndsServeAndRejectsNewClients(t *testing.T) {
+	hub := sse.NewHub()
+	go hub.Run()
+
+	w := newSyncRecorder()
+	client := sse.NewClient(hub, w, 1)
+	require.True(t, hub.Subscribe(client))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	served := make(chan struct{})
+	go func() {
+		client.Serve(req)
+		close(served)
+	}()
+
+	hub.Shutdown()
+
+	select {
+	case <-served:
+	case <-time.After(time.Second):
+		t.Fatal("Serve harus berhenti setelah Hub.Shutdown")
+	}
+	assert.False(t, hub.Subscribe(sse.NewClient(hub, newSyncRecorder(), 1)), "klien baru ditolak setelah shutdown")
+	assert.NotPanics(t, hub.Shutdown, "Shutdown kedua tidak boleh panik")
+}

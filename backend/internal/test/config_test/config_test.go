@@ -3,6 +3,7 @@ package config_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"qms/internal/config"
 )
@@ -59,5 +60,37 @@ func TestDevAllowsDefaults(t *testing.T) {
 	})
 	if _, err := config.Load(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestShutdownTimeout(t *testing.T) {
+	cases := map[string]struct {
+		raw     string
+		want    time.Duration
+		wantErr bool
+	}{
+		"kosong = 8 detik":  {raw: "", want: 8 * time.Second},
+		"diisi":             {raw: "5", want: 5 * time.Second},
+		"nol = bawaan":      {raw: "0", want: 8 * time.Second},
+		"negatif = bawaan":  {raw: "-3", want: 8 * time.Second},
+		"bukan angka = err": {raw: "abc", wantErr: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setEnv(t, map[string]string{"SHUTDOWN_TIMEOUT": tc.raw})
+			cfg, err := config.Load()
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "SHUTDOWN_TIMEOUT") {
+					t.Fatalf("expected SHUTDOWN_TIMEOUT error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.ShutdownTimeout != tc.want {
+				t.Fatalf("ShutdownTimeout = %v, want %v", cfg.ShutdownTimeout, tc.want)
+			}
+		})
 	}
 }

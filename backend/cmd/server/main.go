@@ -10,11 +10,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"qms/internal/config"
 	"qms/internal/database"
 	"qms/internal/handler"
+	"qms/internal/httpserver"
 	"qms/internal/mailclient"
 	"qms/internal/middleware"
 	"qms/internal/qrclient"
@@ -24,18 +28,33 @@ import (
 	"qms/internal/sse"
 	noHTMLValidator "qms/internal/validator"
 
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
 )
 
-// main merangkai semua komponen dari bawah ke atas: config → database → repository → service → handler → router.
+// main hanya memanggil run dan mencatat error-nya. Pekerjaan sebenarnya ada di run agar defer di dalamnya
+// (termasuk db.Close) sudah berjalan sebelum log.Fatal mengakhiri proses.
+func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run merangkai semua komponen dari bawah ke atas: config → database → repository → service → handler → router,
+// lalu menjalankan server sampai proses menerima SIGINT atau SIGTERM.
 //
 // Service dirangkai dengan pola With* (memasang dependensi pilihan setelah konstruktor). Service yang belum dipasang
 // guard-nya (pemeriksa hak akses) menolak akses, bukan membukanya. Reset password dan push notification hanya
 // dipasang ke router bila config-nya diisi.
-func main() {
+//
+// Berhenti dengan rapi: koneksi SSE ditutup, request yang sedang berjalan dituntaskan (paling lama
+// SHUTDOWN_TIMEOUT), lalu koneksi database ditutup oleh defer. Error saat start (config, database) masih langsung
+// log.Fatal karena belum ada resource yang perlu ditutup. Kembali dengan error bila server gagal start atau
+// shutdown tidak selesai tepat waktu.
+func run() error {
 	// membaca variabel env sebagai config
 	cfg, err := config.Load()
 
@@ -60,7 +79,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// menutup koneksi database saat main selesai
+	// menutup koneksi database saat run selesai, yaitu setelah server berhenti dan request terakhir dituntaskan
 	defer db.Close()
 
 	// membuat hub SSE (pengelola koneksi SSE per antrian dan penyebar event
@@ -361,7 +380,22 @@ func main() {
 	// membuat string port dari config
 	port := fmt.Sprintf(":%s", cfg.Port)
 
-	// menjalankan server HTTP
-	// listen and serve: mulai menerima request di port
-	engine.Run(port)
+	// ctx dibatalkan saat proses menerima SIGINT (Ctrl+C) atau SIGTERM (docker stop)
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
+
+	// menjalankan server HTTP dengan timeout dasar; hub.Shutdown menutup koneksi SSE saat server berhenti,
+	// agar graceful shutdown tidak menunggu koneksi yang berumur panjang
+	srv := httpserver.New(port, engine)
+	log.Printf("server listen di %s", port)
+
+	err = httpserver.Run(ctx, srv, cfg.ShutdownTimeout, hub.Shutdown)
+	if err == nil {
+		log.Println("server berhenti dengan rapi")
+	}
+	return err
 }

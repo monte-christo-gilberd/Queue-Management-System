@@ -18,7 +18,9 @@ import (
 // microservice (qrclient dan mailclient), dan router. Load() juga memvalidasi isinya.
 //
 // Wajib diisi: DATABASE_URL, JWT_SECRET, ALLOWED_ORIGINS, PUBLIC_APP_URL, QR_SERVICE_URL, QR_SERVICE_TOKEN.
-// Opsional: MAIL_SERVICE_URL dan MAIL_SERVICE_TOKEN (harus keduanya atau tidak sama sekali), VAPID_PUBLIC_KEY.
+// Opsional: MAIL_SERVICE_URL dan MAIL_SERVICE_TOKEN (harus keduanya atau tidak sama sekali), VAPID_PUBLIC_KEY,
+// APP_ENV, TRUSTED_PROXIES, dan PORT (bawaan 8080).
+// Opsional dengan nilai bawaan dalam detik: QR_HTTP_TIMEOUT (1) dan SHUTDOWN_TIMEOUT (8).
 type Config struct {
 	// Env: APP_ENV. Bila "production", validateProduction() menolak secret lemah (terlalu pendek atau nilai contoh) dan origin/URL yang tidak https.
 	Env string
@@ -48,6 +50,10 @@ type Config struct {
 	// batas waktu tiap panggilan ke qr-service dalam detik (QR_HTTP_TIMEOUT). Bila kosong atau nilai <= 0, 1 detik.
 	// Nilai yang bukan angka membuat Load() gagal.
 	QRHTTPTimeout time.Duration
+	// batas waktu menunggu request yang sedang berjalan selesai saat server berhenti (SHUTDOWN_TIMEOUT, detik).
+	// Bila kosong atau nilai <= 0, 8 detik. Harus lebih kecil dari stop_grace_period backend di compose.
+	// Nilai yang bukan angka membuat Load() gagal.
+	ShutdownTimeout time.Duration
 
 	// mail-service (reset password): microservice terpisah yang mengirim email. Opsional sebagai pasangan: keduanya diisi atau keduanya kosong. Kosong = fitur
 	// lupa password tidak dipasang (rute 404).
@@ -143,6 +149,20 @@ func Load() (Config, error) {
 		timeout = time.Second
 	}
 	cfg.QRHTTPTimeout = timeout
+
+	// SHUTDOWN_TIMEOUT dalam detik. Kosong = 8 detik. Bukan angka = error. Nilai <= 0 = 8 detik.
+	shutdownTimeout := 8 * time.Second
+	if raw := os.Getenv("SHUTDOWN_TIMEOUT"); raw != "" {
+		seconds, err := strconv.Atoi(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("invalid SHUTDOWN_TIMEOUT: %w", err)
+		}
+		shutdownTimeout = time.Duration(seconds) * time.Second
+	}
+	if shutdownTimeout <= 0 {
+		shutdownTimeout = 8 * time.Second
+	}
+	cfg.ShutdownTimeout = shutdownTimeout
 
 	// pengecekan apakah cfg.Env adalah "production"
 	if cfg.Env == "production" {
