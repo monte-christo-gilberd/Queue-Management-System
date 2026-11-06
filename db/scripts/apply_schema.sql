@@ -1,5 +1,5 @@
 -- Penyesuaian skema idempoten untuk DB yang SUDAH berjalan (tidak ada migration runner).
--- Aman dijalankan berulang, dan tidak menyentuh data. Untuk DB baru, 01_Schema.sql sudah lengkap.
+-- Aman dijalankan berulang, dan tidak menyentuh data. Untuk DB baru, db/migrations/01*.sql sudah lengkap.
 --   dev:  docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql
 --   prod: docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T db \
 --           psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql
@@ -188,7 +188,7 @@ CREATE TRIGGER tickets_email_outbox_trg
     AFTER INSERT OR UPDATE OF status ON tickets
     FOR EACH ROW EXECUTE FUNCTION tickets_email_outbox();
 
--- Layar publik antrian (fitur 4.5): lihat 01_Schema.sql.
+-- Layar publik antrian (fitur 4.5): lihat db/migrations/01b_queues.sql.
 CREATE TABLE IF NOT EXISTS queue_displays (
     queue_id       BIGINT PRIMARY KEY REFERENCES queues(id) ON DELETE CASCADE,
     token          TEXT NOT NULL UNIQUE,
@@ -209,7 +209,7 @@ BEGIN
     END IF;
 END $$;
 
--- Reset password (item 9): lihat 01_Schema.sql.
+-- Reset password (item 9): lihat db/migrations/01a_accounts.sql dan 01f_profile_security.sql.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS user_action_tokens (

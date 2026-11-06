@@ -67,9 +67,10 @@ Buat database, lalu terapkan skema:
 
 ```bash
 createdb qms_db
-psql -d qms_db -f db/migrations/01_Schema.sql
-psql -d qms_db -f db/migrations/02_Indexes.sql
+for f in db/migrations/01*.sql db/migrations/02_Indexes.sql; do psql -d qms_db -v ON_ERROR_STOP=1 -f "$f"; done
 ```
+
+Skema dipecah per domain (`01a_accounts.sql` sampai `01h_role_grants.sql`), lalu `02_Indexes.sql`; urutan nama = urutan ketergantungan. Peta file dan aturan menambah atau mengubah skema ada di [db/migrations/README.md](db/migrations/README.md).
 
 #### 2. qr-service
 
@@ -208,7 +209,7 @@ Alur: trigger `tickets_notify_trg` di Postgres memancarkan `pg_notify('queue_eve
 Catatan:
 - Satu browser hanya melayani satu akun. Layar tiket mendaftarkan ulang langganan ke akun yang sedang login, dan logout melepas langganan.
 - Push hanya jalan di HTTPS (domain tunnel `qms.montechristo.my.id`, atau `make tunnel` untuk uji sementara) dan di browser yang mendukung; Expo Go tidak. iPhone/iPad perlu situs dipasang ke Layar Utama.
-- DB yang sudah berjalan tidak menjalankan ulang skrip init. **Cara cepat dan idempoten:** `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql` (prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`), lalu restart backend dan notify-service. Isinya mencakup semua penyesuaian di bawah ini, yang bila dikerjakan manual: `ALTER TABLE tickets ADD COLUMN recalled_at TIMESTAMPTZ;`, tabel `push_subscriptions`, fungsi `tickets_notify` dan trigger `tickets_notify_trg` (jika sudah ada versi lama tanpa event `skipped` atau `requeued`, jalankan ulang `CREATE OR REPLACE FUNCTION` dan buat ulang trigger) (ada di akhir `db/migrations/01_Schema.sql`), serta role `notify_ro` (`db/migrations/03_notify_role.sh`). Pengaturan Skip juga butuh kolom `queue_settings.skip_fallback`, `skip_fallback_n`, `skip_max_returns`.
+- DB yang sudah berjalan tidak menjalankan ulang skrip init. **Cara cepat dan idempoten:** `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql` (prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`), lalu restart backend dan notify-service. Isinya mencakup semua penyesuaian di bawah ini, yang bila dikerjakan manual: `ALTER TABLE tickets ADD COLUMN recalled_at TIMESTAMPTZ;`, tabel `push_subscriptions`, fungsi `tickets_notify` dan trigger `tickets_notify_trg` (jika sudah ada versi lama tanpa event `skipped` atau `requeued`, jalankan ulang `CREATE OR REPLACE FUNCTION` dan buat ulang trigger) (ada di `db/migrations/01g_triggers.sql`), serta role `notify_ro` (`db/migrations/03_notify_role.sh`). Pengaturan Skip juga butuh kolom `queue_settings.skip_fallback`, `skip_fallback_n`, `skip_max_returns`.
 - Awalan nomor tiket: DB lama butuh `ALTER TABLE queues ADD COLUMN ticket_prefix VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (ticket_prefix ~ '^[A-Z0-9]{1,3}$');`, lalu restart backend dan notify-service (notify membaca kolom ini).
 - Tes unit: `cd notify-service && go test ./...`.
 
@@ -367,7 +368,7 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 |---|---|---|---|
 | Backend lebih dari satu instance | Hub SSE di memori | Ya | Butuh pub/sub bersama (LISTEN/NOTIFY atau Redis). Demo memakai satu instance (`DESIGN.md` §2.7). |
 | Outbox untuk Web Push | Push yang terjadi saat `notify-service` mati hilang | Ya | Email sudah memakai outbox; push dibuat lebih sederhana dulu. Tercatat di `plan-setelah-live.md`. |
-| Migration runner | `01_Schema.sql` hanya jalan pada data directory kosong; DB lama memakai `db/scripts/apply_schema.sql` yang idempoten | Ya | Cukup selama skema jarang berubah. Tercatat di `plan-setelah-live.md`. |
+| Migration runner | `db/migrations/01*.sql` hanya jalan pada data directory kosong; DB lama memakai `db/scripts/apply_schema.sql` yang idempoten | Ya | Cukup selama skema jarang berubah. Tercatat di `plan-setelah-live.md`. |
 | HSTS dan Cloudflare Access | Belum aktif; TLS dipegang Cloudflare, nginx hanya HTTP | Ya | Menunggu HTTPS stabil dan Zero Trust siap (`plan-setelah-live.md`). |
 | Plan langganan lain | Hanya perpanjangan 1 bulan, tanpa penagihan berulang | Ya | Disengaja sederhana (bagian Pembayaran). Kolom `plan_type` selain `monthly` belum dipakai. |
 | Ekspor file dan push di aplikasi native | Hanya jalan di web | Ya | Web Push hanya di browser lewat HTTPS; Expo Go tidak mendukung. |

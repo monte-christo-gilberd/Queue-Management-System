@@ -1,5 +1,5 @@
 # Context hanya butuh skema SQL.
 *
 !migrations/
-!migrations/01_Schema.sql
-!migrations/02_Indexes.sql
+!migrations/*.sql
+!migrations/*.sh

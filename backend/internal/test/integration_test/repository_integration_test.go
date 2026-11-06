@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"qms/internal/apperror"
 	"qms/internal/database"
 	"qms/internal/model"
@@ -26,7 +27,7 @@ import (
 
 // Dijalankan: go test -tags integration ./internal/repository_test
 // Semua query berjalan di schema sementara (qmstest_<nanodetik>) yang dibuat dari
-// db/migrations/01_Schema.sql dan 02_Indexes.sql lalu di-DROP; data di schema asli tidak disentuh.
+// db/migrations/01*.sql (skema per domain) dan 02_Indexes.sql lalu di-DROP; data di schema asli tidak disentuh.
 func newTestDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 
@@ -59,11 +60,7 @@ func newTestDB(t *testing.T) *sqlx.DB {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
-	schemaSQL, err := os.ReadFile("../../../../db/migrations/01_Schema.sql")
-	require.NoError(t, err)
-	indexes, err := os.ReadFile("../../../../db/migrations/02_Indexes.sql")
-	require.NoError(t, err)
-	ddl := string(schemaSQL) + "\n" + string(indexes)
+	ddl := loadMigrationDDL(t)
 
 	conn, err := db.Conn(ctx)
 	require.NoError(t, err)
@@ -76,6 +73,26 @@ func newTestDB(t *testing.T) *sqlx.DB {
 	require.NoError(t, err)
 
 	return db
+}
+
+// loadMigrationDDL menggabungkan skema database baru: semua 01*.sql (satu file per domain, urut menurut nama
+// = urutan ketergantungan), lalu 02_Indexes.sql. Urutan yang sama dengan yang dijalankan Docker (lihat
+// db/migrations/README.md); file baru yang mengikuti penamaan itu ikut termuat tanpa mengubah tes ini.
+func loadMigrationDDL(t *testing.T) string {
+	t.Helper()
+	dir := "../../../../db/migrations"
+	schemaFiles, err := filepath.Glob(filepath.Join(dir, "01*.sql")) // Glob mengembalikan hasil terurut
+	require.NoError(t, err)
+	require.NotEmpty(t, schemaFiles, "tidak ada db/migrations/01*.sql")
+
+	files := append(schemaFiles, filepath.Join(dir, "02_Indexes.sql"))
+	var ddl string
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		require.NoError(t, err, f)
+		ddl += string(b) + "\n"
+	}
+	return ddl
 }
 
 func seedUser(t *testing.T, db *sqlx.DB, email string) int64 {
