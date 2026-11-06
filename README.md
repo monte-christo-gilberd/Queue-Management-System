@@ -345,18 +345,18 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 
 | Item | Kondisi sekarang | Pilihan? | Alasan atau catatan |
 |---|---|---|---|
-| Login Google | Tombol di layar masuk dan daftar hanya tampilan; kolom `google_id` sudah ada | Belum | Butuh Google OAuth di backend (komentar TODO di `LoginScreen.tsx`). Tier 2 di `plan-setelah-live.md`. |
 | Verifikasi email | Belum ada | Belum | Tercantum "belum dibangun" di `DESIGN.md` §7. `mail-service` sudah menjadi fondasinya. |
 | Graceful shutdown dan timeout HTTP backend | `engine.Run` dipanggil langsung, tanpa `http.Server` kustom | Belum | Tercatat di `plan-setelah-live.md` (D8). Tidak memengaruhi fungsi, tetapi koneksi lambat tidak dibatasi. |
 | Backend lebih dari satu instance | Hub SSE di memori | Ya | Butuh pub/sub bersama (LISTEN/NOTIFY atau Redis). Demo memakai satu instance (`DESIGN.md` §2.7). |
 | Outbox untuk Web Push | Push yang terjadi saat `notify-service` mati hilang | Ya | Email sudah memakai outbox; push dibuat lebih sederhana dulu. Tercatat di `plan-setelah-live.md`. |
 | Migration runner | `01_Schema.sql` hanya jalan pada data directory kosong; DB lama memakai `db/scripts/apply_schema.sql` yang idempoten | Ya | Cukup selama skema jarang berubah. Tercatat di `plan-setelah-live.md`. |
 | HSTS dan Cloudflare Access | Belum aktif; TLS dipegang Cloudflare, nginx hanya HTTP | Ya | Menunggu HTTPS stabil dan Zero Trust siap (`plan-setelah-live.md`). |
-| Backup otomatis | Hanya manual lewat `make prod-backup`, tanpa jadwal, retensi, atau salinan di luar mesin | Belum | Cukup untuk demo. |
 | Plan langganan lain | Hanya perpanjangan 1 bulan, tanpa penagihan berulang | Ya | Disengaja sederhana (bagian Pembayaran). Kolom `plan_type` selain `monthly` belum dipakai. |
 | Ekspor file dan push di aplikasi native | Hanya jalan di web | Ya | Web Push hanya di browser lewat HTTPS; Expo Go tidak mendukung. |
 | `registration_limit`, batas harian QR, batas riwayat, penghapusan permanen | Kolom skema ada, kode tidak memakainya | Ya | Dihapus dari produk pada 31 Okt 2026. |
-| Tes render komponen frontend | Tidak ada; hanya unit test logika dan Playwright | Belum | Logika murni sudah teruji; layar diuji end-to-end. |
+| Login Google | Tombol di layar masuk dan daftar hanya tampilan; kolom `google_id` sudah ada | Ya | Tidak diperlukan; login email/username sudah cukup untuk demo. Bila dikerjakan, butuh Google OAuth di backend (komentar TODO di `LoginScreen.tsx`), Tier 2 di `plan-setelah-live.md`. |
+| Backup otomatis | Hanya manual lewat `make prod-backup`, tanpa jadwal, retensi, atau salinan di luar mesin | Ya | Tidak diperlukan; cukup untuk demo. |
+| Tes render komponen frontend | Tidak ada; hanya unit test logika dan Playwright | Ya | Logika murni diuji unit dan layar diuji Playwright; render test butuh `jest-expo` plus mock Reanimated/router dengan nilai tambah kecil. |
 
 ## 5. Architecture
 
