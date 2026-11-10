@@ -13,10 +13,12 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// UserRepository mengakses data akun user di tabel users, serta status owner di tabel owners.
 type UserRepository struct {
 	db *sqlx.DB
 }
 
+// NewUserRepository membuat UserRepository yang memakai koneksi db.
 func NewUserRepository(
 	db *sqlx.DB,
 ) *UserRepository {
@@ -25,6 +27,8 @@ func NewUserRepository(
 	}
 }
 
+// Create menyimpan user baru dengan email, username, dan hash password, lalu mengembalikan user yang baru dibuat.
+// Mengembalikan ErrDuplicate bila melanggar UNIQUE (kode pgconn 23505).
 func (r *UserRepository) Create(
 	ctx context.Context,
 	email,
@@ -34,21 +38,22 @@ func (r *UserRepository) Create(
 
 	const query = `
 		INSERT INTO users(
-			email, 
-			username, 
+			email,
+			username,
 			password_hash
-			) 
-		VALUES ($1, $2, $3) 
-		RETURNING 
-			id, 
-			email, 
-			username, 
-			password_hash, 
-			google_id, 
+			)
+		VALUES ($1, $2, $3)
+		RETURNING
+			id,
+			email,
+			username,
+			password_hash,
+			google_id,
 			created_at
 	`
 	var user model.User
 
+	// Jalankan INSERT user baru dan ambil kembali kolom user yang baru dibuat (RETURNING) ke user.
 	err := r.db.GetContext(
 		ctx,
 		&user,
@@ -59,10 +64,13 @@ func (r *UserRepository) Create(
 	)
 
 	var pgErr *pgconn.PgError
+	// Jika error berasal dari PostgreSQL dengan kode 23505 (pelanggaran UNIQUE), kembalikan ErrDuplicate.
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return model.User{}, apperror.ErrDuplicate
 	}
+	// Error lain dibungkus dengan konteks "create user".
 	if err != nil {
+		// Bungkus error database dengan pesan konteks; %w menjaga error asli tetap bisa dicek.
 		return model.User{}, fmt.Errorf("create user: %w", err)
 	}
 
@@ -70,6 +78,8 @@ func (r *UserRepository) Create(
 
 }
 
+// FindByEmail mengambil satu user berdasarkan email.
+// Mengembalikan ErrNotFound bila email tidak terdaftar.
 func (r *UserRepository) FindByEmail(
 	ctx context.Context,
 	email string,
@@ -82,22 +92,26 @@ func (r *UserRepository) FindByEmail(
 			username,
 			password_hash,
 			google_id,
-			created_at 
-		FROM users 
+			created_at
+		FROM users
 		WHERE email=$1
 	`
 	var user model.User
 
+	// Ambil satu user yang email-nya cocok dengan email; hasilnya diisi ke user.
 	err := r.db.GetContext(
 		ctx,
 		&user,
 		query,
 		email,
 	)
+	// Jika query gagal, periksa dulu apakah karena tidak ada baris.
 	if err != nil {
+		// Tidak ada user dengan email itu; kembalikan ErrNotFound.
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.User{}, apperror.ErrNotFound
 		}
+		// Error lain dibungkus dengan konteks "find user by email".
 		return model.User{}, fmt.Errorf("find user by email: %w", err)
 	}
 	return user, nil
@@ -126,13 +140,16 @@ func (r *UserRepository) FindByLogin(
 	`
 	users := []model.User{}
 
+	// Ambil maksimal 10 user yang email atau usernamenya sama dengan identifier; hasilnya diisi ke users.
 	err := r.db.SelectContext(
 		ctx,
 		&users,
 		query,
 		identifier,
 	)
+	// Jika query gagal, kembalikan nil dan error yang sudah dibungkus dengan konteks "find user by login".
 	if err != nil {
+		// Bungkus error database dengan pesan konteks; %w menjaga error asli tetap bisa dicek.
 		return nil, fmt.Errorf("find user by login: %w", err)
 	}
 
@@ -160,11 +177,15 @@ func (r *UserRepository) FindByID(
 	`
 	var user model.User
 
+	// Ambil satu user dengan id tersebut dan isi hasilnya ke user.
 	err := r.db.GetContext(ctx, &user, query, id)
+	// Tidak ada user dengan id itu; kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.User{}, apperror.ErrNotFound
 	}
+	// Error lain dibungkus dengan konteks "find user by id".
 	if err != nil {
+		// Bungkus error database dengan pesan konteks; %w menjaga error asli tetap bisa dicek.
 		return model.User{}, fmt.Errorf("find user by id: %w", err)
 	}
 	return user, nil
@@ -179,11 +200,15 @@ func (r *UserRepository) SubscriptionExpiresAt(
 	const query = `SELECT subscription_expires_at FROM owners WHERE user_id = $1`
 	var expiresAt time.Time
 
+	// Ambil subscription_expires_at dari tabel owners untuk user ini dan isi hasilnya ke expiresAt.
 	err := r.db.GetContext(ctx, &expiresAt, query, userID)
+	// Tidak ada baris di owners, berarti user bukan owner; kembalikan nil tanpa error.
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
+	// Error lain dibungkus dengan konteks "get subscription expiry".
 	if err != nil {
+		// Bungkus error database dengan pesan konteks; %w menjaga error asli tetap bisa dicek.
 		return nil, fmt.Errorf("get subscription expiry: %w", err)
 	}
 	return &expiresAt, nil
@@ -202,11 +227,15 @@ func (r *UserRepository) UpdateUsername(
 	`
 	var user model.User
 
+	// Jalankan UPDATE username user dan ambil kembali baris user terbaru (RETURNING) ke user.
 	err := r.db.GetContext(ctx, &user, query, userID, username)
+	// Tidak ada user dengan id itu, jadi tidak ada baris yang diubah; kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.User{}, apperror.ErrNotFound
 	}
+	// Error lain dibungkus dengan konteks "update username".
 	if err != nil {
+		// Bungkus error database dengan pesan konteks; %w menjaga error asli tetap bisa dicek.
 		return model.User{}, fmt.Errorf("update username: %w", err)
 	}
 	return user, nil
@@ -219,10 +248,14 @@ func (r *UserRepository) SetEmailNotifications(
 	enabled bool,
 ) error {
 
+	// Jalankan UPDATE kolom email_notifications user dengan nilai enabled.
 	res, err := r.db.ExecContext(ctx, `UPDATE users SET email_notifications = $2 WHERE id = $1`, userID, enabled)
+	// Jika UPDATE gagal, kembalikan error dengan konteks "set email notifications".
 	if err != nil {
+		// Bungkus error database dengan pesan konteks; %w menjaga error asli tetap bisa dicek.
 		return fmt.Errorf("set email notifications: %w", err)
 	}
+	// Ambil jumlah baris yang berubah; bila 0, user tidak ada dan kembalikan ErrNotFound. Error dari RowsAffected diabaikan.
 	if n, _ := res.RowsAffected(); n == 0 {
 		return apperror.ErrNotFound
 	}
@@ -238,8 +271,11 @@ func (r *UserRepository) IsOwner(
 	const query = `SELECT EXISTS (SELECT 1 FROM owners WHERE user_id = $1)`
 	var exists bool
 
+	// Jalankan query EXISTS untuk mengecek apakah user punya baris di owners; hasilnya boolean ke exists.
 	err := r.db.GetContext(ctx, &exists, query, userID)
+	// Jika query gagal, kembalikan false dan error dengan konteks "check owner".
 	if err != nil {
+		// Bungkus error database dengan pesan konteks; %w menjaga error asli tetap bisa dicek.
 		return false, fmt.Errorf("check owner: %w", err)
 	}
 	return exists, nil

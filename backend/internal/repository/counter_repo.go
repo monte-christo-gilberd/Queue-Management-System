@@ -11,10 +11,13 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// CounterRepository: akses data counter per antrian (tabel counters), termasuk penguncian antrian dan
+// nomor tiket yang sedang dilayani tiap counter.
 type CounterRepository struct {
 	db *sqlx.DB
 }
 
+// NewCounterRepository membuat CounterRepository yang membaca dan menulis lewat koneksi *sqlx.DB.
 func NewCounterRepository(
 	db *sqlx.DB,
 ) *CounterRepository {
@@ -40,6 +43,8 @@ func (r *CounterRepository) ListWithServing(
 		WHERE c.queue_id = $1
 		ORDER BY c.is_default DESC, c.created_at ASC, c.id ASC
 	`
+	// Query ini mengambil semua counter antrian ini, dengan tiket yang sedang dilayani (jika ada) lewat LEFT JOIN, lalu mengisi slice counters.
+	// Bila query gagal, error dikembalikan ke service dan hasil tidak dipakai.
 	if err := r.db.SelectContext(ctx, &counters, query, queueID); err != nil {
 		return nil, err
 	}
@@ -54,7 +59,9 @@ func (r *CounterRepository) LockQueue(
 	queueID int64,
 ) error {
 	var id int64
+	// Ambil id antrian dengan FOR UPDATE di dalam transaksi tx; transaksi lain yang mengunci antrian yang sama harus menunggu sampai tx selesai.
 	err := tx.GetContext(ctx, &id, `SELECT id FROM queues WHERE id = $1 FOR UPDATE`, queueID)
+	// Bila query gagal (umumnya antrian tidak ada), kembalikan ErrNotFound.
 	if err != nil {
 		return apperror.ErrNotFound
 	}
@@ -68,6 +75,7 @@ func (r *CounterRepository) Names(
 	queueID int64,
 ) ([]string, error) {
 	names := []string{}
+	// Ambil nama semua counter di antrian ini ke slice names, dalam transaksi tx.
 	err := tx.SelectContext(ctx, &names, `SELECT name FROM counters WHERE queue_id = $1`, queueID)
 	return names, err
 }
@@ -85,10 +93,13 @@ func (r *CounterRepository) Insert(
 		VALUES ($1, $2, now(), FALSE)
 		RETURNING id, queue_id, name, created_at, is_default
 	`
+	// Query ini menyisipkan counter baru (bukan default) dengan waktu sekarang, lalu mengembalikan baris yang baru dibuat ke counter.
 	err := tx.GetContext(ctx, &counter, query, queueID, name)
+	// Bila error adalah pelanggaran UNIQUE (nama counter sudah ada di antrian ini), kembalikan ErrDuplicateCounterName.
 	if isUniqueViolation(err) {
 		return model.Counter{}, apperror.ErrDuplicateCounterName
 	}
+	// Error database lain dikembalikan apa adanya.
 	if err != nil {
 		return model.Counter{}, err
 	}
@@ -109,10 +120,13 @@ func (r *CounterRepository) Get(
 		WHERE id = $1 AND queue_id = $2
 		FOR UPDATE
 	`
+	// Query ini mengambil satu counter yang id dan queue_id-nya cocok, sambil mengunci barisnya (FOR UPDATE), lalu mengisi counter.
 	err := tx.GetContext(ctx, &counter, query, counterID, queueID)
+	// Bila tidak ada baris yang cocok (counter tidak ada atau milik antrian lain), kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Counter{}, apperror.ErrNotFound
 	}
+	// Error database lain dikembalikan apa adanya.
 	if err != nil {
 		return model.Counter{}, err
 	}
@@ -127,6 +141,7 @@ func (r *CounterRepository) Rename(
 	counterID int64,
 	name string,
 ) error {
+	// Jalankan UPDATE untuk mengganti nama counter dengan syarat id dan queue_id cocok; result berisi info jumlah baris yang berubah.
 	result, err := tx.ExecContext(
 		ctx,
 		`UPDATE counters SET name = $3 WHERE id = $1 AND queue_id = $2`,
@@ -134,16 +149,21 @@ func (r *CounterRepository) Rename(
 		queueID,
 		name,
 	)
+	// Bila nama bentrok dengan counter lain di antrian yang sama, kembalikan ErrDuplicateCounterName.
 	if isUniqueViolation(err) {
 		return apperror.ErrDuplicateCounterName
 	}
+	// Error database lain dikembalikan apa adanya.
 	if err != nil {
 		return err
 	}
+	// Ambil jumlah baris yang benar-benar berubah oleh UPDATE tadi.
 	n, err := result.RowsAffected()
+	// Bila gagal membaca jumlah baris, kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// Jika tidak ada baris yang berubah, counter tidak ditemukan di antrian ini.
 	if n == 0 {
 		return apperror.ErrNotFound
 	}
@@ -158,19 +178,24 @@ func (r *CounterRepository) Delete(
 	queueID,
 	counterID int64,
 ) error {
+	// Jalankan DELETE counter dengan syarat id dan queue_id cocok; result berisi info jumlah baris yang terhapus.
 	result, err := tx.ExecContext(
 		ctx,
 		`DELETE FROM counters WHERE id = $1 AND queue_id = $2`,
 		counterID,
 		queueID,
 	)
+	// Error database dikembalikan apa adanya.
 	if err != nil {
 		return err
 	}
+	// Ambil jumlah baris yang terhapus oleh DELETE tadi.
 	n, err := result.RowsAffected()
+	// Bila gagal membaca jumlah baris, kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// Jika tidak ada baris yang terhapus, counter tidak ditemukan di antrian ini.
 	if n == 0 {
 		return apperror.ErrNotFound
 	}
@@ -180,5 +205,6 @@ func (r *CounterRepository) Delete(
 // isUniqueViolation: galat pelanggaran UNIQUE dari Postgres (SQLSTATE 23505).
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
+	// Cari di dalam rantai error apakah ada *pgconn.PgError, lalu pastikan kodenya 23505 (pelanggaran UNIQUE).
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

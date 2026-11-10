@@ -11,10 +11,12 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// TicketRepository membungkus koneksi *sqlx.DB dan menyediakan query untuk tabel tickets.
 type TicketRepository struct {
 	db *sqlx.DB
 }
 
+// NewTicketRepository membuat TicketRepository yang memakai koneksi db untuk query tanpa transaksi.
 func NewTicketRepository(
 	db *sqlx.DB,
 ) *TicketRepository {
@@ -23,6 +25,8 @@ func NewTicketRepository(
 	}
 }
 
+// MaxWaitingSortKey mengembalikan sort_key terbesar di antrian ini, atau 0 bila belum ada tiket.
+// Dipakai untuk menentukan sort_key tiket baru.
 func (r *TicketRepository) MaxWaitingSortKey(
 	ctx context.Context,
 	tx *sqlx.Tx,
@@ -38,22 +42,27 @@ func (r *TicketRepository) MaxWaitingSortKey(
 		WHERE queue_id=$1
 	`
 
+	// Ambil MAX(sort_key) antrian ini ke max. Antrian kosong menghasilkan NULL, karena itu dibaca lewat sql.NullInt64.
 	err := tx.GetContext(
 		ctx,
 		&max,
 		query,
 		queueID,
 	)
+	// query gagal: kembalikan 0 dan error-nya.
 	if err != nil {
 		return 0, err
 	}
 
+	// MAX bernilai NULL (antrian belum punya tiket): kembalikan 0 tanpa error.
 	if !max.Valid {
 		return 0, nil
 	}
 	return max.Int64, nil
 }
 
+// Insert menambahkan tiket waiting baru di antrian ini dengan nomor berikutnya, lalu mengembalikan baris yang dibuat.
+// Pelanggaran UNIQUE dikembalikan sebagai ErrDuplicate.
 func (r *TicketRepository) Insert(
 	ctx context.Context,
 	tx *sqlx.Tx,
@@ -94,6 +103,7 @@ func (r *TicketRepository) Insert(
 			cancelled_at
 	`
 
+	// Jalankan INSERT tiket baru (status waiting, nomor = MAX+1 per antrian) dan baca kolom hasilnya lewat RETURNING ke newTicket.
 	err := tx.GetContext(
 		ctx,
 		&newTicket,
@@ -104,15 +114,19 @@ func (r *TicketRepository) Insert(
 	)
 
 	var pgErr *pgconn.PgError
+	// error dari PostgreSQL berkode 23505 (pelanggaran UNIQUE, mis. sort_key bentrok): kembalikan ErrDuplicate.
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return model.Ticket{}, apperror.ErrDuplicate
 	}
+	// error lain: kembalikan tiket kosong dan error asli.
 	if err != nil {
 		return model.Ticket{}, err
 	}
 	return newTicket, nil
 }
 
+// NextWaiting mengunci dan mengembalikan tiket waiting dengan sort_key terkecil di antrian ini.
+// Tiket yang sedang dikunci transaksi lain dilewati. Tidak ada tiket: ErrNotFound.
 func (r *TicketRepository) NextWaiting(
 	ctx context.Context,
 	tx *sqlx.Tx,
@@ -140,6 +154,7 @@ func (r *TicketRepository) NextWaiting(
 		FOR UPDATE SKIP LOCKED
 	`
 
+	// Jalankan SELECT tiket waiting terkecil dengan FOR UPDATE SKIP LOCKED, hasilnya ke currentTicket.
 	err := tx.GetContext(
 		ctx,
 		&currentTicket,
@@ -147,9 +162,11 @@ func (r *TicketRepository) NextWaiting(
 		queueID,
 	)
 
+	// tidak ada tiket waiting yang bisa dikunci: kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Ticket{}, apperror.ErrNotFound
 	}
+	// error database lain: kembalikan error asli.
 	if err != nil {
 		return model.Ticket{}, err
 	}
@@ -173,10 +190,13 @@ func (r *TicketRepository) CurrentServing(
 		WHERE queue_id=$1 AND called_counter_id=$2 AND status='currently_served'
 		FOR UPDATE
 	`
+	// Jalankan query untuk mengambil dan mengunci nomor yang sedang dilayani counter ini, hasilnya ke t.
 	err := tx.GetContext(ctx, &t, query, queueID, counterID)
+	// tidak ada baris: kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Ticket{}, apperror.ErrNotFound
 	}
+	// error database lain: kembalikan error asli.
 	if err != nil {
 		return model.Ticket{}, err
 	}
@@ -189,14 +209,19 @@ func (r *TicketRepository) MarkRecalled(
 	tx *sqlx.Tx,
 	ticketID int64,
 ) error {
+	// Jalankan UPDATE recalled_at = sekarang untuk tiket ini. result berisi jumlah baris yang terpengaruh.
 	result, err := tx.ExecContext(ctx, `UPDATE tickets SET recalled_at=now() WHERE id=$1`, ticketID)
+	// UPDATE gagal: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// Ambil jumlah baris yang benar-benar terpengaruh UPDATE.
 	n, err := result.RowsAffected()
+	// gagal membaca jumlah baris: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// tidak ada baris yang berubah (tiket tidak ditemukan): kembalikan ErrNotFound.
 	if n == 0 {
 		return apperror.ErrNotFound
 	}
@@ -215,10 +240,14 @@ func (r *TicketRepository) SkipSettings(
 		FROM queue_settings
 		WHERE queue_id = $1
 	`
+	// Baca pengaturan skip antrian ini dari queue_settings ke s.
 	err := tx.GetContext(ctx, &s, query, queueID)
+	// antrian belum punya baris pengaturan: pakai nilai default.
 	if errors.Is(err, sql.ErrNoRows) {
+		// kembalikan pengaturan default dari package model, tanpa error.
 		return model.DefaultSkipSettings(), nil
 	}
+	// error database lain: kembalikan nilai kosong dan error asli.
 	if err != nil {
 		return model.SkipSettings{}, err
 	}
@@ -233,6 +262,7 @@ func (r *TicketRepository) WaitingSortKeys(
 	limit int,
 ) ([]int64, error) {
 	keys := []int64{}
+	// Ambil daftar sort_key tiket waiting terkecil sebanyak limit ke keys.
 	err := tx.SelectContext(
 		ctx,
 		&keys,
@@ -251,6 +281,7 @@ func (r *TicketRepository) SortKeyTaken(
 	sortKey int64,
 ) (bool, error) {
 	var taken bool
+	// Jalankan SELECT EXISTS untuk mengecek apakah sort_key ini sudah dipakai, hasilnya ke taken.
 	err := tx.GetContext(
 		ctx,
 		&taken,
@@ -275,14 +306,19 @@ func (r *TicketRepository) RequeueSkipped(
 			completed_at=NULL, called_at=NULL, called_counter_id=NULL, recalled_at=NULL
 		WHERE id=$1
 	`
+	// Jalankan UPDATE: kembalikan tiket ke waiting dengan sort_key baru dan naikkan skip_count. result berisi jumlah baris yang terpengaruh.
 	result, err := tx.ExecContext(ctx, query, ticketID, sortKey)
+	// UPDATE gagal: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// Ambil jumlah baris yang terpengaruh UPDATE.
 	n, err := result.RowsAffected()
+	// gagal membaca jumlah baris: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// tidak ada tiket dengan id ini: kembalikan ErrNotFound.
 	if n == 0 {
 		return apperror.ErrNotFound
 	}
@@ -299,6 +335,7 @@ func (r *TicketRepository) RebalanceWaiting(
 	gap int64,
 ) error {
 	var base int64
+	// Ambil sort_key terbesar antrian (0 bila kosong) ke base. Bila query gagal, kembalikan error-nya.
 	if err := tx.GetContext(
 		ctx,
 		&base,
@@ -307,6 +344,7 @@ func (r *TicketRepository) RebalanceWaiting(
 	); err != nil {
 		return err
 	}
+	// Langkah 1: negasikan sort_key semua tiket waiting supaya nilai sementara tidak bentrok dengan nilai lama. Bila gagal, kembalikan error-nya.
 	if _, err := tx.ExecContext(
 		ctx,
 		`UPDATE tickets SET sort_key = -sort_key WHERE queue_id=$1 AND status='waiting'`,
@@ -314,6 +352,8 @@ func (r *TicketRepository) RebalanceWaiting(
 	); err != nil {
 		return err
 	}
+	// Langkah 2: isi sort_key baru = base + nomor urut * gap. Nomor urut mengikuti urutan lama (sort_key terkecil dapat nomor 1), sehingga urutan tetap.
+	// Hasil query (jumlah baris) tidak dipakai, hanya error-nya yang dikembalikan.
 	_, err := tx.ExecContext(
 		ctx,
 		`UPDATE tickets t SET sort_key = $2 + o.rn * $3
@@ -340,14 +380,19 @@ func (r *TicketRepository) MarkSkipped(
 		SET status='skipped', skip_count=skip_count+1, completed_at=NULL
 		WHERE id=$1
 	`
+	// Jalankan UPDATE: ubah tiket menjadi skipped dan naikkan skip_count. result berisi jumlah baris yang terpengaruh.
 	result, err := tx.ExecContext(ctx, query, ticketID)
+	// UPDATE gagal: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// Ambil jumlah baris yang terpengaruh UPDATE.
 	n, err := result.RowsAffected()
+	// gagal membaca jumlah baris: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// tidak ada tiket dengan id ini: kembalikan ErrNotFound.
 	if n == 0 {
 		return apperror.ErrNotFound
 	}
@@ -370,20 +415,25 @@ func (r *TicketRepository) MarkCompleted(
 		WHERE id=$1
 	`
 
+	// Jalankan UPDATE: ubah tiket menjadi completed dan isi completed_at dengan waktu sekarang.
 	result, err := tx.ExecContext(
 		ctx,
 		query,
 		ticketID,
 	)
 
+	// UPDATE gagal: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
 
+	// Ambil jumlah baris yang terpengaruh UPDATE.
 	rowsAffected, err := result.RowsAffected()
+	// gagal membaca jumlah baris: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// tidak ada baris yang berubah (tiket tidak ditemukan): kembalikan ErrNotFound.
 	if rowsAffected == 0 {
 		return apperror.ErrNotFound
 	}
@@ -409,26 +459,33 @@ func (r *TicketRepository) MarkServing(
 		WHERE id=$1
 	`
 
+	// Jalankan UPDATE: ubah tiket waiting menjadi currently_served dengan counter dan waktu panggil. result berisi jumlah baris yang terpengaruh.
 	result, err := tx.ExecContext(
 		ctx,
 		query,
 		ticketID,
 		counterID,
 	)
+	// UPDATE gagal: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
 
+	// Ambil jumlah baris yang terpengaruh UPDATE.
 	rowsAffected, err := result.RowsAffected()
+	// gagal membaca jumlah baris: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// tidak ada baris yang berubah (tiket tidak ditemukan): kembalikan ErrNotFound.
 	if rowsAffected == 0 {
 		return apperror.ErrNotFound
 	}
 	return nil
 }
 
+// GetCounterByQueue mengembalikan counter utama antrian: counter default lebih dulu, lalu yang paling lama dibuat.
+// Tidak ada counter: error dari database dikembalikan apa adanya (tidak diterjemahkan ke ErrNotFound).
 func (r *TicketRepository) GetCounterByQueue(
 	ctx context.Context,
 	queueID int64,
@@ -441,12 +498,15 @@ func (r *TicketRepository) GetCounterByQueue(
 		ORDER BY is_default DESC, created_at ASC
 		LIMIT 1
 	`
+	// Ambil satu counter utama antrian ke counter. Bila query gagal, kembalikan error-nya.
 	if err := r.db.GetContext(ctx, &counter, counterQuery, queueID); err != nil {
 		return model.Counter{}, err
 	}
 	return counter, nil
 }
 
+// ListByQueue mengembalikan tiket di antrian ini, diurutkan sort_key lalu id, maksimal 500.
+// Bila statuses kosong semua status diambil; bila tidak, hanya status yang disebut.
 func (r *TicketRepository) ListByQueue(
 	ctx context.Context,
 	queueID int64,
@@ -486,13 +546,16 @@ func (r *TicketRepository) ListByQueue(
 	`
 
 	// Tanpa filter status: query statis biasa.
+	// tidak ada filter status: pakai query statis biasa tanpa sqlx.In.
 	if len(statuses) == 0 {
+		// Jalankan SELECT tiket antrian ini tanpa filter status ke tickets. Rebind mengubah ? menjadi placeholder $1, $2, sesuai driver PostgreSQL.
 		err := r.db.SelectContext(
 			ctx,
 			&tickets,
 			r.db.Rebind(selectTickets+orderAndLimit),
 			queueID,
 		)
+		// query gagal: kembalikan nil dan error-nya.
 		if err != nil {
 			return nil, err
 		}
@@ -505,16 +568,19 @@ func (r *TicketRepository) ListByQueue(
 		queueID,
 		statuses,
 	)
+	// sqlx.In gagal (mis. slice tidak valid): kembalikan nil dan error-nya.
 	if err != nil {
 		return nil, err
 	}
 
+	// Jalankan SELECT tiket dengan filter status yang sudah di-Rebind, dengan args sebagai nilai parameternya, hasilnya ke tickets.
 	err = r.db.SelectContext(
 		ctx,
 		&tickets,
 		r.db.Rebind(query),
 		args...,
 	)
+	// query gagal: kembalikan nil dan error-nya.
 	if err != nil {
 		return nil, err
 	}
@@ -541,6 +607,7 @@ func (r *TicketRepository) HasTicket(
 		)
 	`
 
+	// Jalankan SELECT EXISTS untuk mengecek apakah user punya tiket aktif di antrian ini, hasilnya ke exists.
 	err := r.db.GetContext(
 		ctx,
 		&exists,
@@ -548,6 +615,7 @@ func (r *TicketRepository) HasTicket(
 		queueID,
 		userID,
 	)
+	// query gagal: kembalikan false dan error-nya.
 	if err != nil {
 		return false, err
 	}
@@ -573,6 +641,7 @@ func (r *TicketRepository) HasAnyTicket(
 		)
 	`
 
+	// Jalankan SELECT EXISTS untuk mengecek apakah user pernah punya tiket di antrian ini (status apa pun), hasilnya ke exists.
 	err := r.db.GetContext(
 		ctx,
 		&exists,
@@ -580,6 +649,7 @@ func (r *TicketRepository) HasAnyTicket(
 		queueID,
 		userID,
 	)
+	// query gagal: kembalikan false dan error-nya.
 	if err != nil {
 		return false, err
 	}
@@ -624,6 +694,7 @@ func (r *TicketRepository) FindByUser(
 		LIMIT 1
 	`
 
+	// Jalankan query tiket user (prioritas aktif, lalu tiket terakhir) dan isi ticket dengan satu baris teratas.
 	err := r.db.GetContext(
 		ctx,
 		&ticket,
@@ -631,9 +702,11 @@ func (r *TicketRepository) FindByUser(
 		queueID,
 		userID,
 	)
+	// user tidak punya tiket sama sekali di antrian ini: kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Ticket{}, apperror.ErrNotFound
 	}
+	// error database lain: kembalikan error asli.
 	if err != nil {
 		return model.Ticket{}, err
 	}
@@ -653,10 +726,13 @@ func (r *TicketRepository) GetCounter(
 		FROM counters
 		WHERE id = $1 AND queue_id = $2
 	`
+	// Jalankan SELECT counter berdasarkan id dan queue_id, hasilnya ke counter.
 	err := r.db.GetContext(ctx, &counter, query, counterID, queueID)
+	// tidak ada baris (id tidak dikenal atau milik antrian lain): kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Counter{}, apperror.ErrNotFound
 	}
+	// error database lain: kembalikan error asli.
 	if err != nil {
 		return model.Counter{}, err
 	}
@@ -676,15 +752,18 @@ func (r *TicketRepository) CurrentServedNumber(
 		LIMIT 1
 	`
 
+	// Jalankan query nomor tiket yang sedang dilayani, hasilnya ke number.
 	err = r.db.GetContext(
 		ctx,
 		&number,
 		query,
 		queueID,
 	)
+	// belum ada nomor yang dilayani: kembalikan 0 dengan ok=false tanpa error.
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
+	// error database lain: kembalikan error asli.
 	if err != nil {
 		return 0, false, err
 	}
@@ -709,6 +788,7 @@ func (r *TicketRepository) CountWaitingBefore(
 			AND sort_key < $2
 	`
 
+	// Jalankan SELECT COUNT tiket waiting dengan sort_key lebih kecil dari sortKey, hasilnya ke count.
 	err := r.db.GetContext(
 		ctx,
 		&count,
@@ -716,6 +796,7 @@ func (r *TicketRepository) CountWaitingBefore(
 		queueID,
 		sortKey,
 	)
+	// query gagal: kembalikan 0 dan error-nya.
 	if err != nil {
 		return 0, err
 	}
@@ -774,12 +855,14 @@ func (r *TicketRepository) ListByUser(
 		LIMIT 100
 	`
 
+	// Jalankan query daftar tiket terbaru per antrian milik user, hasilnya ke tickets.
 	err := r.db.SelectContext(
 		ctx,
 		&tickets,
 		query,
 		userID,
 	)
+	// query gagal: kembalikan nil dan error-nya.
 	if err != nil {
 		return nil, err
 	}
@@ -804,7 +887,9 @@ func (r *TicketRepository) RecentCompletedNumbers(
 		LIMIT $2
 	`
 
+	// Jalankan SELECT n nomor tiket completed terbaru di antrian ini, hasilnya ke numbers.
 	err := r.db.SelectContext(ctx, &numbers, query, queueID, n)
+	// query gagal: kembalikan nil dan error-nya.
 	if err != nil {
 		return nil, err
 	}
@@ -825,10 +910,13 @@ func (r *TicketRepository) FirstWaitingNumber(
 		LIMIT 1
 	`
 
+	// Jalankan query nomor tiket waiting terdepan, hasilnya ke number.
 	err = r.db.GetContext(ctx, &number, query, queueID)
+	// tidak ada tiket waiting: kembalikan 0 dengan ok=false tanpa error.
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
+	// error database lain: kembalikan error asli.
 	if err != nil {
 		return 0, false, err
 	}
@@ -851,10 +939,13 @@ func (r *TicketRepository) GetForUpdate(
 		WHERE id = $1 AND queue_id = $2
 		FOR UPDATE
 	`
+	// Jalankan SELECT ... FOR UPDATE untuk mengunci tiket ini, hasilnya ke t.
 	err := tx.GetContext(ctx, &t, query, ticketID, queueID)
+	// tidak ada baris (tiket tidak ada atau milik antrian lain): kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Ticket{}, apperror.ErrNotFound
 	}
+	// error database lain: kembalikan error asli.
 	if err != nil {
 		return model.Ticket{}, err
 	}
@@ -870,7 +961,9 @@ func (r *TicketRepository) LockCounter(
 	counterID int64,
 ) error {
 	var id int64
+	// Jalankan SELECT ... FOR SHARE untuk mengunci baris counter ini. id terisi hanya bila counter ada di antrian ini.
 	err := tx.GetContext(ctx, &id, `SELECT id FROM counters WHERE id=$1 AND queue_id=$2 FOR SHARE`, counterID, queueID)
+	// counter tidak ditemukan di antrian ini: kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return apperror.ErrNotFound
 	}
@@ -891,6 +984,7 @@ func (r *TicketRepository) ServingByQueue(
 		WHERE queue_id = $1 AND status = 'currently_served'
 		ORDER BY called_at DESC, id DESC
 	`
+	// Ambil semua tiket currently_served antrian ini ke tickets. Bila query gagal, kembalikan error-nya.
 	if err := r.db.SelectContext(ctx, &tickets, query, queueID); err != nil {
 		return nil, err
 	}
@@ -913,10 +1007,13 @@ func (r *TicketRepository) ServingOfCounter(
 		WHERE queue_id = $1 AND called_counter_id = $2 AND status = 'currently_served'
 		FOR UPDATE
 	`
+	// Jalankan query nomor yang sedang dilayani counter ini dengan FOR UPDATE, hasilnya ke t.
 	err := tx.GetContext(ctx, &t, query, queueID, counterID)
+	// tidak ada baris: kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Ticket{}, apperror.ErrNotFound
 	}
+	// error database lain: kembalikan error asli.
 	if err != nil {
 		return model.Ticket{}, err
 	}
@@ -937,14 +1034,19 @@ func (r *TicketRepository) ReturnToWaiting(
 			called_counter_id = NULL, called_at = NULL, completed_at = NULL, recalled_at = NULL
 		WHERE id = $1 AND status = 'currently_served'
 	`
+	// Jalankan UPDATE: kembalikan nomor yang dilayani ke waiting dengan sort_key baru dan kosongkan penanda panggilan. result berisi jumlah baris yang terpengaruh.
 	result, err := tx.ExecContext(ctx, query, ticketID, sortKey)
+	// UPDATE gagal: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// Ambil jumlah baris yang terpengaruh UPDATE.
 	n, err := result.RowsAffected()
+	// gagal membaca jumlah baris: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
+	// tidak ada baris yang berubah (tiket bukan currently_served): kembalikan ErrNotFound.
 	if n == 0 {
 		return apperror.ErrNotFound
 	}
@@ -967,20 +1069,25 @@ func (r *TicketRepository) MarkDeleted(
 		WHERE id = $1
 	`
 
+	// Jalankan UPDATE: ubah tiket menjadi deleted dan kosongkan completed_at. result berisi jumlah baris yang terpengaruh.
 	result, err := tx.ExecContext(
 		ctx,
 		query,
 		ticketID,
 	)
+	// UPDATE gagal: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
 
+	// Ambil jumlah baris yang terpengaruh UPDATE.
 	rowsAffected, err := result.RowsAffected()
+	// gagal membaca jumlah baris: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
 
+	// tidak ada baris yang berubah (tiket tidak ditemukan): kembalikan ErrNotFound.
 	if rowsAffected == 0 {
 		return apperror.ErrNotFound
 	}
@@ -1006,21 +1113,26 @@ func (r *TicketRepository) MarkCancelled(
 		WHERE id = $1
 	`
 
+	// Jalankan UPDATE: ubah tiket menjadi cancelled dan isi cancelled_at dengan waktu sekarang. result berisi jumlah baris yang terpengaruh.
 	result, err := tx.ExecContext(
 		ctx,
 		query,
 		ticketID,
 	)
 
+	// UPDATE gagal: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
 
+	// Ambil jumlah baris yang terpengaruh UPDATE.
 	rowsAffected, err := result.RowsAffected()
+	// gagal membaca jumlah baris: kembalikan error-nya.
 	if err != nil {
 		return err
 	}
 
+	// tidak ada baris yang berubah (tiket tidak ditemukan): kembalikan ErrNotFound.
 	if rowsAffected == 0 {
 		return apperror.ErrNotFound
 	}

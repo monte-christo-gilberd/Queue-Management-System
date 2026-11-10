@@ -7,6 +7,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// QueueRepositoryInterface menggambarkan method yang disediakan QueueRepository (queue_repo.go): antrian, pengaturan skip, QR, dan counter default.
 type QueueRepositoryInterface interface {
 	CreateNewQueue(
 		ctx context.Context,
@@ -77,6 +78,7 @@ type QueueRepositoryInterface interface {
 	) (model.Counter, error)
 }
 
+// SubscriptionCheckerInterface menggambarkan method yang disediakan SubscriptionChecker (owner_repo.go): cek langganan owner aktif.
 type SubscriptionCheckerInterface interface {
 	IsActive(
 		ctx context.Context,
@@ -84,6 +86,7 @@ type SubscriptionCheckerInterface interface {
 	) (bool, error)
 }
 
+// TicketRepositoryInterface menggambarkan method yang disediakan TicketRepository (ticket_repo.go): tiket, pengurutan sort_key, dan perubahan status tiket.
 type TicketRepositoryInterface interface {
 	MaxWaitingSortKey(
 		ctx context.Context,
@@ -131,6 +134,7 @@ type TicketRepositoryInterface interface {
 	) (model.Ticket, error)
 }
 
+// UserRepositoryInterface menggambarkan method yang disediakan UserRepository (user_repo.go): pembuatan akun dan pencarian user berdasarkan email.
 type UserRepositoryInterface interface {
 	Create(
 		ctx context.Context,

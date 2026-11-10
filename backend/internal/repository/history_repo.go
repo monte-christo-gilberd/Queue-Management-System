@@ -13,10 +13,12 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// HistoryRepository: akses data riwayat, yaitu antrian yang sudah ditutup milik owner dan riwayat tiket customer.
 type HistoryRepository struct {
 	db *sqlx.DB
 }
 
+// NewHistoryRepository membuat HistoryRepository yang membaca langsung dari *sqlx.DB.
 func NewHistoryRepository(db *sqlx.DB) *HistoryRepository {
 	return &HistoryRepository{db: db}
 }
@@ -47,8 +49,11 @@ func (r *HistoryRepository) ListClosedQueues(
 	limit int,
 ) ([]model.HistoryQueue, error) {
 
+	// Siapkan batas awal keyset: waktu tutup sangat jauh di masa depan, agar halaman pertama mengambil dari yang terbaru.
 	afterTime := time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+	// Batas id awal diisi nilai maksimum int64, untuk pasangan dengan afterTime di atas.
 	afterID := int64(math.MaxInt64)
+	// Jika ada cursor (bukan halaman pertama), pakai waktu tutup dan id dari cursor sebagai batas.
 	if after != nil {
 		afterTime, afterID = after.ClosedAt, after.ID
 	}
@@ -65,6 +70,8 @@ func (r *HistoryRepository) ListClosedQueues(
 		ORDER BY COALESCE(q.closed_at, q.created_at) DESC, q.id DESC
 		LIMIT $4
 	`
+	// Query ini mengambil ringkasan antrian tertutup milik owner (dengan jumlah tiket per status) yang berada sebelum batas keyset, urut terbaru, sebanyak limit; hasilnya diisi ke queues.
+	// Bila query gagal, error dikembalikan tanpa hasil.
 	if err := r.db.SelectContext(ctx, &queues, query, ownerID, afterTime, afterID, limit); err != nil {
 		return nil, err
 	}
@@ -87,10 +94,13 @@ func (r *HistoryRepository) GetClosedQueue(
 		WHERE q.id = $1 AND q.owner_id = $2 AND q.status = 'closed'
 		GROUP BY q.id
 	`
+	// Query ini mengambil ringkasan satu antrian yang id-nya cocok, milik owner ini, dan sudah ditutup; hasilnya diisi ke queue.
 	err := r.db.GetContext(ctx, &queue, query, queueID, ownerID)
+	// Bila tidak ada baris yang cocok, kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.HistoryQueue{}, apperror.ErrNotFound
 	}
+	// Error database lain dikembalikan apa adanya.
 	if err != nil {
 		return model.HistoryQueue{}, err
 	}
@@ -133,6 +143,8 @@ func (r *HistoryRepository) ListQueueTickets(
 		ORDER BY t.ticket_number ASC
 		LIMIT $3
 	`
+	// Query ini mengambil tiket di antrian ini dengan nomor di atas afterNumber, urut nomor naik, sebanyak limit, lengkap dengan nama customer, counter, dan catatan; hasilnya diisi ke tickets.
+	// Bila query gagal, error dikembalikan tanpa hasil.
 	if err := r.db.SelectContext(ctx, &tickets, query, queueID, afterNumber, limit); err != nil {
 		return nil, err
 	}
@@ -150,8 +162,11 @@ func (r *HistoryRepository) ListUserTickets(
 	limit int,
 ) ([]model.UserHistoryTicket, error) {
 
+	// Siapkan batas awal keyset: waktu sangat jauh di masa depan, agar halaman pertama mengambil dari yang terbaru.
 	afterTime := time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+	// Batas id awal diisi nilai maksimum int64, untuk pasangan dengan afterTime di atas.
 	afterID := int64(math.MaxInt64)
+	// Jika ada cursor (bukan halaman pertama), pakai waktu dan id dari cursor sebagai batas.
 	if after != nil {
 		afterTime, afterID = after.ClosedAt, after.ID
 	}
@@ -181,6 +196,8 @@ func (r *HistoryRepository) ListUserTickets(
 		ORDER BY t.created_at DESC, t.id DESC
 		LIMIT $4
 	`
+	// Query ini mengambil riwayat tiket milik user (yang sudah selesai, dilewati, dibatalkan, dihapus, atau antriannya ditutup) di bawah batas keyset, urut terbaru, sebanyak limit; hasilnya diisi ke tickets.
+	// Bila query gagal, error dikembalikan tanpa hasil.
 	if err := r.db.SelectContext(ctx, &tickets, query, userID, afterTime, afterID, limit); err != nil {
 		return nil, err
 	}

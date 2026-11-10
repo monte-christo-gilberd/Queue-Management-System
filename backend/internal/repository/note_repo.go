@@ -10,10 +10,13 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// NoteRepository menyimpan dan membaca catatan per tiket di tabel ticket_notes. Implementasi service.NoteRepository.
 type NoteRepository struct {
+	// db adalah koneksi PostgreSQL yang dipakai semua query catatan.
 	db *sqlx.DB
 }
 
+// NewNoteRepository membuat NoteRepository baru dengan koneksi database yang diberikan.
 func NewNoteRepository(
 	db *sqlx.DB,
 ) *NoteRepository {
@@ -43,10 +46,13 @@ func (r *NoteRepository) GetNote(
 		WHERE t.id = $1 AND t.queue_id = $2
 	`
 
+	// Jalankan query yang mengambil tiket beserta catatannya (lewat LEFT JOIN, jadi tiket tanpa catatan tetap muncul), lalu isi hasilnya ke note.
 	err := r.db.GetContext(ctx, &note, query, ticketID, queueID)
+	// Jika tidak ada baris yang cocok, tiket tidak ada atau bukan milik antrian ini, jadi kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.TicketNote{}, apperror.ErrNotFound
 	}
+	// Jika terjadi error database lain, kembalikan error aslinya ke pemanggil.
 	if err != nil {
 		return model.TicketNote{}, err
 	}
@@ -92,10 +98,13 @@ func (r *NoteRepository) UpsertNote(
 			(xmax = 0) AS created
 	`
 
+	// Jalankan query INSERT ... ON CONFLICT untuk menyisipkan catatan baru atau menimpa yang sudah ada, lalu isi hasilnya ke saved.
 	err := r.db.GetContext(ctx, &saved, query, ticketID, queueID, note, userID)
+	// Jika tidak ada baris yang dikembalikan, berarti tiket tidak ada atau bukan milik antrian ini, jadi kembalikan ErrNotFound.
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.UpsertedNote{}, apperror.ErrNotFound
 	}
+	// Jika terjadi error database lain, kembalikan error aslinya ke pemanggil.
 	if err != nil {
 		return model.UpsertedNote{}, err
 	}
