@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"database/sql"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -144,6 +145,78 @@ func (s *FakeStore) PasswordChangedAt(_ context.Context, userID int64) (*time.Ti
 	return s.Changed[userID], nil
 }
 
+// FindByGoogleID: akun yang tertaut ke akun Google ini; ErrNotFound bila tidak ada.
+func (s *FakeStore) FindByGoogleID(_ context.Context, googleID string) (model.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, u := range s.Users {
+		if u.GoogleID.Valid && u.GoogleID.String == googleID {
+			return u, nil
+		}
+	}
+	return model.User{}, apperror.ErrNotFound
+}
+
+// FindAccountByEmail: email tanpa membedakan huruf besar atau kecil; yang pertama (id terkecil) menang.
+func (s *FakeStore) FindAccountByEmail(_ context.Context, email string) (model.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, u := range s.Users {
+		if strings.EqualFold(u.Email, email) {
+			return u, nil
+		}
+	}
+	return model.User{}, apperror.ErrNotFound
+}
+
+// FindByID: akun berdasarkan id; ErrNotFound bila tidak ada.
+func (s *FakeStore) FindByID(_ context.Context, id int64) (model.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if id < 1 || int(id) > len(s.Users) {
+		return model.User{}, apperror.ErrNotFound
+	}
+	return s.Users[id-1], nil
+}
+
+// CreateGoogle membuat akun tanpa password dan terverifikasi. Email atau google_id yang sudah ada = ErrDuplicate.
+func (s *FakeStore) CreateGoogle(_ context.Context, email, username, googleID string) (model.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, u := range s.Users {
+		if u.Email == email || (u.GoogleID.Valid && u.GoogleID.String == googleID) {
+			return model.User{}, apperror.ErrDuplicate
+		}
+	}
+	u := model.User{
+		ID: int64(len(s.Users) + 1), Email: email, Username: username,
+		GoogleID:        sql.NullString{String: googleID, Valid: true},
+		EmailVerifiedAt: sql.NullTime{Time: time.Now(), Valid: true},
+	}
+	s.Users = append(s.Users, u)
+	return u, nil
+}
+
+// LinkGoogle menautkan google_id bila akun belum tertaut; selain itu ErrDuplicate.
+func (s *FakeStore) LinkGoogle(_ context.Context, userID int64, googleID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, u := range s.Users {
+		if u.GoogleID.Valid && u.GoogleID.String == googleID {
+			return apperror.ErrDuplicate
+		}
+	}
+	u := &s.Users[userID-1]
+	if u.GoogleID.Valid {
+		return apperror.ErrDuplicate
+	}
+	u.GoogleID = sql.NullString{String: googleID, Valid: true}
+	if !u.EmailVerifiedAt.Valid {
+		u.EmailVerifiedAt = sql.NullTime{Time: time.Now(), Valid: true}
+	}
+	return nil
+}
+
 // SetPasswordChanged mengatur waktu penggantian password (untuk tes pencabutan sesi).
 func (s *FakeStore) SetPasswordChanged(userID int64, at time.Time) {
 	s.mu.Lock()
@@ -279,12 +352,39 @@ func (m *FakeMailer) Sent() []Mail {
 	return append([]Mail(nil), m.sent...)
 }
 
+// FakeGoogle memenuhi auth.GoogleVerifier: ID token "uji" dipetakan ke identitas di memori.
+type FakeGoogle struct {
+	mu sync.Mutex
+	// Identities: token → identitas. Token yang tidak ada = ErrGoogleInvalidToken.
+	Identities map[string]auth.GoogleIdentity
+	// Err: bila terisi, Verify mengembalikannya untuk semua token (email belum terverifikasi, Google mati, dst.).
+	Err error
+	// Calls: jumlah panggilan Verify.
+	Calls int
+}
+
+// Verify mengembalikan identitas untuk token yang dikenal.
+func (g *FakeGoogle) Verify(_ context.Context, idToken string) (auth.GoogleIdentity, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.Calls++
+	if g.Err != nil {
+		return auth.GoogleIdentity{}, g.Err
+	}
+	ident, ok := g.Identities[idToken]
+	if !ok {
+		return auth.GoogleIdentity{}, apperror.ErrGoogleInvalidToken
+	}
+	return ident, nil
+}
+
 // Env: Service beserta fake-nya.
 type Env struct {
 	Svc    *auth.Service
 	Store  *FakeStore
 	Mailer *FakeMailer
 	Issuer *auth.TokenIssuer
+	Google *FakeGoogle
 }
 
 // NewService merangkai Service dengan FakeStore, FakeMailer, dan kunci RSA tes. verification menyalakan email
@@ -298,6 +398,18 @@ func NewService(t *testing.T, verification bool) *Env {
 		PublicAppURL:         "https://app.example/",
 		VerificationRequired: verification,
 	})
+	google := &FakeGoogle{Identities: map[string]auth.GoogleIdentity{}}
+	svc.WithGoogle(google)
+	return &Env{Svc: svc, Store: store, Mailer: mailer, Issuer: issuer, Google: google}
+}
+
+// NewServiceWithoutGoogle seperti NewService, tetapi login Google mati (GOOGLE_CLIENT_IDS kosong).
+func NewServiceWithoutGoogle(t *testing.T) *Env {
+	t.Helper()
+	store := NewFakeStore()
+	mailer := &FakeMailer{}
+	issuer := auth.NewTokenIssuer(Key, "test-kid")
+	svc := auth.NewService(store, store, issuer, mailer, auth.Options{PublicAppURL: "https://app.example/"})
 	return &Env{Svc: svc, Store: store, Mailer: mailer, Issuer: issuer}
 }
 

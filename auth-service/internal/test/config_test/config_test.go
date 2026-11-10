@@ -53,6 +53,7 @@ func setEnv(t *testing.T, kv map[string]string) {
 		"PUBLIC_APP_URL": "https://qms.example", "AUTH_JWT_PRIVATE_KEY_FILE": privateKeyFile(t, false),
 		"AUTH_JWT_KID": "", "PORT": "", "AUTH_PORT": "", "SHUTDOWN_TIMEOUT": "",
 		"MAIL_SERVICE_URL": "", "MAIL_SERVICE_TOKEN": "", "EMAIL_VERIFICATION_REQUIRED": "",
+		"GOOGLE_CLIENT_IDS": "", "GOOGLE_CERTS_URL": "",
 	}
 	for k, v := range kv {
 		base[k] = v
@@ -245,5 +246,58 @@ func TestMailSettings(t *testing.T) {
 				t.Fatalf("MailServiceURL harus tanpa '/' di akhir: %q", cfg.MailServiceURL)
 			}
 		})
+	}
+}
+
+func TestGoogleClientIDs(t *testing.T) {
+	cases := map[string]struct {
+		raw  string
+		want []string
+	}{
+		"kosong = login Google mati": {raw: "", want: nil},
+		"satu":                       {raw: "web.apps", want: []string{"web.apps"}},
+		"tiga (web, Android, iOS)":   {raw: "web.apps,android.apps,ios.apps", want: []string{"web.apps", "android.apps", "ios.apps"}},
+		"spasi dan entri kosong":     {raw: " web.apps , ,android.apps,, ", want: []string{"web.apps", "android.apps"}},
+		"hanya koma":                 {raw: " , ,", want: nil},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setEnv(t, map[string]string{"GOOGLE_CLIENT_IDS": tc.raw})
+			cfg, err := config.Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(cfg.GoogleClientIDs) != len(tc.want) {
+				t.Fatalf("GoogleClientIDs = %v, want %v", cfg.GoogleClientIDs, tc.want)
+			}
+			for i := range tc.want {
+				if cfg.GoogleClientIDs[i] != tc.want[i] {
+					t.Fatalf("GoogleClientIDs = %v, want %v", cfg.GoogleClientIDs, tc.want)
+				}
+			}
+		})
+	}
+}
+
+func TestGoogleCertsURL(t *testing.T) {
+	// Produksi tanpa GOOGLE_CLIENT_IDS tetap valid (fitur opsional).
+	setEnv(t, nil)
+	if _, err := config.Load(); err != nil {
+		t.Fatalf("produksi tanpa Google harus valid: %v", err)
+	}
+	// Produksi: kunci Google tidak boleh diambil lewat http.
+	setEnv(t, map[string]string{"GOOGLE_CLIENT_IDS": "web.apps", "GOOGLE_CERTS_URL": "http://evil.example/certs"})
+	if _, err := config.Load(); err == nil || !strings.Contains(err.Error(), "GOOGLE_CERTS_URL") {
+		t.Fatalf("expected GOOGLE_CERTS_URL production error, got %v", err)
+	}
+	// Produksi dengan https, dan dev dengan http (untuk tes lokal), diterima.
+	setEnv(t, map[string]string{"GOOGLE_CERTS_URL": "https://certs.example/keys"})
+	cfg, err := config.Load()
+	if err != nil || cfg.GoogleCertsURL != "https://certs.example/keys" {
+		t.Fatalf("cfg=%+v err=%v", cfg, err)
+	}
+	setEnv(t, map[string]string{"APP_ENV": "", "GOOGLE_CERTS_URL": "http://localhost:9999/certs"})
+	if _, err := config.Load(); err != nil {
+		t.Fatalf("dev harus menerima http: %v", err)
 	}
 }

@@ -161,6 +161,18 @@ func TestEmptyLegacySecretNeverAcceptsForgedHS256(t *testing.T) {
 	}
 }
 
+func TestPurposeTokenIsNotASession(t *testing.T) {
+	// Link token Google (klaim purpose) memakai kunci yang sama dengan token login, tetapi bukan sesi.
+	link := rsaToken(t, jwt.MapClaims{"sub": "7", "gid": "g-1", "purpose": "google_link", "exp": time.Now().Add(5 * time.Minute).Unix()})
+	f := &fakeBilling{}
+
+	w := do(handler(f), "POST", "/api/v1/payments/checkout", link, "")
+
+	if w.Code != http.StatusUnauthorized || f.gotOwner != 0 {
+		t.Fatalf("code=%d owner=%d, want 401 and no call", w.Code, f.gotOwner)
+	}
+}
+
 func TestCheckoutSuccess(t *testing.T) {
 	f := &fakeBilling{checkout: billing.Checkout{URL: "https://pay.example/x", ExpiresAt: time.Unix(1893456000, 0)}}
 	w := do(handler(f), "POST", "/api/v1/payments/checkout", validToken(t), "")

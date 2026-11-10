@@ -70,6 +70,17 @@ type VerifyEmailRequest struct {
 	Token string `json:"token" binding:"required,max=200"`
 }
 
+// GoogleLoginRequest: body POST /users/google. id_token adalah ID token yang didapat klien dari Google.
+type GoogleLoginRequest struct {
+	IDToken string `json:"id_token" binding:"required,max=8192"`
+}
+
+// LinkGoogleRequest: body POST /users/google/link. link_token berasal dari respons 409 GOOGLE_LINK_REQUIRED.
+type LinkGoogleRequest struct {
+	LinkToken string `json:"link_token" binding:"required,max=2048"`
+	Password  string `json:"password" binding:"required"`
+}
+
 // RegisterValidators memasang aturan `no_html_tags` (menolak '<' dan '>') ke validator bawaan gin.
 func RegisterValidators() {
 	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
@@ -106,6 +117,11 @@ func NewRouter(svc *auth.Service, emailOn bool, trustedProxies []string) *gin.En
 	users := engine.Group("/api/v1/users")
 	users.POST("/register", h.Register)
 	users.POST("/login", h.Login)
+	// login Google hanya dipasang bila GOOGLE_CLIENT_IDS terisi; selain itu rutenya tidak ada (404)
+	if svc.GoogleEnabled() {
+		users.POST("/google", h.GoogleLogin)
+		users.POST("/google/link", h.LinkGoogle)
+	}
 	// reset password dan verifikasi email butuh mail-service; tanpa itu rutenya tidak ada (404)
 	if emailOn {
 		users.POST("/forgot-password", h.ForgotPassword)
@@ -323,5 +339,79 @@ func (h *Handler) ResendVerification(c *gin.Context) {
 	// berhasil atau tidak perlu dikirim: 202 dengan pesan netral
 	default:
 		respondData(c, http.StatusAccepted, gin.H{"message": "Jika email belum terverifikasi, tautan verifikasi sudah dikirim."})
+	}
+}
+
+// GoogleLogin: POST /api/v1/users/google. Menukar ID token Google dengan token login QMS.
+//   - 200 {data:{token}}: akun sudah tertaut, atau akun baru dibuat;
+//   - 409 GOOGLE_LINK_REQUIRED + error.link_token: email sudah terdaftar dengan password, perlu konfirmasi password;
+//   - 401 UNAUTHORIZED: ID token tidak sah; 403 GOOGLE_EMAIL_UNVERIFIED: email belum diverifikasi Google;
+//   - 503 GOOGLE_UNAVAILABLE: kunci Google tidak bisa diambil.
+//
+// ID token dan link token tidak pernah dicatat di log.
+func (h *Handler) GoogleLogin(c *gin.Context) {
+	// respons memuat token: jangan di-cache
+	c.Header("Cache-Control", "no-store")
+	// baca body JSON; gagal berarti format request salah
+	var req GoogleLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+		return
+	}
+	token, err := h.svc.LoginWithGoogle(c.Request.Context(), req.IDToken)
+	var link *auth.LinkRequiredError
+	switch {
+	// email sudah terdaftar dengan password: kirim link token untuk layar konfirmasi password
+	case errors.As(err, &link):
+		c.JSON(http.StatusConflict, gin.H{"error": gin.H{
+			"code":       "GOOGLE_LINK_REQUIRED",
+			"message":    "this email is already registered, confirm your password to link your Google account",
+			"link_token": link.Token,
+		}})
+	// ID token tidak sah (tanda tangan, issuer, audience, atau kedaluwarsa)
+	case errors.Is(err, apperror.ErrGoogleInvalidToken):
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "invalid google token")
+	// Google tidak menjamin email itu milik pemegang akun
+	case errors.Is(err, apperror.ErrGoogleEmailNotVerified):
+		respondError(c, http.StatusForbidden, "GOOGLE_EMAIL_UNVERIFIED", "google account email is not verified")
+	// kunci publik Google tidak bisa diambil
+	case errors.Is(err, apperror.ErrGoogleUnavailable):
+		respondError(c, http.StatusServiceUnavailable, "GOOGLE_UNAVAILABLE", "google sign-in is temporarily unavailable")
+	// akun sudah tertaut ke akun Google lain, atau tabrakan: 409
+	case errors.Is(err, apperror.ErrDuplicate):
+		respondError(c, http.StatusConflict, "CONFLICT", "conflict")
+	case err != nil:
+		h.log.Error("google login failed", "err", err)
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+	default:
+		respondData(c, http.StatusOK, AuthResponse{Token: token})
+	}
+}
+
+// LinkGoogle: POST /api/v1/users/google/link. Menautkan akun Google setelah password akun terdaftar dibuktikan.
+//   - 200 {data:{token}}; 400 INVALID_TOKEN: link token tidak sah, kedaluwarsa, atau sudah dibakar;
+//   - 401 UNAUTHORIZED: password salah; 409 CONFLICT: akun sudah tertaut ke akun Google lain.
+func (h *Handler) LinkGoogle(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	// baca body JSON; gagal berarti format request salah
+	var req LinkGoogleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+		return
+	}
+	token, err := h.svc.LinkGoogle(c.Request.Context(), req.LinkToken, req.Password)
+	switch {
+	case errors.Is(err, apperror.ErrInvalidLinkToken):
+		respondError(c, http.StatusBadRequest, "INVALID_TOKEN", "link token is invalid, expired or already used")
+	// password salah: balasan sama dengan login yang gagal
+	case errors.Is(err, apperror.ErrNotFound):
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized user")
+	case errors.Is(err, apperror.ErrDuplicate):
+		respondError(c, http.StatusConflict, "CONFLICT", "conflict")
+	case err != nil:
+		h.log.Error("link google failed", "err", err)
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+	default:
+		respondData(c, http.StatusOK, AuthResponse{Token: token})
 	}
 }

@@ -175,3 +175,21 @@ func TestAuth_EmptyLegacySecretNeverAcceptsForgedHS256(t *testing.T) {
 	_, err := testVerifier("").Verify(forged)
 	assert.Error(t, err)
 }
+
+func TestAuth_PurposeTokenIsNotASession(t *testing.T) {
+	// Link token Google ditandatangani kunci yang sama dengan token login dan memuat sub, tetapi hanya untuk layar
+	// konfirmasi password. Ia tidak boleh dipakai sebagai sesi (tanpa password) di API mana pun.
+	claims := jwt.MapClaims{"sub": "5", "gid": "g-1", "purpose": "google_link", "exp": time.Now().Add(5 * time.Minute).Unix()}
+	link := signRS256(t, claims)
+
+	w, reached, _ := authProbe(t, "Bearer "+link)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.False(t, reached, "handler tidak boleh dijalankan")
+	_, err := testVerifier("").Verify(link)
+	assert.Error(t, err)
+
+	// token login yang sama tanpa purpose tetap sah
+	_, err = testVerifier("").Verify(signRS256(t, jwt.MapClaims{"sub": "5", "exp": time.Now().Add(time.Hour).Unix()}))
+	assert.NoError(t, err)
+}

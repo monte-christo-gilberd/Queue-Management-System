@@ -256,3 +256,116 @@ func TestTokenStore_VerifyEmail_InvalidTokenChangesNothing(t *testing.T) {
 
 	assert.ErrorIs(t, store.NewTokenStore(db).VerifyEmail(ctx, "salah"), apperror.ErrInvalidResetToken)
 }
+
+// --- Login Google ---
+
+func TestUserStore_FindByGoogleIDEmailAndID(t *testing.T) {
+	db, mock := newMock(t)
+	now := time.Now()
+	mock.ExpectQuery(`FROM users WHERE google_id = \$1`).WithArgs("g-1").
+		WillReturnRows(sqlmock.NewRows(userCols).AddRow(1, "a@b.c", "abc", nil, "g-1", now))
+	mock.ExpectQuery(`FROM users WHERE lower\(email\) = lower\(\$1\) ORDER BY id LIMIT 1`).WithArgs("A@B.C").
+		WillReturnRows(sqlmock.NewRows(userCols).AddRow(1, "a@b.c", "abc", "hash", nil, now))
+	mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(1).
+		WillReturnRows(sqlmock.NewRows(userCols).AddRow(1, "a@b.c", "abc", "hash", nil, now))
+	s := store.NewUserStore(db)
+
+	byGoogle, err := s.FindByGoogleID(ctx, "g-1")
+	require.NoError(t, err)
+	assert.Equal(t, "g-1", byGoogle.GoogleID.String)
+	assert.False(t, byGoogle.PasswordHash.Valid)
+
+	byEmail, err := s.FindAccountByEmail(ctx, "A@B.C")
+	require.NoError(t, err)
+	assert.Equal(t, "hash", byEmail.PasswordHash.String)
+
+	byID, err := s.FindByID(ctx, 1)
+	require.NoError(t, err)
+	assert.Equal(t, "a@b.c", byID.Email)
+}
+
+func TestUserStore_GoogleFinders_NoRowMapsToErrNotFoundAndOtherErrorsAreWrapped(t *testing.T) {
+	db, mock := newMock(t)
+	boom := errors.New("db down")
+	mock.ExpectQuery(`google_id = \$1`).WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(`lower\(email\)`).WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(`WHERE id = \$1`).WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(`google_id = \$1`).WillReturnError(boom)
+	s := store.NewUserStore(db)
+
+	_, err := s.FindByGoogleID(ctx, "x")
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+	_, err = s.FindAccountByEmail(ctx, "x")
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+	_, err = s.FindByID(ctx, 9)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+	_, err = s.FindByGoogleID(ctx, "x")
+	assert.ErrorIs(t, err, boom)
+	assert.NotErrorIs(t, err, apperror.ErrNotFound, "galat database bukan 'akun tidak ada'")
+}
+
+func TestUserStore_CreateGoogle(t *testing.T) {
+	t.Run("membuat akun tanpa password dengan email terverifikasi", func(t *testing.T) {
+		db, mock := newMock(t)
+		now := time.Now()
+		mock.ExpectQuery(`INSERT INTO users\(email, username, google_id, email_verified_at\)\s+VALUES \(\$1, \$2, \$3, now\(\)\)`).
+			WithArgs("a@b.c", "abc", "g-1").
+			WillReturnRows(sqlmock.NewRows(userCols).AddRow(1, "a@b.c", "abc", nil, "g-1", now))
+
+		u, err := store.NewUserStore(db).CreateGoogle(ctx, "a@b.c", "abc", "g-1")
+
+		require.NoError(t, err)
+		assert.False(t, u.PasswordHash.Valid)
+		assert.Equal(t, "g-1", u.GoogleID.String)
+	})
+	t.Run("pelanggaran UNIQUE menjadi ErrDuplicate", func(t *testing.T) {
+		db, mock := newMock(t)
+		mock.ExpectQuery(`INSERT INTO users`).WillReturnError(&pgconn.PgError{Code: "23505"})
+
+		_, err := store.NewUserStore(db).CreateGoogle(ctx, "a@b.c", "abc", "g-1")
+
+		assert.ErrorIs(t, err, apperror.ErrDuplicate)
+	})
+	t.Run("galat lain dibungkus", func(t *testing.T) {
+		db, mock := newMock(t)
+		boom := errors.New("putus")
+		mock.ExpectQuery(`INSERT INTO users`).WillReturnError(boom)
+
+		_, err := store.NewUserStore(db).CreateGoogle(ctx, "a@b.c", "abc", "g-1")
+
+		assert.ErrorIs(t, err, boom)
+		assert.NotErrorIs(t, err, apperror.ErrDuplicate)
+	})
+}
+
+func TestUserStore_LinkGoogle(t *testing.T) {
+	const q = `UPDATE users SET google_id = \$2, email_verified_at = COALESCE\(email_verified_at, now\(\)\) WHERE id = \$1 AND google_id IS NULL`
+	t.Run("menautkan akun yang belum tertaut dan memverifikasi email", func(t *testing.T) {
+		db, mock := newMock(t)
+		mock.ExpectExec(q).WithArgs(7, "g-1").WillReturnResult(sqlmock.NewResult(0, 1))
+
+		assert.NoError(t, store.NewUserStore(db).LinkGoogle(ctx, 7, "g-1"))
+	})
+	t.Run("sudah tertaut ke akun Google lain: tidak ada baris berubah", func(t *testing.T) {
+		db, mock := newMock(t)
+		mock.ExpectExec(q).WithArgs(7, "g-1").WillReturnResult(sqlmock.NewResult(0, 0))
+
+		assert.ErrorIs(t, store.NewUserStore(db).LinkGoogle(ctx, 7, "g-1"), apperror.ErrDuplicate)
+	})
+	t.Run("google_id sudah dipakai akun lain (UNIQUE)", func(t *testing.T) {
+		db, mock := newMock(t)
+		mock.ExpectExec(q).WillReturnError(&pgconn.PgError{Code: "23505"})
+
+		assert.ErrorIs(t, store.NewUserStore(db).LinkGoogle(ctx, 7, "g-1"), apperror.ErrDuplicate)
+	})
+	t.Run("galat lain dibungkus", func(t *testing.T) {
+		db, mock := newMock(t)
+		boom := errors.New("putus")
+		mock.ExpectExec(q).WillReturnError(boom)
+
+		err := store.NewUserStore(db).LinkGoogle(ctx, 7, "g-1")
+
+		assert.ErrorIs(t, err, boom)
+		assert.NotErrorIs(t, err, apperror.ErrDuplicate)
+	})
+}

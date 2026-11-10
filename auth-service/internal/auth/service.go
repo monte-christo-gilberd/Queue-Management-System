@@ -50,6 +50,22 @@ type UserStore interface {
 	FindForVerification(ctx context.Context, userID int64) (model.User, error)
 	// PasswordChangedAt: nil bila belum pernah; apperror.ErrNotFound bila user tidak ada.
 	PasswordChangedAt(ctx context.Context, userID int64) (*time.Time, error)
+
+	// Login Google.
+
+	// FindByGoogleID: akun yang tertaut ke akun Google ini; apperror.ErrNotFound bila tidak ada.
+	FindByGoogleID(ctx context.Context, googleID string) (model.User, error)
+	// FindAccountByEmail: akun lengkap (password_hash, google_id) dengan email ini, tanpa membedakan huruf besar atau
+	// kecil; apperror.ErrNotFound bila tidak ada.
+	FindAccountByEmail(ctx context.Context, email string) (model.User, error)
+	// FindByID: akun lengkap dengan id ini; apperror.ErrNotFound bila tidak ada.
+	FindByID(ctx context.Context, id int64) (model.User, error)
+	// CreateGoogle membuat akun tanpa password dengan email yang sudah diverifikasi Google. apperror.ErrDuplicate bila
+	// email atau google_id sudah dipakai.
+	CreateGoogle(ctx context.Context, email, username, googleID string) (model.User, error)
+	// LinkGoogle menautkan akun Google ke akun yang belum tertaut dan menandai emailnya terverifikasi.
+	// apperror.ErrDuplicate bila akun itu sudah tertaut ke akun Google lain, atau google_id sudah dipakai akun lain.
+	LinkGoogle(ctx context.Context, userID int64, googleID string) error
 }
 
 // TokenStore: token sekali pakai (user_action_tokens). Dipenuhi store.TokenStore.
@@ -94,6 +110,10 @@ type Service struct {
 	now func() time.Time
 	// log: pencatat peristiwa, mis. saat batas permintaan per jam tercapai.
 	log *slog.Logger
+	// google: pemeriksa ID token Google. Nil = login Google mati (rute tidak dipasang).
+	google GoogleVerifier
+	// links: penghitung salah password per link token (lihat google.go).
+	links *linkAttempts
 }
 
 // NewService merangkai Service. mailer boleh nil (email mati).
@@ -108,6 +128,7 @@ func NewService(users UserStore, tokens TokenStore, issuer *TokenIssuer, mailer 
 		verifyOn:  opts.VerificationRequired && mailer != nil,
 		now:       time.Now,
 		log:       slog.Default(),
+		links:     newLinkAttempts(),
 	}
 }
 

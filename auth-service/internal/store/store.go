@@ -125,6 +125,83 @@ func (r *UserStore) PasswordChangedAt(ctx context.Context, userID int64) (*time.
 	return &t.Time, nil
 }
 
+// accountCols: kolom akun lengkap yang dibaca untuk login Google.
+const accountCols = `id, email, username, password_hash, google_id, created_at`
+
+// FindByGoogleID: akun yang tertaut ke akun Google ini. ErrNotFound bila tidak ada.
+func (r *UserStore) FindByGoogleID(ctx context.Context, googleID string) (model.User, error) {
+	return r.findOne(ctx, "find user by google id", `SELECT `+accountCols+` FROM users WHERE google_id = $1`, googleID)
+}
+
+// FindAccountByEmail: akun dengan email ini tanpa membedakan huruf besar atau kecil (registrasi lama tidak
+// menormalkan email, jadi "Budi@x.com" dan "budi@x.com" harus dikenali sebagai akun yang sama). Bila ada lebih dari
+// satu, yang paling lama dipakai. ErrNotFound bila tidak ada.
+func (r *UserStore) FindAccountByEmail(ctx context.Context, email string) (model.User, error) {
+	return r.findOne(ctx, "find user by email", `SELECT `+accountCols+` FROM users WHERE lower(email) = lower($1) ORDER BY id LIMIT 1`, email)
+}
+
+// FindByID: akun lengkap dengan id ini. ErrNotFound bila tidak ada.
+func (r *UserStore) FindByID(ctx context.Context, id int64) (model.User, error) {
+	return r.findOne(ctx, "find user by id", `SELECT `+accountCols+` FROM users WHERE id = $1`, id)
+}
+
+// findOne menjalankan query yang mengembalikan satu akun; tidak ada baris menjadi ErrNotFound.
+func (r *UserStore) findOne(ctx context.Context, what, query string, args ...any) (model.User, error) {
+	var u model.User
+	err := r.db.GetContext(ctx, &u, query, args...)
+	// tidak ada baris: ErrNotFound
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.User{}, apperror.ErrNotFound
+	}
+	// galat lain dibungkus dengan konteks
+	if err != nil {
+		return model.User{}, fmt.Errorf("%s: %w", what, err)
+	}
+	return u, nil
+}
+
+// CreateGoogle membuat akun tanpa password. email_verified_at langsung diisi karena Google sudah menjamin emailnya.
+// ErrDuplicate bila email atau google_id melanggar UNIQUE (kode pgconn 23505).
+func (r *UserStore) CreateGoogle(ctx context.Context, email, username, googleID string) (model.User, error) {
+	const query = `
+		INSERT INTO users(email, username, google_id, email_verified_at)
+		VALUES ($1, $2, $3, now())
+		RETURNING ` + accountCols
+	var u model.User
+	err := r.db.GetContext(ctx, &u, query, email, username, googleID)
+	var pgErr *pgconn.PgError
+	// kode 23505 = pelanggaran UNIQUE
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return model.User{}, apperror.ErrDuplicate
+	}
+	if err != nil {
+		return model.User{}, fmt.Errorf("create google user: %w", err)
+	}
+	return u, nil
+}
+
+// LinkGoogle menautkan google_id ke akun yang belum tertaut dan menandai emailnya terverifikasi (Google menjamin
+// email yang sama). ErrDuplicate bila akun sudah tertaut, atau google_id sudah dipakai akun lain.
+func (r *UserStore) LinkGoogle(ctx context.Context, userID int64, googleID string) error {
+	// google_id IS NULL di WHERE: dua permintaan serentak, hanya satu yang berhasil menautkan.
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET google_id = $2, email_verified_at = COALESCE(email_verified_at, now()) WHERE id = $1 AND google_id IS NULL`,
+		userID, googleID)
+	var pgErr *pgconn.PgError
+	// google_id itu sudah dipakai akun lain
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return apperror.ErrDuplicate
+	}
+	if err != nil {
+		return fmt.Errorf("link google: %w", err)
+	}
+	// tidak ada baris yang berubah: akun sudah tertaut ke akun Google lain
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return apperror.ErrDuplicate
+	}
+	return nil
+}
+
 // TokenStore mengakses tabel user_action_tokens (hanya hash token yang disimpan).
 type TokenStore struct {
 	// db: koneksi PostgreSQL; transaksi dimulai dari sini.

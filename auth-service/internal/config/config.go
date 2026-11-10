@@ -44,6 +44,11 @@ type Config struct {
 	EmailVerificationRequired bool
 	// ShutdownTimeout: batas menunggu request berjalan saat berhenti.
 	ShutdownTimeout time.Duration
+	// GoogleClientIDs: client ID OAuth yang sah (web, Android, iOS) untuk klaim `aud` ID token Google
+	// (GOOGLE_CLIENT_IDS, dipisah koma). Kosong = login Google mati: rutenya tidak dipasang (404).
+	GoogleClientIDs []string
+	// GoogleCertsURL: alamat kunci publik Google (GOOGLE_CERTS_URL). Bawaan alamat resmi Google; hanya diganti di tes.
+	GoogleCertsURL string
 }
 
 // Load membaca environment (dengan ../.env bila ada), memvalidasi, dan mengembalikan Config.
@@ -73,6 +78,8 @@ func Load() (Config, error) {
 		MailServiceURL:   strings.TrimRight(os.Getenv("MAIL_SERVICE_URL"), "/"),
 		MailServiceToken: os.Getenv("MAIL_SERVICE_TOKEN"),
 		ShutdownTimeout:  8 * time.Second,
+		GoogleClientIDs:  splitList(os.Getenv("GOOGLE_CLIENT_IDS")),
+		GoogleCertsURL:   strings.TrimSpace(os.Getenv("GOOGLE_CERTS_URL")),
 	}
 
 	// DATABASE_URL wajib ada
@@ -144,7 +151,22 @@ func (c Config) validateProduction() error {
 	if c.MailServiceToken != "" && len(c.MailServiceToken) < 32 {
 		return errors.New("production: MAIL_SERVICE_TOKEN must be at least 32 chars")
 	}
+	// kunci publik Google tidak boleh diambil lewat jaringan terbuka (kunci palsu = token palsu diterima)
+	if c.GoogleCertsURL != "" && !strings.HasPrefix(c.GoogleCertsURL, "https://") {
+		return errors.New("production: GOOGLE_CERTS_URL must use https")
+	}
 	return nil
+}
+
+// splitList memecah daftar yang dipisah koma menjadi slice, membuang spasi dan entri kosong.
+func splitList(raw string) []string {
+	var out []string
+	for _, p := range strings.Split(raw, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // loadPrivateKey membaca kunci privat RSA dari berkas PEM (PKCS#8 atau PKCS#1).

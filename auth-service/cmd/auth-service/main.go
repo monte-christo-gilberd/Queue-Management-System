@@ -16,6 +16,7 @@ import (
 
 	"qms/auth-service/internal/auth"
 	"qms/auth-service/internal/config"
+	"qms/auth-service/internal/google"
 	"qms/auth-service/internal/httpapi"
 	"qms/auth-service/internal/mailclient"
 	"qms/auth-service/internal/store"
@@ -60,6 +61,13 @@ func main() {
 		auth.Options{PublicAppURL: cfg.PublicAppURL, VerificationRequired: cfg.EmailVerificationRequired},
 	)
 
+	// login Google opsional: hanya menyala bila GOOGLE_CLIENT_IDS terisi
+	if len(cfg.GoogleClientIDs) > 0 {
+		svc.WithGoogle(google.NewVerifier(cfg.GoogleCertsURL, cfg.GoogleClientIDs))
+	} else {
+		slog.Warn("GOOGLE_CLIENT_IDS kosong: login Google tidak dipasang")
+	}
+
 	// pasang aturan validasi no_html_tags sebelum request pertama
 	httpapi.RegisterValidators()
 	// server HTTP dengan batas waktu agar koneksi macet tidak menggantung
@@ -78,7 +86,7 @@ func main() {
 	defer stop()
 	// jalankan server di goroutine agar main bisa menunggu sinyal berhenti
 	go func() {
-		slog.Info("auth-service starting", "port", cfg.Port, "email", mailer != nil, "verification", cfg.EmailVerificationRequired)
+		slog.Info("auth-service starting", "port", cfg.Port, "email", mailer != nil, "verification", cfg.EmailVerificationRequired, "google", svc.GoogleEnabled())
 		// berhenti karena galat selain penutupan normal: hentikan proses
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fatal("server", err)

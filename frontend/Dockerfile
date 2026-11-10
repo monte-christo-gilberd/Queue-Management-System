@@ -47,8 +47,15 @@ COPY . .
 # mis. --build-arg EXPO_PUBLIC_API_URL=https://qms.contoh.ac.id. Kosong = frontend memanggil host:8080 langsung.
 # ARG: nilai ini hanya ada saat build, dan diambil dari --build-arg.
 ARG EXPO_PUBLIC_API_URL
+# Client ID OAuth Google (publik). Kosong semua = tombol "Login with Google" disembunyikan.
+ARG EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=""
+ARG EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=""
+ARG EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=""
 # Meneruskan ARG ke ENV agar `expo export` membacanya dan membakarnya ke bundle.
-ENV EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}
+ENV EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL} \
+    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=${EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID} \
+    EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=${EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID} \
+    EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=${EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID}
 # Membuat bundle web statis ke folder dist/. --clear: membersihkan cache Metro agar hasilnya bersih.
 RUN npx expo export --platform web --clear
 

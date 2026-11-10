@@ -216,6 +216,9 @@ services:
       MAIL_SERVICE_TOKEN: ${MAIL_SERVICE_TOKEN:?set MAIL_SERVICE_TOKEN in .env}
       # [SINKRON] Harus sama dengan nilai di backend.
       EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-}
+      # Login Google: client ID OAuth (web, Android, iOS) dipisah koma. Kosong = login Google mati (rute 404).
+      # GOOGLE_CERTS_URL sengaja tidak diteruskan di prod: kunci publik Google selalu dari alamat resmi.
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-8}
     volumes:
       # Folder kunci (privat dan publik), hanya baca.
@@ -319,6 +322,10 @@ services:
       args:
         # Build-time, bukan runtime: web memanggil API di origin yang sama (lewat nginx).
         EXPO_PUBLIC_API_URL: origin
+        # Client ID OAuth Google (publik). Dibakar ke bundle saat build; kosong semua = tombol Google disembunyikan.
+        EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:-}
+        EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: ${EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:-}
+        EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID:-}
     networks:
       - internal
     restart: unless-stopped

@@ -258,6 +258,10 @@ services:
       MAIL_SERVICE_TOKEN: ${MAIL_SERVICE_TOKEN:?set MAIL_SERVICE_TOKEN in .env}
       # [SINKRON] Harus sama dengan nilai di backend (guard verifikasi di sana).
       EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-}
+      # Login Google: client ID OAuth (web, Android, iOS) dipisah koma. Kosong = login Google mati (rute 404).
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+      # HANYA tes lokal: alamat kunci publik Google. Kosong = alamat resmi Google.
+      GOOGLE_CERTS_URL: ${GOOGLE_CERTS_URL:-}
     volumes:
       - ./auth-service:/src
       - go_build_cache:/root/.cache/go-build
@@ -360,6 +364,10 @@ services:
     environment:
       # Web di belakang nginx memanggil API di origin yang sama.
       EXPO_PUBLIC_API_URL: origin
+      # Client ID OAuth Google (publik, bukan rahasia). Kosong semua = tombol Google disembunyikan.
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:-}
+      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: ${EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID:-}
+      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID:-}
     volumes:
       # Kode frontend (hot reload Metro).
       - ./frontend:/app

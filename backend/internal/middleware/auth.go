@@ -60,6 +60,11 @@ func (v *TokenVerifier) Verify(raw string) (jwt.MapClaims, error) {
 	if !ok {
 		return nil, errors.New("invalid claims")
 	}
+	// Token yang punya klaim `purpose` (mis. link token Google dari auth-service) ditandatangani kunci yang sama
+	// dan memuat `sub`, tetapi BUKAN token login: tanpa penolakan ini ia bisa dipakai sebagai sesi tanpa password.
+	if _, has := claims["purpose"]; has {
+		return nil, errors.New("not a login token")
+	}
 	return claims, nil
 }
 

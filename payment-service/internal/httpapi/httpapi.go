@@ -174,6 +174,10 @@ func (a *API) authenticate(r *http.Request) (int64, bool) {
 	if !ok {
 		return 0, false
 	}
+	// Token ber-`purpose` (mis. link token Google) bukan token login: tolak, walau tanda tangannya sah.
+	if _, has := claims["purpose"]; has {
+		return 0, false
+	}
 	// Klaim sub harus berupa teks.
 	sub, ok := claims["sub"].(string)
 	if !ok {

@@ -20,7 +20,8 @@ GRANT CONNECT ON DATABASE :"DBNAME" TO auth_rw;
 GRANT USAGE ON SCHEMA public TO auth_rw;
 -- users: baca kolom login dan verifikasi; tulis hanya kolom yang diubah alur auth.
 GRANT SELECT (id, email, username, password_hash, google_id, created_at, password_changed_at, email_verified_at) ON users TO auth_rw;
-GRANT INSERT (email, username, password_hash, google_id) ON users TO auth_rw;
+-- email_verified_at: akun Google baru langsung terverifikasi (Google menjamin emailnya).
+GRANT INSERT (email, username, password_hash, google_id, email_verified_at) ON users TO auth_rw;
 GRANT UPDATE (password_hash, password_changed_at, email_verified_at, google_id) ON users TO auth_rw;
 GRANT USAGE ON SEQUENCE users_id_seq TO auth_rw;
 -- user_action_tokens: token reset password dan verifikasi email (hanya hash). Tidak ada DELETE.
