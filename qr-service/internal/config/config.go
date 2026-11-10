@@ -1,4 +1,3 @@
-// Package config membaca dan memvalidasi konfigurasi qr-service dari environment.
 package config
 
 import (
