@@ -81,8 +81,8 @@ Memeriksa `MAIL_MODE` di file env prod sebelum stack naik. Dipanggil otomatis ol
 
 | `MAIL_MODE` | Arti | Pemeriksaan |
 |---|---|---|
-| `smtp` (bawaan bila kosong) | Email dikirim lewat SMTP nyata | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` terisi dan bukan nilai contoh (`GANTI`); host bukan `mailpit`; `SMTP_TLS=none` hanya untuk localhost |
-| `mailpit` | Email ditangkap Mailpit dan **tidak** dikirim ke siapa pun (demo atau uji) | Hanya peringatan: UI Mailpit hanya di `127.0.0.1`, dan bila verifikasi email menyala, user baru tidak menerima tautan |
+| `mailpit` (**bawaan bila kosong**) | Email ditangkap Mailpit dan **tidak** dikirim ke siapa pun (demo atau uji) | Hanya peringatan: UI Mailpit hanya di `127.0.0.1`, dan bila verifikasi email menyala, user baru tidak menerima tautan |
+| `smtp` | Email dikirim lewat SMTP nyata | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` terisi dan bukan nilai contoh (`GANTI`); host bukan `mailpit`; `SMTP_TLS=none` hanya untuk localhost |
 
 Pemeriksaan umum untuk kedua mode: `MAIL_SERVICE_TOKEN` terisi, bukan contoh, minimal 32 karakter; `MAIL_DB_PASSWORD`
 terisi dan bukan contoh.
@@ -90,7 +90,7 @@ terisi dan bukan contoh.
 ```bash
 scripts/check-mail-mode.sh                 # memakai $QMS_ENV_FILE atau .env.prod
 scripts/check-mail-mode.sh .env.prod       # file env eksplisit
-MAIL_MODE=mailpit scripts/check-mail-mode.sh .env.prod
+MAIL_MODE=smtp scripts/check-mail-mode.sh .env.prod
 ```
 
 `MAIL_MODE` di lingkungan menimpa nilai di file. Kode keluar 1 bila konfigurasi salah.

@@ -33,8 +33,8 @@
 #     pakai `make tunnel`. Tunnel butuh cloudflared dan internet.
 #   - URL tunnel acak tiap sesi. Backend dan qr-service membacanya saat start (QMS_PUBLIC_ORIGIN).
 #   - Mode email prod:
-#       MAIL_MODE=smtp     email dikirim lewat SMTP nyata (bawaan).
-#       MAIL_MODE=mailpit  email ditangkap Mailpit dan TIDAK terkirim (demo/uji).
+#       MAIL_MODE=mailpit  email ditangkap Mailpit dan TIDAK terkirim ke siapa pun (demo/uji). BAWAAN bila MAIL_MODE kosong.
+#       MAIL_MODE=smtp     email dikirim lewat SMTP nyata (isi SMTP_* di .env.prod).
 # =============================================================================
 
 SHELL := bash
@@ -155,7 +155,8 @@ verify-user:
 # -----------------------------------------------------------------------------
 
 # MAIL_MODE dibaca dari $(PROD_ENV). Nilai di baris perintah (make prod-up MAIL_MODE=...) menimpa file.
-MAIL_MODE := $(shell grep -E '^MAIL_MODE=' $(PROD_ENV) 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '"' | tr -d "'")
+# Kosong di file = mailpit (bawaan): email TIDAK dikirim ke penerima sebenarnya. Pakai smtp untuk SMTP nyata.
+MAIL_MODE := $(or $(strip $(shell grep -E '^MAIL_MODE=' $(PROD_ENV) 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '"' | tr -d "'")),mailpit)
 
 # Mode mailpit: profile `mailpit` aktif dan SMTP_* dipaksa ke Mailpit. Variabel `export` ini menimpa .env.prod
 # untuk setiap perintah di Makefile ini.
@@ -176,7 +177,7 @@ PROD := docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) $(PROD_
 # Bila berpindah dari mailpit ke smtp, sisa container Mailpit dihentikan supaya tidak membingungkan.
 prod-up:
 	scripts/gen-auth-keys.sh
-	MAIL_MODE=$(or $(MAIL_MODE),smtp) QMS_ENV_FILE=$(PROD_ENV) scripts/check-mail-mode.sh
+	MAIL_MODE=$(MAIL_MODE) QMS_ENV_FILE=$(PROD_ENV) scripts/check-mail-mode.sh
 	$(PROD) up -d --build
 	$(if $(PROD_PROFILE),,docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) --profile mailpit rm -sf mailpit >/dev/null 2>&1 || true)
 	pmp=$$(grep -E '^MAILPIT_UI_PORT=' $(PROD_ENV) 2>/dev/null | tail -1 | cut -d= -f2 || true); pmp=$${pmp:-8025}
@@ -221,5 +222,5 @@ prod-reset:
 mailpit:
 	$(mailpit_dev)
 	pmp=$$(grep -E '^MAILPIT_UI_PORT=' $(PROD_ENV) 2>/dev/null | tail -1 | cut -d= -f2 || true); pmp=$${pmp:-8025}
-	echo "Prod (MAIL_MODE=$(or $(MAIL_MODE),smtp)): $(if $(filter mailpit,$(MAIL_MODE)),Mailpit di server prod: http://localhost:$$pmp (hanya dari server itu; jauh: ssh -L $$pmp:127.0.0.1:$$pmp <user>@<server>),tanpa Mailpit: email dikirim lewat SMTP nyata)"
+	echo "Prod (MAIL_MODE=$(MAIL_MODE)): $(if $(filter mailpit,$(MAIL_MODE)),Mailpit di server prod: http://localhost:$$pmp (hanya dari server itu; jauh: ssh -L $$pmp:127.0.0.1:$$pmp <user>@<server>),tanpa Mailpit: email dikirim lewat SMTP nyata)"
 	# Ubah mode prod: make prod-up MAIL_MODE=mailpit   atau   make prod-up MAIL_MODE=smtp   (atau set MAIL_MODE di $(PROD_ENV))

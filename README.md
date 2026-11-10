@@ -277,8 +277,8 @@ Akun baru dikirimi tautan `/verify-email?token=...` (berlaku 24 jam, sekali paka
 | Lingkungan | Email verifikasi | Cara memverifikasi |
 |---|---|---|
 | Dev (`make up`) | Ditangkap Mailpit | Buka `http://localhost:8025`, klik tautan di email |
-| Prod `MAIL_MODE=smtp` (bawaan) | Dikirim ke inbox asli lewat SMTP, mis. Gmail (`smtp.gmail.com`, 587, `starttls`, kata sandi aplikasi) | Pengguna klik tautan di inbox-nya |
-| Prod `MAIL_MODE=mailpit` | Ditangkap Mailpit, **tidak terkirim ke siapa pun** | Ambil tautan dari Mailpit (SSH tunnel), atau `make verify-user EMAIL=<email> STACK=prod` |
+| Prod `MAIL_MODE=smtp` | Dikirim ke inbox asli lewat SMTP, mis. Gmail (`smtp.gmail.com`, 587, `starttls`, kata sandi aplikasi) | Pengguna klik tautan di inbox-nya |
+| Prod `MAIL_MODE=mailpit` (**bawaan**) | Ditangkap Mailpit, **tidak terkirim ke siapa pun** | Ambil tautan dari Mailpit (SSH tunnel), atau `make verify-user EMAIL=<email> STACK=prod` |
 
 - `make verify-user EMAIL=<email> [STACK=prod]` (`scripts/verify-user.sh`) menandai satu akun terverifikasi langsung di database. Idempoten dan aman terhadap karakter aneh di email.
 - `scripts/check-mail-mode.sh` (dijalankan `make prod-up`) memperingatkan bahwa pengguna baru tidak bisa memverifikasi di mode `mailpit`, kecuali `EMAIL_VERIFICATION_REQUIRED=false`.
@@ -292,11 +292,11 @@ Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat
 |---|---|---|---|
 | Dev (LAN) | `make up` | Mailpit (tidak keluar ke internet) | `http://localhost:8025` (dicetak di akhir `make up`) |
 | Dev + tunnel | `make tunnel` | Mailpit | sama; tidak ikut lewat tunnel. Tautan di email memakai URL tunnel sesi itu |
-| Prod, SMTP nyata | `make prod-up` (`MAIL_MODE=smtp`, bawaan) | Penerima sebenarnya | Tidak ada Mailpit; lihat inbox penerima atau dashboard penyedia SMTP |
-| Prod, Mailpit | `make prod-up-mailpit` (atau `MAIL_MODE=mailpit`) | Mailpit, **tidak terkirim ke siapa pun** | `http://localhost:8025` di server prod; dari jauh pakai SSH tunnel |
+| Prod, SMTP nyata | `make prod-up-smtp` (atau `MAIL_MODE=smtp` di `.env.prod`) | Penerima sebenarnya | Tidak ada Mailpit; lihat inbox penerima atau dashboard penyedia SMTP |
+| Prod, Mailpit | `make prod-up` (bawaan), atau `make prod-up-mailpit` | Mailpit, **tidak terkirim ke siapa pun** | `http://localhost:8025` di server prod; dari jauh pakai SSH tunnel |
 
 ##### Memilih mode email produksi
-`MAIL_MODE` di `.env.prod` (`smtp` atau `mailpit`), atau satu kali jalan dari baris perintah: `make prod-up MAIL_MODE=mailpit` / `make prod-up MAIL_MODE=smtp` (menimpa file). Mode `mailpit` menyalakan container Mailpit lewat compose profile `mailpit` dan memaksa `SMTP_*` ke Mailpit (menimpa isi `.env.prod`, jadi kredensial SMTP nyata tidak dipakai). Pesan Mailpit prod disimpan di volume `mailpit_data_prod` (bertahan saat restart). Pindah ke `smtp` menghentikan container Mailpit; `make prod-down` menghentikannya di kedua mode. `scripts/check-mail-mode.sh` dijalankan oleh `make prod-up` dan menolak: mode selain `smtp`/`mailpit`, `SMTP_*` kosong atau masih berisi `GANTI`, `SMTP_HOST=mailpit` pada mode `smtp`, `SMTP_TLS=none` ke host jauh, dan `MAIL_SERVICE_TOKEN` atau `MAIL_DB_PASSWORD` kosong, contoh, atau (token) kurang dari 32 karakter. Menjalankan `docker compose -f docker-compose.prod.yml` langsung (tanpa make) pada mode `mailpit` butuh `--profile mailpit` dan `SMTP_HOST=mailpit SMTP_PORT=1025 SMTP_TLS=none` di lingkungan.
+`MAIL_MODE` di `.env.prod` (`mailpit` atau `smtp`; kosong = `mailpit`), atau satu kali jalan dari baris perintah: `make prod-up MAIL_MODE=mailpit` / `make prod-up MAIL_MODE=smtp` (menimpa file). Mode `mailpit` menyalakan container Mailpit lewat compose profile `mailpit` dan memaksa `SMTP_*` ke Mailpit (menimpa isi `.env.prod`, jadi kredensial SMTP nyata tidak dipakai). Pesan Mailpit prod disimpan di volume `mailpit_data_prod` (bertahan saat restart). Pindah ke `smtp` menghentikan container Mailpit; `make prod-down` menghentikannya di kedua mode. `scripts/check-mail-mode.sh` dijalankan oleh `make prod-up` dan menolak: mode selain `smtp`/`mailpit`, `SMTP_*` kosong atau masih berisi `GANTI`, `SMTP_HOST=mailpit` pada mode `smtp`, `SMTP_TLS=none` ke host jauh, dan `MAIL_SERVICE_TOKEN` atau `MAIL_DB_PASSWORD` kosong, contoh, atau (token) kurang dari 32 karakter. Menjalankan `docker compose -f docker-compose.prod.yml` langsung (tanpa make) pada mode `mailpit` butuh `--profile mailpit` dan `SMTP_HOST=mailpit SMTP_PORT=1025 SMTP_TLS=none` di lingkungan.
 
 ##### Dev dan uji
 - Compose dev sudah mengarahkan ke `mailpit:1025`. Pesan hilang saat container dibuat ulang. Uji jalur email tanpa menunggu peristiwa antrian: `docker compose exec mail-service go run ./cmd/mail-service send-test alamat@contoh.com`.
