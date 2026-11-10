@@ -1,6 +1,25 @@
+# =============================================================================
+# Dockerfile.dockerignore: daftar putih berkas yang boleh masuk build context nginx.
+# -----------------------------------------------------------------------------
+# Cara kerja: "*" mengabaikan semua berkas di deploy/nginx/. Baris "!nama" mengecualikan
+# (memasukkan) berkas tertentu. Berkas yang tidak tercantum di sini tidak ikut build,
+# meskipun ada di folder.
+# Dipakai oleh : Docker saat membangun image nginx (docker-compose*.yml, build.context).
+# Saat menambah berkas konfigurasi baru di deploy/nginx/ yang di-COPY Dockerfile,
+# tambahkan juga baris "!nama-berkas" di bawah ini. Jika tidak, COPY gagal.
+# Catatan: dockerignore tidak mendukung komentar di baris yang sama dengan pola, jadi
+#          komentar hanya ditaruh di baris terpisah seperti ini.
+# =============================================================================
+
+# Abaikan semua berkas di folder build. Ini aturan dasar; baris "!" di bawah membatalkannya untuk berkas tertentu.
 *
+# Masukkan konfigurasi dev (dipakai bila NGINX_CONF tidak diubah).
 !nginx.conf
+# Masukkan konfigurasi prod (dipakai bila build arg NGINX_CONF=nginx.prod.conf).
 !nginx.prod.conf
+# Masukkan isi server{} bersama, yang di-COPY ke snippets/server.conf.
 !server.conf
+# Masukkan header WebSocket dev (dipakai bila FRONTEND_UPGRADE tidak diubah).
 !frontend-upgrade.dev.conf
+# Masukkan header prod yang kosong (dipakai bila FRONTEND_UPGRADE=frontend-upgrade.prod.conf).
 !frontend-upgrade.prod.conf
