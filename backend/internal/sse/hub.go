@@ -18,23 +18,30 @@ type Hub struct {
 
 	// done ditutup oleh Shutdown. Client.Serve berhenti saat done tertutup agar http.Server.Shutdown tidak
 	// menunggu koneksi SSE yang berumur panjang; Run berhenti, dan Subscribe menolak klien baru.
-	done     chan struct{}
+	done chan struct{}
+	// stopOnce memastikan done hanya ditutup sekali, walaupun Shutdown dipanggil berkali-kali.
 	stopOnce sync.Once
 }
 
 // DisplayRoom: kunci room untuk layar publik antrian ini. Layar publik TIDAK ikut room antrian biasa karena
 // room itu membawa payload tiket lengkap (id user, dst); room ini hanya menerima sinyal tanpa data.
+// Kuncinya dibuat negatif agar tidak bentrok dengan queue_id yang selalu positif.
 func DisplayRoom(queueID int64) int64 { return -queueID }
 
 // SetBeforeNotify memasang hook yang dipanggil sebelum tiap event disebar. Panggil sebelum ada lalu lintas.
 func (h *Hub) SetBeforeNotify(fn func(queueID int64)) { h.beforeNotify = fn }
 
+// broadcastReq adalah satu permintaan siaran: pesan dan room tujuannya.
 type broadcastReq struct {
+	// queueID adalah kunci room yang menerima pesan.
 	queueID int64
+	// message adalah isi pesan yang sudah dalam bentuk JSON.
 	message []byte
 }
 
+// NewHub membuat Hub baru dengan semua channel dan map sudah siap dipakai. Hub belum berjalan sampai Run dipanggil.
 func NewHub() *Hub {
+	// buat map room kosong dan channel dengan kapasitas tertentu
 	return &Hub{
 		rooms:      make(map[int64]map[*Client]bool),
 		register:   make(chan *Client, 256),
@@ -47,41 +54,62 @@ func NewHub() *Hub {
 // Shutdown memberi tahu semua koneksi SSE untuk berhenti dan menghentikan Run. Aman dipanggil berkali-kali.
 // Dipanggil saat server akan berhenti, sebelum http.Server.Shutdown.
 func (h *Hub) Shutdown() {
+	// tutup channel done hanya sekali; pemanggilan berikutnya diabaikan oleh stopOnce
 	h.stopOnce.Do(func() { close(h.done) })
 }
 
+// Run memproses register, unregister, dan broadcast dalam satu goroutine sampai Shutdown dipanggil.
+// Memanggilnya di goroutine terpisah, mis. go hub.Run().
 func (h *Hub) Run() {
+	// ulangi terus, menunggu salah satu channel berisi pekerjaan
 	for {
 		select {
+		// hub dihentikan: keluar dari loop
 		case <-h.done:
 			return
+		// ada klien yang mau bergabung ke room
 		case client := <-h.register:
+			// kunci map karena akan diubah
 			h.mu.Lock()
+			// ambil room antrian klien; bila belum ada, buat room baru
 			room, ok := h.rooms[client.queueID]
 			if !ok {
 				room = make(map[*Client]bool)
 				h.rooms[client.queueID] = room
 			}
+			// daftarkan klien ke room
 			room[client] = true
 			h.mu.Unlock()
+		// ada klien yang mau keluar dari room
 		case client := <-h.unregister:
+			// kunci map karena akan diubah
 			h.mu.Lock()
+			// hanya lanjut bila room antrian klien ini ada
 			if room, ok := h.rooms[client.queueID]; ok {
+				// hanya lanjut bila klien memang terdaftar di room itu (hindari dua kali unregister)
 				if _, exists := room[client]; exists {
+					// hapus klien dari room dan tutup channel send-nya agar Serve berhenti
 					delete(room, client)
 					close(client.send)
+					// room kosong: hapus dari map agar tidak menumpuk
 					if len(room) == 0 {
 						delete(h.rooms, client.queueID)
 					}
 				}
 			}
 			h.mu.Unlock()
+		// ada pesan yang harus disebar ke satu room
 		case req := <-h.broadcast:
+			// kunci baca saja karena hanya membaca daftar klien
 			h.mu.RLock()
+			// ambil daftar klien di room tujuan
 			room := h.rooms[req.queueID]
+			// kirim pesan ke setiap klien di room
 			for client := range room {
 				select {
+				// klien masih bisa menerima pesan: kirim
 				case client.send <- req.message:
+				// antrean klien penuh (klien lambat): jangan block broadcast ke yang lain.
 				default:
 					// Klien lambat: jangan block broadcast ke yang lain.
 					// Tutup via unregister agar goroutine-nya selesai.
@@ -93,10 +121,13 @@ func (h *Hub) Run() {
 	}
 }
 
+// remove mengirim klien ke antrean unregister tanpa menunggu. Mengembalikan false bila antrean penuh.
 func (h *Hub) remove(client *Client) bool {
 	select {
+	// antrean unregister masih punya tempat: kirim klien
 	case h.unregister <- client:
 		return true
+	// antrean penuh: batalkan, pengirim tidak boleh macet
 	default:
 		return false
 	}
@@ -105,14 +136,18 @@ func (h *Hub) remove(client *Client) bool {
 // Subscribe mendaftarkan koneksi baru ke room queueID. Mengembalikan false bila antrean register penuh atau hub
 // sudah di-Shutdown; handler membalas 503 untuk kasus ini.
 func (h *Hub) Subscribe(client *Client) bool {
+	// cek lebih dulu apakah hub sudah dihentikan; bila ya, tolak klien baru
 	select {
 	case <-h.done:
 		return false
 	default:
 	}
+	// coba masukkan klien ke antrean register tanpa menunggu
 	select {
+	// berhasil masuk antrean
 	case h.register <- client:
 		return true
+	// antrean penuh
 	default:
 		return false
 	}
@@ -120,15 +155,18 @@ func (h *Hub) Subscribe(client *Client) bool {
 
 // Unsubscribe melepas koneksi dari room.
 func (h *Hub) Unsubscribe(client *Client) {
+	// kirim ke antrean unregister; hasil (berhasil atau tidak) diabaikan
 	h.remove(client)
 }
 
 // Broadcast mengirim pesan mentah ke semua klien di satu queue.
 // Non-blocking terhadap HTTP handler: antre ke channel, drop jika penuh.
 func (h *Hub) Broadcast(queueID int64, message []byte) {
+	// pesan kosong tidak perlu dikirim
 	if len(message) == 0 {
 		return
 	}
+	// coba antre pesan; bila antrean broadcast penuh, pesan dibuang agar pemanggil tidak menunggu
 	select {
 	case h.broadcast <- broadcastReq{queueID: queueID, message: message}:
 	default:
@@ -139,19 +177,25 @@ func (h *Hub) Broadcast(queueID int64, message []byte) {
 // service mendefinisikan interface Notify(queueID, action, payload),
 // Hub menyediakannya secara struktural.
 func (h *Hub) Notify(queueID int64, action string, payload interface{}) {
+	// bila hook beforeNotify dipasang, jalankan dulu (misalnya membatalkan cache layar publik)
 	if h.beforeNotify != nil {
 		h.beforeNotify(queueID)
 	}
+	// sebarkan event lengkap ke klien di room antrian ini
 	h.Broadcast(queueID, MarshalEvent(queueID, action, payload))
 	// Perubahan QR tidak mengubah apa pun di layar publik.
+	// untuk aksi selain perubahan QR, kirim juga sinyal tanpa data ke layar publik
 	if action != "queue_qr_updated" {
 		h.Broadcast(DisplayRoom(queueID), MarshalEvent(queueID, EventDisplayChanged, nil))
 	}
 }
 
-// RoomSize untuk observasi/test.
+// RoomSize mengembalikan jumlah klien di room queueID. Dipakai untuk observasi dan tes.
 func (h *Hub) RoomSize(queueID int64) int {
+	// kunci baca agar jumlah tidak dibaca saat map sedang diubah
 	h.mu.RLock()
+	// buka kunci saat fungsi selesai
 	defer h.mu.RUnlock()
+	// jumlah klien di room; room yang tidak ada menghasilkan 0
 	return len(h.rooms[queueID])
 }
