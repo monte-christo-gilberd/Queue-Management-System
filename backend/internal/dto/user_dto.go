@@ -16,8 +16,8 @@ type RegisterRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
-// LoginRequest menerima email ATAU username lewat `identifier`.
-// Field `email` tetap diterima sebagai alias supaya klien lama tidak rusak.
+// LoginRequest: body login. Menerima email ATAU username lewat Identifier. Field Email tetap diterima sebagai
+// alias supaya klien lama tidak rusak.
 type LoginRequest struct {
 	// Identifier: email atau username. Dipakai bila diisi.
 	Identifier string `json:"identifier" binding:"omitempty,no_html_tags"`

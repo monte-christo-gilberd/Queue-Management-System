@@ -38,7 +38,7 @@ type CreateQueueRequest struct {
 	QueueName string `json:"queue_name" binding:"required,no_html_tags"`
 	// QueueDescription: deskripsi antrian yang ditampilkan ke customer. Boleh kosong.
 	QueueDescription string `json:"queue_description" binding:"no_html_tags"`
-	// Opsional: 1-3 huruf/angka. Kosong = "A" (create) / tidak diubah (update).
+	// TicketPrefix: prefix nomor tiket, 1-3 huruf/angka. Kosong = "A" (create).
 	TicketPrefix string `json:"ticket_prefix"`
 }
 
@@ -48,7 +48,7 @@ type UpdateQueueRequest struct {
 	QueueName string `json:"queue_name" binding:"required,no_html_tags"`
 	// QueueDescription: deskripsi antrian yang baru. Boleh kosong.
 	QueueDescription string `json:"queue_description" binding:"no_html_tags"`
-	// Opsional: 1-3 huruf/angka. Kosong = "A" (create) / tidak diubah (update).
+	// TicketPrefix: prefix nomor tiket, 1-3 huruf/angka. Kosong = tidak diubah.
 	TicketPrefix string `json:"ticket_prefix"`
 }
 
@@ -141,8 +141,7 @@ func NewQueueResponses(queues []model.Queue) []QueueResponse {
 	return out
 }
 
-// QueueQRResponse: respons endpoint QR owner.
-// `action` memakai nama yang sama pola action lain ("queue_qr").
+// QueueQRResponse: respons endpoint QR owner. Action memakai nama yang sama dengan pola action lain ("queue_qr").
 type QueueQRResponse struct {
 	// Action: nama aksi untuk klien, selalu "queue_qr".
 	Action string `json:"action"`
@@ -177,7 +176,7 @@ func NewQueueQRResponse(
 
 // JoinByTokenRequest: body untuk bergabung ke antrian lewat token QR.
 type JoinByTokenRequest struct {
-	// Token join dari QR: format `v1.<payload>.<sig>`; JSON key-nya `t` (tautan `/join?t=...`).
+	// Token: token join dari QR, format `v1.<payload>.<sig>`. JSON key-nya `t` (tautan `/join?t=...`).
 	Token string `json:"t" binding:"required"`
 }
 

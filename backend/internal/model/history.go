@@ -6,108 +6,82 @@ import (
 )
 
 // HistoryQueue: ringkasan satu antrian yang sudah ditutup, beserta hitungan tiket per hasil akhir.
-//
-// Digunakan di fungsi:
-//
-// ListClosedQueues:
-//
-// - GET /history/queues
-//
-// GetClosedQueue:
-//
-// - GET /history/queues/:queue_id
-//
-// - GET /history/queues/:queue_id/export?format=csv|xlsx
+// Dipakai oleh HistoryRepository.ListClosedQueues (GET /history/queues),
+// HistoryRepository.GetClosedQueue (GET /history/queues/:queue_id, dan ekspor
+// GET /history/queues/:queue_id/export?format=csv|xlsx).
 type HistoryQueue struct {
-	// id antrian
+	// ID: id antrian di database.
 	ID int64 `db:"id"`
-	// nama antrian
+	// QueueName: nama antrian saat ditutup.
 	QueueName string `db:"queue_name"`
-	// prefiks tiket
+	// TicketPrefix: prefix nomor tiket antrian ini.
 	TicketPrefix string `db:"ticket_prefix"`
-	// waktu antrian dibuka
+	// OpenedAt: waktu antrian dibuka.
 	OpenedAt time.Time `db:"opened_at"`
-	// waktu antrian ditutup; bila closed_at kosong, dipakai created_at
+	// ClosedAt: waktu antrian ditutup. Bila closed_at kosong di database, nilai created_at yang dipakai.
 	ClosedAt time.Time `db:"closed_at"`
-	// total semua tiket yang terdaftar di antrian
+	// Total: jumlah semua tiket yang terdaftar di antrian.
 	Total int `db:"total"`
-	// total semua tiket yang selesai dilayani
+	// Completed: jumlah tiket yang selesai dilayani.
 	Completed int `db:"completed"`
-	// total semua tiket skipped yang tidak terlayani
+	// Skipped: jumlah tiket yang dilewati dan tidak kembali ke antrian.
 	Skipped int `db:"skipped"`
-	// total semua tiket yang dibatalkan pelanggan
+	// Cancelled: jumlah tiket yang dibatalkan customer.
 	Cancelled int `db:"cancelled"`
-	// total semua tiket yang dihapus pemilik
+	// Deleted: jumlah tiket yang dihapus owner dari antrian.
 	Deleted int `db:"deleted"`
-	// total nomor yang masih menunggu (atau sedang dilayani) saat antrian ditutup.
+	// Unserved: jumlah nomor yang masih menunggu atau sedang dilayani saat antrian ditutup.
 	Unserved int `db:"unserved"`
 }
 
 // HistoryQueueCursor: posisi keyset daftar riwayat (waktu menurun, lalu id menurun).
-//
-// Digunakan di fungsi:
-//
-// encodeQueueCursor dan decodeQueueCursor:
-//
-// - GET /history/queues
-//
-// - GET /users/me/history
+// Dipakai oleh encodeQueueCursor dan decodeQueueCursor (GET /history/queues dan GET /users/me/history).
 type HistoryQueueCursor struct {
-	// waktu antrian ditutup (endpoint pemilik) / waktu pelanggan bergabung (endpoint pelanggan)
+	// ClosedAt: waktu antrian ditutup (endpoint owner), atau waktu customer bergabung (endpoint customer).
 	ClosedAt time.Time
-	// id antrian (endpoint pemilik) / id tiket (endpoint pelanggan)
+	// ID: id antrian (endpoint owner), atau id tiket (endpoint customer).
 	ID int64
 }
 
 // HistoryTicket: satu nomor di antrian yang sudah ditutup. Catatan hanya dibaca owner antrian.
-//
-// Digunakan di fungsi:
-//
-// ListQueueTickets:
-//
-// - GET /history/queues/:queue_id
-//
-// - GET /history/queues/:queue_id/export
+// Dipakai oleh HistoryRepository.ListQueueTickets (GET /history/queues/:queue_id dan ekspor
+// GET /history/queues/:queue_id/export).
 type HistoryTicket struct {
-	// id tiket
+	// TicketID: id tiket di database.
 	TicketID int64 `db:"ticket_id"`
-	// nomor tiket
+	// TicketNumber: nomor tiket yang dilihat customer (tanpa prefix).
 	TicketNumber int `db:"ticket_number"`
-	// status tiket saat antrian ditutup
+	// Status: status tiket saat antrian ditutup.
 	Status string `db:"status"`
-	// berapa kali tiket ini dilewati
+	// SkipCount: berapa kali tiket ini sudah dilewati.
 	SkipCount int `db:"skip_count"`
-	// waktu pelanggan tiket ini bergabung
+	// JoinedAt: waktu customer bergabung ke antrian.
 	JoinedAt time.Time `db:"joined_at"`
-	// waktu pelanggan tiket ini dipanggil
+	// CalledAt: waktu tiket dipanggil. Tidak valid (null) bila belum pernah dipanggil.
 	CalledAt sql.NullTime `db:"called_at"`
-	// waktu pelanggan tiket ini selesai dilayani
+	// CompletedAt: waktu nomor selesai dilayani. Tidak valid (null) bila belum selesai.
 	CompletedAt sql.NullTime `db:"completed_at"`
-	// waktu pelanggan tiket ini membatalkan tiketnya
+	// CancelledAt: waktu customer membatalkan tiketnya. Tidak valid (null) bila tidak dibatalkan.
 	CancelledAt sql.NullTime `db:"cancelled_at"`
-	// nama pelanggan
+	// CustomerName: nama customer pemilik tiket.
 	CustomerName string `db:"customer_name"`
-	// email pelanggan
+	// CustomerEmail: email customer pemilik tiket.
 	CustomerEmail string `db:"customer_email"`
-	// nama loket yang melayani tiket ini, hanya terisi jika sudah terpanggil dan loket lebih dari 1
+	// CounterName: nama loket yang melayani tiket ini. Hanya terisi bila sudah terpanggil dan loket lebih dari satu.
 	CounterName sql.NullString `db:"counter_name"`
-	// catatan owner tentang tiket ini (hanya terlihat owner)
+	// Note: catatan owner tentang tiket ini. Hanya terlihat owner. Tidak valid (null) bila belum ada catatan.
 	Note sql.NullString `db:"note"`
 }
 
 // HistoryOutcome menerjemahkan status tiket ke hasil akhir yang ditampilkan di riwayat.
 // Nomor yang belum selesai saat antrian ditutup disebut "unserved".
-//
-// Dipakai di fungsi:
-//
-// NewHistoryTicketResponse dan NewUserHistoryTicketResponse (GET /history/queues/:queue_id dan GET /users/me/history),
-// serta label status di export (export.go).
+// Dipakai oleh NewHistoryTicketResponse dan NewUserHistoryTicketResponse (dto), serta label status di export (export.go).
 func HistoryOutcome(status string) string {
 	switch status {
-	// belum selesai saat antrian ditutup
+	// waiting atau currently_served berarti nomor belum selesai saat antrian ditutup: hasilnya unserved.
 	case "waiting", "currently_served":
 		return "unserved"
-	// status lain dipakai apa adanya
+	// status lain (completed, skipped, cancelled, deleted) dipakai apa adanya sebagai hasil akhir.
 	default:
 		return status
 	}
@@ -115,37 +89,32 @@ func HistoryOutcome(status string) string {
 
 // UserHistoryTicket: satu tiket milik user di riwayat customer. Tanpa catatan owner: catatan tidak pernah
 // dilihat customer.
-//
-// Digunakan di fungsi:
-//
-// ListUserTickets:
-//
-// - GET /users/me/history
+// Dipakai oleh HistoryRepository.ListUserTickets (GET /users/me/history).
 type UserHistoryTicket struct {
-	// id tiket
+	// TicketID: id tiket di database.
 	TicketID int64 `db:"ticket_id"`
-	// id antrian dimana tiket terdaftar
+	// QueueID: id antrian tempat tiket ini terdaftar.
 	QueueID int64 `db:"queue_id"`
-	// nama antrian tiket terdaftar
+	// QueueName: nama antrian tempat tiket ini terdaftar.
 	QueueName string `db:"queue_name"`
-	// prefiks tiket
+	// TicketPrefix: prefix nomor antrian, mis. "A" di "A-007".
 	TicketPrefix string `db:"ticket_prefix"`
-	// nomor tiket
+	// TicketNumber: nomor tiket yang dilihat customer (tanpa prefix).
 	TicketNumber int `db:"ticket_number"`
-	// status tiket (waiting, currently_served, completed, cancelled, skipped, deleted)
+	// Status: status tiket: waiting, currently_served, completed, cancelled, skipped, atau deleted.
 	Status string `db:"status"`
-	// status antrian (active, closed)
+	// QueueStatus: status antrian: active atau closed.
 	QueueStatus string `db:"queue_status"`
-	// berapa kali tiket ini dilewati
+	// SkipCount: berapa kali tiket ini sudah dilewati.
 	SkipCount int `db:"skip_count"`
-	// waktu pelanggan tiket ini bergabung antrian
+	// JoinedAt: waktu customer bergabung ke antrian.
 	JoinedAt time.Time `db:"joined_at"`
-	// waktu pelanggan tiket ini dipanggil
+	// CalledAt: waktu tiket dipanggil. Tidak valid (null) bila belum pernah dipanggil.
 	CalledAt sql.NullTime `db:"called_at"`
-	// waktu pelanggan tiket ini selesai dilayani
+	// CompletedAt: waktu nomor selesai dilayani. Tidak valid (null) bila belum selesai.
 	CompletedAt sql.NullTime `db:"completed_at"`
-	// waktu pelanggan tiket ini membatalkan
+	// CancelledAt: waktu customer membatalkan tiketnya. Tidak valid (null) bila tidak dibatalkan.
 	CancelledAt sql.NullTime `db:"cancelled_at"`
-	// nama loket tiket ini dilayani, hanya terisi jika sudah terpanggil dan loket lebih dari 1
+	// CounterName: nama loket tempat tiket ini dilayani. Hanya terisi bila sudah terpanggil dan loket lebih dari satu.
 	CounterName sql.NullString `db:"counter_name"`
 }

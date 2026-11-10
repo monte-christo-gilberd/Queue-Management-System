@@ -6,94 +6,67 @@ import (
 )
 
 // QueueDisplay: konfigurasi layar publik satu antrian. Token ada di URL layar.
-//
-// Digunakan di fungsi:
-//
-// DisplayRepository.Get, DisplayService.Config:
-//
-// - GET /queues/:queue_id/display
-//
-// Upsert, DisplayService.Configure:
-//
-// - PUT /queues/:queue_id/display
-//
-// Rotate, DisplayService.Rotate:
-//
-// - POST /queues/:queue_id/display/rotate
-//
-// GetByToken:
-//
-// - GET /display/:token
+// Dipakai oleh DisplayRepository.Get dan DisplayService.Config (GET /queues/:queue_id/display),
+// DisplayRepository.Upsert dan DisplayService.Configure (PUT /queues/:queue_id/display),
+// DisplayRepository.Rotate dan DisplayService.Rotate (POST /queues/:queue_id/display/rotate),
+// serta DisplayRepository.GetByToken (GET /display/:token).
 type QueueDisplay struct {
-	// id antrian
+	// QueueID: id antrian yang ditampilkan layar ini.
 	QueueID int64 `db:"queue_id"`
-	// token acak, sebagai kunci akses public display tanpa login
+	// Token: token acak sebagai kunci akses layar publik tanpa login.
 	Token string `db:"token"`
-	// maksimum nomor belum dipanggil yang ditampilkan
+	// UpcomingCount: jumlah maksimum nomor yang belum dipanggil dan ditampilkan.
 	UpcomingCount int `db:"upcoming_count"`
-	// maksimum nomor di skip yang ditampilkan
+	// SkippedCount: jumlah maksimum nomor yang dilewati dan ditampilkan.
 	SkippedCount int `db:"skipped_count"`
-	// waktu konfigurasi display dibuat
+	// CreatedAt: waktu konfigurasi layar dibuat.
 	CreatedAt time.Time `db:"created_at"`
-	// waktu token terakhir diganti; NULL bila belum pernah diganti. Token di baris ini selalu yang berlaku
+	// RotatedAt: waktu token terakhir diganti. Tidak valid (null) bila belum pernah diganti. Token di baris ini selalu yang berlaku.
 	RotatedAt sql.NullTime `db:"rotated_at"`
 }
 
 // DisplayQueueInfo: kolom antrian yang boleh tampil di layar publik.
-//
-// Digunakan di fungsi:
-//
-// DisplayRepository.QueueInfo:
-//
-// - GET /display/:token
+// Dipakai oleh DisplayRepository.QueueInfo (GET /display/:token).
 type DisplayQueueInfo struct {
-	// nama antrian
+	// Name: nama antrian.
 	Name string `db:"queue_name"`
-	// deskripsi antrian
+	// Desc: deskripsi antrian. Tidak valid (null) bila tidak diisi.
 	Desc sql.NullString `db:"queue_desc"`
-	// prefiks tiket
+	// Prefix: prefix nomor tiket, mis. "A" di "A-007".
 	Prefix string `db:"ticket_prefix"`
-	// status antrian
+	// Status: status antrian: active atau closed.
 	Status string `db:"status"`
 }
 
 // DisplayCounter: satu kartu di layar. Serving berisi label siap tampil ("A-007"), kosong bila counter tidak melayani.
-//
-// Digunakan di fungsi:
-//
-// build
+// Dipakai oleh DisplayService.build.
 type DisplayCounter struct {
-	// id loket
+	// ID: id counter.
 	ID int64
-	// nama loket yang ditampilkan
+	// Name: nama counter yang ditampilkan di layar.
 	Name string
-	// tiket yang sedang dilayani loket
+	// Serving: label nomor yang sedang dilayani counter ini (mis. "A-007"). Kosong bila counter tidak melayani.
 	Serving string
 }
 
 // DisplaySnapshot: keadaan antrian untuk layar publik. Sengaja hanya berisi teks siap tampil: tanpa id tiket,
 // id user, nama customer, atau catatan owner.
-//
-// Digunakan di fungsi:
-//
-// build:
-//
-// - GET /display/:token
+// Dipakai oleh DisplayService.build (GET /display/:token).
 type DisplaySnapshot struct {
-	// nama antrian
+	// QueueName: nama antrian yang tampil di layar.
 	QueueName string
-	// deskripsi antrian, bisa nil
+	// QueueDesc: deskripsi antrian. Nil bila tidak diisi.
 	QueueDesc *string
-	// status antrian
+	// Status: status antrian: active atau closed.
 	Status string
-	// true jika antrian punya lebih dari satu loket
+	// MultiCounter: true bila antrian punya lebih dari satu counter, sehingga layar menampilkan kartu counter.
 	MultiCounter bool
-	// semua display loket
+	// Counters: daftar kartu counter.
 	Counters []DisplayCounter
-	// nomor-nomor antrian yang sedang menunggu
+	// Upcoming: label nomor yang sedang menunggu, urut dari yang paling depan.
 	Upcoming []string
-	// nomor-nomor antrian yang ter skipped
+	// Skipped: label nomor yang dilewati.
 	Skipped []string
-	// waktu snapshot dibuat
+	// GeneratedAt: waktu snapshot ini dibuat.
 	GeneratedAt time.Time
 }
