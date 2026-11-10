@@ -1,18 +1,43 @@
-# Dependensi dipasang ulang di dalam image; jangan ikutkan hasil lokal, cache, atau tes.
+# =============================================================================
+# Dockerfile.dockerignore: berkas yang tidak ikut ke build context frontend.
+# -----------------------------------------------------------------------------
+# Dipakai oleh : BuildKit saat membangun frontend/Dockerfile. Nama berkas ini harus Dockerfile.dockerignore.
+# Catatan      : frontend juga punya .dockerignore dengan isi berbeda. Saat Dockerfile.dockerignore ada,
+#                BuildKit memakai yang ini, dan .dockerignore diabaikan. Lihat catatan di .dockerignore.
+# Tujuan       : dependensi dipasang ulang di dalam image, jadi hasil lokal (node_modules, dist, cache) dan tes tidak ikut.
+# =============================================================================
+
+# Abaikan node_modules lokal. Dipasang ulang di dalam image lewat npm ci, agar sesuai dengan lingkungan Linux image.
 node_modules
+# Abaikan hasil export lokal. Dibuat ulang di dalam image saat build.
 dist
+# Abaikan cache Expo lokal.
 .expo
+# Abaikan semua berkas .env, supaya rahasia tidak masuk image.
 .env
+# Abaikan varian lain .env (mis. .env.local).
 .env.*
+# Pengecualian: .env.example adalah contoh tanpa rahasia dan boleh ikut ke build.
 !.env.example
+# Abaikan riwayat git.
 .git
+# Abaikan .gitignore, berkas konfigurasi git yang tidak dipakai saat build.
 .gitignore
+# Abaikan semua berkas markdown di semua subfolder.
 **/*.md
+# Abaikan folder laporan Playwright (uji end-to-end). Tidak dibutuhkan untuk build.
 playwright/
+# Abaikan laporan HTML Playwright.
 playwright-report/
+# Abaikan hasil uji Playwright.
 test-results/
+# Abaikan folder tes umum.
 tests/
+# Abaikan proyek native Android. Aplikasi ini dibangun sebagai web, jadi folder ini tidak dibutuhkan.
 android/
+# Abaikan proyek native iOS. Sama seperti Android, tidak dibutuhkan untuk web.
 ios/
+# Abaikan laporan cakupan tes.
 coverage/
+# Abaikan berkas log lokal.
 *.log

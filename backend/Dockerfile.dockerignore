@@ -1,11 +1,28 @@
-# Jangan ikutkan rahasia, artefak lokal, atau tes ke image.
+# =============================================================================
+# Dockerfile.dockerignore: berkas yang tidak ikut ke build context backend.
+# -----------------------------------------------------------------------------
+# Dipakai oleh : BuildKit saat membangun backend/Dockerfile (nama berkas harus Dockerfile.dockerignore).
+# Tujuan       : mencegah rahasia (.env), artefak lokal, dan tes masuk ke image.
+# Cara kerja   : pola yang cocok diabaikan. Baris "!" mengembalikan berkas yang sudah diabaikan.
+# Saat menambah berkas rahasia atau artefak baru, tambahkan polanya di sini.
+# =============================================================================
+
+# Abaikan semua berkas .env, supaya rahasia tidak pernah masuk image.
 .env
+# Abaikan varian lain .env (mis. .env.local). Pola ini juga mencakup .env itu sendiri.
 .env.*
+# Pengecualian: .env.example adalah contoh tanpa rahasia dan boleh ikut ke build.
 !.env.example
+# Abaikan riwayat git. Tidak dibutuhkan untuk membangun binary.
 .git
+# Abaikan .gitignore, berkas konfigurasi git yang tidak dipakai saat build.
 .gitignore
+# Abaikan semua berkas markdown di semua subfolder. Dokumentasi tidak dibutuhkan untuk build.
 **/*.md
+# Abaikan folder tes integrasi dan unit di internal/test/. Tes tidak dijalankan di dalam image.
 internal/test/
+# Abaikan semua berkas tes Go di semua subfolder.
 **/*_test.go
 
+# Abaikan berkas log lokal.
 *.log

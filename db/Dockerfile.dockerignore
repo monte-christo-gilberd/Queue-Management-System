@@ -1,5 +1,17 @@
-# Context hanya butuh skema SQL.
+# =============================================================================
+# Dockerfile.dockerignore: hanya berkas skema SQL yang masuk build context db/.
+# -----------------------------------------------------------------------------
+# Dipakai oleh : BuildKit saat membangun db/Dockerfile.
+# Cara kerja   : "*" mengabaikan semua berkas. Baris "!" memasukkan kembali yang dibutuhkan.
+# Tujuan       : context yang kecil dan hanya berisi skema. Berkas lain tidak ikut.
+# Saat menambah folder init baru, tambahkan polanya di sini. Jika tidak, COPY di Dockerfile gagal.
+# =============================================================================
+
+# Abaikan semua berkas dan folder di db/.
 *
+# Masukkan folder migrations/. Tanpa ini, folder tidak ikut context dan COPY gagal.
 !migrations/
+# Masukkan semua berkas SQL di migrations/ (skema dan index).
 !migrations/*.sql
+# Masukkan semua berkas shell di migrations/ (role dan skrip inisialisasi).
 !migrations/*.sh

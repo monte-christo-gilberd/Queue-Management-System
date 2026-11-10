@@ -1,15 +1,40 @@
+# =============================================================================
+# .dockerignore: berkas yang tidak ikut ke build context frontend.
+# -----------------------------------------------------------------------------
+# PERINGATAN: berkas ini sering TIDAK DIPAKAI. Saat frontend/Dockerfile.dockerignore ada (dan BuildKit
+# aktif, bawaan Docker modern), BuildKit membaca Dockerfile.dockerignore dan mengabaikan berkas ini.
+# Isinya juga berbeda: di sini "playwright/.report" dan "playwright" (tanpa tanda "/"), sedangkan di
+# Dockerfile.dockerignore "playwright-report/". Jangan mengandalkan keduanya sekaligus. Pilih satu,
+# lalu hapus yang lain agar tidak membingungkan.
+# Tujuan (bila dipakai): sama seperti Dockerfile.dockerignore, mencegah hasil lokal dan rahasia masuk image.
+# =============================================================================
+
+# Abaikan semua berkas .env, supaya rahasia tidak masuk image.
 .env
+# Abaikan varian lain .env (mis. .env.local).
 .env.*
+# Pengecualian: .env.example adalah contoh tanpa rahasia dan boleh ikut ke build.
 !.env.example
+# Abaikan riwayat git.
 .git
+# Abaikan .gitignore.
 .gitignore
+# Abaikan dependensi lokal. Dipasang ulang di dalam image.
 node_modules
+# Abaikan hasil export lokal.
 dist
+# Abaikan cache Expo lokal.
 .expo
+# Abaikan folder laporan Playwright. Pola ini tidak sama dengan di Dockerfile.dockerignore (lihat peringatan di atas).
 playwright/.report
+# Abaikan semua berkas markdown di semua subfolder.
 **/*.md
+# Abaikan berkas log lokal.
 *.log
 
+# Abaikan folder tes Playwright.
 playwright
+# Abaikan folder tes umum.
 tests
+# Abaikan folder hasil tes.
 .results

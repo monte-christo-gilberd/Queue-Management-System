@@ -1,8 +1,25 @@
+# =============================================================================
+# .dockerignore: berkas yang tidak ikut ke build context qr-service.
+# -----------------------------------------------------------------------------
+# Dipakai oleh : BuildKit saat membangun qr-service/Dockerfile. Nama berkas ini ".dockerignore"
+#                (bukan Dockerfile.dockerignore), jadi ini dibaca karena tidak ada berkas yang lebih spesifik.
+# Tujuan       : mencegah rahasia (.env), riwayat git, dan berkas bukan-kode masuk image.
+# Cara kerja   : pola yang cocok diabaikan. Baris "!" mengembalikan berkas yang sudah diabaikan.
+# =============================================================================
+
+# Abaikan semua berkas .env, supaya JOIN_LINK_SECRET dan QR_SERVICE_TOKEN tidak pernah masuk image.
 .env
+# Abaikan varian lain .env (mis. .env.local). Pola ini juga mencakup .env itu sendiri.
 .env.*
+# Pengecualian: .env.example adalah contoh tanpa rahasia dan boleh ikut ke build.
 !.env.example
+# Abaikan riwayat git. Tidak dibutuhkan untuk membangun binary.
 .git
+# Abaikan .gitignore, berkas konfigurasi git yang tidak dipakai saat build.
 .gitignore
+# Abaikan Dockerfile itu sendiri. Tidak perlu ada di dalam context.
 Dockerfile
+# Abaikan semua berkas markdown di semua subfolder. Dokumentasi tidak dibutuhkan untuk build.
 *.md
+# Abaikan koleksi Postman. Berkas ini hanya untuk pengujian manual.
 qr-service.postman.json
