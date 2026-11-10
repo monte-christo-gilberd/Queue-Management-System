@@ -13,7 +13,7 @@ tetap milik backend.
 ## Menjalankan lokal
 
 ```bash
-cp ../.env.example .env   # lalu pakai bagian [qr-service/.env] di dalamnya
+# Memakai ../.env (akar proyek). Buat dulu di akar: cp .env.example .env
 go run ./cmd/qr-service
 ```
 

@@ -32,15 +32,19 @@ func newTestDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 
 	_ = godotenv.Load("../../../.env")
-	dsn := os.Getenv("DATABASE_URL")
+	// BACKEND_DATABASE_URL (dari .env akar) didahulukan; DATABASE_URL tetap berlaku.
+	dsn := os.Getenv("BACKEND_DATABASE_URL")
+	if dsn == "" {
+		dsn = os.Getenv("DATABASE_URL")
+	}
 	if dsn == "" {
 		t.Skip("DATABASE_URL tidak di-set")
 	}
 
 	ctx := context.Background()
 	admin, err := sqlx.Connect("pgx", dsn)
-	require.NoError(t, err, "gagal connect ke DATABASE_URL (cek host/port/kredensial di backend/.env; "+
-		"variabel environment DATABASE_URL di shell menimpa .env)")
+	require.NoError(t, err, "gagal connect ke BACKEND_DATABASE_URL (cek host/port/kredensial di .env akar; "+
+		"variabel environment di shell menimpa .env)")
 
 	schema := fmt.Sprintf("qmstest_%d", time.Now().UnixNano())
 	_, err = admin.ExecContext(ctx, "CREATE SCHEMA "+schema)

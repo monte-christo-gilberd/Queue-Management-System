@@ -37,7 +37,8 @@ type Config struct {
 func Load() (Config, error) {
 	// Isi nilai dari environment, dengan bawaan untuk PORT dan LOG_LEVEL.
 	cfg := Config{
-		Port:         envOr("PORT", "8090"),
+		// QR_PORT didahulukan (dipakai file .env root); PORT tetap berlaku di container.
+		Port:         envOr("QR_PORT", envOr("PORT", "8090")),
 		JoinSecret:   os.Getenv("JOIN_LINK_SECRET"),
 		ServiceToken: os.Getenv("QR_SERVICE_TOKEN"),
 		LogLevel:     envOr("LOG_LEVEL", "info"),

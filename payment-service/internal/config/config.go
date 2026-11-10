@@ -65,13 +65,24 @@ func usable(v string) bool {
 	return !strings.HasPrefix(l, "ganti") && !strings.HasPrefix(l, "change-me")
 }
 
+// firstEnv mengembalikan nilai variabel pertama yang tidak kosong.
+func firstEnv(keys ...string) string {
+	for _, k := range keys {
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // Load membaca environment dan memeriksa nilainya. Galat fatal hanya untuk hal yang membuat service tidak bisa berfungsi
 // sama sekali. Kunci Stripe yang kosong BUKAN galat fatal; lihat StripeConfigured.
 func Load() (Config, error) {
 	// Baca semua variabel dari environment, dengan nilai bawaan untuk Amount dan Currency.
 	cfg := Config{
-		Port:          strings.TrimSpace(os.Getenv("PORT")),
-		DatabaseURL:   strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		// PAYMENT_* didahulukan (dipakai file .env root); PORT dan DATABASE_URL tetap berlaku di container.
+		Port:          strings.TrimSpace(firstEnv("PAYMENT_PORT", "PORT")),
+		DatabaseURL:   strings.TrimSpace(firstEnv("PAYMENT_DATABASE_URL", "DATABASE_URL")),
 		JWTSecret:     os.Getenv("JWT_SECRET"),
 		PublicOrigin:  strings.TrimRight(strings.TrimSpace(os.Getenv("QMS_PUBLIC_ORIGIN")), "/"),
 		Production:    strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production"),

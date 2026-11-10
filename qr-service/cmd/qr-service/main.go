@@ -22,8 +22,9 @@ import (
 
 // main menyusun semua dependensi, menjalankan server HTTP, lalu menunggu sinyal berhenti.
 func main() {
-	// Muat berkas .env bila ada. Di container tidak ada berkas ini, dan semua nilai datang dari environment.
-	if err := godotenv.Load(); err != nil {
+	// Muat berkas .env di folder akar proyek (../.env, relatif terhadap folder qr-service/). Di container tidak ada berkas ini,
+	// dan semua nilai datang dari environment.
+	if err := godotenv.Load("../.env"); err != nil {
 		// .env hanya untuk dev; di container semua variabel datang dari environment.
 		slog.Debug("no .env file found, relying on process environment")
 	}

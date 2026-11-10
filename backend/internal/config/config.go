@@ -74,21 +74,32 @@ type Config struct {
 	VAPIDPublicKey string
 }
 
+// firstEnv mengembalikan nilai variabel pertama yang tidak kosong. Dipakai agar BACKEND_PORT / BACKEND_DATABASE_URL
+// (berbagi file .env root dengan service lain) didahulukan, dan PORT / DATABASE_URL tetap berlaku di container.
+func firstEnv(keys ...string) string {
+	for _, k := range keys {
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // Load membaca environment variable (dari file .env bila ada, atau dari container), memvalidasi, lalu mengembalikan Config.
 // Dipanggil sekali di main(). Bila mengembalikan error, server tidak boleh dijalankan.
 func Load() (Config, error) {
 
-	// memuat file .env ke environment variable. Variabel yang sudah ada tidak ditimpa. Error-nya diabaikan
-	// karena container biasanya tidak punya file .env.
-	_ = godotenv.Load()
+	// memuat file .env di folder akar proyek (../.env, relatif terhadap folder backend/) ke environment variable.
+	// Variabel yang sudah ada tidak ditimpa. Error-nya diabaikan karena container tidak punya file ini.
+	_ = godotenv.Load("../.env")
 
 	// mengisi Config dari environment variable. ALLOWED_ORIGINS dan TRUSTED_PROXIES memakai parser daftar koma yang sama.
 	// URL publik dan URL qr-service dibuang '/' di akhirnya agar tidak menghasilkan '//' saat digabung dengan path.
 	cfg := Config{
 		Env:            strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV"))),
-		DatabaseURL:    os.Getenv("DATABASE_URL"),
+		DatabaseURL:    firstEnv("BACKEND_DATABASE_URL", "DATABASE_URL"),
 		JWTSecret:      os.Getenv("JWT_SECRET"),
-		Port:           os.Getenv("PORT"),
+		Port:           firstEnv("BACKEND_PORT", "PORT"),
 		AllowedOrigins: (parseOrigins(os.Getenv("ALLOWED_ORIGINS"))),
 		TrustedProxies: parseOrigins(os.Getenv("TRUSTED_PROXIES")),
 

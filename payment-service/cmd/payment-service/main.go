@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 
 	"qms/payment-service/internal/billing"
 	"qms/payment-service/internal/config"
@@ -31,6 +32,8 @@ func fatal(msg string, err error) {
 
 // main membaca konfigurasi, memilih penyedia pembayaran (Stripe, simulator dev, atau nonaktif), lalu menjalankan API.
 func main() {
+	// Muat .env di folder akar proyek (../.env, relatif terhadap folder payment-service/). Di container tidak ada file ini.
+	_ = godotenv.Load("../.env")
 	// Baca dan validasi konfigurasi. Galat berarti DATABASE_URL, JWT_SECRET, atau QMS_PUBLIC_ORIGIN belum benar.
 	cfg, err := config.Load()
 	if err != nil {
