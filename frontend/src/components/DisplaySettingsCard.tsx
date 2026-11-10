@@ -1,3 +1,11 @@
+/**
+ * DisplaySettingsCard: kartu pengaturan layar publik antrian di halaman detail owner.
+ *
+ * Dipakai oleh : app/(owner)/queues/[queueId]/index.tsx
+ * Bergantung   : ui/AppButton, ui/ConfirmModal, ui/Toast, lib/display (DISPLAY_MAX_COUNT, DisplayConfig), lib/display-url, lib/web-origin (copyToClipboard)
+ * Peran        : owner
+ * Catatan      : tautan layar bisa dibuka siapa pun yang memegangnya; mengganti atau mematikan layar langsung memutus layar yang terpasang.
+ */
 import { useEffect, useState } from 'react';
 import { Linking, Platform, Pressable, Text, View } from 'react-native';
 
@@ -8,15 +16,23 @@ import { DISPLAY_MAX_COUNT, type DisplayConfig } from '@/lib/display';
 import { displayUrl } from '@/lib/display-url';
 import { copyToClipboard } from '@/lib/web-origin';
 
+/** Props kartu pengaturan layar publik. */
 export type DisplaySettingsCardProps = {
+  /** Konfigurasi layar yang aktif; null berarti layar belum diaktifkan dan hanya tombol aktifkan yang tampil. */
   config: DisplayConfig | null;
+  /** true saat konfigurasi sedang dimuat; kartu menampilkan teks "Memuat...". Default false. */
   loading?: boolean;
   /** Ada aksi yang sedang berjalan: semua kontrol dinonaktifkan. */
   busy?: boolean;
+  /** Galat dari route, ditampilkan sebagai toast. Opsional; kosong berarti tidak ada toast. */
   error?: string;
+  /** Dipanggil saat tombol AKTIFKAN LAYAR ditekan. */
   onEnable: () => void;
+  /** Dipanggil saat jumlah nomor berikutnya atau dilewati diubah; hanya satu field yang terisi per panggilan. */
   onChangeCounts: (counts: { upcoming_count?: number; skipped_count?: number }) => void;
+  /** Dipanggil setelah pengguna mengonfirmasi ganti tautan; tautan lama tidak berlaku lagi. */
   onRotate: () => void;
+  /** Dipanggil setelah pengguna mengonfirmasi matikan layar. */
   onDisable: () => void;
 };
 
@@ -85,12 +101,14 @@ export function DisplaySettingsCard({
   const [confirm, setConfirm] = useState<'rotate' | 'disable' | null>(null);
   const url = config ? displayUrl(config.token) : null;
 
+  // Label "TAUTAN TERSALIN" hilang sendiri setelah 2 detik.
   useEffect(() => {
     if (!copied) return;
     const t = setTimeout(() => setCopied(false), 2000);
     return () => clearTimeout(t);
   }, [copied]);
 
+  // Bila penyalinan otomatis gagal (mis. izin clipboard ditolak), pengguna diminta menyalin tautan secara manual.
   async function copy() {
     if (!url) return;
     const ok = await copyToClipboard(url);
@@ -98,6 +116,7 @@ export function DisplaySettingsCard({
     if (!ok) toast.show('Tidak bisa menyalin otomatis. Pilih tautan lalu salin manual.');
   }
 
+  // Di web tautan dibuka di tab baru dengan noopener; di native dibuka lewat Linking.
   function openScreen() {
     if (!url) return;
     if (Platform.OS === 'web' && typeof window !== 'undefined') window.open(url, '_blank', 'noopener');

@@ -13,6 +13,7 @@ import { Fonts } from '@/constants/theme';
 
 const MONO = Fonts?.mono;
 
+/** Props kartu posisi customer di antrian. */
 export type MySpotCardProps = {
   /** Nama antrian; ditampilkan dalam huruf kecil di kepala kartu. */
   queueName: string;
@@ -20,6 +21,7 @@ export type MySpotCardProps = {
   currentNumber: string | null;
   /** Nomor sebelumnya dan berikutnya, sudah diformat; null bila tidak ada. */
   previousNumber: string | null;
+    /** Nomor berikutnya, sudah diformat; null bila tidak ada. */
   nextNumber: string | null;
   /** false = sembunyikan baris sebelumnya/berikutnya (mis. tampilan owner di detail antrian). */
   showNeighbors?: boolean;
@@ -90,6 +92,7 @@ export function MySpotCard({
   );
 }
 
+/** Props kartu "tidak sedang mengantri". */
 export type NotQueuingCardProps = {
   /** Tombol masuk antrian. Hanya diberikan untuk layar lebar (PC); di HP tersedia di navbar bawah. */
   onJoin?: () => void;

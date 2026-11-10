@@ -8,6 +8,7 @@
  */
 import { Text, View } from 'react-native';
 
+/** Props kartu satu counter di layar publik. */
 export type DisplayCounterCardProps = {
   /** Nama counter; null = jangan tampilkan (antrian dengan satu counter). */
   title: string | null;

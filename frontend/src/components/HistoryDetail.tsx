@@ -22,6 +22,7 @@ import ResponsiveScreenLayout, {
 import { AppButton } from '@/components/ui/AppButton';
 import { useErrorToast } from '@/components/ui/Toast';
 
+/** Props detail riwayat satu antrian. */
 export type HistoryDetailProps = {
   /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;

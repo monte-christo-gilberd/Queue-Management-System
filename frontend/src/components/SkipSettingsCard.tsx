@@ -1,3 +1,11 @@
+/**
+ * SkipSettingsCard: kartu pengaturan apa yang terjadi pada nomor yang dilewati (dihapus, mundur, atau mundur N nomor).
+ *
+ * Dipakai oleh : app/(owner)/queues/[queueId]/index.tsx
+ * Bergantung   : ui/Toast, ui/AppButton, ui/FormField, lib/skip-settings (validateSkipSettings), types/api, utils/cn
+ * Peran        : owner
+ * Catatan      : validasi dilakukan lokal sebelum onSave; penyimpanan ke server dilakukan oleh route.
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -15,20 +23,29 @@ const OPTIONS: { value: SkipFallback; label: string; hint: string }[] = [
 ];
 
 type Props = {
+  /** Pengaturan yang tersimpan di server; null selama dimuat. Form diisi dari nilai ini saat pertama kali tersedia. */
   settings: SkipSettings | null;
+  /** true menonaktifkan seluruh form dan tombol simpan (mis. saat antrian tidak bisa diubah). Default false. */
   disabled?: boolean;
+  /** true saat penyimpanan berjalan; tombol simpan menampilkan status loading. Default false. */
   saving?: boolean;
+  /** true menampilkan teks "Pengaturan tersimpan" bila tidak ada galat. Default false. */
   saved?: boolean;
+  /** Galat dari server, ditampilkan sebagai toast. Galat validasi lokal lebih diutamakan. Opsional. */
   error?: string;
+  /** Dipanggil dengan nilai yang sudah lolos validasi lokal. */
   onSave: (value: SkipSettings) => void;
 };
 
+/** Form pengaturan skip: pilihan perilaku nomor yang dilewati, plus isian N dan batas pengembalian bila relevan. */
 export function SkipSettingsCard({ settings, disabled = false, saving = false, saved = false, error, onSave }: Props) {
   const [fallback, setFallback] = useState<SkipFallback>(settings?.fallback ?? 'remove');
   const [n, setN] = useState(settings?.n ? String(settings.n) : '1');
   const [max, setMax] = useState(settings ? String(settings.max_returns) : '1');
   const [localError, setLocalError] = useState<string>();
+  // Galat validasi lokal lebih diutamakan daripada galat dari server.
   useErrorToast(localError ?? error);
+  // Form belum tersinkron bila settings masih null saat render pertama; sinkron dilakukan sekali di bawah.
   const [synced, setSynced] = useState(settings !== null);
 
   // Isi form sekali saat pengaturan tersimpan selesai dimuat.
@@ -49,6 +66,8 @@ export function SkipSettingsCard({ settings, disabled = false, saving = false, s
     onSave(result.value);
   }
 
+  // Isian N hanya untuk "Mundur N nomor"; batas pengembalian hanya relevan bila nomor tidak langsung dihapus.
+  // Pesan "Pengaturan tersimpan" tidak tampil bila masih ada galat lokal atau dari server.
   return (
     <View className="gap-3 rounded-card border border-line p-3.5" testID="skip-settings">
       <Text className="text-[12px] font-semibold text-muted">Saat nomor dilewati</Text>

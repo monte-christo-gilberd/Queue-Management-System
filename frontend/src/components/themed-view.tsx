@@ -11,6 +11,7 @@ import { View, type ViewProps } from 'react-native';
 import { ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+/** Props View bertema (sisa template Expo, tidak dipakai). */
 export type ThemedViewProps = ViewProps & {
   /** Warna latar mode terang; tidak dipakai oleh implementasi saat ini. */
   lightColor?: string;

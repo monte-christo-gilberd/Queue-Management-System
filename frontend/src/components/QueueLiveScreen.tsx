@@ -1,3 +1,11 @@
+/**
+ * QueueLiveScreen: layar live antrian owner untuk memanggil nomor (Skip dan Next).
+ *
+ * Dipakai oleh : app/(owner)/queues/[queueId]/live.tsx
+ * Bergantung   : layout/ResponsiveScreenLayout, ui/AppButton, ui/Icon, hooks/use-is-wide, constants/app-theme, constants/theme (Fonts), utils/cn
+ * Peran        : owner
+ * Catatan      : layout dipilih dari lebar layar (timeline di HP, papan gelap di PC). Konfirmasi Skip dan Next dilakukan route, bukan komponen ini.
+ */
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
@@ -16,14 +24,21 @@ import { Icon } from '@/components/ui/Icon';
 /** Nama customer belum tersedia dari backend; tanpa nama hanya nomor yang ditampilkan. */
 type LiveTicket = { number: string; name?: string };
 
+/** Props layar live antrian owner. */
 export type QueueLiveScreenProps = {
+  /** Nama antrian ditampilkan sebagai judul layar. Default berupa teks contoh. */
   queueName?: string;
   /** Nama counter yang sedang memanggil; null/undefined = counter default disembunyikan (jangan ditampilkan). */
   counterName?: string | null;
+  /** Nomor sebelumnya (sudah selesai dilayani); null berarti belum ada. */
   previousTicket?: LiveTicket | null;
+  /** Nomor yang sedang dilayani; null berarti belum ada antrian yang dipanggil. */
   currentTicket?: LiveTicket | null;
+  /** Nomor berikutnya yang menunggu; null berarti belum ada. */
   nextTicket?: LiveTicket | null;
+  /** Dipanggil saat tombol Skip ditekan; konfirmasi dilakukan pemanggil. Default tidak melakukan apa pun. */
   onSkip?: () => void;
+  /** Dipanggil saat tombol Next ditekan; konfirmasi dilakukan pemanggil. Default tidak melakukan apa pun. */
   onNext?: () => void;
   /** Navigasi menu profil untuk ResponsiveScreenLayout (diteruskan dari route). */
   onMenuItemPress?: (item: OwnerMenuItem) => void;
@@ -40,6 +55,10 @@ type LayoutProps = {
   onNext: () => void;
 };
 
+/**
+ * Layar live antrian owner. Nilai default di parameter adalah data contoh dan tidak dipakai route,
+ * karena route selalu mengirim tiket (atau null bila kosong); jangan mengandalkan default ini di produksi.
+ */
 export default function QueueLiveScreen({
   queueName = 'Antrian Loket 1',
   counterName,
@@ -50,6 +69,7 @@ export default function QueueLiveScreen({
   onNext = () => {},
   onMenuItemPress,
 }: QueueLiveScreenProps) {
+  // Layar lebar memakai papan gelap ala bandara; layar sempit memakai timeline. Data yang dikirim keduanya sama.
   const isWide = useIsWide();
   const shared: LayoutProps = {
     counterName: counterName ?? null,
@@ -243,6 +263,7 @@ function LiveDot() {
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Native driver dimatikan di web karena animasinya tidak didukung di sana; di native dijalankan di thread native agar mulus.
     const loop = Animated.loop(
       Animated.timing(pulse, {
         toValue: 1,
@@ -252,6 +273,7 @@ function LiveDot() {
       }),
     );
     loop.start();
+    // Animasi dihentikan saat komponen unmount agar tidak terus berjalan di latar belakang.
     return () => loop.stop();
   }, [pulse]);
 

@@ -1,3 +1,11 @@
+/**
+ * QueueDetail: halaman detail antrian untuk owner (operasional, QR, layar publik, pengaturan, dan tutup antrian).
+ *
+ * Dipakai oleh : app/(owner)/queues/[queueId]/index.tsx
+ * Bergantung   : hooks/use-is-wide, hooks/use-theme-mode, layout/ResponsiveScreenLayout, ui/* (AppButton, Icon, EmptyState, FormField, ConfirmModal, ModalCard, InsertTicketModal, Toast), components/MySpotCard, components/QueueTimeline, utils/notes, utils/cn
+ * Peran        : owner
+ * Catatan      : kartu QR, layar publik, dan pengaturan Skip dirender route lewat slot props; kartu "spot" memakai tampilan customer.
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { router } from "expo-router";
 import { useState } from "react";
@@ -22,36 +30,54 @@ import { MySpotCard } from "@/components/MySpotCard";
 import { AppendNoteRow, TimelineList, type TimelineItem } from "@/components/QueueTimeline";
 import { InsertTicketModal } from "@/components/ui/InsertTicketModal";
 
+/** Props halaman detail antrian owner. */
 export type QueueDetailProps = {
+  /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
+  /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
   onMenuItemPress?: (item: OwnerMenuItem) => void;
+  /** Data antrian yang sedang dibuka; `status` menentukan apakah kontrol operasional tampil. */
   queue: Queue;
+  /** Nama antrian di form pengaturan; diedit langsung dan disimpan lewat `onSave`. */
   queueName: string;
+  /** Deskripsi antrian di form pengaturan. */
   queueDescription: string;
+  /** Dipanggil setiap nama antrian berubah, dengan nilai terbaru. */
   onChangeQueueName: (value: string) => void;
+  /** Dipanggil setiap deskripsi antrian berubah, dengan nilai terbaru. */
   onChangeQueueDescription: (value: string) => void;
   /** Awalan nomor tiket (1-3 huruf/angka). Kolom tampil bila `onChangeTicketPrefix` diberikan. */
   ticketPrefix?: string;
+    /** Dipanggil setiap awalan nomor berubah, dengan nilai yang sudah dinormalisasi. Opsional. */
   onChangeTicketPrefix?: (value: string) => void;
   /** Simpan nama dan deskripsi (PUT). Tombol hanya tampil bila diberikan. */
   onSave?: () => void;
+  /** true saat penyimpanan nama dan deskripsi berjalan; tombol SIMPAN berstatus loading. Default false. */
   saving?: boolean;
+  /** Galat dari route, ditampilkan sebagai toast. Opsional; kosong berarti tidak ada toast. */
   errorMessage?: string;
 
   /** Timeline semua tiket antrian (urut sort_key). */
   timeline: TimelineItem[];
   /** Nomor yang sedang dilayani, sudah diformat; null bila belum ada. */
   currentNumber: string | null;
+  /** Lewati nomor yang sedang dilayani; dipakai bila `showRecall` false. Opsional. */
   onSkip?: () => void;
+  /** true saat aksi Skip berjalan; tombol Skip berstatus loading. Default false. */
   skipLoading?: boolean;
+  /** Lanjut ke nomor berikutnya. Opsional. */
   onNext?: () => void;
   /** Panggil ulang nomor yang sedang dilayani (push ke pemiliknya). */
   onRecall?: () => void;
+  /** true menonaktifkan tombol Panggil ulang (mis. saat belum ada nomor yang dilayani). Default false. */
   recallDisabled?: boolean;
+  /** true saat permintaan panggil ulang berjalan; tombol Panggil ulang berstatus loading. Default false. */
   recallLoading?: boolean;
   /** Tampilkan Panggil ulang di tempat Skip. */
   showRecall?: boolean;
+  /** true menonaktifkan tombol Skip (mis. saat tidak ada nomor yang bisa dilewati). Default false. */
   skipDisabled?: boolean;
+  /** true saat aksi Next berjalan; tombol Next berstatus loading. Default false. */
   nextLoading?: boolean;
   /** Buka popup catatan untuk nomor yang sedang dilayani (popup dirender route). */
   onOpenNote?: () => void;
@@ -68,10 +94,13 @@ export type QueueDetailProps = {
   noteOpen?: boolean;
   /** Hapus nomor customer dari antrian (4.10). Dipanggil setelah owner mengonfirmasi. */
   onRemoveTicket?: (ticketId: number) => void;
+  /** true saat penghapusan nomor berjalan; tombol konfirmasi di dialog hapus berstatus loading. Default false. */
   removeLoading?: boolean;
   /** Sisip customer ke posisi tertentu (US-10). Mengembalikan true bila berhasil. */
   onInsert?: (identifier: string, position: number) => Promise<boolean>;
+  /** true saat permintaan sisip customer berjalan; modal sisip berstatus saving. Default false. */
   insertLoading?: boolean;
+  /** Galat dari permintaan sisip, ditampilkan di dalam modal sisip. Opsional. */
   insertError?: string;
   /** Posisi awal sisip: panjang antrian menunggu + 1. */
   defaultInsertPosition?: number;
@@ -89,9 +118,11 @@ export type QueueDetailProps = {
 
   /** Tutup antrian (POST /close). Dipanggil setelah pengguna mengonfirmasi di popup. */
   onCloseQueue?: () => void;
+  /** true saat penutupan antrian berjalan; tombol konfirmasi tutup berstatus loading. Default false. */
   closing?: boolean;
 };
 
+/** Detail antrian owner. Tata letak satu, dua, atau tiga kolom mengikuti lebar layar. */
 export default function QueueDetail({
   shell,
   onMenuItemPress,
@@ -147,6 +178,7 @@ export default function QueueDetail({
   const [removeTarget, setRemoveTarget] = useState<{ id: number; number: string } | null>(null);
 
   // Potongan kartu dipakai ulang oleh tata letak satu, dua, dan tiga kolom.
+  // Panggil ulang menggantikan Skip bila showRecall aktif; baris ini tidak tampil untuk antrian yang sudah ditutup.
   const skipNextRow = !isClosed ? (
     <View className="flex-row gap-3">
       {showRecall && onRecall ? (
@@ -190,6 +222,7 @@ export default function QueueDetail({
     </View>
   );
 
+  // Awalan nomor dinormalisasi saat diketik: huruf besar, hanya A-Z dan 0-9, dan maksimal 3 karakter.
   const formCard = (
     <View className="gap-3 rounded-card border border-line p-3.5">
       <FormField label="Nama Antrian (bisa diedit disini)" value={queueName} onChangeText={onChangeQueueName} />
@@ -207,6 +240,7 @@ export default function QueueDetail({
     </View>
   );
 
+  // Antrian yang sudah ditutup tidak bisa dibuka kembali, sehingga zona berbahaya diganti teks dan tombol tutup tidak tampil.
   const dangerCard = isClosed ? (
     <Text className="text-[13px] font-bold text-muted">Antrian ini sudah ditutup.</Text>
   ) : onCloseQueue ? (
@@ -224,6 +258,7 @@ export default function QueueDetail({
     </View>
   ) : null;
 
+  // Daftar tiket disembunyikan selama popup catatan terbuka (lihat noteOpen). Sisip customer tidak bisa dipakai untuk antrian yang sudah ditutup.
   return (
     <ResponsiveScreenLayout
       title="Detail Antrian"
@@ -409,11 +444,6 @@ export default function QueueDetail({
 }
 
 /**
- * Kolom kanan: di desktop satu panel bergaris yang di-scroll sendiri; di HP hanya tumpukan biasa.
- * Isi panel diposisikan absolut agar tingginya mengikuti kolom kiri (tidak menambah tinggi baris),
- * sehingga garis bawah kedua kolom selalu sejajar.
- */
-/**
  * Satu kolom tata letak desktop yang bisa di-scroll sendiri. Tingginya mengikuti ruang yang tersedia (bukan isinya),
  * jadi isi yang lebih tinggi dari layar di-scroll alih-alih terpotong. `panel` memberi bingkai seperti panel kanan.
  */
@@ -439,6 +469,11 @@ function ScrollColumn({
   );
 }
 
+/**
+ * Kolom kanan: di desktop satu panel bergaris yang di-scroll sendiri; di HP hanya tumpukan biasa.
+ * Isi panel diposisikan absolut agar tingginya mengikuti kolom kiri (tidak menambah tinggi baris),
+ * sehingga garis bawah kedua kolom selalu sejajar.
+ */
 function ScrollPanel({ enabled, children }: { enabled: boolean; children: React.ReactNode }) {
   if (!enabled) return <View className="flex-1 gap-4">{children}</View>;
   return (

@@ -11,6 +11,7 @@ import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
 import { Fonts, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+/** Props teks bertema (sisa template Expo, tidak dipakai). */
 export type ThemedTextProps = TextProps & {
   /** Varian gaya teks: ukuran dan ketebalan dari tabel `styles`; default `'default'`. */
   type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';

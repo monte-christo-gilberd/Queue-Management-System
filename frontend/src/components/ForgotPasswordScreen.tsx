@@ -16,6 +16,7 @@ import { AuthInput } from '@/components/auth/AuthInput';
 import { PrimaryAuthButton } from '@/components/auth/AuthButtons';
 import { AtIcon } from '@/components/ui/Icon';
 
+/** Props layar lupa password. */
 export type ForgotPasswordScreenProps = {
   /** Email yang diisi pengguna; dikirim ke route untuk diminta tautan reset. */
   email: string;

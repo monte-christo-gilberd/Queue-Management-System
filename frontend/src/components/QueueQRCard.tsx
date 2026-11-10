@@ -1,3 +1,11 @@
+/**
+ * QueueQRCard: kartu QR join untuk owner, dengan mode statis atau dinamis (token berhitung mundur).
+ *
+ * Dipakai oleh : app/(owner)/queues/[queueId]/index.tsx
+ * Bergantung   : ui/Toast, ui/AppButton, ui/Icon, ui/ModalCard, ui/QrCode, hooks/use-theme-mode, lib/qr-matrix (renderQrPngDataUrl), lib/web-origin (copyToClipboard), types/api (QueueQR)
+ * Peran        : owner
+ * Catatan      : QR digambar dari `join_url`; token dinamis diganti otomatis setelah kedaluwarsa, dan token statis berlaku sampai kode diganti.
+ */
 import { useErrorToast, useToast } from '@/components/ui/Toast';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
@@ -11,18 +19,27 @@ import { renderQrPngDataUrl } from '@/lib/qr-matrix';
 import { copyToClipboard } from '@/lib/web-origin';
 import type { QueueQR } from '@/types/api';
 
+/** Props kartu QR antrian owner. */
 export type QueueQRCardProps = {
+  /** Data QR antrian (termasuk `join_url` dan tipe statis/dinamis); null bila belum ada atau belum dimuat. */
   qr: QueueQR | null;
+  /** true saat QR sedang dimuat; kartu menampilkan teks "Memuat QR...". Default false. */
   loading?: boolean;
+  /** Galat memuat QR; kartu diganti dengan tombol coba lagi bila `onRetry` ada. */
   error?: string;
+  /** true saat pergantian mode statis/dinamis berjalan; tombol mode berstatus loading. Default false. */
   toggling?: boolean;
+  /** true saat penggantian kode statis berjalan; tombol konfirmasi berstatus loading. Default false. */
   replacing?: boolean;
   /** Detik sisa token dinamis; null bila token statis (atau belum ada token). */
   countdown?: number | null;
+  /** Dipanggil dengan tipe tujuan saat tombol MODE STATIS atau MODE DINAMIS ditekan. */
   onToggle?: (type: 'static' | 'dynamic') => void;
+  /** Dipanggil setelah pengguna mengonfirmasi ganti kode statis. */
   onReplace?: () => void;
   /** Muat ulang QR dinamis dari server (token dikeluarkan ulang, tanpa konfirmasi). */
   onRefresh?: () => Promise<void>;
+  /** Dipanggil saat tombol "Coba Lagi" pada kondisi galat ditekan. Opsional. */
   onRetry?: () => void;
 };
 
@@ -102,6 +119,7 @@ export function QueueQRCard({
     );
   }
 
+  // Galat memuat QR menggantikan isi kartu dengan tombol coba lagi.
   if (error) {
     return (
       <View className="gap-3 rounded-card border border-line p-3.5">
@@ -123,6 +141,7 @@ export function QueueQRCard({
   const countdownText = formatCountdown(countdown);
   const expired = countdown === 0;
 
+  // Permintaan muat ulang tidak dijalankan ganda selama permintaan sebelumnya belum selesai.
   async function handleRefresh() {
     if (!onRefresh || refreshing) return;
     setRefreshing(true);
@@ -138,6 +157,7 @@ export function QueueQRCard({
     setConfirmReplace(false);
   }
 
+  // Di popup, tombol di pojok kanan atas memuat ulang QR pada mode dinamis (tanpa konfirmasi) dan meminta konfirmasi ganti kode pada mode statis.
   return (
     <View className="gap-3 rounded-card border border-line p-3.5">
       <View className="flex-row items-center justify-between">

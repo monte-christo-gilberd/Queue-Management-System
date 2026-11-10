@@ -16,6 +16,7 @@ import { AuthInput } from '@/components/auth/AuthInput';
 import { PrimaryAuthButton } from '@/components/auth/AuthButtons';
 import { LockIcon } from '@/components/ui/Icon';
 
+/** Props layar reset password. */
 export type ResetPasswordScreenProps = {
   /** form: isi password baru; invalid: tautan tidak bisa dipakai; done: password sudah diganti. */
   mode: 'form' | 'invalid' | 'done';

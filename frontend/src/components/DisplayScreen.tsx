@@ -14,6 +14,7 @@ import type { DisplayStatus } from '@/hooks/use-display-screen';
 import type { DisplaySnapshot } from '@/lib/display';
 import { buildCards, formatClock, layoutColumns, numberFontSize } from '@/utils/display';
 
+/** Props layar publik antrian. */
 export type DisplayScreenProps = {
   /** Data antrian terakhir; null berarti belum ada data, sehingga layar menampilkan "Memuat..." atau "Menyambung ulang...". */
   snapshot: DisplaySnapshot | null;

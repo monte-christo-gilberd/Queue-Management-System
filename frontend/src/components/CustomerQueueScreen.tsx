@@ -18,6 +18,7 @@ import { cn } from '@/utils/cn';
 /** Status tiket dari sudut pandang customer; nilainya sama dengan status tiket dari API. */
 export type CustomerTicketStatus = 'waiting' | 'currently_served' | 'completed' | 'cancelled' | 'skipped' | 'deleted';
 
+/** Props layar status antrian customer. */
 export type CustomerQueueScreenProps = {
   /** Nama antrian. Bila kosong, judul menampilkan "Memuat..." (saat loading) atau "Antrian". */
   queueName: string;
@@ -57,6 +58,7 @@ export type CustomerQueueScreenProps = {
   onBack?: () => void;
 };
 
+/** Label Indonesia untuk setiap status tiket customer. */
 export const STATUS_LABEL: Record<CustomerTicketStatus, string> = {
   waiting: 'Menunggu',
   currently_served: 'Sedang dilayani',

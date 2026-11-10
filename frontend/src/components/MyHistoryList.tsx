@@ -54,6 +54,7 @@ function MyHistoryModal({ ticket, onClose }: { ticket: MyHistoryTicket | null; o
   );
 }
 
+/** Props daftar riwayat tiket customer. */
 export type MyHistoryListProps = {
   /** Tiket riwayat milik customer, satu kartu per tiket. Kosong berarti tidak ada yang dirender. */
   items: MyHistoryTicket[];

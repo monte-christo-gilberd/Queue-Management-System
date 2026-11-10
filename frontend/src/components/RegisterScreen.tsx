@@ -16,6 +16,7 @@ import { AuthInput } from '@/components/auth/AuthInput';
 import { GoogleButton, OrDivider, PrimaryAuthButton } from '@/components/auth/AuthButtons';
 import { AtIcon, LockIcon, PersonIcon } from '@/components/ui/Icon';
 
+/** Props layar pendaftaran akun. */
 export type RegisterScreenProps = {
   /** Nilai username saat ini. */
   username: string;

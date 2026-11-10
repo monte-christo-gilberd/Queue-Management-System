@@ -27,6 +27,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { FormField } from '@/components/ui/FormField';
 import { PersonIcon } from '@/components/ui/Icon';
 
+/** Props halaman profil user. */
 export type ProfileProps = {
   /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
@@ -68,12 +69,15 @@ export type ProfileProps = {
   hasAvatar?: boolean;
   /** Unggah atau hapus foto sedang berjalan. */
   avatarBusy?: boolean;
+    /** Dipanggil saat tombol Unggah atau Ganti Foto ditekan; pemilihan berkas dilakukan route. Opsional. */
   onPickAvatar?: () => void;
   /** Dipanggil setelah user mengonfirmasi hapus foto. */
   onDeleteAvatar?: () => void;
   /** Email notifikasi tiket menyala (dari server). */
   emailNotifications?: boolean;
+    /** true saat perubahan notifikasi email sedang disimpan; switch dinonaktifkan. Default false. */
   emailNotificationsBusy?: boolean;
+    /** Dipanggil dengan nilai baru saat switch notifikasi email diubah. Opsional. */
   onToggleEmailNotifications?: (enabled: boolean) => void;
   /** Minta tautan buat password baru dikirim ke email akun (item 9). */
   onPressChangePassword?: () => void;
@@ -81,6 +85,7 @@ export type ProfileProps = {
   changePasswordBusy?: boolean;
 };
 
+/** Halaman profil user: foto, nama, email, notifikasi, password, dan status langganan (owner). */
 export default function Profile({
   shell,
   onMenuItemPress,

@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Icon } from "@/components/ui/Icon";
 import { useThemeColor } from "@/hooks/use-theme-mode";
 
+/** Props daftar antrian owner. */
 export type QueueListProps = {
   /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;

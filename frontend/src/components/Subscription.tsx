@@ -19,8 +19,11 @@ import { AppButton } from '@/components/ui/AppButton';
 import { Icon } from '@/components/ui/Icon';
 import { useErrorToast } from '@/components/ui/Toast';
 
+/** Props halaman langganan owner. */
 export type SubscriptionProps = {
+    /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
+    /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
   onMenuItemPress?: (item: OwnerMenuItem) => void;
   /** true jika langganan aktif (kartu hijau dengan ikon centang); false menampilkan kartu abu dengan ikon jam. */
   paid: boolean;

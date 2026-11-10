@@ -20,6 +20,7 @@ const STATUS_LABEL: Record<MyTicket['status'], string> = {
   deleted: 'Dihapus',
 };
 
+/** Props daftar tiket customer. */
 export type MyTicketsListProps = {
   /** Tiket yang ditampilkan, satu kartu per tiket dengan urutan sama seperti array. Kosong berarti tidak ada yang dirender. */
   tickets: MyTicket[];

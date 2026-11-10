@@ -16,6 +16,7 @@ import { AuthInput } from '@/components/auth/AuthInput';
 import { GoogleButton, OrDivider, PrimaryAuthButton } from '@/components/auth/AuthButtons';
 import { LockIcon, PersonIcon } from '@/components/ui/Icon';
 
+/** Props layar login. */
 export type LoginScreenProps = {
   /** Email atau username. Backend menerima keduanya lewat field `identifier`. */
   identifier: string;

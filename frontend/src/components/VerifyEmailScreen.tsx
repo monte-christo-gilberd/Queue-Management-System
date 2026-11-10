@@ -13,6 +13,7 @@ import { AuthLayout } from '@/components/auth/AuthLayout';
 import { PrimaryAuthButton } from '@/components/auth/AuthButtons';
 import { AppColors } from '@/constants/app-theme';
 
+/** Props layar hasil verifikasi email. */
 export type VerifyEmailScreenProps = {
   /**
    * loading: tautan sedang diperiksa; done: email terverifikasi; invalid: tautan tidak bisa dipakai;

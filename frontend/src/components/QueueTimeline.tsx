@@ -1,23 +1,40 @@
+/**
+ * QueueTimeline: kartu gelap berisi timeline nomor antrian dan tombol Skip, Next, serta catatan untuk owner.
+ *
+ * Dipakai oleh : app/(owner)/dashboard.tsx, components/QueueDetail.tsx, app/(owner)/queues/[queueId]/index.tsx
+ * Bergantung   : utils/cn
+ * Peran        : owner
+ * Catatan      : komponen presentasi; aksi Skip dan Next dijalankan oleh pemanggil, dan nomor sudah diformat sebelum masuk.
+ */
 import { Pressable, Text, View } from "react-native";
 
 import { cn } from "@/utils/cn";
 
+/** Satu baris timeline nomor antrian. */
 export type TimelineItem = {
   /** Nomor tiket sudah diformat (mis. "A-041"). */
   number: string;
+  /** Keadaan nomor: done (selesai), current (sedang dilayani, disorot), waiting (menunggu), skipped (dilewati), atau cancelled (dibatalkan). */
   status: "done" | "current" | "waiting" | "skipped" | "cancelled";
 };
 
+/** Props kartu timeline antrian. */
 export type QueueTimelineProps = {
+  /** Judul kartu, mis. nama antrian. */
   title: string;
+  /** Urutan nomor dari atas ke bawah; setiap item menjadi satu baris timeline. */
   items: TimelineItem[];
+  /** Dipanggil saat tombol Skip ditekan. Tombol nonaktif bila tidak diberikan. */
   onSkip?: () => void;
+  /** Dipanggil saat tombol Next ditekan. Tombol nonaktif bila tidak diberikan. */
   onNext?: () => void;
   /** Buka popup catatan untuk antrian ini. */
   onNote?: () => void;
   /** Ketuk bagian kartu (judul dan timeline) untuk membuka detail antrian. */
   onOpen?: () => void;
+  /** true saat aksi Next berjalan; label tombol berubah menjadi "..." dan tombol nonaktif. Default false. */
   nextLoading?: boolean;
+  /** true saat aksi Skip berjalan; label tombol berubah menjadi "..." dan tombol nonaktif. Default false. */
   skipLoading?: boolean;
 };
 
@@ -34,6 +51,7 @@ export function TimelineList({ items }: { items: TimelineItem[] }) {
   return (
     <View>
       {items.map((item, index) => {
+        // Garis penghubung antar-item tidak digambar setelah item terakhir.
         const last = index === items.length - 1;
         return (
           <View key={`${item.number}-${index}`} className="flex-row">
@@ -103,6 +121,7 @@ export function QueueTimeline({
   nextLoading = false,
   skipLoading = false,
 }: QueueTimelineProps) {
+  // Tombol Skip dan Next nonaktif bila callback tidak ada atau aksinya sedang berjalan, sehingga tidak bisa ditekan dua kali.
   return (
     <View className="w-full gap-5 rounded-[20px] bg-dark p-5 dark:border dark:border-line">
       <Pressable onPress={onOpen} disabled={!onOpen} className="gap-5 active:opacity-80">

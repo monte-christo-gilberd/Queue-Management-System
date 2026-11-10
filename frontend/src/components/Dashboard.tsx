@@ -14,6 +14,7 @@ import ResponsiveScreenLayout, {
   type ShellProps,
 } from "@/components/layout/ResponsiveScreenLayout";
 
+/** Props kerangka dashboard owner dan customer. */
 export type DashboardProps = {
   /** Konteks shell layout; saat ini hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;

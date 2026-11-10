@@ -1,3 +1,11 @@
+/**
+ * CounterBar: tab counter untuk satu antrian, dengan popup buat, ganti nama, dan tutup counter.
+ *
+ * Dipakai oleh : app/(owner)/queues/[queueId]/index.tsx, app/(owner)/dashboard.tsx
+ * Bergantung   : hooks/use-counter-session (tipe CounterSession), lib/counters (MAX_COUNTERS, validasi dan saran nama), ui/AppButton, ui/ModalCard, ui/Toast, utils/format
+ * Peran        : owner
+ * Catatan      : tidak mengimpor store (sesuai ZUSTAND_GUIDE). Impor lib/counters berisi konstanta dan validasi, bukan store; logika sesi tetap di hook.
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
@@ -19,9 +27,11 @@ import { formatTicketNumber } from '@/utils/format';
 type CounterSession = ReturnType<typeof useCounterSession>;
 
 type CounterBarProps = {
+  /** Sesi counter dari hook: daftar counter, counter aktif, galat, dan aksi pindah/tambah/ganti nama/tutup. */
   session: CounterSession;
   /** Papan antrian: nomor yang dilayani diambil dari sini supaya selalu terbaru. */
   tickets: Ticket[];
+  /** Awalan nomor antrian (mis. "A") untuk memformat nomor yang dilayani; null atau kosong berarti tanpa awalan. */
   prefix?: string | null;
 };
 
@@ -41,11 +51,12 @@ export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
   useErrorToast(session.error);
   useErrorToast(error);
 
-  // Nomor yang sedang dilayani tiap counter, dari papan.
+  // Nomor yang sedang dilayani tiap counter, dari papan. Hanya tiket berstatus currently_served yang dihitung.
   const servingNumber = new Map<number, number>();
   for (const t of tickets) {
     if (t.status === 'currently_served' && t.called_counter_id) servingNumber.set(t.called_counter_id, t.ticket_number);
   }
+  // Batas jumlah counter (MAX_COUNTERS) menonaktifkan tombol tambah. Tab counter baru tampil bila ada lebih dari satu counter.
   const atLimit = session.counters.length >= MAX_COUNTERS;
   const multi = session.counters.length > 1;
 
@@ -109,6 +120,8 @@ export function CounterBar({ session, tickets, prefix }: CounterBarProps) {
     return number === undefined ? null : formatTicketNumber(number, prefix);
   };
 
+  // Counter default tidak bisa ditutup, sehingga tombol × hanya dirender untuk counter tambahan.
+  // Popup nama dan popup tutup dibuka dari state `popup` yang sama; hanya satu yang terbuka pada satu waktu.
   const isNameForm = popup?.kind === 'create' || popup?.kind === 'rename';
   const formTitle = popup?.kind === 'create' ? 'Counter baru' : 'Ganti nama counter';
   const formHint =

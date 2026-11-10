@@ -14,6 +14,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { FormField } from '@/components/ui/FormField';
 import { ModalCard } from '@/components/ui/ModalCard';
 
+/** Props untuk popup Buat Antrian Baru. */
 export type CreateQueueModalProps = {
   /** true menampilkan popup beserta form; false menyembunyikannya dan form dibongkar. */
   visible: boolean;

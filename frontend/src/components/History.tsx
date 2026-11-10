@@ -24,6 +24,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Icon } from '@/components/ui/Icon';
 import { useErrorToast } from '@/components/ui/Toast';
 
+/** Props halaman riwayat antrian owner. */
 export type HistoryProps = {
   /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
