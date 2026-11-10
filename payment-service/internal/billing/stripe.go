@@ -12,18 +12,26 @@ import (
 
 // StripeProvider membungkus klien resmi stripe-go. baseURL kosong = api.stripe.com; di dev diarahkan ke emulator.
 type StripeProvider struct {
-	sc            *stripe.Client
+	// sc: klien API Stripe.
+	sc *stripe.Client
+	// webhookSecret: secret untuk memverifikasi tanda tangan webhook.
 	webhookSecret string
-	priceID       string
-	amount        int64 // satuan utama
-	currency      string
+	// priceID: id harga Stripe. Kosong berarti harga inline.
+	priceID string
+	// amount: harga satu bulan dalam satuan utama, dipakai bila priceID kosong.
+	amount int64
+	// currency: kode mata uang untuk harga inline.
+	currency string
 }
 
+// NewStripeProvider membuat StripeProvider dengan kunci API, alamat API (opsional), secret webhook, dan harga.
 func NewStripeProvider(apiKey, baseURL, webhookSecret, priceID string, amount int64, currency string) *StripeProvider {
+	// Opsi klien: bila alamat API diisi (dev/emulator), arahkan backend Stripe ke alamat itu.
 	var opts []stripe.ClientOption
 	if baseURL != "" {
 		opts = append(opts, stripe.WithBackends(stripe.NewBackendsWithConfig(&stripe.BackendConfig{URL: stripe.String(baseURL)})))
 	}
+	// Susun penyedia dengan klien dan konfigurasi harga.
 	return &StripeProvider{
 		sc:            stripe.NewClient(apiKey, opts...),
 		webhookSecret: webhookSecret,
@@ -35,7 +43,9 @@ func NewStripeProvider(apiKey, baseURL, webhookSecret, priceID string, amount in
 
 // CreateCheckout membuka sesi pembayaran sekali bayar untuk satu bulan langganan.
 func (p *StripeProvider) CreateCheckout(ctx context.Context, in CheckoutInput) (Checkout, error) {
+	// Id user dalam bentuk teks, dipakai sebagai referensi dan metadata.
 	user := strconv.FormatInt(in.UserID, 10)
+	// Parameter sesi: mode bayar sekali, tautan kembali, email pelanggan, dan referensi user.
 	params := &stripe.CheckoutSessionCreateParams{
 		Mode:              stripe.String(string(stripe.CheckoutSessionModePayment)),
 		SuccessURL:        stripe.String(in.SuccessURL),
@@ -44,10 +54,13 @@ func (p *StripeProvider) CreateCheckout(ctx context.Context, in CheckoutInput) (
 		ClientReferenceID: stripe.String(user),
 		Metadata:          map[string]string{"user_id": user, "purpose": "qms_subscription_1_month"},
 	}
+	// Satu item berjumlah 1: harga dari price ID bila ada, atau harga inline bila tidak.
 	item := &stripe.CheckoutSessionCreateLineItemParams{Quantity: stripe.Int64(1)}
+	// Price ID diisi: pakai harga yang sudah dibuat di Stripe.
 	if p.priceID != "" {
 		item.Price = stripe.String(p.priceID)
 	} else {
+		// Tanpa price ID: buat harga inline dari jumlah dan mata uang, dalam satuan terkecil.
 		item.PriceData = &stripe.CheckoutSessionCreateLineItemPriceDataParams{
 			Currency:   stripe.String(p.currency),
 			UnitAmount: stripe.Int64(p.amount * MinorFactor(p.currency)),
@@ -56,25 +69,32 @@ func (p *StripeProvider) CreateCheckout(ctx context.Context, in CheckoutInput) (
 			},
 		}
 	}
+	// Pasang item ke parameter sesi.
 	params.LineItems = []*stripe.CheckoutSessionCreateLineItemParams{item}
 
+	// Buat sesi di Stripe. Galat dikembalikan ke pemanggil.
 	sess, err := p.sc.V1CheckoutSessions.Create(ctx, params)
 	if err != nil {
 		return Checkout{}, err
 	}
+	// Ubah waktu kedaluwarsa dari detik Unix ke UTC dan kembalikan URL sesi.
 	return Checkout{URL: sess.URL, ExpiresAt: time.Unix(sess.ExpiresAt, 0).UTC()}, nil
 }
 
 // ParseEvent memverifikasi tanda tangan dan mengurai bagian yang dibutuhkan. Selisih versi API diabaikan
 // karena kita hanya membaca beberapa field stabil.
 func (p *StripeProvider) ParseEvent(payload []byte, sigHeader string) (Event, error) {
+	// Verifikasi tanda tangan dan urai event. Selisih versi API diabaikan karena hanya field stabil yang dibaca.
 	ev, err := webhook.ConstructEventWithOptions(payload, sigHeader, p.webhookSecret,
 		webhook.ConstructEventOptions{IgnoreAPIVersionMismatch: true})
+	// Tanda tangan salah atau payload rusak: kembalikan galat.
 	if err != nil {
 		return Event{}, err
 	}
+	// Salin id dan jenis event ke hasil.
 	out := Event{ID: ev.ID, Type: string(ev.Type)}
 
+	// Struktur sementara untuk field objek sesi yang dibutuhkan.
 	var obj struct {
 		ID                string `json:"id"`
 		ClientReferenceID string `json:"client_reference_id"`
@@ -82,10 +102,14 @@ func (p *StripeProvider) ParseEvent(payload []byte, sigHeader string) (Event, er
 		AmountTotal       int64  `json:"amount_total"`
 		Currency          string `json:"currency"`
 	}
+	// Data event ada dan tidak kosong: baca objek sesi dari JSON mentahnya. Galat dibaca diabaikan; field
+	// yang gagal dibaca tetap kosong dan akan ditangani pemanggil.
 	if ev.Data != nil && len(ev.Data.Raw) > 0 {
 		_ = json.Unmarshal(ev.Data.Raw, &obj)
 	}
+	// Ubah referensi user dari teks ke angka. Gagal diubah berarti 0, yang ditangani pemanggil.
 	user, _ := strconv.ParseInt(obj.ClientReferenceID, 10, 64)
+	// Isi data sesi pada hasil.
 	out.Session = Session{
 		ID:            obj.ID,
 		UserID:        user,
