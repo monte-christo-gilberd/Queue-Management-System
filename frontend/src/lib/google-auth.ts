@@ -38,6 +38,17 @@ export function clientIdFor(platform: GooglePlatform, ids: GoogleClientIds = GOO
   return undefined;
 }
 
+/**
+ * isSecureOrigin: true bila halaman web berjalan di secure context (`https` atau `localhost`). Login Google di web
+ * memakai WebCrypto (nonce) dan Google hanya menerima origin `https`/`localhost`, jadi di `http://<alamat-IP>` tombolnya
+ * pasti gagal. Platform native selalu dianggap aman. `ctx` dapat disuplai di tes; bawaannya `globalThis`.
+ */
+export function isSecureOrigin(platform: GooglePlatform, ctx: { isSecureContext?: boolean } = globalThis): boolean {
+  if (platform !== 'web') return true;
+  // Tanpa informasi (mis. lingkungan non-browser) dianggap aman: jangan menyembunyikan tombol tanpa bukti.
+  return ctx.isSecureContext !== false;
+}
+
 /** isGoogleEnabled: true bila platform yang berjalan punya client ID, jadi tombol Google aman ditampilkan. */
 export function isGoogleEnabled(platform: GooglePlatform, ids: GoogleClientIds = GOOGLE_CLIENT_IDS): boolean {
   return clientIdFor(platform, ids) !== undefined;

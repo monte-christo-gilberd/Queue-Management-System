@@ -6,18 +6,20 @@
  *                lib/google-auth (isGoogleEnabled), components/ui/Toast, expo-router
  * Peran        : publik
  * Catatan      : Tidak merender apa pun (termasuk pemisah "atau") bila platform yang berjalan tidak punya client ID Google.
+ *                Di web pada origin yang tidak aman (`http://<alamat-IP>`), tombol diganti keterangan: Google hanya menerima
+ *                `https`/`localhost` dan WebCrypto tidak tersedia, jadi menekan tombol hanya memunculkan galat.
  *                Setelah login: ke `next` yang aman atau /dashboard. Email sudah terdaftar dengan password: ke
  *                /link-google (konfirmasi password), membawa `next`.
  */
 import { router, type Href } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, Text } from 'react-native';
 
 import { GoogleButton, OrDivider } from '@/components/auth/AuthButtons';
 import { useToast } from '@/components/ui/Toast';
 import { useGoogleSignIn } from '@/hooks/use-google-sign-in';
 import { describeGoogleError } from '@/lib/auth-errors';
-import { isGoogleEnabled } from '@/lib/google-auth';
+import { isGoogleEnabled, isSecureOrigin } from '@/lib/google-auth';
 import { DEFAULT_AFTER_LOGIN } from '@/lib/safe-next';
 import { useAuthStore } from '@/store/authStore';
 
@@ -33,6 +35,17 @@ export type GoogleSignInSectionProps = {
 export function GoogleSignInSection(props: GoogleSignInSectionProps) {
   // Hook provider melempar galat tanpa client ID, jadi hook-nya hanya hidup di komponen dalam yang dirender bila aktif.
   if (!isGoogleEnabled(Platform.OS)) return null;
+  // Origin tidak aman: tombol pasti gagal. Jelaskan alasannya, jangan biarkan pengguna menemui galat mentah.
+  if (!isSecureOrigin(Platform.OS)) {
+    return (
+      <>
+        <OrDivider />
+        <Text accessibilityRole="alert" className="text-center text-[12px] leading-5 text-placeholder">
+          Login dengan Google hanya tersedia lewat https atau http://localhost. Buka aplikasi lewat alamat itu.
+        </Text>
+      </>
+    );
+  }
   return <GoogleSignInEnabled {...props} />;
 }
 
@@ -64,10 +77,19 @@ function GoogleSignInEnabled({ label, next }: GoogleSignInSectionProps) {
 
   const { ready, signIn } = useGoogleSignIn((t) => void onIdToken(t), show);
 
+  // Membuka layar Google bisa melempar (mis. WebCrypto/popup diblokir). Tangkap supaya jadi toast, bukan layar galat.
+  const handlePress = useCallback(async () => {
+    try {
+      await signIn();
+    } catch {
+      show('Login dengan Google gagal dibuka, coba lagi');
+    }
+  }, [signIn, show]);
+
   return (
     <>
       <OrDivider />
-      <GoogleButton label={label} onPress={() => void signIn()} disabled={!ready || loading} />
+      <GoogleButton label={label} onPress={() => void handlePress()} disabled={!ready || loading} />
     </>
   );
 }

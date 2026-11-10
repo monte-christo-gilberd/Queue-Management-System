@@ -89,6 +89,8 @@ endef
 # Stack DEV
 # -----------------------------------------------------------------------------
 
+# --renew-anon-volumes: volume anonim /app/node_modules diisi ulang dari image tiap `up`. Tanpa ini, volume lama menimpa
+# node_modules image dan paket baru di package.json tidak terpasang (Metro: "Unable to resolve module").
 # Build dan jalankan stack dev. IP LAN dibaca otomatis dari rute default, atau dari IP=... bila diberikan.
 up:
 	$(need_env)
@@ -97,7 +99,7 @@ up:
 	[ -n "$$ip" ] || ip=$$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' || true)
 	[ -n "$$ip" ] || { echo "IP LAN tidak terdeteksi; beri manual: make up IP=<ip>" >&2; exit 1; }
 	export QMS_PUBLIC_ORIGIN="http://$$ip:$$port"
-	docker compose up -d --build --force-recreate
+	docker compose up -d --build --force-recreate --renew-anon-volumes
 	$(warm_metro)
 	echo "Link (satu Wi-Fi): $$QMS_PUBLIC_ORIGIN"
 	$(mailpit_dev)
@@ -116,7 +118,7 @@ tunnel:
 	  [ -n "$$url" ] && break; sleep 1
 	done
 	[ -n "$$url" ] || { echo "URL tunnel tidak muncul, lihat $(LOG)" >&2; $(stop_tunnel); exit 1; }
-	QMS_PUBLIC_ORIGIN="$$url" docker compose up -d --build --force-recreate backend auth-service qr-service notify-service mail-service mailpit nginx frontend db
+	QMS_PUBLIC_ORIGIN="$$url" docker compose up -d --build --force-recreate --renew-anon-volumes backend auth-service qr-service notify-service mail-service mailpit nginx frontend db
 	$(warm_metro)
 	echo "Link: $$url"
 	echo "Hentikan: make down"

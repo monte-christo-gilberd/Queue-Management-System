@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import { ApiError, setAuthToken, setOnUnauthorized } from '@/lib/api';
 import { describeGoogleError, describeLinkError, AUTH_UNAVAILABLE_MESSAGE } from '@/lib/auth-errors';
-import { clientIdFor, isGoogleEnabled } from '@/lib/google-auth';
+import { clientIdFor, isGoogleEnabled, isSecureOrigin } from '@/lib/google-auth';
 import { confirmGoogleLink, exchangeGoogleIdToken, isLinkSessionOver } from '@/lib/google-login';
 
 type Call = { url: string; method?: string; body?: unknown; auth?: string };
@@ -183,4 +183,12 @@ test('ApiError menyimpan isi error backend (link_token) di details', () => {
 
   assert.equal(e.details?.link_token, 't');
   assert.equal(new ApiError(500, 'X', 'm').details, undefined, 'tanpa details tetap berfungsi seperti sebelumnya');
+});
+
+test('di web, origin tidak aman (http://IP) ditandai; https/localhost dan native aman', () => {
+  assert.equal(isSecureOrigin('web', { isSecureContext: false }), false, 'http://10.20.191.138:8080');
+  assert.equal(isSecureOrigin('web', { isSecureContext: true }), true, 'https atau localhost');
+  assert.equal(isSecureOrigin('web', {}), true, 'tanpa informasi: jangan menyembunyikan tombol tanpa bukti');
+  assert.equal(isSecureOrigin('android', { isSecureContext: false }), true, 'native tidak terpengaruh');
+  assert.equal(isSecureOrigin('ios', { isSecureContext: false }), true);
 });
