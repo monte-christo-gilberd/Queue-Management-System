@@ -49,6 +49,6 @@ test.describe('TS-04 Langganan owner', () => {
   });
 
   test('TC-04-04 Opsi paket dan pembayaran tampil saat diblokir', async () => {
-    test.fixme(true, 'Backlog: 4.18 — halaman harga/pembayaran belum ada (lihat test-cases/queue-management/backlog).');
+    test.fixme(true, 'Belum selesai: 4.18 — halaman langganan hanya menawarkan perpanjang 1 bulan lewat Stripe; pilihan paket (bulanan, tahunan, sekali bayar) belum ada (lihat test-cases/backlog/ts-09-backlog-features.md).');
   });
 });
