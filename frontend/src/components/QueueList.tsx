@@ -1,3 +1,11 @@
+/**
+ * QueueList: daftar semua antrian aktif milik owner dalam bentuk kartu.
+ *
+ * Dipakai oleh : app/(owner)/queues/index.tsx
+ * Bergantung   : ui/Toast, ui/EmptyState, ui/Icon, layout/ResponsiveScreenLayout, hooks/use-is-wide, hooks/use-theme-mode, utils/format
+ * Peran        : owner
+ * Catatan      : TODO di bawah masih berlaku: route hanya mengisi `queue`, sehingga nomor saat ini dan nama counter belum terisi (lihat types/api.ts).
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { router } from "expo-router";
 import { Pressable, Text, View } from "react-native";
@@ -15,14 +23,19 @@ import { Icon } from "@/components/ui/Icon";
 import { useThemeColor } from "@/hooks/use-theme-mode";
 
 export type QueueListProps = {
+  /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
+  /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
   onMenuItemPress?: (item: OwnerMenuItem) => void;
   /** Antrian yang ditampilkan (route memberi hanya yang aktif; yang sudah ditutup ada di Riwayat). */
   items: QueueListItem[];
+  /** true saat daftar sedang dimuat; teks "Memuat antrian..." tampil. Default false. */
   loading?: boolean;
+  /** Galat dari route, ditampilkan sebagai toast. Opsional; kosong berarti tidak ada toast. */
   errorMessage?: string;
 };
 
+/** Daftar kartu antrian owner; kartu antrian aktif diberi warna utama, yang lain netral. */
 export default function QueueList({
   shell,
   onMenuItemPress,
@@ -34,6 +47,8 @@ export default function QueueList({
   const avatarColor = useThemeColor("avatar");
   const isWide = useIsWide();
 
+  // Empty state hanya muncul saat tidak sedang memuat dan tidak ada galat, agar tidak tampil bersamaan dengan pesan tersebut.
+  // Di layar lebar kartu tersusun tiga per baris (lebar 31.5%); di layar sempit satu kolom.
   return (
     <ResponsiveScreenLayout
       title="Daftar Antrian"

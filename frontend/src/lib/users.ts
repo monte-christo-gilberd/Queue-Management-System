@@ -1,10 +1,23 @@
+/**
+ * users.ts: panggilan API profil user yang sedang login (me), preferensi notifikasi, dan foto profil.
+ *
+ * Dipakai oleh : hooks/use-me.ts, hooks/use-avatar-source.ts, app/(owner)/profile/index.tsx,
+ *                app/(owner)/subscription.tsx
+ * Bergantung   : lib/api.ts (apiFetch, apiUpload, apiDownload, API_BASE_URL)
+ * Catatan      : Semua rute /users/me/* butuh login (dijaga middleware auth backend). Foto profil dibaca lewat
+ *                apiDownload karena butuh header Authorization.
+ */
 import { apiDownload, apiFetch, apiUpload, API_BASE_URL } from './api';
 
-/** Profil user yang sedang login. is_owner = punya baris di tabel owners. */
+/** Me: profil user yang sedang login. is_owner = punya baris di tabel owners. */
 export type Me = {
+  /** ID user di database. */
   id: number;
+  /** Alamat email akun. */
   email: string;
+  /** Username akun. Bisa diganti lewat updateMe. */
   username: string;
+  /** true bila akun ini owner (punya baris di tabel owners). */
   is_owner: boolean;
   /** Akhir masa langganan (ISO). Hanya owner; null untuk customer. */
   subscription_expires_at: string | null;
@@ -48,7 +61,10 @@ export async function deleteAvatar(): Promise<void> {
   await apiFetch<void>('/api/v1/users/me/avatar', { method: 'DELETE' });
 }
 
-/** Alamat foto profil. Butuh header Authorization, jadi tidak bisa dipakai langsung sebagai `<img src>` di web. */
+/**
+ * avatarUrl: alamat foto profil. Butuh header Authorization, jadi tidak bisa dipakai langsung sebagai `<img src>` di web.
+ * `updatedAt` diisi dari Me.avatar_updated_at, sehingga URL berubah setiap foto diganti dan cache browser tidak dipakai.
+ */
 export function avatarUrl(updatedAt: string): string {
   return `${API_BASE_URL}/api/v1/users/me/avatar?v=${encodeURIComponent(updatedAt)}`;
 }

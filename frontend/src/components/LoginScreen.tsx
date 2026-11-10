@@ -1,3 +1,11 @@
+/**
+ * LoginScreen: layar login dengan email atau username dan password.
+ *
+ * Dipakai oleh : app/index.tsx
+ * Bergantung   : ui/Toast (useErrorToast), components/auth/* (AuthLayout, AuthInput, AuthButtons), expo-router
+ * Peran        : publik
+ * Catatan      : tombol Google hanya placeholder sampai OAuth tersedia di backend; logika submit dan navigasi ada di route.
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { router, type Href } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
@@ -11,9 +19,13 @@ import { LockIcon, PersonIcon } from '@/components/ui/Icon';
 export type LoginScreenProps = {
   /** Email atau username. Backend menerima keduanya lewat field `identifier`. */
   identifier: string;
+  /** Nilai password saat ini; field ditampilkan dengan `secureTextEntry`. */
   password: string;
+  /** Dipanggil setiap teks di field email/username berubah, dengan nilai terbaru. */
   onChangeIdentifier: (value: string) => void;
+  /** Dipanggil setiap teks di field password berubah, dengan nilai terbaru. */
   onChangePassword: (value: string) => void;
+  /** Dipanggil saat tombol Login ditekan; validasi dan pemanggilan API dilakukan oleh route. */
   onSubmit: () => void;
   /** Placeholder visual — Google OAuth belum ada di backend. */
   onGoogleLogin?: () => void;
@@ -21,10 +33,13 @@ export type LoginScreenProps = {
   onForgotPassword?: () => void;
   /** Tujuan tautan "Daftar" (mis. `/register?next=…`). Default `/register`. */
   registerHref?: string;
+  /** true selama permintaan login berjalan; tombol Login menampilkan status loading. */
   loading: boolean;
+  /** Pesan galat dari route, ditampilkan sebagai toast. Opsional; kosong berarti tidak ada toast. */
   errorMessage?: string;
 };
 
+/** Layar login: field identifier dan password, tombol Login, lupa password, dan tautan ke halaman daftar. */
 export default function LoginScreen({
   identifier,
   password,

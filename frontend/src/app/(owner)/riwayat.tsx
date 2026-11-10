@@ -1,3 +1,12 @@
+/**
+ * riwayat: riwayat saya: satu baris per tiket customer (selesai, dilewati, dibatalkan, dihapus, atau antrian ditutup).
+ *
+ * Rute        : /riwayat.
+ * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx).
+ * Dipakai oleh: menu owner (case riwayat-saya di owner-menu) dan tab riwayat pada ResponsiveScreenLayout.
+ * Bergantung  : useMyHistory (lib/history), MyHistoryList, EmptyState.
+ * Catatan     : Bila belum ada riwayat, EmptyState ditampilkan setelah pemuatan selesai.
+ */
 import { Text } from 'react-native';
 
 import { MyHistoryList } from '@/components/MyHistoryList';

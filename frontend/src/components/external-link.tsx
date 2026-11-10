@@ -1,9 +1,18 @@
+/**
+ * ExternalLink: tautan ke URL eksternal dari sisa template Expo.
+ *
+ * Dipakai oleh : tidak ada
+ * Bergantung   : expo-router (Link), expo-web-browser (openBrowserAsync)
+ * Peran        : semua
+ * Catatan      : TIDAK DIPAKAI: sisa template Expo. Di native, tautan dibuka di browser dalam aplikasi.
+ */
 import { Href, Link } from 'expo-router';
 import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
 import { type ComponentProps } from 'react';
 
 type Props = Omit<ComponentProps<typeof Link>, 'href'> & { href: Href & string };
 
+/** Tautan yang di web membuka tab baru dan di native membuka browser dalam aplikasi. */
 export function ExternalLink({ href, ...rest }: Props) {
   return (
     <Link
@@ -12,9 +21,9 @@ export function ExternalLink({ href, ...rest }: Props) {
       href={href}
       onPress={async (event) => {
         if (process.env.EXPO_OS !== 'web') {
-          // Prevent the default behavior of linking to the default browser on native.
+          // Mencegah pembukaan browser bawaan perangkat agar pengguna tetap berada di aplikasi.
           event.preventDefault();
-          // Open the link in an in-app browser.
+          // Membuka URL di browser dalam aplikasi dengan gaya presentasi otomatis.
           await openBrowserAsync(href, {
             presentationStyle: WebBrowserPresentationStyle.AUTOMATIC,
           });

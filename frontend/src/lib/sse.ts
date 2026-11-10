@@ -1,11 +1,21 @@
 /**
- * Parser SSE dan validasi event antrian. Fungsi murni (tanpa React, tanpa fetch) supaya bisa diuji di Node.
+ * sse.ts: parser SSE dan validasi event antrian. Fungsi murni (tanpa React, tanpa fetch) supaya bisa diuji di Node.
  *
- * Backend mengirim frame `data: {json}\n\n`, komentar `: connected` / `: ping`, dan tidak memakai field `event:`.
- * Tipe event ada di dalam JSON (`type`).
+ * Dipakai oleh : hooks/use-queue-events.ts, hooks/use-display-screen.ts
+ * Bergantung   : tidak ada (fungsi murni)
+ * Alur         : hook membuat parser lalu memanggil push() untuk setiap potongan stream. use-queue-events meneruskan
+ *                frame ke parseQueueEvent. Jeda reconnect dan resinkron memakai nextBackoff, resyncInterval, dan shouldResync.
+ * Catatan      : Backend mengirim frame `data: {json}\n\n` dan komentar `: connected` / `: ping`, tanpa field `event:`.
+ *                Tipe event ada di dalam JSON (`type`).
  */
 
-export type SseMessage = { event?: string; data: string };
+/** SseMessage: satu frame SSE yang sudah diurai, sebelum isinya diperiksa sebagai JSON. */
+export type SseMessage = {
+  /** Nama dari field `event:`. undefined bila frame tidak punya field itu, dan backend ini memang tidak mengirimnya. */
+  event?: string;
+  /** Gabungan semua baris `data:` dalam frame, dipisah `\n`. Belum di-parse sebagai JSON. */
+  data: string;
+};
 
 /** Event dari `GET /api/v1/queues/:id/event`. `payload` bentuknya bergantung pada `type`. */
 export type QueueEventType =
@@ -19,13 +29,19 @@ export type QueueEventType =
   | 'queue_closed'
   | 'queue_qr_updated';
 
+/** QueueEvent: event antrian yang sudah divalidasi oleh parseQueueEvent. */
 export type QueueEvent = {
+  /** Jenis event. Hanya nilai dari QueueEventType yang lolos validasi. */
   type: QueueEventType;
+  /** ID antrian tempat event terjadi. Selalu bilangan bulat. */
   queue_id: number;
+  /** Data tambahan yang bentuknya bergantung pada `type`. undefined bila backend tidak mengirimnya. */
   payload?: unknown;
+  /** Waktu event dari server (string). undefined bila tidak ada atau bukan string. */
   ts?: string;
 };
 
+/** Daftar jenis event yang diterima. Harus sama dengan QueueEventType, dipakai untuk validasi di parseQueueEvent. */
 const EVENT_TYPES: readonly QueueEventType[] = [
   'ticket_joined',
   'ticket_next',
@@ -39,7 +55,7 @@ const EVENT_TYPES: readonly QueueEventType[] = [
 ];
 
 /**
- * Membangun parser incremental. `push` menerima potongan teks apa pun (potongan bisa terpotong di tengah baris).
+ * createSseParser membangun parser incremental. `push` menerima potongan teks apa pun (potongan bisa terpotong di tengah baris).
  * Mendukung akhir baris `\n` dan `\r\n`. Komentar (diawali `:`) diabaikan.
  */
 export function createSseParser(onMessage: (message: SseMessage) => void) {
@@ -47,6 +63,7 @@ export function createSseParser(onMessage: (message: SseMessage) => void) {
   let dataLines: string[] = [];
   let eventName: string | undefined;
 
+  // Baris kosong mengakhiri frame. Frame tanpa baris data (mis. hanya komentar) tidak menghasilkan pesan.
   function dispatch() {
     if (dataLines.length > 0) {
       onMessage({ event: eventName, data: dataLines.join('\n') });
@@ -65,6 +82,7 @@ export function createSseParser(onMessage: (message: SseMessage) => void) {
     const colon = line.indexOf(':');
     const field = colon === -1 ? line : line.slice(0, colon);
     let value = colon === -1 ? '' : line.slice(colon + 1);
+    // Satu spasi setelah titik dua bagian dari format SSE, bukan isi nilai.
     if (value.startsWith(' ')) value = value.slice(1);
 
     if (field === 'data') dataLines.push(value);
@@ -73,6 +91,7 @@ export function createSseParser(onMessage: (message: SseMessage) => void) {
   }
 
   return {
+    /** Menambah potongan stream. Baris yang belum lengkap disimpan di buffer sampai potongan berikutnya datang. */
     push(chunk: string) {
       buffer += chunk;
       let newline = buffer.indexOf('\n');
@@ -87,7 +106,10 @@ export function createSseParser(onMessage: (message: SseMessage) => void) {
   };
 }
 
-/** Mengubah isi `data` menjadi QueueEvent. Mengembalikan null bila JSON rusak atau bentuknya tidak dikenal. */
+/**
+ * Mengubah isi `data` menjadi QueueEvent. Mengembalikan null bila JSON rusak atau bentuknya tidak dikenal.
+ * Bentuk yang diterima: `{ "type": "...", "queue_id": 1, "payload": ..., "ts": "..." }`.
+ */
 export function parseQueueEvent(data: string): QueueEvent | null {
   let value: unknown;
   try {
@@ -109,14 +131,21 @@ export function parseQueueEvent(data: string): QueueEvent | null {
   };
 }
 
+/** Jeda reconnect pertama dalam milidetik. */
 export const BACKOFF_START_MS = 1000;
+
+/** Jeda reconnect terbesar dalam milidetik. */
 export const BACKOFF_MAX_MS = 30000;
 
-/** Jeda berikutnya untuk reconnect: dua kali lipat, dibatasi `BACKOFF_MAX_MS`. */
+/**
+ * nextBackoff: jeda reconnect berikutnya, dua kali lipat dan dibatasi `BACKOFF_MAX_MS`.
+ * Contoh: nextBackoff(1000) = 2000, nextBackoff(20000) = 30000.
+ */
 export function nextBackoff(currentMs: number): number {
   return Math.min(Math.max(currentMs, BACKOFF_START_MS) * 2, BACKOFF_MAX_MS);
 }
 
+/** Jeda resinkron normal (ms) saat SSE hidup. */
 export const RESYNC_INTERVAL_MS = 45000;
 
 /** SSE tidak hidup (mis. proxy/tunnel menahan stream): ambil ulang lebih sering. */
@@ -125,14 +154,19 @@ export const FALLBACK_POLL_MS = 3000;
 /** Stream dianggap tidak hidup bila belum ada satu byte pun setelah selama ini. */
 export const SSE_LIVE_GRACE_MS = 3000;
 
-/** Interval resinkron: cepat selama SSE tidak hidup, normal bila hidup. */
+/**
+ * resyncInterval: interval resinkron dalam ms. Cepat (FALLBACK_POLL_MS) bila SSE tidak hidup dan sudah lewat
+ * SSE_LIVE_GRACE_MS sejak `since`, normal bila hidup. Contoh: resyncInterval(false, 0, 5000) = 3000,
+ * resyncInterval(true, 0, 5000) = 45000.
+ */
 export function resyncInterval(live: boolean, since: number, now: number): number {
   return !live && now - since >= SSE_LIVE_GRACE_MS ? FALLBACK_POLL_MS : RESYNC_INTERVAL_MS;
 }
 
 /**
- * Perlu resinkron? Event SSE bisa terbuang (channel hub penuh) atau tertunda saat tab di latar belakang.
- * Kembali aktif selalu memicu; saat aktif, memicu bila sudah `RESYNC_INTERVAL_MS` sejak sinkron terakhir.
+ * shouldResync: perlu resinkron? Event SSE bisa terbuang (channel hub penuh) atau tertunda saat tab di latar belakang.
+ * Kembali aktif selalu memicu; saat aktif, memicu bila sudah `interval` sejak sinkron terakhir (waktu dalam ms).
+ * Contoh: shouldResync(true, false, 0, 50000) = true, shouldResync(false, true, 0, 0) = false.
  */
 export function shouldResync(
   active: boolean,

@@ -1,3 +1,11 @@
+/**
+ * DisplayScreen: layar publik antrian (kartu per counter, nomor berikutnya, dan nomor yang dilewati).
+ *
+ * Dipakai oleh : app/display/[token].tsx
+ * Bergantung   : hooks/use-display-screen (DisplayStatus), lib/display (DisplaySnapshot), utils/display, components/DisplayCounterCard
+ * Peran        : publik (tanpa login, dibuka lewat token di URL)
+ * Catatan      : data dan koneksi ulang dikelola hook; komponen ini hanya menggambar hasilnya dan tidak punya kontrol.
+ */
 import { useEffect, useState } from 'react';
 import { Text, View, useWindowDimensions } from 'react-native';
 
@@ -7,11 +15,13 @@ import type { DisplaySnapshot } from '@/lib/display';
 import { buildCards, formatClock, layoutColumns, numberFontSize } from '@/utils/display';
 
 export type DisplayScreenProps = {
+  /** Data antrian terakhir; null berarti belum ada data, sehingga layar menampilkan "Memuat..." atau "Menyambung ulang...". */
   snapshot: DisplaySnapshot | null;
+  /** Keadaan pengambilan data dari hook: 'invalid' (tautan tidak berlaku), 'error' (galat), 'loading', atau 'ready'. */
   status: DisplayStatus;
   /** false: stream dan pengambilan sama-sama basi. Angka tetap tampil, ditandai "Menyambung ulang...". */
   connected: boolean;
-  /** Id counter yang nomornya baru berganti. */
+  /** Id counter yang nomornya baru berganti; kartu tersebut disorot sebentar (lama sorotan diatur hook). Kosong berarti tidak ada sorotan. */
   highlighted: number[];
 };
 
@@ -53,6 +63,7 @@ function NumberList({ title, numbers }: { title: string; numbers: string[] }) {
 export function DisplayScreen({ snapshot, status, connected, highlighted }: DisplayScreenProps) {
   const { width, height } = useWindowDimensions();
 
+  // Status 'invalid' mengalahkan keadaan data lain; status 'error' tanpa snapshot tetap tampil "Menyambung ulang...".
   if (status === 'invalid') {
     return (
       <View className="flex-1 items-center justify-center bg-dark p-8">
@@ -76,12 +87,14 @@ export function DisplayScreen({ snapshot, status, connected, highlighted }: Disp
     );
   }
 
+  // Saat antrian ditutup, nomor di semua kartu disembunyikan (kartu tetap tampil sebagai idle).
   const closed = snapshot.status === 'closed';
   const cards = buildCards(snapshot);
   const landscape = width >= height;
   const columns = layoutColumns(cards.length, landscape);
   const hasLists = snapshot.upcoming.length > 0 || snapshot.skipped.length > 0;
   const areaWidth = width - PADDING * 2;
+  // Area kartu dikurangi tinggi daftar "Berikutnya" dan "Dilewati" (LIST_HEIGHT per daftar yang tampil), minimal 160px agar kartu tidak terlalu kecil.
   const areaHeight = Math.max(height - PADDING * 2 - HEADER_HEIGHT - (hasLists ? LIST_HEIGHT * (snapshot.upcoming.length > 0 && snapshot.skipped.length > 0 ? 2 : 1) : 0), 160);
   const rows = Math.ceil(cards.length / columns);
   const cardWidth = Math.floor((areaWidth - GAP * (columns - 1)) / columns);

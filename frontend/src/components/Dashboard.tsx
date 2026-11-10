@@ -1,3 +1,11 @@
+/**
+ * Dashboard: kerangka halaman dashboard yang dipakai owner dan customer.
+ *
+ * Dipakai oleh : app/(owner)/dashboard.tsx
+ * Bergantung   : components/layout/ResponsiveScreenLayout, components/ui/Toast (useErrorToast)
+ * Peran        : owner dan customer
+ * Catatan      : komponen ini hanya pembungkus layout dan state kosong; logika utama (memuat antrian, memilih peran) ada di route.
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { Text, View } from "react-native";
 
@@ -7,7 +15,9 @@ import ResponsiveScreenLayout, {
 } from "@/components/layout/ResponsiveScreenLayout";
 
 export type DashboardProps = {
+  /** Konteks shell layout; saat ini hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
+  /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
   onMenuItemPress?: (item: OwnerMenuItem) => void;
   /** Papan antrian owner (satu kartu per antrian aktif terbaru). Dirender oleh route. */
   boards?: React.ReactNode;
@@ -21,6 +31,7 @@ export type DashboardProps = {
   canCreateQueue?: boolean;
 };
 
+/** Menampilkan papan antrian, atau pesan kosong yang sesuai peran bila tidak ada antrian aktif. */
 export default function Dashboard({
   shell,
   onMenuItemPress,
@@ -30,7 +41,9 @@ export default function Dashboard({
   topCard,
   canCreateQueue = true,
 }: DashboardProps) {
+  // Pesan error ditampilkan sebagai toast, bukan teks di dalam layout.
   useErrorToast(errorMessage);
+  // Customer (canCreateQueue=false) tanpa antrian aktif tidak melihat apa pun di area papan.
   return (
     <ResponsiveScreenLayout
       title="Dashboard"

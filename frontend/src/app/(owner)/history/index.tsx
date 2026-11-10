@@ -1,3 +1,12 @@
+/**
+ * history/index: riwayat antrian owner: daftar antrian yang sudah ditutup, dimuat per halaman.
+ *
+ * Rute        : /history.
+ * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx); data hanya milik owner yang masuk.
+ * Dipakai oleh: menu owner (case history di owner-menu).
+ * Bergantung  : useHistoryQueues (lib/history), History.
+ * Catatan     : Tap antrian membuka /history/[queueId].
+ */
 import History from '@/components/History';
 import { useHistoryQueues } from '@/hooks/use-history';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';

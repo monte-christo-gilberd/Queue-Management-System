@@ -1,3 +1,11 @@
+/**
+ * MyTicketModal: popup ringkasan tiket milik customer di satu antrian.
+ *
+ * Dipakai oleh : app/(owner)/dashboard.tsx
+ * Bergantung   : components/CustomerQueueScreen (STATUS_LABEL, tipe CustomerTicketStatus), components/ui/ModalCard,
+ *                components/ui/AppButton, constants/theme (Fonts)
+ * Catatan      : Data seluruhnya dari props; popup ini tidak mengambil data sendiri.
+ */
 import { Text, View } from 'react-native';
 
 import { STATUS_LABEL, type CustomerTicketStatus } from '@/components/CustomerQueueScreen';
@@ -5,14 +13,20 @@ import { AppButton } from '@/components/ui/AppButton';
 import { ModalCard } from '@/components/ui/ModalCard';
 import { Fonts } from '@/constants/theme';
 
+// Fonts?. melindungi bila Fonts tidak terdefinisi; MONO yang undefined berarti font default.
 const MONO = Fonts?.mono;
 
+/** Props popup tiket customer; perilakunya dijelaskan di MyTicketModal. */
 export type MyTicketModalProps = {
+  /** Popup tampil bila true. */
   visible: boolean;
+  /** Dipanggil saat tombol Tutup, latar, atau back perangkat ditekan. */
   onClose: () => void;
+  /** Nama antrian, tampil sebagai subjudul. */
   queueName: string;
   /** Nomor tiket saya yang sudah diformat (mis. "A-042"); null bila saya tidak punya tiket di antrian ini. */
   ticketNumber: string | null;
+  /** Status tiket saya untuk label di bawah nomor; null bila tidak ada tiket. */
   ticketStatus: CustomerTicketStatus | null;
   /** Nomor yang sedang dilayani, sudah diformat; null bila belum ada. */
   currentNumber: string | null;
@@ -22,6 +36,7 @@ export type MyTicketModalProps = {
   waitingAhead: number | null;
 };
 
+/** Baris label dan nilai di dalam popup. */
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <View className="flex-row items-center justify-between">
@@ -42,6 +57,8 @@ export function MyTicketModal({
   counterName,
   waitingAhead,
 }: MyTicketModalProps) {
+  // Baris "Di depan Anda" hanya tampil bila saya sedang menunggu (waitingAhead tidak null).
+  // Baris "Counter" hanya tampil saat nomor saya sedang dilayani.
   return (
     <ModalCard visible={visible} onRequestClose={onClose}>
       <Text className="text-[20px] font-extrabold text-foreground">Tiket Anda</Text>

@@ -1,3 +1,12 @@
+/**
+ * JoinQueueModals: popup "Masuk ke Antrian" untuk customer, memindai QR dengan kamera atau menempel tautan antrian.
+ *
+ * Dipakai oleh : app/(owner)/dashboard.tsx, components/layout/ResponsiveScreenLayout.tsx
+ * Bergantung   : expo-camera, expo-router, lib/qr (joinByToken), lib/qr-scan (parseJoinToken),
+ *                lib/queue-errors (describeQueueError), components/ui/ModalCard, components/ui/AppButton
+ * Alur         : QR terbaca / tautan ditempel -> joinByToken -> popup tutup -> router.replace ke /ticket/[queueId]
+ * Catatan      : Satu-satunya jalur join dari UI. Halaman /join?t= tidak melakukan join sendiri.
+ */
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
@@ -11,7 +20,9 @@ import { joinByToken } from '@/lib/qr';
 import { parseJoinToken } from '@/lib/qr-scan';
 
 type JoinQueueModalsProps = {
+  /** Popup tampil bila true. */
   visible: boolean;
+  /** Dipanggil saat popup ditutup manual (Tutup, latar, back) atau setelah join berhasil. */
   onClose: () => void;
 };
 
@@ -30,6 +41,7 @@ export function JoinQueueModals({ visible, onClose }: JoinQueueModalsProps) {
   );
 }
 
+/** Isi popup: kamera (atau tombol izin), kotak tempel tautan, dan status join. */
 function ScannerBody({ onClose }: { onClose: () => void }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [message, setMessage] = useState<string>();
@@ -46,6 +58,7 @@ function ScannerBody({ onClose }: { onClose: () => void }) {
     async (raw: string, invalidMessage: string, retryMs: number) => {
       if (lockRef.current) return;
       lockRef.current = true;
+      // Buka kunci setelah jeda retryMs; bila 0, langsung dibuka.
       const unlock = () => {
         if (retryMs > 0) setTimeout(() => (lockRef.current = false), retryMs);
         else lockRef.current = false;
@@ -59,10 +72,12 @@ function ScannerBody({ onClose }: { onClose: () => void }) {
       setBusy(true);
       setMessage(undefined);
       try {
+        // Bila berhasil, kunci tidak dibuka lagi: popup tutup dan tiket langsung dibuka.
         const ticket = await joinByToken(token);
         onClose();
         router.replace({ pathname: '/ticket/[queueId]', params: { queueId: String(ticket.queue_id) } });
       } catch (e) {
+        // Galat ditampilkan sebagai pesan di popup, lalu kunci dibuka agar bisa dicoba lagi.
         setMessage(describeQueueError(e));
         setBusy(false);
         unlock();
@@ -71,15 +86,18 @@ function ScannerBody({ onClose }: { onClose: () => void }) {
     [onClose],
   );
 
+  // Dipanggil kamera untuk setiap QR yang terbaca; scan dengan jeda 1.5 detik setelah gagal.
   const handleScanned = useCallback(
     ({ data }: { data: string }) => void attempt(data, 'QR ini bukan QR antrian.', 1500),
     [attempt],
   );
 
+  // Tautan yang ditempel tidak perlu jeda: form boleh langsung dicoba lagi.
   const submitLink = () => void attempt(link, 'Tautan ini bukan tautan antrian.', 0);
 
   const granted = permission?.granted === true;
 
+  // Tanpa izin: tampil tombol minta izin. Bila izin ditolak permanen (canAskAgain false), tombol disembunyikan.
   return (
     <>
       <Text className="text-[24px] font-extrabold text-foreground">Masuk ke Antrian</Text>

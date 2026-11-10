@@ -1,3 +1,13 @@
+/**
+ * Toast: sistem notifikasi galat sementara (ToastProvider, useErrorToast, ToastViewport).
+ *
+ * Dipakai oleh : app/_layout.tsx (ToastProvider), components/ui/ModalCard.tsx (viewport di dalam modal),
+ *                dan banyak layar lewat useErrorToast
+ * Bergantung   : hooks/use-is-wide (ToastViewport)
+ * Alur         : ToastProvider menyimpan daftar toast -> useErrorToast/useToast memanggil show ->
+ *                ToastViewport menampilkan toast di halaman atau di dalam modal paling atas
+ * Catatan      : Toast hilang sendiri setelah TOAST_DURATION_MS. Pesan yang sama tidak ditumpuk.
+ */
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 
@@ -6,18 +16,22 @@ import { useIsWide } from '@/hooks/use-is-wide';
 /** Lama toast tampil sebelum hilang sendiri. */
 export const TOAST_DURATION_MS = 5000;
 
+/** Satu toast yang sedang tampil. id unik per toast; message sudah di-trim. */
 type ToastItem = { id: number; message: string };
 
 type ToastContextValue = {
+  /** Toast yang sedang tampil, urut dari yang paling lama. */
   toasts: ToastItem[];
   /** Tampilkan pesan galat. Pesan yang sama dengan toast yang masih tampil tidak ditumpuk, hanya diperpanjang. */
   show: (message: string) => void;
+  /** Tutup satu toast secara manual (hapus timer-nya juga). */
   dismiss: (id: number) => void;
   /**
    * Modal yang terbuka, urut dari yang pertama dibuka. Toast ditampilkan di dalam modal paling atas (bukan di
    * halaman) supaya tidak tertutup latar gelapnya, dan hanya satu viewport yang tampil walau modal bertumpuk.
    */
   modalStack: string[];
+  /** Daftarkan modal terbuka ke modalStack. Mengembalikan fungsi untuk melepasnya lagi. */
   registerModal: (id: string) => () => void;
 };
 
@@ -39,6 +53,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const nextId = useRef(1);
 
+  // Simpan daftar toast ke cermin dan state sekaligus, supaya keduanya selalu sama.
   const commit = useCallback((next: ToastItem[]) => {
     toastsRef.current = next;
     setToasts(next);
@@ -54,6 +69,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [commit],
   );
 
+  // Mulai (atau mulai ulang) timer hilang otomatis untuk satu toast.
   const arm = useCallback(
     (id: number) => {
       const existing = timers.current.get(id);
@@ -70,6 +86,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (message: string) => {
       const text = message.trim();
       if (!text) return;
+      // Pesan yang sama sudah tampil: hanya timer-nya diperpanjang, tidak ada toast baru.
       const same = toastsRef.current.find((t) => t.message === text);
       if (same) {
         arm(same.id);
@@ -87,6 +104,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     return () => setModalStack((stack) => stack.filter((x) => x !== id));
   }, []);
 
+  // Saat provider dilepas (unmount), semua timer dibersihkan supaya tidak ada callback yang jalan.
   useEffect(() => {
     const active = timers.current;
     return () => {
@@ -102,6 +120,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;
 }
 
+/** Akses fungsi show dan dismiss toast dari komponen mana pun di bawah ToastProvider. */
 export function useToast() {
   const { show, dismiss } = useContext(ToastContext);
   return { show, dismiss };
@@ -124,6 +143,7 @@ export function useToastModalOpen(open: boolean): string {
   const id = useId();
   useEffect(() => {
     if (!open) return;
+    // Cleanup saat modal ditutup atau unmount: id dilepas dari modalStack.
     return registerModal(id);
   }, [open, registerModal, id]);
   return id;
@@ -138,6 +158,7 @@ export function ToastViewport({ modalId }: { modalId?: string }) {
   const { toasts, dismiss, modalStack } = useContext(ToastContext);
   const isWide = useIsWide();
   const owner = modalStack.length > 0 ? modalStack[modalStack.length - 1] : undefined;
+  // Viewport ini tidak tampil bila tidak ada toast atau bila modal ini bukan pemilik viewport yang aktif.
   if (toasts.length === 0 || modalId !== owner) return null;
 
   return (

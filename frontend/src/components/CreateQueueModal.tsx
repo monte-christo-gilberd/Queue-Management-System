@@ -1,3 +1,11 @@
+/**
+ * CreateQueueModal: popup form untuk membuat antrian baru (nama, deskripsi, awalan nomor).
+ *
+ * Dipakai oleh : app/(owner)/dashboard.tsx
+ * Bergantung   : ui/Toast (useErrorToast), ui/AppButton, ui/FormField, ui/ModalCard
+ * Peran        : owner
+ * Catatan      : awalan nomor dinormalisasi saat diketik; validasi nama dan pembuatan antrian dilakukan di route.
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { useState } from 'react';
 import { Text } from 'react-native';
@@ -7,11 +15,15 @@ import { FormField } from '@/components/ui/FormField';
 import { ModalCard } from '@/components/ui/ModalCard';
 
 export type CreateQueueModalProps = {
+  /** true menampilkan popup beserta form; false menyembunyikannya dan form dibongkar. */
   visible: boolean;
+  /** Dipanggil saat popup diminta tutup, lewat tombol Batal atau tombol dismiss modal. */
   onClose: () => void;
   /** Dipanggil dengan isian form. Validasi dan pemanggilan API ada di route. */
   onSubmit: (name: string, description: string, ticketPrefix: string) => void;
+  /** true saat pembuatan antrian berjalan; tombol Buat Antrian menampilkan status loading. Default false. */
   loading?: boolean;
+  /** Galat dari route, ditampilkan sebagai toast. Opsional; kosong berarti tidak ada toast. */
   errorMessage?: string;
 };
 
@@ -46,6 +58,7 @@ function CreateQueueForm({
   const [description, setDescription] = useState('');
   const [prefix, setPrefix] = useState('');
 
+  // Awalan dipaksa huruf besar, hanya huruf dan angka A-Z/0-9, dan dibatasi 3 karakter saat diketik.
   return (
     <>
       <Text className="text-[24px] font-extrabold text-foreground">Buat Antrian Baru</Text>

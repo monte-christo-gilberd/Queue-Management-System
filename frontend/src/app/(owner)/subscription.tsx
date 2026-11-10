@@ -1,3 +1,12 @@
+/**
+ * subscription: langganan owner lewat Stripe: status aktif, tombol bayar, dan tombol jadi owner untuk calon owner.
+ *
+ * Rute        : /subscription (Stripe mengembalikan ke /subscription?payment=success atau cancel).
+ * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx).
+ * Dipakai oleh: Profil (tombol langganan atau Jadi Owner) dan redirect dari Stripe Checkout.
+ * Bergantung  : startCheckout dan describePaymentError (lib/payments), getMe (lib/users), Subscription.
+ * Catatan     : Webhook di payment-service adalah sumber kebenaran status langganan, bukan parameter redirect ini.
+ */
 import * as WebBrowser from 'expo-web-browser';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -18,6 +27,10 @@ const POLL_INTERVAL_MS = 2000;
 const MSG_SUCCESS = 'Pembayaran diterima. Status langganan diperbarui otomatis; bila tanggal belum berubah, tunggu sebentar lalu tekan Refresh.';
 const MSG_CANCEL = 'Pembayaran dibatalkan. Anda bisa mencobanya lagi kapan saja.';
 
+/**
+ * Layar langganan. Bayar membuka Stripe Checkout: di web halaman berpindah, di native browser terbuka lalu status diperiksa ulang.
+ * Status yang tampil selalu berasal dari profil (getMe), bukan dari parameter payment.
+ */
 export default function SubscriptionRoute() {
   // Web: Stripe mengembalikan browser ke /subscription?payment=success|cancel.
   const { payment } = useLocalSearchParams<{ payment?: string }>();

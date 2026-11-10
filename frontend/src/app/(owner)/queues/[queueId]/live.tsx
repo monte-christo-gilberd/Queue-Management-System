@@ -1,3 +1,12 @@
+/**
+ * queues/[queueId]/live: papan live satu antrian untuk layar petugas tanpa tab: nomor sebelumnya, sekarang, dan berikutnya.
+ *
+ * Rute        : /queues/[queueId]/live.
+ * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx); hanya owner.
+ * Dipakai oleh: tidak ada tautan di kode frontend; dibuka langsung lewat URL.
+ * Bergantung  : useQueueBoard (SSE), useCounterSession, useNextSkipConfirm, QueueLiveScreen.
+ * Catatan     : Nama counter hanya tampil bila counter non-default yang memanggil.
+ */
 import { useLocalSearchParams } from 'expo-router';
 
 import QueueLiveScreen from '@/components/QueueLiveScreen';
@@ -9,6 +18,9 @@ import type { TicketEntry } from '@/types/api';
 import { formatTicketNumber } from '@/utils/format';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 
+/**
+ * Papan live untuk layar petugas. Data dan aksi SKIP/NEXT sama dengan papan di dashboard.
+ */
 export default function QueueLiveRoute() {
   const { queueId } = useLocalSearchParams<{ queueId: string }>();
   const id = Number(queueId);
@@ -45,6 +57,9 @@ export default function QueueLiveRoute() {
   );
 }
 
+/**
+ * Mengubah satu entri tiket menjadi nomor (dengan prefix antrian) dan nama customer untuk tampilan papan.
+ */
 function toLive(entry: TicketEntry | null, prefix?: string) {
   return entry ? { number: formatTicketNumber(entry.ticket.ticket_number, prefix), name: entry.customerName } : null;
 }

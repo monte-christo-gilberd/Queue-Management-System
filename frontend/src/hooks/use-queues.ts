@@ -1,9 +1,19 @@
+/**
+ * use-queues: daftar antrian owner dan detail satu antrian.
+ *
+ * Dipakai oleh : src/app/(owner)/dashboard.tsx, src/app/(owner)/queues/index.tsx, src/app/(owner)/queues/[queueId]/index.tsx, src/app/(owner)/queues/[queueId]/live.tsx.
+ * Bergantung   : lib/queues (listQueues, getQueue), lib/queue-errors (describeQueueError), types/api (Queue).
+ * Alur         : muat awal lewat effect. `reload` dipakai setelah membuat atau menutup antrian.
+ * Catatan      : Hasil request dibungkus Result (ok atau message) supaya galat tidak dilempar keluar effect.
+ */
+
 import { useCallback, useEffect, useState } from 'react';
 
 import { describeQueueError } from '@/lib/queue-errors';
 import { getQueue, listQueues } from '@/lib/queues';
 import type { Queue } from '@/types/api';
 
+/** Hasil request: `ok` true membawa `data`, false membawa pesan galat yang sudah ramah. */
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
 /** Menjalankan request dan mengubah error menjadi pesan. Tidak menyentuh state React. */
@@ -18,6 +28,12 @@ async function run<T>(fn: () => Promise<T>): Promise<Result<T>> {
 /**
  * Daftar antrian owner. `reload` dipakai setelah buat/tutup antrian.
  * Effect hanya memanggil `.then()`, sehingga setState tidak terjadi sinkron di dalam effect.
+ *
+ * Tanpa argumen. Mengembalikan objek dengan field:
+ * - `queues`: daftar antrian owner. Kosong sebelum dimuat.
+ * - `loading`: true sampai percobaan pertama selesai.
+ * - `error`: pesan galat terakhir. undefined bila tidak ada.
+ * - `reload()`: memuat ulang daftar sekarang.
  */
 export function useQueueList() {
   const [queues, setQueues] = useState<Queue[]>([]);
@@ -51,7 +67,17 @@ export function useQueueList() {
   return { queues, loading, error, reload };
 }
 
-/** Detail satu antrian. Id tidak valid langsung dianggap tidak ditemukan (tanpa request). */
+/**
+ * Detail satu antrian. Id tidak valid langsung dianggap tidak ditemukan (tanpa request).
+ *
+ * Argumen: `queueId` adalah id antrian. Bila bukan bilangan bulat positif, hook langsung mengembalikan galat.
+ *
+ * Mengembalikan objek dengan field:
+ * - `queue`: data antrian. undefined sebelum dimuat, atau bila id tidak valid.
+ * - `loading`: true selama muat awal. false langsung untuk id tidak valid.
+ * - `error`: pesan galat. Berisi "Antrian tidak ditemukan" untuk id tidak valid.
+ * - `reload()`: memuat ulang detail. Tidak melakukan apa pun untuk id tidak valid.
+ */
 export function useQueueDetail(queueId: number) {
   const [queue, setQueue] = useState<Queue>();
   const [loading, setLoading] = useState(true);
@@ -85,6 +111,7 @@ export function useQueueDetail(queueId: number) {
     };
   }, [apply, invalid, queueId]);
 
+  // Id tidak valid dikembalikan langsung tanpa menunggu effect, sehingga layar tidak menampilkan skeleton selamanya.
   if (invalid) {
     return { queue: undefined, loading: false, error: 'Antrian tidak ditemukan', reload };
   }

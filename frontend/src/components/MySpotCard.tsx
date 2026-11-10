@@ -1,3 +1,11 @@
+/**
+ * MySpotCard: kartu posisi customer di antrian (nomor sedang dilayani, sebelumnya, dan berikutnya) dan kartu "tidak sedang mengantri".
+ *
+ * Dipakai oleh : components/QueueDetail.tsx (owner, showNeighbors=false), app/(owner)/dashboard.tsx (customer, juga NotQueuingCard)
+ * Bergantung   : ui/AppButton, constants/theme (Fonts)
+ * Peran        : owner dan customer
+ * Catatan      : gaya tampilan sama dengan papan layar live owner; semua nomor sudah diformat oleh pemanggil.
+ */
 import { Pressable, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
@@ -6,6 +14,7 @@ import { Fonts } from '@/constants/theme';
 const MONO = Fonts?.mono;
 
 export type MySpotCardProps = {
+  /** Nama antrian; ditampilkan dalam huruf kecil di kepala kartu. */
   queueName: string;
   /** Nomor yang sedang dilayani, sudah diformat (mis. "A-042"); null bila belum ada. */
   currentNumber: string | null;

@@ -1,3 +1,12 @@
+/**
+ * use-queue-events: langganan SSE satu antrian untuk pembaruan langsung di layar owner dan customer.
+ *
+ * Dipakai oleh : use-queue-board.ts, use-counter-session.ts, use-queue-spot.ts, use-ticket-queue.ts.
+ * Bergantung   : expo-router (useIsFocused), expo/fetch, lib/sse (parser, backoff, resinkron), lib/api (API_BASE_URL), store/authStore (token).
+ * Alur         : queueId dan token -> stream GET /queues/:id/event -> parser SSE -> handlers milik pemanggil. Resinkron dipicu timer dan perubahan fokus atau app.
+ * Catatan      : Memakai expo/fetch karena EventSource tidak bisa mengirim header Authorization. Handler disimpan di ref agar pemanggil tidak membuka ulang koneksi tiap render.
+ */
+
 import { useIsFocused } from 'expo-router';
 import { fetch as expoFetch } from 'expo/fetch';
 import { useEffect, useRef } from 'react';
@@ -36,6 +45,9 @@ type Handlers = {
  *   tidak mengirim apa pun (mis. quick tunnel menahan stream).
  * - Dihentikan saat `queueId` berubah, komponen unmount, layar tidak fokus (layar di bawah stack tidak
  *   boleh menahan koneksi), atau antrian ditutup (`queue_closed` tidak pernah dibuka lagi).
+ *
+ * Argumen: `queueId` adalah id antrian yang diikuti, null berarti tidak berlangganan. `handlers` berisi
+ * tiga callback (lihat tipe Handlers). Fungsi ini tidak mengembalikan nilai.
  */
 export function useQueueEvents(queueId: number | null, handlers: Handlers) {
   const token = useAuthStore((s) => s.token);
@@ -49,6 +61,7 @@ export function useQueueEvents(queueId: number | null, handlers: Handlers) {
 
   const healthRef = useRef<StreamHealth>({ live: false, since: Date.now() });
 
+  // Koneksi hanya dibuka bila ada antrian, token login, dan layar sedang fokus. Ganti antrian atau token menutup koneksi lama.
   useEffect(() => {
     if (queueId === null || !token || !focused) return;
     const controller = new AbortController();
@@ -57,11 +70,13 @@ export function useQueueEvents(queueId: number | null, handlers: Handlers) {
     return () => controller.abort();
   }, [queueId, token, focused]);
 
+  // Timer resinkron terpisah dari stream: jalan walau stream diam, sehingga pemanggil tetap terjaga dari event yang terlewat.
   useEffect(() => {
     if (queueId === null || !token || !focused) return;
     let lastSyncAt = Date.now();
     let active = isForeground();
 
+    // `becameActive` true saat app baru kembali ke depan: resinkron langsung, tanpa menunggu interval.
     function check(becameActive: boolean) {
       const now = Date.now();
       const { live, since } = healthRef.current;
@@ -83,6 +98,7 @@ export function useQueueEvents(queueId: number | null, handlers: Handlers) {
   }, [queueId, token, focused]);
 }
 
+/** Apakah app atau tab sedang tampil di depan. */
 function isForeground(): boolean {
   if (Platform.OS === 'web' && typeof document !== 'undefined') return document.visibilityState === 'visible';
   return AppState.currentState === 'active';
@@ -99,6 +115,11 @@ function onForegroundChange(listener: (active: boolean) => void): () => void {
   return () => sub.remove();
 }
 
+/**
+ * Loop koneksi: membuka stream, membaca event sampai putus, lalu menunggu backoff (1 detik, naik ganda hingga 30 detik)
+ * sebelum mencoba lagi. Backoff kembali ke awal setelah koneksi berhasil. Loop berhenti saat signal dibatalkan,
+ * antrian ditutup, atau server menolak dengan 401/403/404.
+ */
 async function streamLoop(
   queueId: number,
   token: string,
@@ -161,6 +182,7 @@ async function streamLoop(
   }
 }
 
+/** Tidur selama `ms`, tetapi langsung bangun saat signal dibatalkan agar unmount tidak menunggu backoff penuh. */
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const timer = setTimeout(resolve, ms);

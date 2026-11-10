@@ -1,3 +1,11 @@
+/**
+ * CustomerQueueScreen: layar status antrian untuk customer (nomor saya, antrian di depan, bergabung, dan batal).
+ *
+ * Dipakai oleh : app/ticket/[queueId].tsx, app/(owner)/dashboard.tsx, components/ui/MyTicketModal.tsx
+ * Bergantung   : components/PushToggle, ui/AppButton, ui/ModalCard, ui/Toast, utils/cn
+ * Peran        : customer
+ * Catatan      : presentasi murni; semua data dan aksi datang dari props, sedangkan pemanggilan API ada di pemanggil.
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { useState } from 'react';
 import { PushToggle } from '@/components/PushToggle';
@@ -7,14 +15,17 @@ import { AppButton } from '@/components/ui/AppButton';
 import { ModalCard } from '@/components/ui/ModalCard';
 import { cn } from '@/utils/cn';
 
+/** Status tiket dari sudut pandang customer; nilainya sama dengan status tiket dari API. */
 export type CustomerTicketStatus = 'waiting' | 'currently_served' | 'completed' | 'cancelled' | 'skipped' | 'deleted';
 
 export type CustomerQueueScreenProps = {
+  /** Nama antrian. Bila kosong, judul menampilkan "Memuat..." (saat loading) atau "Antrian". */
   queueName: string;
   /** Deskripsi antrian dari owner (opsional). */
   queueDescription?: string | null;
   /** Nomor tiket saya yang sudah diformat (mis. "A-042"); null bila belum bergabung. */
   ticketNumber: string | null;
+  /** Status tiket saya; null bila belum bergabung. Menentukan label di kartu nomor dan kapan notifikasi push tampil. */
   ticketStatus: CustomerTicketStatus | null;
   /** Nomor saya sedang dilayani (tiket berstatus currently_served). */
   servingNow?: boolean;
@@ -24,16 +35,23 @@ export type CustomerQueueScreenProps = {
   counterName?: string | null;
   /** Jumlah orang di depan saya; null bila tidak sedang menunggu. */
   waitingAhead: number | null;
+  /** true bila antrian sudah ditutup: banner "Antrian ditutup" tampil dan notifikasi push disembunyikan. */
   closed: boolean;
+  /** true saat data antrian sedang dimuat. Default false. */
   loading?: boolean;
+  /** Galat dari route, ditampilkan sebagai toast. Opsional; kosong berarti tidak ada toast. */
   errorMessage?: string;
   /** Tombol "Gabung Antrian" hanya tampil bila belum bergabung dan antrian masih buka. */
   canJoin: boolean;
+  /** true saat permintaan bergabung berjalan; tombol "Gabung Antrian" berstatus loading. Default false. */
   joining?: boolean;
+  /** Dipanggil saat "Gabung Antrian" ditekan; opsional. */
   onJoin?: () => void;
   /** Tombol "Batalkan nomor saya" tampil bila true (tiket waiting atau currently_served di antrian aktif). */
   canCancel?: boolean;
+  /** true saat pembatalan berjalan; tombol konfirmasi berstatus loading. Default false. */
   cancelling?: boolean;
+  /** Dipanggil hanya setelah customer mengonfirmasi pembatalan di modal. Opsional. */
   onCancel?: () => void;
   /** Tombol kembali ke halaman utama. Tidak tampil bila tidak diberikan. */
   onBack?: () => void;
@@ -48,7 +66,7 @@ export const STATUS_LABEL: Record<CustomerTicketStatus, string> = {
   deleted: 'Dihapus',
 };
 
-/** Layar customer (presentational). Hanya menampilkan data yang diterima lewat props. */
+/** Layar status antrian customer (presentational). Hanya menampilkan data yang diterima lewat props. */
 export function CustomerQueueScreen({
   queueName,
   queueDescription,
@@ -72,6 +90,7 @@ export function CustomerQueueScreen({
   useErrorToast(errorMessage);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
+  // Notifikasi push hanya ditawarkan bila tiket masih menunggu atau sedang dilayani di antrian yang belum ditutup.
   return (
     <View className="flex-1 items-center bg-background px-5 py-10">
       <View className="w-full max-w-[420px] gap-5">

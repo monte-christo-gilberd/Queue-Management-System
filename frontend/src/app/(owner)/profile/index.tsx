@@ -1,3 +1,12 @@
+/**
+ * profile/index: profil pengguna: nama, foto, notifikasi email, verifikasi email, ganti password, dan status langganan.
+ *
+ * Rute        : /profile.
+ * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx).
+ * Dipakai oleh: menu owner (case profile di owner-menu) dan redirect dari /profile/edit.
+ * Bergantung  : Profile, getMe/updateMe/uploadAvatar (lib/users), useAvatarSource, useAvatarStore, lib/email-verification, lib/password-reset.
+ * Catatan     : Bagian langganan hanya untuk owner. Calon owner (belum pernah bayar) melihat tawaran menjadi owner.
+ */
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
@@ -18,6 +27,10 @@ import {
   validateUsername,
 } from '@/utils/profile';
 
+/**
+ * Profil: memuat data pengguna saat layar dibuka, lalu mengelola nama pengguna, foto, notifikasi email, dan aksi akun.
+ * Setiap aksi punya penanda busy sendiri agar tombolnya terkunci selama permintaan berjalan.
+ */
 export default function ProfileRoute() {
   const displayName = useAuthStore((s) => s.displayName);
   const [me, setMe] = useState<Me | null>(null);
@@ -32,6 +45,7 @@ export default function ProfileRoute() {
   const avatarSource = useAvatarSource(me?.avatar_updated_at);
 
   useEffect(() => {
+    // Hasil yang datang setelah layar ditutup diabaikan agar tidak mengubah state.
     let active = true;
     getMe().then(
       (data) => {
@@ -50,6 +64,7 @@ export default function ProfileRoute() {
   }, []);
 
   const trimmed = username.trim();
+  // Simpan hanya bila nama berubah dan lolos validasi; sebelum profil dimuat, tombol tetap nonaktif.
   const canSave = me !== null && trimmed !== me.username && validateUsername(username) === null;
   const subscription = me?.is_owner ? subscriptionStatus(me.subscription_expires_at) : null;
 

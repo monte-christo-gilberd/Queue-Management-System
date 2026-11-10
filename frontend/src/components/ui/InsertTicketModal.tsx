@@ -1,3 +1,12 @@
+/**
+ * InsertTicketModal: popup owner untuk menyisipkan customer yang sudah punya akun ke posisi tertentu di antrian.
+ *
+ * Dipakai oleh : components/QueueDetail.tsx
+ * Bergantung   : components/ui/Toast (useErrorToast), lib/tickets (validateInsertInput),
+ *                components/ui/AppButton, components/ui/ModalCard
+ * Alur         : isian -> validasi lokal -> onSubmit (server) -> popup menutup bila berhasil
+ * Catatan      : Validasi lokal dijalankan dulu; server tidak dipanggil bila isian belum lolos.
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { useEffect, useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
@@ -8,11 +17,15 @@ import { ModalCard } from '@/components/ui/ModalCard';
 import { validateInsertInput } from '@/lib/tickets';
 
 type InsertTicketModalProps = {
+  /** Popup tampil bila true. Isian di-reset setiap kali berubah menjadi true. */
   visible: boolean;
   /** Posisi awal: panjang antrian menunggu + 1 (paling belakang). */
   defaultPosition: number;
+  /** Bila true, isian dikunci dan tombol berbunyi "Menyisipkan...". Default false. */
   saving?: boolean;
+  /** Galat dari server (opsional); tampil sebagai toast. */
   errorMessage?: string;
+  /** Dipanggil saat popup diminta menutup (Batal, latar, atau back perangkat, atau setelah sisip berhasil). */
   onClose: () => void;
   /** Mengembalikan true bila sisip berhasil; popup lalu menutup diri. */
   onSubmit: (identifier: string, position: number) => Promise<boolean>;
@@ -40,6 +53,7 @@ export function InsertTicketModal({
     }
   }, [visible, defaultPosition]);
 
+  // Posisi dibaca dari teks; pesan galat validasi berasal dari validateInsertInput.
   async function submit() {
     const position = Number(positionText);
     const problem = validateInsertInput(identifier, position);
@@ -49,6 +63,7 @@ export function InsertTicketModal({
     if (ok) onClose();
   }
 
+  // Galat validasi lokal didahulukan atas galat dari server.
   const shown = validationError ?? errorMessage;
   useErrorToast(shown);
 

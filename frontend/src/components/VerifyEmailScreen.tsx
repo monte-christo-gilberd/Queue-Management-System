@@ -1,3 +1,11 @@
+/**
+ * VerifyEmailScreen: layar hasil verifikasi email dari tautan di surel.
+ *
+ * Dipakai oleh : app/verify-email.tsx
+ * Bergantung   : components/auth/* (AuthLayout, AuthButtons), constants/app-theme (AppColors), expo-router
+ * Peran        : publik (perilaku tombol bergantung ada-tidaknya sesi login)
+ * Catatan      : pemeriksaan tautan dilakukan oleh route; komponen hanya menampilkan hasilnya.
+ */
 import { router } from 'expo-router';
 import { ActivityIndicator, Text, View } from 'react-native';
 
@@ -11,13 +19,17 @@ export type VerifyEmailScreenProps = {
    * error: gagal karena jaringan atau server (tautan masih bisa dicoba lagi).
    */
   mode: 'loading' | 'done' | 'invalid' | 'error';
+  /** Pesan galat untuk mode `error`; jika kosong, ditampilkan teks umum "Terjadi kesalahan, coba lagi". */
   errorMessage?: string;
+  /** Dipanggil saat tombol "Coba Lagi" ditekan di mode `error`. Opsional; tanpa nilai, tombol mengarah seperti tombol lanjut. */
   onRetry?: () => void;
   /** Ada sesi login di perangkat ini: tombol mengarah ke Profil/dashboard, bukan ke halaman login. */
   loggedIn: boolean;
 };
 
+/** Menampilkan status verifikasi (memeriksa, berhasil, tautan tidak berlaku, atau galat jaringan). */
 export default function VerifyEmailScreen({ mode, errorMessage, onRetry, loggedIn }: VerifyEmailScreenProps) {
+  // Tujuan tombol lanjut bergantung status login: sudah login ke Profil, belum ke halaman login.
   const goNext = () => router.replace(loggedIn ? '/profile' : '/');
 
   if (mode === 'loading') {

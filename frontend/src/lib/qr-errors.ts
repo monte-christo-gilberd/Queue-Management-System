@@ -1,3 +1,11 @@
+/**
+ * qr-errors.ts: pesan untuk galat terkait QR.
+ *
+ * Dipakai oleh : lib/queue-errors.ts (untuk kode berawalan `QR_`), hooks/use-queue-qr.ts.
+ * Catatan      : kode yang tidak ada di peta jatuh ke QR_DEFAULT_MESSAGE, kecuali NETWORK_ERROR yang memakai pesan asli.
+ *                NOT_FOUND dan SUBSCRIPTION_INACTIVE di peta hanya terpakai bila describeQrError dipanggil langsung,
+ *                karena queue-errors.ts menangani kode non-QR sendiri.
+ */
 import { ApiError } from './api';
 
 /** Satu peta kode error QR (backend) ke pesan. Dipakai layar owner dan customer. */
@@ -11,8 +19,13 @@ const QR_MESSAGES: Record<string, string> = {
   SUBSCRIPTION_INACTIVE: 'Your subscription is inactive. Activate it to manage queues.',
 };
 
+/** QR_DEFAULT_MESSAGE: pesan umum untuk galat QR yang tidak dikenal atau bukan ApiError. */
 export const QR_DEFAULT_MESSAGE = 'Something went wrong with the QR code. Please try again.';
 
+/**
+ * isQrErrorCode mengembalikan true bila kode error berawalan `QR_`.
+ * Contoh: `QR_EXPIRED` menghasilkan true; `NOT_FOUND` menghasilkan false.
+ */
 export function isQrErrorCode(code: string): boolean {
   return code.startsWith('QR_');
 }

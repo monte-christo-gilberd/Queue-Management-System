@@ -1,3 +1,12 @@
+/**
+ * owner-menu: navigasi menu profil owner, dipakai bersama oleh semua route owner (HP dan desktop).
+ *
+ * Dipakai oleh : src/app/(owner)/* (dashboard, queues, history, profile, antrian, riwayat, subscription).
+ * Bergantung   : expo-router (router), lib/push.ts (releasePushForLogout), store/authStore.ts (logout).
+ * Alur         : item 'logout' -> lepas push -> authStore.logout() (membersihkan sesi) -> router.replace('/').
+ * Catatan      : Item 'join' tidak dinavigasi di sini karena popup masuk antrian dibuka oleh layout sendiri.
+ */
+
 import { router } from 'expo-router';
 
 import type { OwnerMenuItem } from '@/components/layout/ResponsiveScreenLayout';
@@ -33,6 +42,7 @@ export function handleOwnerMenuItemPress(item: OwnerMenuItem) {
       // dibuka oleh layout sendiri (popup masuk antrian)
       break;
     case 'logout':
+      // releasePushForLogout tidak pernah melempar, jadi finally selalu lanjut ke logout walau push gagal dilepas.
       void releasePushForLogout().finally(() => {
         useAuthStore.getState().logout();
         router.replace('/');

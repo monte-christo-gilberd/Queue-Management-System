@@ -1,3 +1,12 @@
+/**
+ * verify-email: verifikasi alamat email dari tautan di email (/verify-email?token=...).
+ *
+ * Rute        : /verify-email (query token wajib).
+ * Akses       : publik (tanpa AuthGate); pengguna mungkin belum masuk di perangkat ini.
+ * Dipakai oleh: tautan di email verifikasi; banner verifikasi di profil mengirim ulang tautan lewat lib/email-verification.
+ * Bergantung  : VerifyEmailScreen, verifyEmail/isInvalidVerifyToken/describeVerifyError (lib/email-verification), useAuthStore (loggedIn).
+ * Catatan     : Token sekali pakai, jadi pemeriksaan hanya dijalankan sekali per token.
+ */
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 

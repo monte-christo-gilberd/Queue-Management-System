@@ -1,3 +1,12 @@
+/**
+ * register: form daftar akun baru untuk tamu; setelah berhasil diarahkan ke next yang aman atau ke dashboard.
+ *
+ * Rute        : /register (query next opsional).
+ * Akses       : guest-only (AuthGate mode guest).
+ * Dipakai oleh: tautan Daftar di halaman login (/), yang membawa next bila ada.
+ * Bergantung  : RegisterScreen, useAuthStore (register), validatePassword (utils/password), sanitizeNext.
+ * Catatan     : Validasi password dan konfirmasinya dilakukan di route, bukan di komponen tampilan.
+ */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 
@@ -8,9 +17,12 @@ import { DEFAULT_AFTER_LOGIN, sanitizeNext } from '@/lib/safe-next';
 import { useAuthStore } from '@/store/authStore';
 import { validatePassword } from '@/utils/password';
 
+/**
+ * Form daftar: validasi isian lokal lalu mendaftar lewat auth store.
+ */
 export default function RegisterRoute() {
   const register = useAuthStore((s) => s.register);
-  // `next` dari tautan join: setelah daftar, kembali ke halaman itu (bukan dashboard).
+  // next dari AuthGate atau tautan login (mis. dari /join): setelah daftar, kembali ke halaman itu, bukan dashboard.
   const { next } = useLocalSearchParams<{ next?: string }>();
   const safeNext = sanitizeNext(next, '');
   const [username, setUsername] = useState('');
@@ -41,6 +53,7 @@ export default function RegisterRoute() {
     setErrorMessage(undefined);
     try {
       await register(email.trim(), username.trim(), password);
+      // Cast hanya agar tipe rute yang ketat menerima string dinamis dari ?next atau nilai default.
       router.replace((safeNext || DEFAULT_AFTER_LOGIN) as '/dashboard');
     } catch (e) {
       setErrorMessage(describeAuthError(e));

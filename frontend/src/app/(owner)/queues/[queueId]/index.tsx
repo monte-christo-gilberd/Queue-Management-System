@@ -1,3 +1,12 @@
+/**
+ * queues/[queueId]/index: detail satu antrian owner: ubah nama dan pengaturan, QR, layar display, SKIP/NEXT, dan tutup antrian.
+ *
+ * Rute        : /queues/[queueId].
+ * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx); hanya owner.
+ * Dipakai oleh: dashboard (tap papan atau setelah buat antrian) dan daftar antrian.
+ * Bergantung  : useQueueDetail, useQueueBoard (SSE), useQueueQR, useDisplayConfig, useSkipSettings, QueueDetail.
+ * Catatan     : Antrian yang sudah ditutup tidak menawarkan hapus nomor. Tutup antrian mengembalikan owner ke /dashboard.
+ */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Text } from 'react-native';
@@ -26,6 +35,9 @@ import type { Queue } from '@/types/api';
 import { formatTicketNumber } from '@/utils/format';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 
+/**
+ * Entri rute: menunggu data antrian, lalu merender editor. Editor dipasang ulang dengan key per antrian agar isian form tidak terbawa dari antrian sebelumnya.
+ */
 export default function QueueDetailRoute() {
   const { queueId } = useLocalSearchParams<{ queueId: string }>();
   const displayName = useAuthStore((s) => s.displayName);
@@ -82,6 +94,7 @@ function QueueDetailEditor({
   const counters = useCounterSession(queue.id);
   const board = useQueueBoard(queue.id, () => void reload(), counters.counterId);
   const currentId = board.view.current?.ticket.id ?? null;
+  // Status tiket dipetakan ke timeline: yang sedang dilayani ditandai current, completed menjadi done, status lain diteruskan apa adanya.
   const timeline: TimelineItem[] = board.tickets.flatMap((t): TimelineItem[] => {
     // Tiket yang dihapus owner tidak ikut ditampilkan di timeline.
     if (t.status === 'deleted') return [];

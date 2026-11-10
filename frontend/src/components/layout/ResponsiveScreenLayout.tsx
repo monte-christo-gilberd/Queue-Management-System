@@ -1,3 +1,17 @@
+/**
+ * ResponsiveScreenLayout: app shell semua halaman owner, responsif untuk HP dan layar lebar.
+ *
+ * Dipakai oleh : app/(owner)/antrian.tsx, app/(owner)/riwayat.tsx, app/(owner)/queues/[queueId]/index.tsx,
+ *                components/History.tsx, components/HistoryDetail.tsx, components/QueueList.tsx,
+ *                components/QueueLiveScreen.tsx, components/Profile.tsx, components/Subscription.tsx
+ * Bergantung   : hooks/use-is-wide, hooks/use-hydrated, hooks/use-theme-mode, components/layout/owner-context,
+ *                components/ui/UserAvatar, components/ui/JoinQueueModals, components/ui/PageWatermark,
+ *                components/ui/Icon, components/ResponsiveContainer
+ * Alur         : useIsWide memilih WideLayout (>= 1024) atau MobileLayout; keduanya memanggil onMenuItemPress
+ *                untuk navigasi dan logout yang diurus induk
+ * Catatan      : Ada eslint-disable untuk require logo SVG; jangan dihapus. Menu khusus owner hanya tampil
+ *                bila OwnerContext bernilai true.
+ */
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Fragment, useContext, useState } from 'react';
@@ -25,9 +39,10 @@ import { PageWatermark } from '@/components/ui/PageWatermark';
 import { OwnerContext } from '@/components/layout/owner-context';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 
+/** Kunci tab navbar bawah HP. */
 export type TabKey = 'home' | 'antrian' | 'riwayat' | 'profile';
 
-/** Item menu profil (panel profil HP dan desktop memakai item yang sama). */
+/** Kunci item menu yang dikirim ke onMenuItemPress (panel profil HP dan desktop memakai item yang sama). */
 export type OwnerMenuItem =
   | 'create-queue'
   | 'dashboard'
@@ -39,14 +54,19 @@ export type OwnerMenuItem =
   | 'riwayat-saya'
   | 'join';
 
-/** Data tampilan untuk header/panel profil — diisi developer. */
+/** Data shell dari pemanggil (prop `shell` di History, QueueList, Subscription). Saat ini hanya nama user untuk header dan panel. */
 export type ShellProps = {
+  /** Nama user yang tampil di header (desktop) dan di panel profil. */
   userName?: string;
 };
 
+/** Props ResponsiveScreenLayout. Prop yang hanya relevan di HP atau desktop ditandai di komentarnya. */
 export type ResponsiveScreenLayoutProps = {
+  /** Judul di tengah header. */
   title: string;
+  /** Nama user di header dan panel. Default "Nama User" di desktop dan "Owner" di HP. */
   userName?: string;
+  /** Dipanggil dengan item menu yang dipilih (termasuk "profile" dan "logout"). Navigasi dan logout diurus induk. */
   onMenuItemPress?: (item: OwnerMenuItem) => void;
   /** Hanya desktop: link navigasi utama yang di-highlight di panel. */
   activeItem?: OwnerMenuItem;
@@ -56,10 +76,10 @@ export type ResponsiveScreenLayoutProps = {
   activeTab?: TabKey;
   /** Hanya desktop: isi mengisi tinggi layar dan tidak ikut scroll halaman (scroll diatur di dalam isi). */
   fullHeight?: boolean;
+  /** Isi halaman, dirender di dalam area konten. */
   children: React.ReactNode;
 };
 
-/** Link navigasi utama — hanya tampil di panel desktop (di HP sudah ada bottom tab). */
 /** Menu khusus owner di panel profil (HP dan desktop). Customer tidak melihatnya. */
 const OWNER_MENU: { key: OwnerMenuItem; label: string }[] = [
   { key: 'queues', label: 'Daftar Antrian' },
@@ -69,7 +89,7 @@ const OWNER_MENU: { key: OwnerMenuItem; label: string }[] = [
 /** Menu panel profil — dipakai SAMA di HP dan desktop. */
 const LOGOUT_ITEM: { key: OwnerMenuItem; label: string } = { key: 'logout', label: 'Keluar' };
 
-/** Item yang sama dengan navbar bawah HP. Dipakai panel desktop agar tidak ada yang hilang saat tanpa navbar. */
+/** Link navigasi utama, hanya tampil di panel desktop (di HP sudah ada bottom tab). Isinya sama dengan navbar bawah HP. */
 const NAV_ITEMS: { key: OwnerMenuItem; label: string }[] = [
   { key: 'dashboard', label: 'Beranda' },
   { key: 'antrian', label: 'Antrian Saya' },
@@ -86,10 +106,11 @@ const TAB_TO_ITEM: Record<TabKey, OwnerMenuItem> = {
   profile: 'profile',
 };
 
+// Logo header SVG dimuat lewat require (SVG sebagai modul).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const LOGO_HEADER = require('../../../logo/logo-header.svg');
 
-/** Navigasi bawah HP: Beranda (kiri), tombol QR (tengah, overlay), Antrian (kanan). Riwayat ada di collapsible. */
+/** Tab navbar bawah HP: Beranda, Antrian, Riwayat, Profil. Tombol QR melayang di tengah, di antara Antrian dan Riwayat (lihat spacer "Masuk"). */
 const TABS: { key: TabKey; label: string; icon: IconName; href: '/dashboard' | '/antrian' | '/riwayat' | '/profile' }[] = [
   { key: 'home', label: 'Beranda', icon: 'home', href: '/dashboard' },
   { key: 'antrian', label: 'Antrian', icon: 'list', href: '/antrian' },
@@ -115,6 +136,11 @@ export default function ResponsiveScreenLayout(props: ResponsiveScreenLayoutProp
 }
 
 /* ------------------------------- Wide (desktop) ------------------------------- */
+
+/**
+ * Layout desktop: header dengan logo, judul di tengah, dan avatar yang membuka panel profil.
+ * Panel dan popup "Masuk Antrian" dikelola di sini; item menu lain diteruskan ke onMenuItemPress.
+ */
 
 function WideLayout({
   title,
@@ -144,6 +170,8 @@ function WideLayout({
       ? ({ position: 'fixed', top: 0, bottom: 0 } as unknown as { position: 'absolute' })
       : { top: -headerHeight, height: windowHeight };
 
+  // Menu owner (Buat Antrian, Daftar, Riwayat) hanya untuk owner; "Masuk Antrian" membuka popup lokal, bukan lewat induk.
+  // Item aktif: activeItem bila ada, kalau tidak diturunkan dari activeTab. fullHeight: konten mengisi sisa layar tanpa ScrollView.
   return (
     <View className="flex-1 bg-background">
       <PageWatermark />
@@ -271,6 +299,11 @@ function WideLayout({
 
 /* --------------------------------- Mobile (HP) --------------------------------- */
 
+/**
+ * Layout HP: header dengan tombol back opsional dan avatar, konten di-scroll, navbar bawah mengambang
+ * (bila activeTab ada), dan panel profil dari kanan.
+ */
+
 function MobileLayout({
   title,
   userName = 'Owner',
@@ -291,6 +324,7 @@ function MobileLayout({
   // Tombol back nonaktif (redup) bila tidak ada layar sebelumnya — mencegah error "GO_BACK was not handled".
   const canGoBack = router.canGoBack();
 
+  // Navbar bawah dan tombol QR hanya tampil bila activeTab diberikan. Panel HP: menu owner hanya untuk owner, Keluar selalu ada.
   return (
     // Di tablet (di bawah 1024) konten HP tetap dibatasi 720 dan ditengahkan.
     <ResponsiveContainer maxWidth={720}>
@@ -384,7 +418,7 @@ function MobileLayout({
           </View>
         ) : null}
 
-        {/* Popup scan QR / link manual; submit sementara hanya menutup popup. */}
+        {/* Popup Masuk Antrian: scan QR atau tempel tautan. Join dilakukan di dalam popup; layout ini hanya membuka dan menutupnya. */}
         <JoinQueueModals visible={joinOpen} onClose={() => setJoinOpen(false)} />
 
         {panelOpen ? (
@@ -450,9 +484,13 @@ function PanelHeader({
   darkMode,
   onToggleDarkMode,
 }: {
+  /** Nama user yang tampil di samping foto. */
   userName: string;
+  /** Dipanggil saat foto atau nama ditekan (buka profil). */
   onPress: () => void;
+  /** true bila mode gelap aktif; menentukan ikon dan label tombol mode. */
   darkMode: boolean;
+  /** Dipanggil saat tombol mode terang/gelap ditekan. */
   onToggleDarkMode: () => void;
 }) {
   return (
@@ -483,13 +521,17 @@ function CreateQueueItem({ onPress }: { onPress: () => void }) {
   return <PanelItem label="Buat Antrian Baru" onPress={onPress} />;
 }
 
+/** Baris menu di panel profil (HP dan desktop) dengan gaya seragam; active menyorot halaman yang sedang dibuka. */
 function PanelItem({
   label,
   onPress,
   active = false,
 }: {
+  /** Teks baris menu. */
   label: string;
+  /** Dipanggil saat baris ditekan. */
   onPress: () => void;
+  /** true = baris disorot sebagai halaman yang sedang dibuka. Default false. */
   active?: boolean;
 }) {
   return (

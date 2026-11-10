@@ -1,11 +1,23 @@
+/**
+ * AuthLayout: kerangka halaman auth (login, register, lupa/reset password, verifikasi email).
+ *
+ * Dipakai oleh : components/LoginScreen.tsx, components/RegisterScreen.tsx,
+ *                components/ForgotPasswordScreen.tsx, components/ResetPasswordScreen.tsx,
+ *                components/VerifyEmailScreen.tsx
+ * Bergantung   : components/auth/LogoMark, react-native-safe-area-context
+ * Catatan      : Latar gelap dan blob dekoratif tetap di luar ScrollView; hanya isi form yang bisa di-scroll.
+ */
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LogoMark } from '@/components/auth/LogoMark';
 
 type AuthLayoutProps = {
+  /** Judul besar di bawah logo. */
   title: string;
+  /** Teks pendukung di bawah judul. */
   subtitle: string;
+  /** Isi form (input dan tombol), disusun vertikal dengan jarak rapat. */
   children: React.ReactNode;
 };
 

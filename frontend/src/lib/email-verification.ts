@@ -1,3 +1,11 @@
+/**
+ * email-verification.ts: panggilan API dan pesan galat untuk verifikasi email.
+ *
+ * Dipakai oleh : app/verify-email.tsx, app/(owner)/profile/index.tsx
+ * Bergantung   : lib/api.ts (ApiError, apiFetch)
+ * Catatan      : verifyEmail bersifat publik (token di tautan email). resendVerification butuh login.
+ *                Galat 429 bisa datang dari backend (TOO_MANY_REQUESTS) atau nginx (tanpa body JSON).
+ */
 import { ApiError, apiFetch } from './api';
 
 /**
@@ -16,7 +24,7 @@ export async function resendVerification(): Promise<void> {
   await apiFetch<unknown>('/api/v1/users/me/verify-email/resend', { method: 'POST' });
 }
 
-/** Pesan untuk permintaan kirim ulang email verifikasi. Fungsi murni. */
+/** describeResendError: pesan untuk permintaan kirim ulang email verifikasi. Fungsi murni. */
 export function describeResendError(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Terjadi kesalahan, coba lagi';
   // 429 bisa datang dari backend (kode TOO_MANY_REQUESTS) atau nginx (tanpa body JSON), jadi dicek lewat status.
@@ -29,7 +37,7 @@ export function describeResendError(error: unknown): string {
   }
 }
 
-/** Pesan untuk halaman verifikasi saat galat BUKAN tautan tidak sah (jaringan atau server). Fungsi murni. */
+/** describeVerifyError: pesan untuk halaman verifikasi saat galat BUKAN tautan tidak sah (jaringan atau server). Fungsi murni. */
 export function describeVerifyError(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Terjadi kesalahan, coba lagi';
   if (error.status === 429) return 'Terlalu banyak permintaan, tunggu sebentar lalu coba lagi';
@@ -37,12 +45,12 @@ export function describeVerifyError(error: unknown): string {
   return 'Terjadi kesalahan di server, coba lagi';
 }
 
-/** True bila galat berarti tautan verifikasi sudah tidak bisa dipakai. */
+/** isInvalidVerifyToken: true bila galat berarti tautan verifikasi sudah tidak bisa dipakai. */
 export function isInvalidVerifyToken(error: unknown): boolean {
   return error instanceof ApiError && error.code === 'INVALID_TOKEN';
 }
 
-/** Pesan sukses setelah email kirim ulang diminta. */
+/** resendSuccessMessage: pesan sukses setelah email kirim ulang diminta. */
 export function resendSuccessMessage(email: string): string {
   return `Tautan verifikasi sudah dikirim ke ${email}`;
 }

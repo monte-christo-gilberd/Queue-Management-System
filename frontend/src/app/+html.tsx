@@ -1,7 +1,18 @@
+/**
+ * +html: shell HTML root untuk versi web (static rendering), pembungkus semua halaman.
+ *
+ * Rute        : tidak ada (berlaku untuk semua rute saat dirender ke HTML di web).
+ * Akses       : publik.
+ * Dipakai oleh: Expo Router saat membangun HTML statis untuk web.
+ * Bergantung  : ScrollViewStyleReset dari expo-router/html.
+ * Catatan     : Judul tab diatur di _layout.tsx lewat Head, bukan di sini. Ikon memakai salinan logo di public/.
+ */
 import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
-// Dokumen HTML root untuk web (static rendering): meta dasar dan favicon.
+/**
+ * Dokumen HTML root untuk web: meta charset, viewport, dan favicon. Atribut lang="id" membuat dokumen berbahasa Indonesia.
+ */
 export default function Root({ children }: PropsWithChildren) {
   return (
     <html lang="id">

@@ -1,3 +1,13 @@
+/**
+ * queue-errors.ts: pesan untuk galat aksi antrian, counter, dan sisip customer.
+ *
+ * Dipakai oleh : app/(owner)/dashboard.tsx, app/(owner)/queues/[queueId]/index.tsx, hooks/use-queue-board.ts,
+ *                hooks/use-ticket-queue.ts, hooks/use-counter-session.ts, hooks/use-queues.ts,
+ *                hooks/use-skip-settings.ts, hooks/use-history.ts, hooks/use-ticket-note.ts,
+ *                components/ui/JoinQueueModals.tsx.
+ * Bergantung   : lib/api.ts (ApiError), lib/qr-errors.ts (kode berawalan QR_).
+ * Catatan      : pesan ditujukan ke owner yang sedang bekerja di layar, bukan ke customer.
+ */
 import { ApiError } from './api';
 import { describeQrError, isQrErrorCode } from './qr-errors';
 
@@ -43,6 +53,7 @@ export function describeInsertError(error: unknown): string {
 export function describeQueueError(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Terjadi kesalahan, coba lagi';
 
+  // Kode berawalan QR_ diterjemahkan oleh qr-errors.ts.
   if (isQrErrorCode(error.code)) return describeQrError(error);
 
   switch (error.code) {

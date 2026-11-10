@@ -1,3 +1,9 @@
+/**
+ * CurrentNumberCard: kartu nomor yang sedang dilayani, dengan tombol catatan dan nama counter opsional.
+ *
+ * Dipakai oleh : belum ada pemakai (tidak ditemukan impor ke komponen ini)
+ * Bergantung   : utils/cn
+ */
 import { Pressable, Text, View } from 'react-native';
 
 import { cn } from '@/utils/cn';
@@ -7,13 +13,15 @@ type CurrentNumberCardProps = {
   numberLabel: string;
   /** Nama counter yang memanggil; null bila counter default disembunyikan (jangan ditampilkan). */
   counterName?: string | null;
+  /** Dipanggil saat kotak putih di kanan ditekan (untuk membuka catatan nomor). Opsional. */
   onPressNote?: () => void;
-  /** Titik merah "live" di pojok kanan atas. */
+  /** Titik merah "live" di pojok kanan atas. Default false. */
   showLiveDot?: boolean;
-  /** Versi kompak (layar Detail Antrian) vs versi besar (Dashboard). */
+  /** Versi kompak (layar Detail Antrian) vs versi besar (Dashboard). Default false (besar). */
   compact?: boolean;
 };
 
+/** Kartu nomor yang sedang dilayani dengan tombol catatan di kanan. */
 export function CurrentNumberCard({
   numberLabel,
   counterName,
@@ -21,6 +29,7 @@ export function CurrentNumberCard({
   showLiveDot = false,
   compact = false,
 }: CurrentNumberCardProps) {
+  // Versi besar punya label "Nomor Saat Ini" di atas; versi compact membuangnya dan memusatkan nomor.
   return (
     <View className={cn('rounded-card bg-primary p-4', compact && 'items-center py-3')}>
       {compact ? null : <Text className="text-[12px] font-semibold text-white">Nomor Saat Ini</Text>}

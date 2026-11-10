@@ -1,12 +1,17 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * theme: sisa template Expo berisi palet warna, skala spacing, dan font. Hanya `Fonts` yang masih dipakai.
+ *
+ * Dipakai oleh : src/components/QueueLiveScreen.tsx, src/components/MySpotCard.tsx,
+ *                src/components/ui/MyTicketModal.tsx (Fonts).
+ * Catatan      : Mengimpor '@/global.css' sebagai efek samping saat modul dimuat. Palet warna yang aktif ada di
+ *                constants/tokens.js; bagian yang berstatus TIDAK DIPAKAI sengaja tidak dihapus.
  */
 
 import '@/global.css';
 
 import { Platform } from 'react-native';
 
+/** TIDAK DIPAKAI: sisa template Expo. Satu-satunya pemakai adalah hooks/use-theme.ts, yang hanya dipakai berkas dead. */
 export const Colors = {
   light: {
     text: '#000000',
@@ -24,8 +29,10 @@ export const Colors = {
   },
 } as const;
 
+/** TIDAK DIPAKAI: tipe kunci warna tema, hanya dipakai components/themed-text.tsx dan themed-view.tsx (dead). */
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
+/** Keluarga font per platform. Nilai web memakai variabel CSS dari global.css. */
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */
@@ -51,6 +58,7 @@ export const Fonts = Platform.select({
   },
 });
 
+/** TIDAK DIPAKAI: skala spacing template Expo (nilai dalam piksel), tidak ada yang mengimpornya. */
 export const Spacing = {
   half: 2,
   one: 4,
@@ -61,5 +69,7 @@ export const Spacing = {
   six: 64,
 } as const;
 
+/** TIDAK DIPAKAI: tinggi inset tab bawah per platform, tidak ada yang mengimpornya. */
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
+/** TIDAK DIPAKAI: lebar maksimal konten dalam piksel, tidak ada yang mengimpornya. Lebar layar lebar ada di constants/app-theme.ts. */
 export const MaxContentWidth = 800;

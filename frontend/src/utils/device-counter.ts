@@ -1,3 +1,13 @@
+/**
+ * device-counter: pilihan counter yang dipakai perangkat owner untuk tiap antrian. Fungsi murni kecuali
+ * readStoredCounter dan writeStoredCounter yang mengakses localStorage.
+ *
+ * Dipakai oleh : src/hooks/use-counter-session.ts.
+ * Bergantung   : lib/counters.ts (tipe Counter), window.localStorage (web).
+ * Catatan      : Pilihan hanya tersimpan di web. Di native, window.localStorage tidak ada, sehingga akses
+ *                gagal, diabaikan, dan perangkat jatuh ke counter default.
+ */
+
 import type { Counter } from '@/lib/counters';
 
 /** Kunci localStorage pilihan counter per antrian. */
@@ -35,6 +45,7 @@ export function readStoredCounter(queueId: number): number | null {
   }
 }
 
+/** Simpan `counterId` sebagai pilihan perangkat untuk antrian `queueId`. Galat penyimpanan diabaikan. */
 export function writeStoredCounter(queueId: number, counterId: number): void {
   try {
     window.localStorage.setItem(`${DEVICE_COUNTER_KEY_PREFIX}${queueId}`, String(counterId));

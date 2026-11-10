@@ -1,3 +1,12 @@
+/**
+ * use-queue-board: papan antrian owner, berisi daftar tiket dari server dan aksi counter (Next, Skip, Panggil ulang, hapus, sisip).
+ *
+ * Dipakai oleh : src/app/(owner)/dashboard.tsx, src/app/(owner)/queues/[queueId]/index.tsx, src/app/(owner)/queues/[queueId]/live.tsx.
+ * Bergantung   : hooks/use-queue-events (SSE), lib/tickets, lib/api (ApiError), lib/queue-errors, utils/queue-view (deriveQueueView).
+ * Alur         : queueId -> listTickets saat muat awal -> event SSE atau pemulihan koneksi -> debounce 300 ms -> listTickets. Aksi counter -> lib/tickets -> settleCounter -> muat ulang.
+ * Catatan      : Setiap event memuat ulang seluruh daftar, bukan menerapkan delta, sehingga event yang terlewat tidak merusak tampilan. Pengaturan waktu tombol Panggil ulang dan Skip hanya tampilan; backend tetap menegakkan aturannya.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useQueueEvents } from '@/hooks/use-queue-events';
@@ -10,8 +19,10 @@ import { deriveQueueView } from '@/utils/queue-view';
 /** Jeda sebelum mengambil ulang setelah event, supaya lonjakan join/next hanya memicu satu request. */
 const RELOAD_DEBOUNCE_MS = 300;
 
+/** Hasil aksi: `ok` true membawa `data`; false membawa pesan galat ramah dan `code` dari server bila ada. */
 type Result<T> = { ok: true; data: T } | { ok: false; message: string; code?: string };
 
+/** Menjalankan request dan mengubah lemparan (throw) menjadi Result, supaya pemanggil cukup memeriksa `ok`. */
 async function run<T>(fn: () => Promise<T>): Promise<Result<T>> {
   try {
     return { ok: true, data: await fn() };
@@ -23,15 +34,38 @@ async function run<T>(fn: () => Promise<T>): Promise<Result<T>> {
 /** Kode 409 dari server: counter ini sudah berubah di perangkat lain sejak papan dimuat. */
 const COUNTER_CHANGED = 'COUNTER_STATE_CHANGED';
 
+/** Jeda 3 detik sebelum tombol Panggil ulang atau Skip kembali aktif setelah salah satunya dipakai. */
+const RECALL_DELAY_MS = 3000;
+
 /**
  * Papan antrian satu queue: tiket dari server + pembaruan lewat SSE.
  *
  * Strategi: setiap event `ticket_joined` / `ticket_next` (dan setiap pemulihan koneksi) mengambil ulang
  * daftar tiket, alih-alih menerapkan delta. Ini sederhana dan tahan terhadap event yang terlewat.
  * `queue_closed` memanggil `onQueueClosed`.
+ *
+ * Argumen:
+ * - `queueId`: id antrian yang dikelola. null berarti belum dipilih, tanpa request dan tanpa langganan SSE.
+ * - `onQueueClosed`: dipanggil saat server mengirim `queue_closed`. Opsional.
+ * - `counterId`: counter milik perangkat ini. 0 berarti belum ada counter.
+ *
+ * Mengembalikan objek dengan field:
+ * - `view`: tampilan turunan (nomor yang sedang dilayani dan antrean berikutnya) dari deriveQueueView.
+ * - `tickets`: daftar tiket mentah dari server.
+ * - `counterId`: counter yang dipakai, sama dengan argumen.
+ * - `syncNotice`: pesan bila counter ini dilanjutkan dari perangkat lain. undefined bila tidak ada.
+ * - `refresh`: memuat ulang daftar tiket sekarang.
+ * - `loading`: true selama muat awal.
+ * - `error`: galat muat daftar. undefined bila berhasil.
+ * - `next`, `nextLoading`, `nextError`: aksi Next dan status loading serta galatnya.
+ * - `skip`, `skipLoading`, `skipError`: aksi Skip dan status loading serta galatnya.
+ * - `remove`, `removeLoading`, `removeError`: hapus nomor customer dari antrian.
+ * - `recall`, `recallLoading`, `recallError`: panggil ulang nomor yang baru di-skip.
+ * - `insert`, `insertLoading`, `insertError`: sisip customer ke posisi tertentu. `insert` mengembalikan true bila berhasil.
+ * - `recallReady`: false selama 3 detik setelah Panggil ulang dipakai.
+ * - `showRecall`: true bila tombol Panggil ulang menggantikan Skip.
+ * - `skipReady`: false selama 3 detik setelah Skip dipakai.
  */
-const RECALL_DELAY_MS = 3000;
-
 export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void, counterId = 0) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   // Pemberitahuan (bukan galat) bila counter ini dilanjutkan dari perangkat lain; papan sudah dimuat ulang.
@@ -53,6 +87,7 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
   const [recallReady, setRecallReady] = useState(true);
   const [showRecall, setShowRecall] = useState(false);
   const [skipReady, setSkipReady] = useState(true);
+  // Satu timer dipakai bersama oleh Panggil ulang dan Skip: aktivasi baru membatalkan timer lama.
   const recallTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const armRecall = useCallback(() => {
     setShowRecall(true);
@@ -67,10 +102,12 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     if (recallTimer.current) clearTimeout(recallTimer.current);
     recallTimer.current = setTimeout(() => setSkipReady(true), RECALL_DELAY_MS);
   }, []);
+  // Cleanup saat unmount: timer tombol tidak boleh menyalakan state komponen yang sudah hilang.
   useEffect(() => () => {
     if (recallTimer.current) clearTimeout(recallTimer.current);
   }, []);
 
+  // Hasil muat sukses mengganti daftar; galat hanya mengisi `error` dan daftar lama tetap tampil.
   const apply = useCallback((r: Result<Ticket[]>) => {
     if (r.ok) {
       setTickets(r.data);
@@ -100,7 +137,7 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     };
   }, [apply, queueId]);
 
-  // Debounce pengambilan ulang dari event SSE.
+  // Debounce 300 ms: lonjakan event (mis. banyak join atau next beruntun) hanya memicu satu pengambilan ulang.
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const scheduleReload = useCallback(
     (id: number) => {
@@ -111,15 +148,18 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     },
     [reload],
   );
+  // Cleanup saat unmount, sama seperti timer tombol di atas.
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
 
+  // Ref agar SSE selalu memanggil callback terbaru tanpa membuka ulang koneksi (effect di bawah menyegarkannya tiap render).
   const closedRef = useRef(onQueueClosed);
   useEffect(() => {
     closedRef.current = onQueueClosed;
   });
 
+  // Event perubahan daftar memicu ambil ulang. `queue_closed` diteruskan ke pemanggil. Pemulihan koneksi dan resinkron juga memicu ambil ulang, karena event sebelumnya mungkin terlewat.
   useQueueEvents(queueId, {
     onEvent: (event) => {
       if (
@@ -228,6 +268,7 @@ export function useQueueBoard(queueId: number | null, onQueueClosed?: () => void
     setRecallLoading(false);
   }, [queueId, counterId, expectedServing, settleCounter, armSkip]);
 
+  // Tampilan turunan dihitung ulang hanya saat daftar tiket atau counter berubah.
   const view = useMemo(() => deriveQueueView(tickets, counterId), [tickets, counterId]);
 
   /** Muat ulang daftar tiket sekarang (mis. setelah catatan disimpan). */

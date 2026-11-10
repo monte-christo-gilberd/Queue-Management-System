@@ -1,3 +1,12 @@
+/**
+ * use-display-config: konfigurasi layar publik sebuah antrian untuk owner (aktifkan, atur jumlah, putar token, nonaktifkan).
+ *
+ * Dipakai oleh : src/app/(owner)/queues/[queueId]/index.tsx.
+ * Bergantung   : lib/display (getDisplayConfig, saveDisplayConfig, rotateDisplay, disableDisplay, describeDisplayError).
+ * Alur         : queueId -> getDisplayConfig saat muat awal. Setiap aksi -> lib/display -> config baru menggantikan state.
+ * Catatan      : Satu aksi berjalan pada satu waktu lewat `busy`. Tidak ada cache lintas antrian.
+ */
+
 import { useCallback, useEffect, useState } from 'react';
 
 import {
@@ -13,6 +22,18 @@ import {
  * Muat dan ubah konfigurasi layar publik sebuah antrian (owner). `config` null = layar belum diaktifkan.
  * Memuat sekali per `queueId`: pemanggil memberi `key` per antrian (halaman detail sudah begitu), jadi berpindah
  * antrian memasang ulang hook ini dengan keadaan awal yang bersih.
+ *
+ * Argumen: `queueId` adalah id antrian. Wajib angka positif.
+ *
+ * Mengembalikan objek dengan field:
+ * - `config`: konfigurasi layar saat ini. null bila layar belum diaktifkan.
+ * - `loading`: true selama muat awal.
+ * - `busy`: true selama satu aksi berjalan. Tombol dinonaktifkan selama itu.
+ * - `error`: pesan galat muat atau aksi. undefined bila tidak ada.
+ * - `enable()`: aktifkan layar publik untuk antrian ini.
+ * - `setCounts({ upcoming_count?, skipped_count? })`: ubah jumlah nomor yang tampil di layar.
+ * - `rotate()`: ganti token layar. Tautan lama tidak berlaku lagi.
+ * - `disable()`: nonaktifkan layar. `config` menjadi null.
  */
 export function useDisplayConfig(queueId: number) {
   const [config, setConfig] = useState<DisplayConfig | null>(null);
@@ -20,6 +41,7 @@ export function useDisplayConfig(queueId: number) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
+  // Muat awal dengan then(), supaya setState tidak sinkron di dalam effect. Galat ditampilkan, tidak dilempar.
   useEffect(() => {
     let active = true;
     void getDisplayConfig(queueId).then(
@@ -58,6 +80,7 @@ export function useDisplayConfig(queueId: number) {
     [run, queueId],
   );
   const rotate = useCallback(() => run(() => rotateDisplay(queueId)), [run, queueId]);
+  // Backend tidak mengembalikan konfigurasi saat dinonaktifkan, jadi state diset null secara eksplisit.
   const disable = useCallback(
     () =>
       run(async () => {

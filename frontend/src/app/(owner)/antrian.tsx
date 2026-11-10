@@ -1,3 +1,12 @@
+/**
+ * antrian: antrian saya: daftar tiket customer yang masih aktif (menunggu atau sedang dilayani).
+ *
+ * Rute        : /antrian.
+ * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx).
+ * Dipakai oleh: menu owner (case antrian di owner-menu) dan tab antrian pada ResponsiveScreenLayout.
+ * Bergantung  : useMyTickets, isOnHome (lib/tickets), MyTicketsList, ResponsiveScreenLayout.
+ * Catatan     : Tap tiket membuka /ticket/[queueId]. Status yang dianggap aktif mengikuti isOnHome.
+ */
 import { router } from 'expo-router';
 
 import { MyTicketsList } from '@/components/MyTicketsList';
@@ -10,7 +19,7 @@ import { isOnHome } from '@/lib/tickets';
 import { useAuthStore } from '@/store/authStore';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 
-/** Antrian saya: tiket yang masih menunggu (customer). */
+/** Antrian saya: tiket customer yang masih aktif, yaitu menunggu atau sedang dilayani (lihat isOnHome). */
 export default function AntrianSayaRoute() {
   const displayName = useAuthStore((s) => s.displayName);
   const avatarColor = useThemeColor('avatar');

@@ -1,3 +1,13 @@
+/**
+ * authStore.ts: store autentikasi (token dan nama tampilan) yang dipersist ke storage.
+ *
+ * Dipakai oleh : components/auth/AuthGate.tsx, app/index.tsx, app/register.tsx, hooks/use-auth-hydrated.ts,
+ *                dan layar owner.
+ * Bergantung   : lib/api.ts (apiFetch, setAuthToken, setOnUnauthorized), store/avatarStore.ts, store/safe-storage.ts.
+ * Alur         : login/register -> set token -> setAuthToken (klien API). 401 dari API -> logout() ->
+ *                AuthGate mengarahkan ke login.
+ * Catatan      : key storage `qms-auth`; hanya token dan displayName yang dipersist. Lihat AUTH_FLOW_GUIDE.md.
+ */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
@@ -13,16 +23,23 @@ import { createSafeStorage } from './safe-storage';
  * Hanya `token` dan `displayName` yang dipersist; aksi tidak ikut disimpan.
  */
 export type AuthState = {
+  /** Token sesi dari backend; null bila belum login atau sudah logout. Dikirim ke API lewat setAuthToken. */
   token: string | null;
   /** Nama yang ditampilkan di header: username saat register, identifier saat login (backend tidak mengirim nama). */
   displayName: string | null;
+  /** Login dengan email/username dan password; menyimpan token. Galat API dilempar ke pemanggil. */
   login: (identifier: string, password: string) => Promise<void>;
+  /** Mendaftar akun baru; menyimpan token. Galat API (mis. CONFLICT) dilempar ke pemanggil. */
   register: (email: string, username: string, password: string) => Promise<void>;
+  /** Mengosongkan token, nama tampilan, dan penanda foto profil. */
   logout: () => void;
   /** Dipakai setelah username diubah di profil, supaya header ikut berubah. */
   setDisplayName: (name: string) => void;
 };
 
+/**
+ * useAuthStore: store zustand autentikasi dengan middleware persist (key `qms-auth`).
+ */
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({

@@ -1,9 +1,11 @@
 /**
- * Klien HTTP untuk backend. Kontrak respons (lihat FRONTEND_GENERATION_GUIDE.md bagian 3):
- * sukses `{ data: T }`, gagal `{ error: { code, message } }`.
+ * api.ts: klien HTTP untuk backend antrian. Semua panggilan API di lib/ dan hooks/ lewat berkas ini.
  *
- * Tidak mengimpor store. Token dan handler 401 dipasang dari luar (lihat store/authStore.ts),
- * sehingga tidak ada siklus impor antara api.ts dan store.
+ * Dipakai oleh : lib/*.ts (queues, tickets, counters, users, payments, push, dll.), hooks/use-queue-events.ts
+ * Bergantung   : fetch bawaan. Token dan handler 401 dipasang dari store/authStore.ts
+ * Alur         : authStore memanggil setAuthToken setiap token berubah, dan setOnUnauthorized saat modul dimuat
+ * Catatan      : Kontrak respons: sukses `{ data: T }`, gagal `{ error: { code, message } }`. Berkas ini tidak
+ *                mengimpor store, supaya tidak ada siklus impor antara api.ts dan store.
  */
 
 /**
@@ -22,8 +24,10 @@ function resolveApiBase(): string {
   return 'http://localhost:8080';
 }
 
+/** API_BASE_URL: awalan URL semua request, dihitung sekali saat modul dimuat. */
 export const API_BASE_URL = resolveApiBase();
 
+/** ApiError: galat dari backend atau dari jaringan. Dilempar oleh apiFetch, apiUpload, dan apiDownload. */
 export class ApiError extends Error {
   /** Status HTTP. 0 = gagal terhubung ke server. */
   status: number;
@@ -41,6 +45,7 @@ export class ApiError extends Error {
 let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
 
+/** setAuthToken: menyimpan token untuk header Authorization pada request berikutnya. null menghapus header. */
 export function setAuthToken(token: string | null) {
   authToken = token;
 }
@@ -50,12 +55,17 @@ export function setOnUnauthorized(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
+/** RequestOptions: opsi tambahan untuk apiFetch. */
 type RequestOptions = {
+  /** Metode HTTP. Default GET. */
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  /** Isi JSON. undefined berarti request tanpa body dan tanpa Content-Type. */
   body?: unknown;
+  /** Sinyal pembatalan. Pembatalan oleh pemanggil diteruskan apa adanya, bukan diubah jadi ApiError. */
   signal?: AbortSignal;
 };
 
+/** Membaca body sebagai JSON. Body kosong atau bukan JSON menghasilkan null, supaya galat non-JSON tetap bisa dibaca. */
 async function parseBody(res: Response): Promise<unknown> {
   const text = await res.text();
   if (!text) return null;
@@ -87,6 +97,10 @@ export async function apiDownload(path: string): Promise<Blob> {
   return res.blob();
 }
 
+/**
+ * toApiError membuat ApiError dari body galat. Body yang tidak sesuai kontrak (mis. HTML dari nginx, atau null)
+ * mendapat code `UNKNOWN` dan pesan `Permintaan gagal (status)`.
+ */
 export function toApiError(status: number, body: unknown): ApiError {
   const err = (body as { error?: { code?: string; message?: string } } | null)?.error;
   return new ApiError(status, err?.code ?? 'UNKNOWN', err?.message ?? `Permintaan gagal (${status})`);
@@ -109,6 +123,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       signal,
     });
   } catch (e) {
+    // Pembatalan dari pemanggil bukan galat jaringan, jadi tidak dibungkus.
     if (e instanceof Error && e.name === 'AbortError') throw e;
     throw new ApiError(0, 'NETWORK_ERROR', 'Tidak dapat terhubung ke server');
   }
@@ -116,6 +131,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   const json = await parseBody(res);
 
   if (!res.ok) {
+    // 401 hanya dianggap sesi habis bila request membawa token. Login yang salah tidak memicu logout.
     if (res.status === 401 && authToken) onUnauthorized?.();
     throw toApiError(res.status, json);
   }

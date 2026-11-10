@@ -1,10 +1,20 @@
+/**
+ * notes.ts: API catatan per nomor tiket untuk owner.
+ *
+ * Dipakai oleh : hooks/use-ticket-note.ts, components/QueueDetail.tsx.
+ * Bergantung   : lib/api.ts (apiFetch).
+ */
 import { apiFetch } from './api';
 
-/** Catatan satu nomor tiket. note null bila nomor itu belum punya catatan. */
+/** TicketNote: catatan satu nomor tiket. `note` bernilai null bila nomor itu belum punya catatan. */
 export type TicketNote = {
+  /** ID nomor tiket di dalam antrian. */
   ticket_id: number;
+  /** Teks catatan; null bila belum ada catatan untuk nomor ini. */
   note: string | null;
+  /** Waktu catatan dibuat (string ISO); null bila belum ada catatan. */
   created_at: string | null;
+  /** Waktu catatan terakhir diubah (string ISO); null bila belum ada catatan. */
   updated_at: string | null;
 };
 

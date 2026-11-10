@@ -1,3 +1,11 @@
+/**
+ * UserAvatar: foto profil user yang sedang login, atau ikon orang bila belum ada foto.
+ *
+ * Dipakai oleh : components/layout/ResponsiveScreenLayout.tsx
+ * Bergantung   : hooks/use-avatar-source, store/avatarStore (updatedAt), components/ui/Icon (PersonIcon)
+ * Alur         : avatarStore.updatedAt -> useAvatarSource -> foto, atau ikon saat belum ada sumber
+ * Catatan      : Membaca avatarStore langsung, di luar aturan ZUSTAND_GUIDE untuk komponen tampilan.
+ */
 import { Image } from 'expo-image';
 import { View } from 'react-native';
 
@@ -15,11 +23,14 @@ export function UserAvatar({
   iconSize,
   background = false,
 }: {
+  /** Sisi lingkaran dalam piksel. */
   size: number;
+  /** Ukuran ikon orang dalam piksel saat foto belum ada. */
   iconSize: number;
-  /** true = lingkaran gelap di belakang ikon (panel); false = ikon polos (header). */
+  /** true = lingkaran gelap di belakang ikon (panel); false = ikon polos (header). Default false. */
   background?: boolean;
 }) {
+  // updatedAt berubah saat foto diganti; hook memakainya agar sumber foto dihitung ulang.
   const updatedAt = useAvatarStore((s) => s.updatedAt);
   const source = useAvatarSource(updatedAt);
 

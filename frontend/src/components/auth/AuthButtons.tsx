@@ -1,14 +1,26 @@
+/**
+ * AuthButtons: kumpulan tombol dan pemisah untuk halaman auth (tombol utama, pemisah "atau", tombol Google).
+ *
+ * Dipakai oleh : components/LoginScreen.tsx, components/RegisterScreen.tsx, components/ForgotPasswordScreen.tsx,
+ *                components/ResetPasswordScreen.tsx, components/VerifyEmailScreen.tsx
+ * Bergantung   : expo-image, constants/app-theme, assets/images/google-g.svg
+ * Catatan      : Logo G dimuat lewat require (SVG sebagai modul).
+ */
 import { Image } from 'expo-image';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
 
+// Logo Google "G" (SVG sebagai modul); require dipakai karena bundler memuat aset ini sebagai modul.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const GOOGLE_G = require('../../../assets/images/google-g.svg');
 
 type PrimaryAuthButtonProps = {
+  /** Teks tombol; tampil dalam huruf kapital lewat gaya. */
   label: string;
+  /** Dipanggil saat ditekan. Tidak dipanggil saat loading. */
   onPress?: () => void;
+  /** Bila true, tombol terkunci dan menampilkan spinner. Default false. */
   loading?: boolean;
 };
 
@@ -42,7 +54,9 @@ export function OrDivider() {
 }
 
 type GoogleButtonProps = {
+  /** Teks tombol. Default "Login with Google". */
   label?: string;
+  /** Dipanggil saat tombol ditekan. */
   onPress?: () => void;
 };
 

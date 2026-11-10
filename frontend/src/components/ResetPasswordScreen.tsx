@@ -1,3 +1,11 @@
+/**
+ * ResetPasswordScreen: layar membuat password baru dari tautan reset.
+ *
+ * Dipakai oleh : app/reset-password.tsx
+ * Bergantung   : ui/Toast (useErrorToast), components/auth/* (AuthLayout, AuthInput, AuthButtons), expo-router
+ * Peran        : publik
+ * Catatan      : subtitle menyebut minimal 8 karakter; pastikan sama dengan validasi di route. Mode 'done' menyebut sesi perangkat lain dikeluarkan.
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
@@ -11,16 +19,25 @@ import { LockIcon } from '@/components/ui/Icon';
 export type ResetPasswordScreenProps = {
   /** form: isi password baru; invalid: tautan tidak bisa dipakai; done: password sudah diganti. */
   mode: 'form' | 'invalid' | 'done';
+  /** Password baru yang diisi pengguna; field ditampilkan dengan `secureTextEntry`. */
   password: string;
+  /** Isi field konfirmasi password, dicocokkan dengan `password` oleh route. */
   confirmPassword: string;
+  /** Dipanggil setiap password baru berubah, dengan nilai terbaru. */
   onChangePassword: (value: string) => void;
+  /** Dipanggil setiap konfirmasi password berubah, dengan nilai terbaru. */
   onChangeConfirmPassword: (value: string) => void;
+  /** Pesan galat konfirmasi, tampil sebagai teks di bawah field konfirmasi (bukan toast). Opsional. */
   confirmPasswordError?: string;
+  /** Dipanggil saat tombol Simpan Password ditekan atau Enter di field konfirmasi; hanya dipakai di mode form. */
   onSubmit: () => void;
+  /** true selama permintaan penyimpanan berjalan; tombol Simpan Password menampilkan status loading. */
   loading: boolean;
+  /** Pesan galat dari route, ditampilkan sebagai toast. Opsional; kosong berarti tidak ada toast. */
   errorMessage?: string;
 };
 
+/** Layar reset password dengan tiga keadaan: form, tautan tidak berlaku, dan password sudah diganti. */
 export default function ResetPasswordScreen({
   mode,
   password,

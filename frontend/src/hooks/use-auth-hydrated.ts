@@ -1,3 +1,12 @@
+/**
+ * use-auth-hydrated: penanda bahwa state auth sudah selesai dibaca dari storage, dipakai untuk menunda keputusan redirect.
+ *
+ * Dipakai oleh : src/components/auth/AuthGate.tsx.
+ * Bergantung   : react (useSyncExternalStore), store/authStore (useAuthStore.persist).
+ * Alur         : storage (AsyncStorage di native, localStorage di web) -> persist.onFinishHydration -> nilai true.
+ * Catatan      : useSyncExternalStore dipakai supaya nilai langsung ikut berubah saat hydration selesai, tanpa effect.
+ */
+
 import { useSyncExternalStore } from 'react';
 
 import { useAuthStore } from '@/store/authStore';

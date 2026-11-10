@@ -1,19 +1,34 @@
+/**
+ * AppButton: tombol utama aplikasi dengan beberapa varian warna dan dukungan spinner loading.
+ *
+ * Dipakai oleh : components/ui/ConfirmModal.tsx, components/ui/JoinQueueModals.tsx,
+ *                components/ui/InsertTicketModal.tsx, components/ui/AppendNoteModal.tsx, dan banyak layar lain
+ * Bergantung   : hooks/use-theme-mode (useThemeColor), constants/app-theme, utils/cn
+ * Catatan      : Warna spinner diatur lewat prop (SPINNER), tidak bisa lewat className.
+ */
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
 import { useThemeColor } from '@/hooks/use-theme-mode';
 import { cn } from '@/utils/cn';
 
+/** Gaya visual tombol. pill-* adalah versi kecil berbentuk kapsul. */
 type Variant = 'primary' | 'dark' | 'outline' | 'soft' | 'accent' | 'pill-white' | 'pill-dark';
 
 type AppButtonProps = {
+  /** Teks tombol. */
   label: string;
+  /** Dipanggil saat ditekan. Tidak dipanggil bila disabled atau loading. */
   onPress?: () => void;
+  /** Gaya tombol. Default "dark". */
   variant?: Variant;
+  /** Bila true, label diganti spinner dan tombol terkunci. Default false. */
   loading?: boolean;
+  /** Bila true, tombol terkunci dan diredupkan. Default false. */
   disabled?: boolean;
   /** Class tambahan; menimpa class dasar yang bertabrakan (mis. `h-9 w-[76px]`). */
   className?: string;
+  /** Ikon di kiri label (opsional). */
   icon?: React.ReactNode;
 };
 
@@ -48,6 +63,7 @@ const SPINNER: Record<Variant, string> = {
   'pill-dark': AppColors.white,
 };
 
+/** Tombol dengan label, ikon opsional, dan spinner saat loading. */
 export function AppButton({
   label,
   onPress,
@@ -57,6 +73,7 @@ export function AppButton({
   className,
   icon,
 }: AppButtonProps) {
+  // Varian pill memakai tinggi dan radius kecil serta teks lebih kecil.
   const isPill = variant === 'pill-white' || variant === 'pill-dark';
   // Tombol outline ada di atas latar tema, jadi spinnernya ikut warna teks tema.
   const foreground = useThemeColor('foreground');

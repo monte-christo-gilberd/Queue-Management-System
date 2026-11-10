@@ -1,3 +1,11 @@
+/**
+ * MyTicketsList: daftar tiket milik customer yang bisa dibuka statusnya.
+ *
+ * Dipakai oleh : app/(owner)/antrian.tsx
+ * Bergantung   : lib/tickets (tipe MyTicket), utils/format (formatTicketNumber)
+ * Peran        : customer
+ * Catatan      : komponen presentasi murni, tidak memanggil API; data datang dari route.
+ */
 import { Pressable, Text, View } from 'react-native';
 
 import type { MyTicket } from '@/lib/tickets';
@@ -13,12 +21,15 @@ const STATUS_LABEL: Record<MyTicket['status'], string> = {
 };
 
 export type MyTicketsListProps = {
+  /** Tiket yang ditampilkan, satu kartu per tiket dengan urutan sama seperti array. Kosong berarti tidak ada yang dirender. */
   tickets: MyTicket[];
+  /** Dipanggil dengan `queue_id` tiket saat kartunya ditekan, untuk membuka status antrian. */
   onOpen: (queueId: number) => void;
 };
 
 /** Satu kartu tiket saya (presentational). Ketuk untuk membuka status antrian. */
 export function MyTicketCard({ ticket, onOpen }: { ticket: MyTicket; onOpen: (queueId: number) => void }) {
+  // Tiket tetap tampil meski antrian ditutup; tanda " · antrian ditutup" memberi tahu customer bahwa antriannya sudah tidak aktif.
   return (
     <Pressable
       onPress={() => onOpen(ticket.queue_id)}

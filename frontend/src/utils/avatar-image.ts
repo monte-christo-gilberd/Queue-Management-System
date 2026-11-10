@@ -1,10 +1,20 @@
 /**
+ * avatar-image: memperkecil foto profil di browser sebelum diunggah. Berjalan hanya di web.
+ *
+ * Dipakai oleh : src/app/(owner)/profile/index.tsx.
+ * Bergantung   : API browser (createImageBitmap, document, canvas). Tidak ada di native.
+ * Catatan      : Dipanggil setelah validateAvatarPick (utils/profile.ts) lolos; bila hasilnya null, pemanggil
+ *                mengunggah berkas asli.
+ */
+
+/**
  * Web: memperkecil foto di browser sebelum diunggah (crop tengah persegi, 512x512, JPEG). Browser sudah
  * memutar foto ponsel sesuai orientasi EXIF saat menggambar ke canvas, dan unggahan jadi jauh lebih kecil.
  * Server tetap memvalidasi dan mengolah ulang, jadi ini hanya optimasi. Mengembalikan null bila gagal
  * (pemanggil lalu mengunggah berkas asli).
  */
 export async function shrinkToJpeg(file: Blob, size = 512): Promise<Blob | null> {
+  // Lingkungan tanpa DOM atau tanpa createImageBitmap (native) langsung mengembalikan null.
   if (typeof document === 'undefined' || typeof createImageBitmap !== 'function') return null;
   try {
     const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });

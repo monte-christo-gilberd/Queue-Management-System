@@ -1,3 +1,11 @@
+/**
+ * DisplayCounterCard: kartu satu counter di layar publik antrian.
+ *
+ * Dipakai oleh : components/DisplayScreen.tsx
+ * Bergantung   : react-native (Text, View)
+ * Peran        : publik
+ * Catatan      : komponen presentasi murni tanpa interaksi; ukuran dan sorotan dihitung oleh induknya.
+ */
 import { Text, View } from 'react-native';
 
 export type DisplayCounterCardProps = {

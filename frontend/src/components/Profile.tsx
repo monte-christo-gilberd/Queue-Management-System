@@ -1,3 +1,11 @@
+/**
+ * Profile: halaman profil user (nama, email, foto, notifikasi, password, dan status langganan untuk owner).
+ *
+ * Dipakai oleh : app/(owner)/profile/index.tsx
+ * Bergantung   : ui/ConfirmModal, ui/Toast, ui/AppButton, ui/FormField, ui/Icon, hooks/use-avatar-source, hooks/use-is-wide, utils/profile (USERNAME_MAX), expo-image
+ * Peran        : owner dan customer (kartu langganan hanya untuk owner; ajakan "Jadi Owner" untuk user biasa)
+ * Catatan      : banner verifikasi email hanya tampil bila `emailVerified` false; tombol simpan dan validasi nama ada di route.
+ */
 import { Image } from 'expo-image';
 import { useState } from 'react';
 
@@ -20,8 +28,11 @@ import { FormField } from '@/components/ui/FormField';
 import { PersonIcon } from '@/components/ui/Icon';
 
 export type ProfileProps = {
+  /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
+  /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
   onMenuItemPress?: (item: OwnerMenuItem) => void;
+  /** Nilai nama user yang sedang diedit; dibatasi panjang maksimum `USERNAME_MAX`. */
   username: string;
   /** Email hanya ditampilkan; mengubahnya belum didukung (verifikasi ganti email belum dibangun). */
   email: string;
@@ -31,11 +42,15 @@ export type ProfileProps = {
   onPressResendVerification?: () => void;
   /** Permintaan kirim ulang sedang berjalan. */
   resendVerificationBusy?: boolean;
+  /** Dipanggil setiap nama user berubah, dengan nilai terbaru. */
   onChangeUsername: (value: string) => void;
+  /** Dipanggil saat tombol "Simpan Perubahan" ditekan; penyimpanan dilakukan oleh route. */
   onSubmit: () => void;
   /** Tombol simpan nonaktif bila nama tidak berubah atau tidak valid. */
   canSave: boolean;
+  /** true saat penyimpanan profil berjalan; tombol simpan menampilkan status loading. */
   loading: boolean;
+  /** Galat dari route, ditampilkan sebagai toast. Opsional; kosong berarti tidak ada toast. */
   errorMessage?: string;
   /** Pesan sukses di bawah tombol simpan (mis. "Perubahan tersimpan"). */
   savedMessage?: string;
@@ -43,6 +58,7 @@ export type ProfileProps = {
   isOwner: boolean;
   /** User biasa (profil sudah dimuat, bukan owner): tampilkan ajakan "Jadi Owner" ke halaman Subscription. */
   canBecomeOwner?: boolean;
+  /** Status langganan owner: true berarti aktif (badge "Aktif"), false berarti "Belum Bayar". Hanya dipakai bila `isOwner`. Default false. */
   subscriptionPaid?: boolean;
   /** Keterangan di bawah status, mis. "Aktif hingga 1 Feb 2025". */
   subscriptionDescription?: string;
@@ -95,9 +111,11 @@ export default function Profile({
   onDeleteAvatar,
 }: ProfileProps) {
   useErrorToast(errorMessage);
+  // Hapus foto selalu lewat konfirmasi; onDeleteAvatar baru dipanggil setelah pengguna memastikan.
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isWide = useIsWide();
 
+  // Layar lebar: kolom kiri (foto dan status) dan kanan (form); layar sempit: satu kolom bertumpuk.
   return (
     <ResponsiveScreenLayout
       title="Profil"

@@ -1,3 +1,11 @@
+/**
+ * Subscription: halaman status dan perpanjangan langganan owner.
+ *
+ * Dipakai oleh : app/(owner)/subscription.tsx
+ * Bergantung   : layout/ResponsiveScreenLayout, ui/AppButton, ui/Icon, ui/Toast, constants/app-theme, utils/cn
+ * Peran        : owner
+ * Catatan      : pembayaran lewat Stripe Checkout; route memuat ulang profil setelah kembali dari Stripe, komponen ini hanya menampilkan hasilnya.
+ */
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 
@@ -14,26 +22,35 @@ import { useErrorToast } from '@/components/ui/Toast';
 export type SubscriptionProps = {
   shell?: ShellProps;
   onMenuItemPress?: (item: OwnerMenuItem) => void;
+  /** true jika langganan aktif (kartu hijau dengan ikon centang); false menampilkan kartu abu dengan ikon jam. */
   paid: boolean;
   /** Judul tagihan apa adanya, mis. "Tagihan Bulan 01/2025 Belum Dibayar". */
   title: string;
   /** Subjudul, mis. "Lakukan pembayaran sebelum 01 Feb 2025". */
   subtitle: string;
+  /** Username akun owner, hanya ditampilkan sebagai informasi di kartu pembayaran. */
   username: string;
   /** Buka pembayaran Stripe untuk 1 bulan (perpanjangan, atau pembayaran pertama = jadi owner). */
   onPay?: () => void;
-  /** Teks kartu dan tombol bayar; bawaan untuk perpanjangan. */
+  /** Judul kartu pembayaran. Opsional; default "Perpanjang 1 Bulan". */
   payTitle?: string;
+  /** Penjelasan singkat di bawah judul kartu pembayaran. Opsional; default menyebut Stripe dan penambahan 1 bulan. */
   payHint?: string;
+  /** Teks tombol bayar. Opsional; default "PERPANJANG 1 BULAN". */
   payLabel?: string;
+  /** true saat proses pembayaran berjalan; tombol bayar menampilkan status loading. Default false. */
   paying?: boolean;
-  /** Info setelah kembali dari pembayaran (mis. "Pembayaran diterima..."). */
+  /** Info setelah kembali dari pembayaran (mis. "Pembayaran diterima..."). Opsional; tidak ditampilkan bila kosong. */
   message?: string;
+  /** Galat dari route, ditampilkan sebagai toast. Opsional; kosong berarti tidak ada toast. */
   errorMessage?: string;
+  /** Dipanggil saat tombol REFRESH ditekan untuk memuat ulang status langganan. Opsional. */
   onRefresh?: () => void;
+  /** true saat refresh berjalan; tombol REFRESH menampilkan status loading. Default false. */
   refreshing?: boolean;
 };
 
+/** Kartu status langganan, kartu pembayaran, dan tombol REFRESH untuk owner. */
 export default function Subscription({
   shell,
   onMenuItemPress,

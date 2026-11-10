@@ -1,3 +1,12 @@
+/**
+ * ticket/[queueId]: status tiket saya di satu antrian, dengan aksi batal, untuk customer.
+ *
+ * Rute        : /ticket/[queueId] (queueId = id antrian).
+ * Akses       : butuh login (AuthGate mode required).
+ * Dipakai oleh: Antrian Saya (antrian.tsx), JoinQueueModals setelah berhasil gabung antrian.
+ * Bergantung  : useTicketQueue, CustomerQueueScreen, canCancelTicket (lib/tickets).
+ * Catatan     : Tidak ada tombol join. Tombol kembali menuju /dashboard. Batal hanya untuk nomor aktif di antrian yang masih buka.
+ */
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { AuthGate } from '@/components/auth/AuthGate';
@@ -8,7 +17,7 @@ import { formatTicketNumber } from '@/utils/format';
 
 /**
  * Status tiket saya di satu antrian (dibuka dari "Antrian Saya" / "Riwayat").
- * Join baru hanya lewat token QR di `/join?t=...`, jadi halaman ini tidak punya tombol join.
+ * Tidak ada tombol join di sini: bergabung hanya lewat pindai QR di aplikasi (token ada di /join?t=...).
  */
 export default function TicketQueueRoute() {
   return (

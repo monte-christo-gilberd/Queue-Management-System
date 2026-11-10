@@ -1,3 +1,10 @@
+/**
+ * web-origin.ts: alamat web untuk tautan join serta penyalinan teks ke clipboard.
+ *
+ * Dipakai oleh : lib/display-url.ts, components/DisplaySettingsCard.tsx, components/QueueQRCard.tsx.
+ * Bergantung   : react-native (Platform), DOM (hanya web).
+ * Catatan      : di native, alamat web diambil dari EXPO_PUBLIC_WEB_URL; tanpa itu currentWebOrigin mengembalikan null.
+ */
 import { Platform } from 'react-native';
 
 /**
@@ -11,7 +18,10 @@ export function currentWebOrigin(): string | null {
   return process.env.EXPO_PUBLIC_WEB_URL ?? null;
 }
 
-/** Menyalin teks ke clipboard. Mengembalikan false bila tidak didukung atau ditolak browser. */
+/**
+ * Menyalin teks ke clipboard. Mengembalikan false bila tidak didukung atau ditolak browser.
+ * Hanya web; di native langsung mengembalikan false.
+ */
 export async function copyToClipboard(text: string): Promise<boolean> {
   if (Platform.OS !== 'web' || typeof document === 'undefined') return false;
 
@@ -44,6 +54,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   } catch {
     return false;
   } finally {
+    // Elemen sementara selalu dilepas dan fokus dikembalikan, apa pun hasil salinannya.
     host.removeChild(area);
     previous?.focus?.({ preventScroll: true });
   }

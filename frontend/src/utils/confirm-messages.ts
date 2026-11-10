@@ -1,7 +1,22 @@
+/**
+ * confirm-messages: teks popup konfirmasi untuk aksi Next dan Skip owner. Fungsi murni.
+ *
+ * Dipakai oleh : src/hooks/use-next-skip-confirm.tsx.
+ * Catatan      : Tidak ada pemanggilan API. Teks ditulis di sini agar mudah diuji (tests/unit/confirm-messages.test.ts).
+ */
+
 /** Jenis aksi owner yang meminta konfirmasi sebelum dijalankan. */
 export type ConfirmKind = 'next' | 'skip';
 
-export type ConfirmCopy = { title: string; message: string; confirmLabel: string };
+/** Teks satu popup konfirmasi. */
+export type ConfirmCopy = {
+  /** Judul popup, mis. "Lanjut ke nomor berikutnya?". */
+  title: string;
+  /** Isi popup yang menyebut nomor dan counter yang terpengaruh. */
+  message: string;
+  /** Label tombol konfirmasi, mis. "Ya, Lanjut". */
+  confirmLabel: string;
+};
 
 /**
  * Teks popup konfirmasi Next dan Skip (fungsi murni). `current` = nomor yang sedang dilayani counter ini
@@ -9,6 +24,7 @@ export type ConfirmCopy = { title: string; message: string; confirmLabel: string
  * Next dan Skip tidak bisa di-undo, jadi popup selalu menyebut nomor yang terpengaruh.
  */
 export function confirmCopy(kind: ConfirmKind, current: string | null, counterName?: string | null): ConfirmCopy {
+  // Frasa " di <counter>" hanya muncul untuk antrian multi-counter.
   const where = counterName ? ` di ${counterName}` : '';
   if (kind === 'next') {
     return current

@@ -1,3 +1,10 @@
+/**
+ * EyeToggle: tombol mata untuk menampilkan atau menyembunyikan isi password, dengan animasi garis coret.
+ *
+ * Dipakai oleh : components/auth/AuthInput.tsx
+ * Bergantung   : react-native (Animated), constants/app-theme
+ * Catatan      : Tombol ini tidak menyimpan state sendiri; induk membalik visible saat onPress.
+ */
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Platform, Pressable, StyleSheet, View } from 'react-native';
 
@@ -6,6 +13,7 @@ import { AppColors } from '@/constants/app-theme';
 type EyeToggleProps = {
   /** true = password terlihat (mata biasa), false = tersembunyi (mata dicoret). */
   visible: boolean;
+  /** Dipanggil saat tombol ditekan. Induk yang membalik nilai visible. */
   onPress: () => void;
 };
 
@@ -18,6 +26,7 @@ const STROKE = 1.5;
 export function EyeToggle({ visible, onPress }: EyeToggleProps) {
   const open = useRef(new Animated.Value(visible ? 1 : 0)).current;
 
+  // Web tidak mendukung useNativeDriver, jadi animasi di web berjalan di sisi JS.
   useEffect(() => {
     Animated.timing(open, {
       toValue: visible ? 1 : 0,

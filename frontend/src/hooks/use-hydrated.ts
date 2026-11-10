@@ -1,3 +1,12 @@
+/**
+ * use-hydrated: penanda bahwa klien sudah siap (sudah hydrate), untuk menunda layout yang bergantung pada peramban.
+ *
+ * Dipakai oleh : src/components/layout/ResponsiveScreenLayout.tsx.
+ * Bergantung   : react-native (Platform).
+ * Alur         : nilai awal `false` di web, `true` di native. Effect mengubahnya ke `true` setelah render pertama.
+ * Catatan      : Pada render statis dan hydrate pertama, web mengembalikan false supaya markup server dan klien sama.
+ */
+
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 

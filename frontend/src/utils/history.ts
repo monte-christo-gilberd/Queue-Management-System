@@ -1,6 +1,15 @@
+/**
+ * history: label dan ringkasan riwayat antrian untuk owner dan customer. Fungsi murni.
+ *
+ * Dipakai oleh : src/components/History.tsx, HistoryDetail.tsx (owner); src/components/MyHistoryList.tsx (customer).
+ * Bergantung   : types/api.ts (tipe riwayat), utils/format.ts (formatDateTime).
+ * Catatan      : Ada dua set label hasil: owner (outcomeLabel) dan customer (customerOutcomeLabel).
+ */
+
 import type { HistoryOutcome, HistoryQueue, HistoryTicket, MyHistoryTicket } from '@/types/api';
 import { formatDateTime } from '@/utils/format';
 
+/** Label hasil untuk tampilan owner. */
 const OUTCOME_LABEL: Record<HistoryOutcome, string> = {
   completed: 'Selesai',
   skipped: 'Dilewati',

@@ -1,3 +1,10 @@
+/**
+ * AppendNoteModal: popup untuk menulis atau mengubah catatan pada satu nomor antrian.
+ *
+ * Dipakai oleh : app/(owner)/dashboard.tsx, app/(owner)/queues/[queueId]/index.tsx
+ * Bergantung   : components/ui/ModalCard, components/ui/AppButton, components/ui/Toast (useErrorToast)
+ * Alur         : isian -> onSubmit(note) -> induk menyimpan lalu menutup popup bila berhasil
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { useEffect, useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
@@ -7,20 +14,27 @@ import { AppButton } from '@/components/ui/AppButton';
 import { ModalCard } from '@/components/ui/ModalCard';
 
 type AppendNoteModalProps = {
+  /** Popup tampil bila true. Isian diisi ulang setiap kali berubah menjadi true. */
   visible: boolean;
+  /** Dipanggil saat Cancel atau latar ditekan; penutupan diatur induk. */
   onCancel: () => void;
   /** Dipanggil dengan isi catatan; penutupan popup diatur pemanggil setelah simpan berhasil. */
   onSubmit: (note: string) => void;
-  /** Catatan yang sudah ada untuk nomor ini; mengisi TextInput setiap popup dibuka. */
+  /** Catatan yang sudah ada untuk nomor ini; mengisi TextInput setiap popup dibuka. Default kosong. */
   initialNote?: string;
-  /** True bila nomor ini sudah punya catatan: tombol berbunyi "Simpan Catatan". */
+  /** True bila nomor ini sudah punya catatan: tombol berbunyi "Simpan Catatan". Default false. */
   hasNote?: boolean;
+  /** Bila true, isian dikunci dan tombol berbunyi "Memuat...". Default false. */
   loading?: boolean;
+  /** Bila true, isian dan tombol dikunci dan tombol berbunyi "Menyimpan...". Default false. */
   saving?: boolean;
+  /** Galat dari induk; tampil sebagai toast, bukan teks merah di dalam popup. */
   errorMessage?: string;
+  /** Placeholder TextInput. Default "Tulis catatan untuk nomor ini...". */
   placeholder?: string;
 };
 
+/** Popup catatan nomor: TextInput multiline dengan tombol batal dan simpan. */
 export function AppendNoteModal({
   visible,
   onCancel,

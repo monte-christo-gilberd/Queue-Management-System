@@ -1,3 +1,12 @@
+/**
+ * use-history: riwayat antrian dan tiket. Owner melihat antrian yang sudah ditutup dan nomor-nomornya. Customer melihat tiketnya sendiri.
+ *
+ * Dipakai oleh : src/app/(owner)/history/index.tsx, src/app/(owner)/history/[queueId].tsx, src/app/(owner)/riwayat.tsx.
+ * Bergantung   : lib/history (listHistoryQueues, getHistoryQueue, listMyHistory, downloadHistoryExport), lib/queue-errors, lib/api (ApiError).
+ * Alur         : muat awal -> halaman pertama. `loadMore` mengambil halaman berikutnya memakai next_cursor dan menambahkannya ke daftar.
+ * Catatan      : Pagination berbasis cursor. Setiap aksi memakai then() atau guard agar setState tidak sinkron di dalam effect dan tidak memuat dua halaman sekaligus.
+ */
+
 import { useCallback, useEffect, useState } from 'react';
 
 import { ApiError } from '@/lib/api';
@@ -11,8 +20,10 @@ import {
 import { describeQueueError } from '@/lib/queue-errors';
 import type { HistoryQueue, HistoryTicket, MyHistoryTicket } from '@/types/api';
 
+/** Hasil request: `ok` true membawa `data`, false membawa pesan galat yang sudah ramah. */
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
+/** Menjalankan request dan mengubah lemparan menjadi Result. Tidak menyentuh state React. */
 async function run<T>(fn: () => Promise<T>): Promise<Result<T>> {
   try {
     return { ok: true, data: await fn() };
@@ -21,7 +32,17 @@ async function run<T>(fn: () => Promise<T>): Promise<Result<T>> {
   }
 }
 
-/** Riwayat antrian owner (hanya yang sudah ditutup), dimuat per halaman. `loadMore` menambah halaman berikutnya. */
+/**
+ * Riwayat antrian owner (hanya yang sudah ditutup), dimuat per halaman. `loadMore` menambah halaman berikutnya.
+ *
+ * Tanpa argumen. Mengembalikan objek dengan field:
+ * - `items`: antrian yang sudah dimuat, urut dari server.
+ * - `loading`: true selama halaman pertama dimuat.
+ * - `loadingMore`: true selama halaman berikutnya dimuat.
+ * - `hasMore`: true bila server masih punya halaman berikutnya.
+ * - `loadMore()`: memuat halaman berikutnya. Tidak melakukan apa pun bila tidak ada halaman atau sedang memuat.
+ * - `error`: pesan galat terakhir. undefined bila tidak ada.
+ */
 export function useHistoryQueues() {
   const [items, setItems] = useState<HistoryQueue[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -65,7 +86,22 @@ export function useHistoryQueues() {
   return { items, loading, loadingMore, hasMore: nextCursor !== null, loadMore, error };
 }
 
-/** Detail riwayat satu antrian yang sudah ditutup: ringkasan dan nomor-nomornya, per halaman. */
+/**
+ * Detail riwayat satu antrian yang sudah ditutup: ringkasan dan nomor-nomornya, per halaman.
+ *
+ * Argumen: `queueId` adalah id antrian. null berarti belum dipilih, tanpa request.
+ *
+ * Mengembalikan objek dengan field:
+ * - `queue`: ringkasan antrian. null sebelum dimuat.
+ * - `tickets`: nomor-nomor yang sudah dimuat.
+ * - `loading`: true selama halaman pertama dimuat.
+ * - `loadingMore`: true selama halaman berikutnya dimuat.
+ * - `hasMore`: true bila masih ada nomor di halaman berikutnya.
+ * - `loadMore()`: memuat halaman nomor berikutnya.
+ * - `exporting`: format yang sedang diunduh (CSV atau Excel). null bila tidak ada unduhan.
+ * - `exportAs(format)`: mengunduh seluruh nomor dalam format itu. Tidak berjalan bila ringkasan belum ada atau unduhan lain sedang berjalan.
+ * - `error`: pesan galat terakhir, dari muat atau unduh. undefined bila tidak ada.
+ */
 export function useHistoryQueue(queueId: number | null) {
   const [queue, setQueue] = useState<HistoryQueue | null>(null);
   const [tickets, setTickets] = useState<HistoryTicket[]>([]);
@@ -129,7 +165,12 @@ export function useHistoryQueue(queueId: number | null) {
   return { queue, tickets, loading, loadingMore, hasMore: nextCursor !== null, loadMore, exporting, exportAs, error };
 }
 
-/** Riwayat tiket saya (customer), satu baris per tiket, dimuat per halaman. `loadMore` menambah halaman berikutnya. */
+/**
+ * Riwayat tiket saya (customer), satu baris per tiket, dimuat per halaman. `loadMore` menambah halaman berikutnya.
+ *
+ * Tanpa argumen. Mengembalikan objek dengan field yang sama seperti useHistoryQueues: `items`, `loading`,
+ * `loadingMore`, `hasMore`, `loadMore`, dan `error`.
+ */
 export function useMyHistory() {
   const [items, setItems] = useState<MyHistoryTicket[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);

@@ -1,7 +1,26 @@
+/**
+ * display: logika murni untuk layar display publik (kartu counter, ukuran huruf, status sambungan).
+ *
+ * Dipakai oleh : src/hooks/use-display-screen.ts (isConnected, changedCounterIds, SSE_FRESH_MS),
+ *                src/components/DisplayScreen.tsx (buildCards, layoutColumns, numberFontSize, formatClock).
+ * Bergantung   : lib/display.ts (tipe DisplaySnapshot dan DisplayCounter).
+ * Alur         : snapshot dan event SSE -> use-display-screen.ts -> utils ini -> DisplayScreen.
+ * Catatan      : Tidak ada pemanggilan API di sini. Semua fungsi murni sehingga bisa diuji di Node.
+ */
+
 import type { DisplayCounter, DisplaySnapshot } from '@/lib/display';
 
 /** Satu kartu di layar. `title` null = jangan tampilkan nama counter (antrian dengan satu counter). */
-export type DisplayCard = { key: string; id: number; title: string | null; number: string | null };
+export type DisplayCard = {
+  /** Kunci React untuk kartu; id counter dalam bentuk string. */
+  key: string;
+  /** ID counter di database. */
+  id: number;
+  /** Nama counter; null bila antrian hanya punya satu counter sehingga nama disembunyikan. */
+  title: string | null;
+  /** Nomor yang sedang dilayani, sudah diformat (mis. "A-007"); null bila counter tidak melayani. */
+  number: string | null;
+};
 
 /** Satu kartu per counter, urutan dari server (counter default dulu). Fungsi murni. */
 export function buildCards(snapshot: Pick<DisplaySnapshot, 'counters' | 'multi_counter'>): DisplayCard[] {
@@ -50,6 +69,8 @@ export function numberFontSize(opts: {
   const gap = 16;
   const cardWidth = (opts.areaWidth - gap * (columns - 1)) / columns - 32; // minus padding kartu
   const cardHeight = (opts.areaHeight - gap * (rows - 1)) / rows - 96; // minus ruang judul dan label
+  // Ukuran diambil dari batas lebar atau tinggi, mana yang lebih kecil, lalu dijepit ke 28-240 piksel.
+  // Tinggi memakai 80% agar ada ruang napas di dalam kartu.
   const byWidth = cardWidth / ((opts.labelLength ?? 5) * 0.62);
   const byHeight = cardHeight * 0.8;
   return Math.round(Math.min(Math.max(Math.min(byWidth, byHeight), 28), 240));

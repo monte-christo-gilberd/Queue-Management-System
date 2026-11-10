@@ -1,3 +1,12 @@
+/**
+ * join: halaman informasi untuk tautan /join?t=<token> (QR antrian), tanpa melakukan join.
+ *
+ * Rute        : /join (query t diabaikan).
+ * Akses       : butuh login (AuthGate mode required); tamu diarahkan ke /.
+ * Dipakai oleh: tautan dari QR antrian (/join?t=<token>).
+ * Bergantung  : AuthGate, AppButton.
+ * Catatan     : Bergabung hanya lewat popup Masuk ke Antrian di dashboard dengan memindai QR. Token di URL tidak dibaca di sini, jadi tidak perlu nextPath.
+ */
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 

@@ -1,3 +1,11 @@
+/**
+ * MyHistoryList: riwayat tiket milik customer, dengan popup detail per tiket.
+ *
+ * Dipakai oleh : app/(owner)/riwayat.tsx
+ * Bergantung   : ui/AppButton, ui/ModalCard, types/api (MyHistoryTicket), utils/format, utils/history
+ * Peran        : customer
+ * Catatan      : hanya baca; catatan owner tidak ditampilkan kepada customer.
+ */
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
@@ -47,9 +55,13 @@ function MyHistoryModal({ ticket, onClose }: { ticket: MyHistoryTicket | null; o
 }
 
 export type MyHistoryListProps = {
+  /** Tiket riwayat milik customer, satu kartu per tiket. Kosong berarti tidak ada yang dirender. */
   items: MyHistoryTicket[];
+  /** true bila masih ada halaman berikutnya; tombol "Muat lagi" ditampilkan. Default false. */
   hasMore?: boolean;
+  /** true saat halaman berikutnya sedang dimuat; tombol "Muat lagi" berstatus loading. Default false. */
   loadingMore?: boolean;
+  /** Dipanggil saat tombol "Muat lagi" ditekan untuk mengambil halaman berikutnya. Opsional. */
   onLoadMore?: () => void;
 };
 

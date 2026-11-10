@@ -1,3 +1,11 @@
+/**
+ * HistoryDetail: detail satu antrian yang sudah ditutup, berisi daftar nomor dan ekspor CSV/Excel.
+ *
+ * Dipakai oleh : app/(owner)/history/[queueId].tsx
+ * Bergantung   : layout/ResponsiveScreenLayout, ui/AppButton, ui/Toast, hooks/use-is-wide, lib/history (ExportFormat), utils/history, utils/format
+ * Peran        : owner
+ * Catatan      : ekspor dan pengambilan data dilakukan oleh route; komponen hanya memicu callback dan menampilkan statusnya.
+ */
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 
@@ -15,21 +23,31 @@ import { AppButton } from '@/components/ui/AppButton';
 import { useErrorToast } from '@/components/ui/Toast';
 
 export type HistoryDetailProps = {
+  /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
+  /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
   onMenuItemPress?: (item: OwnerMenuItem) => void;
   /** Ringkasan antrian yang sudah ditutup; null selama dimuat atau bila tidak ditemukan. */
   queue?: HistoryQueue | null;
+  /** Nomor-nomor pada antrian ini, satu kartu per nomor, dalam urutan array yang diterima. Kosong berarti belum ada atau tidak ada nomor. */
   tickets: HistoryTicket[];
+  /** true saat data sedang dimuat; teks "Memuat..." tampil bila ringkasan belum ada. Default false. */
   loading?: boolean;
+  /** true bila masih ada halaman nomor berikutnya; tombol "Muat lagi" ditampilkan. Default false. */
   hasMore?: boolean;
+  /** true saat halaman berikutnya sedang dimuat; hanya tombol "Muat lagi" yang berstatus loading. Default false. */
   loadingMore?: boolean;
+  /** Dipanggil saat tombol "Muat lagi" ditekan untuk mengambil halaman nomor berikutnya. Opsional. */
   onLoadMore?: () => void;
   /** Unduh seluruh nomor antrian ini (CSV atau Excel). */
   onExport?: (format: ExportFormat) => void;
+  /** Format yang sedang diekspor; null bila tidak ada ekspor. Selama ada ekspor berjalan, kedua tombol ekspor dinonaktifkan. */
   exporting?: ExportFormat | null;
+  /** Galat dari route, ditampilkan sebagai toast. Opsional; kosong berarti tidak ada toast. */
   errorMessage?: string;
 };
 
+/** Detail antrian yang sudah ditutup: ringkasan, tombol ekspor, dan daftar nomor beserta hasil akhirnya. */
 export default function HistoryDetail({
   shell,
   onMenuItemPress,

@@ -1,3 +1,9 @@
+/**
+ * display-url.ts: membangun URL layar publik dari token layar.
+ *
+ * Dipakai oleh : components/DisplaySettingsCard.tsx.
+ * Bergantung   : lib/web-origin.ts (currentWebOrigin).
+ */
 import { currentWebOrigin } from './web-origin';
 
 /**

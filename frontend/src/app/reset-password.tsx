@@ -1,3 +1,12 @@
+/**
+ * reset-password: form password baru dari tautan di email reset (/reset-password?token=...).
+ *
+ * Rute        : /reset-password (query token wajib).
+ * Akses       : publik (tanpa AuthGate), karena pengguna lupa password tidak punya sesi.
+ * Dipakai oleh: tautan di email yang dikirim setelah lupa password (forgot-password.tsx).
+ * Bergantung  : ResetPasswordScreen, resetPassword/isInvalidResetToken/describeResetError (lib/password-reset), useAuthStore (logout), validatePassword.
+ * Catatan     : Tanpa token, halaman langsung masuk mode invalid. Setelah berhasil, sesi lokal dihapus agar halaman login tampil.
+ */
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 

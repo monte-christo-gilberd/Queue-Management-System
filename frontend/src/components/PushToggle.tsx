@@ -1,3 +1,11 @@
+/**
+ * PushToggle: tombol untuk mengaktifkan atau mematikan notifikasi giliran (Web Push).
+ *
+ * Dipakai oleh : components/CustomerQueueScreen.tsx
+ * Bergantung   : lib/push (pushSupported, syncSubscription, enablePush, disablePush), ui/AppButton, ui/Toast
+ * Peran        : customer
+ * Catatan      : hanya berfungsi di web dengan dukungan Push; di native komponen tidak tampil (mis. Expo Go).
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { useEffect, useState } from 'react';
 import { Platform, Text, View } from 'react-native';
@@ -22,7 +30,9 @@ export function PushToggle() {
 
   useEffect(() => {
     if (!supported) return;
+    // Flag `active` mencegah setState dijalankan setelah komponen unmount.
     let active = true;
+    // Status langganan yang tersimpan dibaca saat mount agar tombol sesuai kondisi sebenarnya.
     void syncSubscription()
       .then((v) => {
         if (active) setOn(v);
@@ -34,6 +44,7 @@ export function PushToggle() {
   }, [supported]);
 
   if (!supported) {
+    // Di native tidak ada pesan bantuan; hanya web yang diberi petunjuk cara mengaktifkan notifikasi.
     if (Platform.OS !== 'web') return null;
     return (
       <Text className="text-[12px] font-normal text-muted">
@@ -54,6 +65,7 @@ export function PushToggle() {
       } else if (await enablePush()) {
         setOn(true);
       } else {
+        // enablePush mengembalikan false bila pengguna menolak izin notifikasi di browser.
         setMessage('Izin notifikasi ditolak di browser');
       }
     } catch {

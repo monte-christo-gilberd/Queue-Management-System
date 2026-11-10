@@ -1,3 +1,12 @@
+/**
+ * use-display-screen: data layar publik (tanpa login) yang diambil dari snapshot dan diperbarui lewat SSE.
+ *
+ * Dipakai oleh : src/app/display/[token].tsx, src/components/DisplayScreen.tsx.
+ * Bergantung   : expo/fetch, lib/api (ApiError, API_BASE_URL), lib/display (getPublicDisplay), lib/sse (parser, backoff, resinkron), utils/display (changedCounterIds, isConnected, SSE_FRESH_MS).
+ * Alur         : token -> GET /display/:token untuk snapshot dan GET /display/:token/event untuk sinyal. Sinyal memicu pengambilan ulang (debounce), snapshot baru dibandingkan untuk menyorot kartu yang berubah.
+ * Catatan      : Stream tidak membawa data, hanya sinyal. Tidak memakai token login. Wake Lock di web menahan layar tetap menyala.
+ */
+
 import { fetch as expoFetch } from 'expo/fetch';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
@@ -7,6 +16,7 @@ import { getPublicDisplay, type DisplaySnapshot } from '@/lib/display';
 import { BACKOFF_START_MS, createSseParser, nextBackoff, RESYNC_INTERVAL_MS, FALLBACK_POLL_MS } from '@/lib/sse';
 import { changedCounterIds, isConnected, SSE_FRESH_MS } from '@/utils/display';
 
+/** Status muat layar: `loading` sebelum data pertama, `ready` saat snapshot tersedia, `invalid` bila tautan tidak berlaku, `error` bila gagal dan belum ada data. */
 export type DisplayStatus = 'loading' | 'ready' | 'invalid' | 'error';
 
 /** Lama sorotan kartu yang nomornya baru berganti. */
@@ -22,6 +32,14 @@ const EVENT_DEBOUNCE_MS = 150;
  * - `status` `invalid` = tautan tidak berlaku (404 dari snapshot atau stream); loop berhenti.
  * - Mencegah layar tidur di web (Wake Lock) bila peramban mendukung.
  * - Satu `token` per pemasangan: pemanggil memberi `key={token}` supaya berpindah token memasang ulang hook ini.
+ *
+ * Argumen: `token` adalah token layar publik dari URL. Tidak boleh kosong.
+ *
+ * Mengembalikan objek dengan field:
+ * - `snapshot`: data layar terakhir yang berhasil diambil, null sebelum data pertama.
+ * - `status`: lihat tipe DisplayStatus.
+ * - `connected`: true bila stream atau pengambilan terakhir masih segar.
+ * - `highlighted`: id penghitung yang nomornya baru berganti, disorot selama HIGHLIGHT_MS lalu dikosongkan.
  */
 export function useDisplayScreen(token: string) {
   const [snapshot, setSnapshot] = useState<DisplaySnapshot | null>(null);
@@ -29,12 +47,15 @@ export function useDisplayScreen(token: string) {
   const [connected, setConnected] = useState(true);
   const [highlighted, setHighlighted] = useState<number[]>([]);
 
+  // Ref dipakai agar callback stream dan timer selalu membaca nilai terbaru tanpa memasang ulang effect.
+  // `lastByteAt` menandai kapan byte SSE terakhir datang, `lastFetchOkAt` kapan snapshot terakhir berhasil diambil.
   const snapshotRef = useRef<DisplaySnapshot | null>(null);
   const lastByteAt = useRef<number | null>(null);
   const lastFetchOkAt = useRef<number | null>(null);
   const invalidRef = useRef(false);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Ambil snapshot baru. Angka lama dipertahankan saat gagal; 404 menandai tautan tidak berlaku dan menghentikan pengambilan.
   const refresh = useCallback(async () => {
     if (invalidRef.current) return;
     try {
@@ -44,6 +65,7 @@ export function useDisplayScreen(token: string) {
       lastFetchOkAt.current = Date.now();
       setSnapshot(next);
       setStatus('ready');
+      // Sorotan hanya untuk kartu yang nomornya benar-benar berganti; timer lama dibatalkan agar sorotan baru tidak terpotong.
       if (changed.length > 0) {
         setHighlighted(changed);
         if (highlightTimer.current) clearTimeout(highlightTimer.current);
@@ -60,6 +82,7 @@ export function useDisplayScreen(token: string) {
     }
   }, [token]);
 
+  // Setiap token baru memulai dari keadaan bersih: status invalid dan snapshot lama dibuang.
   useEffect(() => {
     invalidRef.current = false;
     snapshotRef.current = null;
@@ -68,6 +91,7 @@ export function useDisplayScreen(token: string) {
     const controller = new AbortController();
     let debounce: ReturnType<typeof setTimeout> | null = null;
 
+    // Debounce 150 ms: beberapa sinyal beruntun dalam jendela itu hanya memicu satu pengambilan.
     function scheduleRefresh() {
       if (debounce) return;
       debounce = setTimeout(() => {
@@ -82,7 +106,7 @@ export function useDisplayScreen(token: string) {
       onByte: () => {
         lastByteAt.current = Date.now();
       },
-      // Stream putus: detaknya tidak lagi dihitung, jadi status sambungan hanya bergantung pada polling (10 detik).
+      // Stream putus: detaknya tidak lagi dihitung, jadi status sambungan hanya bergantung pada polling (3 detik).
       onDisconnect: () => {
         lastByteAt.current = null;
       },
@@ -94,7 +118,7 @@ export function useDisplayScreen(token: string) {
       },
     });
 
-    // Tiap detik: perbarui status sambungan, dan resinkron bila sudah waktunya.
+    // Tiap detik: perbarui status sambungan, dan resinkron bila sudah waktunya. Interval 45 detik bila SSE masih berdetak, 3 detik bila tidak.
     let lastSync = Date.now();
     const timer = setInterval(() => {
       const now = Date.now();
@@ -115,19 +139,29 @@ export function useDisplayScreen(token: string) {
     };
   }, [token, refresh]);
 
+  // Wake Lock hanya aktif saat data sudah tampil, supaya layar tidak menyala tanpa isi.
   useWakeLock(status === 'ready');
 
   return { snapshot, status, connected, highlighted };
 }
 
 type StreamHandlers = {
+  /** Dipanggil setiap ada byte masuk, sebagai tanda stream masih hidup. */
   onByte: () => void;
+  /** Dipanggil saat stream putus, sebelum menunggu backoff. */
   onDisconnect: () => void;
+  /** Dipanggil saat satu sinyal SSE datang; pemanggil menjadwalkan pengambilan ulang. */
   onSignal: () => void;
+  /** Dipanggil setelah koneksi pulih, supaya perubahan selama putus diambil ulang. */
   onReconnect: () => void;
+  /** Dipanggil saat stream menjawab 404; tautan tidak berlaku. */
   onInvalid: () => void;
 };
 
+/**
+ * Loop stream SSE publik. Backoff 1 detik naik ganda sampai 30 detik, dan kembali ke awal setelah
+ * koneksi berhasil. Berhenti saat signal dibatalkan atau tautan dinyatakan tidak berlaku (404).
+ */
 async function streamLoop(token: string, signal: AbortSignal, h: StreamHandlers) {
   let delay = BACKOFF_START_MS;
   let disconnected = false;
@@ -169,6 +203,7 @@ async function streamLoop(token: string, signal: AbortSignal, h: StreamHandlers)
   }
 }
 
+/** Tidur selama `ms`, tetapi langsung bangun saat signal dibatalkan agar unmount tidak menunggu backoff penuh. */
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const timer = setTimeout(resolve, ms);
@@ -183,7 +218,10 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/** Web: tahan layar agar tidak tidur selama layar publik tampil. Diam bila tidak didukung atau ditolak. */
+/**
+ * Web: tahan layar agar tidak tidur selama layar publik tampil. Diam bila tidak didukung atau ditolak.
+ * Wake Lock dilepas peramban saat tab tersembunyi, sehingga diminta ulang saat tab tampil lagi.
+ */
 function useWakeLock(active: boolean) {
   useEffect(() => {
     if (!active || Platform.OS !== 'web' || typeof navigator === 'undefined') return;

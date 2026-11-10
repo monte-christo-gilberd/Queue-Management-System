@@ -1,3 +1,12 @@
+/**
+ * dashboard: beranda utama untuk owner dan customer: papan antrian untuk owner, kartu posisi saya untuk customer.
+ *
+ * Rute        : /dashboard (juga tujuan default setelah login, lihat DEFAULT_AFTER_LOGIN).
+ * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx).
+ * Dipakai oleh: redirect setelah login dan daftar, menu owner, dan tombol kembali dari halaman tiket.
+ * Bergantung  : useMe, useQueueList, useMyTickets, useQueueBoard (SSE), Dashboard, CreateQueueModal, JoinQueueModals.
+ * Catatan     : Parameter create=1 membuka popup buat antrian (dari menu). Antrian yang ditutup hilang dari papan lewat SSE queue_closed.
+ */
 import { useErrorToast } from '@/components/ui/Toast';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -32,6 +41,9 @@ import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 /** Jumlah antrian aktif yang tampil di Dashboard owner (yang terbaru). Sisanya ada di Daftar Antrian. */
 const DASHBOARD_QUEUE_COUNT = 2;
 
+/**
+ * Beranda. Owner melihat dua antrian aktif terbaru beserta tombol buat antrian. Customer melihat kartu tiket aktif, atau ajakan gabung bila belum punya tiket aktif.
+ */
 export default function DashboardRoute() {
   const displayName = useAuthStore((s) => s.displayName);
   const { queues, error: queuesError, reload: reloadQueues } = useQueueList();
@@ -51,7 +63,7 @@ export default function DashboardRoute() {
   }
   const [joinOpen, setJoinOpen] = useState(false);
   const isWide = useIsWide();
-  // Tiket saya (customer). Hanya tiket waiting di antrian yang masih aktif yang tampil di beranda;
+  // Tiket saya (customer). Hanya tiket menunggu atau sedang dilayani di antrian yang masih aktif yang tampil di beranda;
   // antrian yang ditutup pindah ke Riwayat.
   const { tickets: myTickets, reload: reloadTickets } = useMyTickets();
   // Kartu hanya untuk tiket yang relevan di beranda (lihat isOnHome).

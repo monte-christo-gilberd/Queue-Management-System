@@ -1,3 +1,11 @@
+/**
+ * History: daftar antrian yang sudah ditutup (riwayat) milik owner, dengan paginasi.
+ *
+ * Dipakai oleh : app/(owner)/history/index.tsx
+ * Bergantung   : layout/ResponsiveScreenLayout, ui/AppButton, ui/EmptyState, ui/Icon, ui/Toast, hooks/use-theme-mode, hooks/use-is-wide, utils/history, utils/format
+ * Peran        : owner
+ * Catatan      : hanya menampilkan antrian yang sudah ditutup; antrian aktif tidak pernah masuk riwayat.
+ */
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
@@ -17,17 +25,25 @@ import { Icon } from '@/components/ui/Icon';
 import { useErrorToast } from '@/components/ui/Toast';
 
 export type HistoryProps = {
+  /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
+  /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
   onMenuItemPress?: (item: OwnerMenuItem) => void;
   /** Antrian yang sudah ditutup, terbaru dulu. Antrian aktif tidak pernah masuk riwayat. */
   items: HistoryQueue[];
+  /** true saat data pertama sedang dimuat; teks "Memuat riwayat..." tampil. Default false. */
   loading?: boolean;
+  /** true bila masih ada halaman berikutnya; tombol "Muat lagi" ditampilkan. Default false. */
   hasMore?: boolean;
+  /** true saat halaman berikutnya sedang dimuat; hanya tombol "Muat lagi" yang berstatus loading. Default false. */
   loadingMore?: boolean;
+  /** Dipanggil saat tombol "Muat lagi" ditekan untuk mengambil halaman berikutnya. Opsional. */
   onLoadMore?: () => void;
+  /** Galat dari route, ditampilkan sebagai toast. Opsional; kosong berarti tidak ada toast. */
   errorMessage?: string;
 };
 
+/** Halaman riwayat antrian owner: kartu per antrian yang sudah ditutup, dengan tautan ke detailnya. */
 export default function History({
   shell,
   onMenuItemPress,

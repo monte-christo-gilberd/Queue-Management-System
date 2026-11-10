@@ -1,7 +1,25 @@
+/**
+ * tickets.ts: panggilan API tiket untuk owner (panggil, lewati, panggil ulang, sisip, hapus) dan customer
+ * (gabung, batal, daftar tiket saya), beserta aturan tombol yang bergantung pada status tiket.
+ *
+ * Dipakai oleh : hooks/use-queue-board.ts, hooks/use-ticket-queue.ts, hooks/use-queue-spot.ts, hooks/use-my-tickets.ts,
+ *                components/MyTicketsList.tsx, components/ui/InsertTicketModal.tsx, app/(owner)/antrian.tsx,
+ *                app/ticket/[queueId].tsx
+ * Bergantung   : lib/api.ts (apiFetch), types/api.ts (Ticket, PublicQueue, QueueStatus)
+ * Catatan      : Galat 409 (QUEUE_EMPTY, NOTHING_TO_SKIP, QUEUE_CLOSED, dll.) dibaca dari ApiError.code, bukan dari status saja.
+ */
 import { apiFetch } from './api';
 import type { PublicQueue, QueueStatus, Ticket } from '@/types/api';
 
-type ListTicketsResponse = { action: 'list_tickets'; queue_id: number; tickets: Ticket[] };
+/** Bentuk `data` dari GET /api/v1/queues/:id/tickets. */
+type ListTicketsResponse = {
+  /** Penanda respons dari backend. */
+  action: 'list_tickets';
+  /** ID antrian yang daftar tiketnya dikembalikan. */
+  queue_id: number;
+  /** Tiket antrian, urut sort_key. */
+  tickets: Ticket[];
+};
 
 /** GET /api/v1/queues/:id/tickets — semua tiket antrian (owner). Backend membatasi 500 baris, urut sort_key. */
 export async function listTickets(queueId: number): Promise<Ticket[]> {
@@ -22,11 +40,6 @@ export async function nextTicket(queueId: number, counterId = 0, expectedTicketI
   });
 }
 
-/**
- * POST /api/v1/queues/:id/skip — lewati nomor yang sedang dilayani dan panggil berikutnya (owner).
- * Mengembalikan tiket yang baru dipanggil. 409 NOTHING_TO_SKIP bila belum ada yang dilayani,
- * 409 QUEUE_EMPTY bila tidak ada yang menunggu (nomor tetap dilayani).
- */
 /** POST /api/v1/queues/:id/recall — owner memanggil ulang nomor yang sedang dilayani (push saja). */
 export async function recallTicket(queueId: number, counterId = 0, expectedTicketId?: number): Promise<Ticket> {
   return apiFetch<Ticket>(`/api/v1/queues/${queueId}/recall`, {
@@ -35,6 +48,11 @@ export async function recallTicket(queueId: number, counterId = 0, expectedTicke
   });
 }
 
+/**
+ * POST /api/v1/queues/:id/skip — lewati nomor yang sedang dilayani dan panggil berikutnya (owner).
+ * Mengembalikan tiket yang baru dipanggil. 409 NOTHING_TO_SKIP bila belum ada yang dilayani,
+ * 409 QUEUE_EMPTY bila tidak ada yang menunggu (nomor tetap dilayani).
+ */
 export async function skipTicket(queueId: number, counterId = 0, expectedTicketId?: number): Promise<Ticket> {
   return apiFetch<Ticket>(`/api/v1/queues/${queueId}/skip`, {
     method: 'POST',
@@ -60,18 +78,30 @@ export async function getQueueStatus(queueId: number): Promise<QueueStatus> {
   };
 }
 
-type MyTicketsResponse = { action: 'list_my_tickets'; tickets: MyTicket[] };
+/** Bentuk `data` dari GET /api/v1/users/me/tickets. */
+type MyTicketsResponse = {
+  /** Penanda respons dari backend. */
+  action: 'list_my_tickets';
+  /** Tiket milik user yang login, di semua antrian. */
+  tickets: MyTicket[];
+};
 
-/** Tiket saya di semua antrian, beserta nama dan status antriannya. */
+/** MyTicket: tiket saya di semua antrian, beserta nama dan status antriannya. */
 export type MyTicket = Ticket & {
+  /** Nama antrian tempat tiket ini berada. */
   queue_name: string;
+  /** Prefix nomor antrian (mis. A). Opsional. */
   ticket_prefix?: string;
+  /** Status antrian: 'active' bila masih buka, 'closed' bila sudah ditutup. */
   queue_status: 'active' | 'closed';
   /** ticket_number yang sedang dilayani di antrian ini; null bila belum ada. */
   current_number: number | null;
 };
 
-/** Tiket yang masih relevan di beranda: menunggu di antrian aktif, atau nomornya sedang dilayani. */
+/**
+ * isOnHome: true bila tiket masih relevan di beranda, yaitu antrian masih aktif dan tiket berstatus
+ * waiting atau currently_served.
+ */
 export function isOnHome(t: MyTicket): boolean {
   if (t.queue_status !== 'active') return false;
   return t.status === 'waiting' || t.status === 'currently_served';
@@ -91,7 +121,10 @@ export async function cancelMyTicket(queueId: number): Promise<Ticket> {
   return apiFetch<Ticket>(`/api/v1/queues/${queueId}/cancel`, { method: 'POST' });
 }
 
-/** Isian sisip (US-10): identifier wajib, posisi bilangan bulat minimal 1. Mengembalikan pesan galat, atau null. */
+/**
+ * validateInsertInput: isian sisip (US-10). Identifier wajib, posisi bilangan bulat minimal 1.
+ * Mengembalikan pesan galat, atau null bila valid. Contoh: validateInsertInput('', 1) = 'Isi email atau username customer'.
+ */
 export function validateInsertInput(identifier: string, position: number): string | null {
   if (identifier.trim() === '') return 'Isi email atau username customer';
   if (!Number.isInteger(position) || position < 1) return 'Posisi harus bilangan bulat, minimal 1';
@@ -128,4 +161,3 @@ export async function listMyTickets(): Promise<MyTicket[]> {
   const data = await apiFetch<MyTicketsResponse>('/api/v1/users/me/tickets');
   return data.tickets;
 }
-

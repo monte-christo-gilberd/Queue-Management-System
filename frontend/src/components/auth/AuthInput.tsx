@@ -1,3 +1,11 @@
+/**
+ * AuthInput: field input gaya halaman auth (outline tipis, latar transparan, ikon di kiri).
+ *
+ * Dipakai oleh : components/LoginScreen.tsx, components/RegisterScreen.tsx,
+ *                components/ForgotPasswordScreen.tsx, components/ResetPasswordScreen.tsx
+ * Bergantung   : components/auth/EyeToggle, constants/app-theme, utils/cn
+ * Catatan      : Mode password (showPasswordToggle) hanya mengendalikan secureTextEntry; state-nya lokal.
+ */
 import { useState } from 'react';
 import { Platform, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
@@ -6,8 +14,9 @@ import { cn } from '@/utils/cn';
 import { EyeToggle } from '@/components/auth/EyeToggle';
 
 type AuthInputProps = TextInputProps & {
+  /** Ikon di kiri input (ReactNode). Ukurannya diatur pemanggil. */
   icon: React.ReactNode;
-  /** Tampilkan tombol mata di ujung kanan untuk membuka/menutup isi password. */
+  /** Tampilkan tombol mata di ujung kanan untuk membuka/menutup isi password. Default false. */
   showPasswordToggle?: boolean;
 };
 
@@ -16,6 +25,7 @@ export function AuthInput({ icon, className, showPasswordToggle = false, ...inpu
   // State tampilan murni: password sedang terlihat atau tidak.
   const [passwordVisible, setPasswordVisible] = useState(false);
 
+  // Dengan toggle aktif, secureTextEntry mengikuti state tampilan; tanpa toggle, nilai dari pemanggil dipakai apa adanya.
   return (
     <View className="h-12 flex-row items-center gap-3 px-3.5">
       {/* Border semi-transparan: lapisan terpisah supaya teks input tetap 100% putih. */}

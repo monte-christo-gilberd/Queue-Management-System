@@ -1,3 +1,12 @@
+/**
+ * index: halaman login di "/", untuk tamu yang belum masuk.
+ *
+ * Rute        : / (menerima ?next=<path> dari AuthGate atau tautan register).
+ * Akses       : guest-only (AuthGate mode guest); yang sudah punya token diarahkan ke tujuan next atau /dashboard.
+ * Dipakai oleh: AuthGate di rute yang butuh login (mengirim ?next=), login.tsx (redirect dari /login), register.tsx (tautan sudah punya akun).
+ * Bergantung  : useAuthStore (login), LoginScreen, lib/safe-next, lib/auth-errors.
+ * Catatan     : Tujuan setelah login: next yang sudah disanitasi, atau DEFAULT_AFTER_LOGIN (/dashboard) bila kosong.
+ */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 
@@ -7,6 +16,9 @@ import { describeAuthError } from '@/lib/auth-errors';
 import { DEFAULT_AFTER_LOGIN, sanitizeNext } from '@/lib/safe-next';
 import { useAuthStore } from '@/store/authStore';
 
+/**
+ * Halaman login. Mengirim identifier (email atau username) dan password ke auth store, lalu pindah ke tujuan setelah berhasil.
+ */
 export default function LoginRoute() {
   const login = useAuthStore((s) => s.login);
   // `next` dari AuthGate: halaman yang dituju sebelum diarahkan ke login.
@@ -26,6 +38,7 @@ export default function LoginRoute() {
     setErrorMessage(undefined);
     try {
       await login(identifier.trim(), password);
+      // Cast hanya agar tipe rute yang ketat menerima string dinamis dari ?next atau nilai default.
       router.replace((safeNext || DEFAULT_AFTER_LOGIN) as '/dashboard');
     } catch (e) {
       setErrorMessage(describeAuthError(e));

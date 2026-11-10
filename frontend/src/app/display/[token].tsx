@@ -1,3 +1,12 @@
+/**
+ * display/[token]: layar publik antrian (monitor ruang tunggu) untuk tautan /display/<token>.
+ *
+ * Rute        : /display/[token].
+ * Akses       : publik, tanpa AuthGate dan tanpa kontrol; token acak di path adalah satu-satunya kredensial.
+ * Dipakai oleh: tautan yang dibuat owner di kartu Pengaturan Display (detail antrian), lalu dibuka di monitor.
+ * Bergantung  : useDisplayScreen (data lewat GET /display/:token), DisplayScreen.
+ * Catatan     : Token salah, sudah diganti (rotate), atau layar dimatikan menghasilkan 404 dari API.
+ */
 import { useLocalSearchParams } from 'expo-router';
 
 import { DisplayScreen } from '@/components/DisplayScreen';

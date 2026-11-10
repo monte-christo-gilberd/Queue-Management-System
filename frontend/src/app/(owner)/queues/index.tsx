@@ -1,3 +1,12 @@
+/**
+ * queues/index: daftar antrian owner: hanya antrian yang masih aktif.
+ *
+ * Rute        : /queues.
+ * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx); hanya owner yang punya antrian.
+ * Dipakai oleh: menu owner (case queues di owner-menu).
+ * Bergantung  : useQueueList, QueueList.
+ * Catatan     : Antrian yang sudah ditutup ada di /history.
+ */
 import QueueList from '@/components/QueueList';
 import { useQueueList } from '@/hooks/use-queues';
 import { useAuthStore } from '@/store/authStore';

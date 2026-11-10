@@ -50,15 +50,24 @@ const themedColors = {
   panel: { light: '#94AEFF', dark: '#2B3A6B' }, // latar collapsible
 };
 
+/**
+ * Radius sudut dalam piksel. Nama kunci didaftarkan ke tailwind-merge di utils/cn.ts agar `rounded-pill`
+ * menimpa `rounded-button`, dan dipasang ke tailwind.config.js sebagai `rounded-<nama>`.
+ */
 const radius = {
+  /** Sudut kolom input teks. */
   input: 12,
+  /** Sudut tombol. */
   button: 12,
+  /** Sudut kartu. */
   card: 16,
+  /** Bentuk kapsul (pill), nilai besar agar sudut menjadi setengah lingkaran. */
   pill: 999,
 };
 
 /** Breakpoint layar lebar (PC/tablet) — sama dengan `Layout.wideBreakpoint`. */
 const wideBreakpoint = 1024;
+/** Lebar maksimal konten di layar lebar (piksel), sama dengan `Layout.desktopMaxWidth`. */
 const desktopMaxWidth = 1200;
 
 /** Semua warna versi terang (datar) — untuk prop non-style (warna ikon, placeholderTextColor, spinner).

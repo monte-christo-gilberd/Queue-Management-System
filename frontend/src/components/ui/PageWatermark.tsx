@@ -1,3 +1,10 @@
+/**
+ * PageWatermark: latar dekoratif samar untuk kerangka layar owner.
+ *
+ * Dipakai oleh : components/layout/ResponsiveScreenLayout.tsx
+ * Bergantung   : auth/LogoMark, constants/app-theme
+ * Catatan      : Seluruh lapisan memakai pointerEvents none, jadi tidak menangkap sentuhan.
+ */
 import { View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
