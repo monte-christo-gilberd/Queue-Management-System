@@ -14,41 +14,50 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// UserService adalah logika akun user, profil, preferensi, dan foto profil (dipenuhi oleh service).
 type UserService interface {
+	// Register membuat akun baru dan mengembalikan token login.
 	Register(
 		ctx context.Context,
 		email,
 		username,
 		password string,
 	) (string, error)
+	// Login memeriksa identifier (email atau username) dan password, lalu mengembalikan token login.
 	Login(
 		ctx context.Context,
 		email,
 		password string,
 	) (string, error)
+	// Profile mengambil profil user.
 	Profile(
 		ctx context.Context,
 		userID int64,
 	) (model.Profile, error)
+	// UpdateUsername mengganti username user.
 	UpdateUsername(
 		ctx context.Context,
 		userID int64,
 		username string,
 	) (model.User, error)
+	// SetEmailNotifications menyalakan atau mematikan email notifikasi tiket.
 	SetEmailNotifications(
 		ctx context.Context,
 		userID int64,
 		enabled bool,
 	) error
+	// SetAvatar memproses dan menyimpan foto profil dari upload.
 	SetAvatar(
 		ctx context.Context,
 		userID int64,
 		upload io.Reader,
 	) error
+	// Avatar mengambil foto profil user.
 	Avatar(
 		ctx context.Context,
 		userID int64,
 	) (model.Avatar, error)
+	// DeleteAvatar menghapus foto profil user.
 	DeleteAvatar(
 		ctx context.Context,
 		userID int64,
@@ -58,25 +67,32 @@ type UserService interface {
 // avatarFormOverhead: ruang untuk bagian multipart di luar berkas (batas, header field).
 const avatarFormOverhead = 64 << 10
 
+// UserHandler menangani rute akun user: daftar, login, profil, preferensi, dan foto profil.
 type UserHandler struct {
+	// service berisi logika akun user.
 	service UserService
 }
 
+// NewUserHandler membuat UserHandler dengan service yang diberikan.
 func NewUserHandler(
 	service UserService,
 ) *UserHandler {
+	// isi handler dengan service
 	return &UserHandler{
 		service: service,
 	}
 }
 
+// Register: POST /api/v1/users/register. Membuat akun baru dan mengembalikan token login.
 func (h *UserHandler) Register(
 	c *gin.Context,
 ) {
 
+	// ambil context request dan siapkan penampung body
 	ctx := c.Request.Context()
 	var request dto.RegisterRequest
 
+	// baca body JSON; gagal berarti format request salah
 	err := c.BindJSON(&request)
 	if err != nil {
 		respondError(
@@ -88,6 +104,7 @@ func (h *UserHandler) Register(
 		return
 	}
 
+	// buat akun baru; error diterjemahkan ke respons HTTP di bawah
 	token, err := h.service.Register(
 		ctx,
 		request.Email,
@@ -95,10 +112,12 @@ func (h *UserHandler) Register(
 		request.Password,
 	)
 	if err != nil {
+		// password kurang dari 8 atau lebih dari 72 karakter: 400
 		if errors.Is(err, apperror.ErrWeakPassword) {
 			respondError(c, http.StatusBadRequest, "WEAK_PASSWORD", "password must be 8 to 72 characters")
 			return
 		}
+		// email atau username sudah dipakai: 409
 		if errors.Is(err, apperror.ErrDuplicate) {
 			respondError(
 				c,
@@ -108,6 +127,7 @@ func (h *UserHandler) Register(
 			)
 			return
 		}
+		// error lain: 500 tanpa detail
 		respondError(
 			c,
 			http.StatusInternalServerError,
@@ -117,6 +137,7 @@ func (h *UserHandler) Register(
 		return
 	}
 
+	// berhasil: kirim token login
 	respondData(
 		c,
 		http.StatusOK,
@@ -127,13 +148,16 @@ func (h *UserHandler) Register(
 
 }
 
+// Login: POST /api/v1/users/login. Memeriksa kredensial dan mengembalikan token login.
 func (h *UserHandler) Login(
 	c *gin.Context,
 ) {
 
+	// ambil context request dan siapkan penampung body
 	ctx := c.Request.Context()
 	var request dto.LoginRequest
 
+	// baca body JSON; gagal berarti format request salah
 	err := c.BindJSON(&request)
 	if err != nil {
 		respondError(
@@ -145,6 +169,7 @@ func (h *UserHandler) Login(
 		return
 	}
 
+	// identifier diambil dari email atau username; kosong berarti tidak ada yang diisi
 	identifier := request.Login()
 	if identifier == "" {
 		respondError(
@@ -156,6 +181,7 @@ func (h *UserHandler) Login(
 		return
 	}
 
+	// periksa kredensial; error apa pun dibalas sama agar tidak membocorkan akun yang ada
 	token, err := h.service.Login(
 		ctx,
 		identifier,
@@ -171,6 +197,7 @@ func (h *UserHandler) Login(
 		return
 	}
 
+	// kredensial benar: kirim token login
 	respondData(
 		c,
 		http.StatusOK,
@@ -184,19 +211,23 @@ func (h *UserHandler) Login(
 func (h *UserHandler) Me(
 	c *gin.Context,
 ) {
+	// ambil profil user yang login
 	profile, err := h.service.Profile(
 		c.Request.Context(),
 		c.GetInt64("user_id"),
 	)
+	// akun tidak ditemukan: sesi dianggap tidak sah
 	if errors.Is(err, apperror.ErrNotFound) {
 		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized user")
 		return
 	}
+	// error lain: 500 tanpa detail
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		return
 	}
 
+	// kirim profil
 	respondData(c, http.StatusOK, dto.NewMeResponse(profile))
 }
 
@@ -204,19 +235,24 @@ func (h *UserHandler) Me(
 func (h *UserHandler) UpdateMe(
 	c *gin.Context,
 ) {
+	// baca body JSON yang berisi username baru; gagal berarti format request salah
 	var request dto.UpdateMeRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
+	// ganti username; error diterjemahkan ke respons HTTP
 	userID := c.GetInt64("user_id")
 	if _, err := h.service.UpdateUsername(c.Request.Context(), userID, request.Username); err != nil {
 		switch {
+		// username tidak memenuhi panjang 1 sampai 50 karakter: 400
 		case errors.Is(err, apperror.ErrInvalidUsername):
 			respondError(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		// akun tidak ditemukan: sesi dianggap tidak sah
 		case errors.Is(err, apperror.ErrNotFound):
 			respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized user")
+		// error lain: 500 tanpa detail
 		default:
 			respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		}
@@ -231,21 +267,26 @@ func (h *UserHandler) UpdateMe(
 func (h *UserHandler) UpdatePreferences(
 	c *gin.Context,
 ) {
+	// baca body JSON; gagal, atau field email_notifications tidak ada, berarti request tidak lengkap
 	var request dto.UpdatePreferencesRequest
 	if err := c.ShouldBindJSON(&request); err != nil || request.EmailNotifications == nil {
 		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 		return
 	}
 
+	// simpan preferensi untuk user yang login; error diterjemahkan ke respons HTTP
 	userID := c.GetInt64("user_id")
 	if err := h.service.SetEmailNotifications(c.Request.Context(), userID, *request.EmailNotifications); err != nil {
+		// akun tidak ditemukan: sesi dianggap tidak sah
 		if errors.Is(err, apperror.ErrNotFound) {
 			respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized user")
 			return
 		}
+		// error lain: 500 tanpa detail
 		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		return
 	}
+	// berhasil: kirim profil terbaru
 	h.respondProfile(c, userID)
 }
 
@@ -253,38 +294,50 @@ func (h *UserHandler) UpdatePreferences(
 func (h *UserHandler) UploadAvatar(
 	c *gin.Context,
 ) {
+	// batasi ukuran body agar unggahan terlalu besar berhenti sebelum memenuhi memori
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, imageproc.MaxUploadBytes+avatarFormOverhead)
+	// ambil berkas dari field "file"; gagal bisa karena terlalu besar atau field tidak ada
 	header, err := c.FormFile("file")
 	if err != nil {
+		// body melewati batas: 413
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			respondError(c, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", apperror.ErrImageTooLarge.Error())
 			return
 		}
+		// field "file" tidak ada: 400
 		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "field \"file\" is required")
 		return
 	}
+	// buka berkas untuk dibaca; gagal berarti berkas tidak bisa dibaca
 	file, err := header.Open()
 	if err != nil {
 		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "cannot read the uploaded file")
 		return
 	}
+	// tutup berkas saat fungsi selesai
 	defer file.Close()
 
+	// proses dan simpan foto profil; error diterjemahkan ke respons HTTP
 	userID := c.GetInt64("user_id")
 	if err := h.service.SetAvatar(c.Request.Context(), userID, file); err != nil {
 		switch {
+		// foto terlalu besar setelah diproses: 413
 		case errors.Is(err, apperror.ErrImageTooLarge):
 			respondError(c, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", err.Error())
+		// format bukan JPEG, PNG, atau WebP: 415
 		case errors.Is(err, apperror.ErrUnsupportedImage):
 			respondError(c, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", err.Error())
+		// berkas rusak atau tidak valid: 400
 		case errors.Is(err, apperror.ErrInvalidImage):
 			respondError(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		// error lain: 500 tanpa detail
 		default:
 			respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		}
 		return
 	}
+	// berhasil: kirim profil terbaru
 	h.respondProfile(c, userID)
 }
 
@@ -293,24 +346,31 @@ func (h *UserHandler) UploadAvatar(
 func (h *UserHandler) GetAvatar(
 	c *gin.Context,
 ) {
+	// ambil foto profil user yang login
 	avatar, err := h.service.Avatar(c.Request.Context(), c.GetInt64("user_id"))
+	// belum punya foto profil: 404
 	if errors.Is(err, apperror.ErrNotFound) {
 		respondError(c, http.StatusNotFound, "NOT_FOUND", "no profile photo")
 		return
 	}
+	// error lain: 500 tanpa detail
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		return
 	}
 
+	// ETag dari waktu terakhir foto diubah, dipakai browser untuk cache
 	etag := fmt.Sprintf(`"%x"`, avatar.UpdatedAt.UnixNano())
 	c.Header("ETag", etag)
+	// hanya boleh di-cache oleh browser pemilik, dan harus dicek ulang
 	c.Header("Cache-Control", "private, no-cache")
 	c.Header("X-Content-Type-Options", "nosniff")
+	// foto belum berubah sejak terakhir diambil: kirim 304 tanpa isi
 	if c.GetHeader("If-None-Match") == etag {
 		c.Status(http.StatusNotModified)
 		return
 	}
+	// kirim isi foto dengan tipe konten yang tersimpan
 	c.Data(http.StatusOK, avatar.ContentType, avatar.Data)
 }
 
@@ -318,19 +378,23 @@ func (h *UserHandler) GetAvatar(
 func (h *UserHandler) DeleteAvatar(
 	c *gin.Context,
 ) {
+	// hapus foto profil user yang login; error berarti error server
 	if err := h.service.DeleteAvatar(c.Request.Context(), c.GetInt64("user_id")); err != nil {
 		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		return
 	}
+	// berhasil dihapus (atau memang belum ada): 204 tanpa isi
 	c.Status(http.StatusNoContent)
 }
 
 // respondProfile membaca ulang profil dan menjawab dengan bentuk yang sama dengan GET /users/me.
 func (h *UserHandler) respondProfile(c *gin.Context, userID int64) {
+	// baca profil terbaru; error berarti error server
 	profile, err := h.service.Profile(c.Request.Context(), userID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		return
 	}
+	// kirim profil dengan bentuk yang sama seperti GET /users/me
 	respondData(c, http.StatusOK, dto.NewMeResponse(profile))
 }
