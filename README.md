@@ -187,6 +187,27 @@ Tunnel `qms-ta` adalah service systemd yang **manual**: `sudo systemctl start cl
 
 Nginx hanya terikat ke `127.0.0.1:8080`; `cloudflared` di host menunjuk ke `http://localhost:8080`. IP klien dibaca dari `CF-Connecting-IP`. Backend dengan `APP_ENV=production` menolak start bila rahasia lemah atau origin bukan https. Database prod memakai volume sendiri tanpa seed. Backend berjalan satu instance (hub SSE di memori). Lihat `docs/setup-domain.md`, `docs/setup-waf-wifi.md`, dan `docs/plan-live.md`.
 
+### Daftar script
+
+Semua script berada di `scripts/` (dijalankan dari akar `queue-management-system/`) dan `db/scripts/`. Sebagian besar dipanggil lewat `make`; yang lain dijalankan langsung. Tabel ini menjelaskan kapan masing-masing dipakai.
+
+| Script | Fungsi | Cara pakai | Dipanggil dari |
+|---|---|---|---|
+| `scripts/backup-prod.sh` | Backup (`pg_dump`, gzip) dan restore database prod. Restore **menimpa** data prod. | `make prod-backup`, atau `QMS_ENV_FILE=.env.prod scripts/backup-prod.sh backup`. Restore: `scripts/backup-prod.sh restore <file.sql.gz>` | `make prod-backup`, `make prod-reset` |
+| `scripts/reset-demo.sh` | Mengosongkan antrian, tiket, catatan, riwayat, dan langganan push di prod. Akun dipertahankan. Backup otomatis dibuat dulu. | `make prod-reset`, atau `scripts/reset-demo.sh -y` untuk melewati konfirmasi | `make prod-reset` |
+| `scripts/create-demo-accounts.sh` | Membuat 1 owner (langganan 30 hari) dan 4 customer demo dengan sandi acak. Daftar akun ditulis ke `~/qms-demo-accounts.txt`. Tidak menimpa berkas yang sudah ada. | `scripts/create-demo-accounts.sh` (stack prod harus sudah berjalan) | Manual |
+| `scripts/verify-user.sh` | Menandai satu email sebagai terverifikasi langsung di database. Dipakai bila email verifikasi tidak sampai. | `make verify-user EMAIL=<email> [STACK=prod]`, atau `scripts/verify-user.sh <email> [prod]` | `make verify-user` |
+| `scripts/check-mail-mode.sh` | Memeriksa `MAIL_MODE` dan `SMTP_*` di `.env.prod` sebelum stack prod naik. Menolak konfigurasi yang salah. | Otomatis lewat `make prod-up`, atau `MAIL_MODE=smtp scripts/check-mail-mode.sh .env.prod` | `make prod-up` |
+| `scripts/check-service-isolation.sh` | Memastikan `notify-service` tidak bergantung pada mail-service, Mailpit, atau SMTP (dev dan prod), dan `payment-service` terpisah dari jalur antrian. Membutuhkan `docker` dan `python3`. | `scripts/check-service-isolation.sh` (jalankan setelah mengubah `docker-compose*.yml`) | Manual, tidak ada di Makefile |
+| `db/scripts/apply_schema.sql` | Penyesuaian skema yang idempoten untuk database yang sudah berjalan. Tidak menyentuh data. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql`. Prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`. Lalu restart backend dan notify-service. | Manual (lihat [Notifikasi](#notifikasi-notify-service) dan [Email](#email-mailpit-atau-smtp-nyata)) |
+| `db/scripts/reset_seed_dev.sql` | Mengembalikan database dev ke data seed. Ditolak di prod setelah `make prod-guard`. | `make seed` | `make seed`, tes Playwright |
+| `db/scripts/backfill_currently_served.sql` | Backfill sekali jalan: tiket `completed` terakhir di antrian aktif menjadi `currently_served`. Berakhir dengan `ROLLBACK`: periksa jumlah baris, lalu ganti ke `COMMIT`. Jalankan setelah backup dan `apply_schema.sql`. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/backfill_currently_served.sql` | Manual |
+| `db/migrations/*.sh` (`03`, `04`, `05`) | Membuat role database `notify_ro`, `mail_rw`, dan `payment_rw`. | **Tidak dijalankan manual.** Docker menjalankannya saat volume database masih kosong (lihat `db/Dockerfile`). | Docker `initdb` |
+
+**Script yang sudah dihapus**
+
+- `frontend/scripts/reset-project.js` (dan script npm `reset-project`) dihapus. Itu sisa template Expo yang memindahkan `src/` dan `scripts/` ke `example/`, dan tidak dipakai di proyek ini.
+
 ### Build frontend untuk produksi
 
 ```bash
@@ -348,9 +369,9 @@ queue-management-system/
 ├── notify-service/           Web Push (LISTEN Postgres), /health :8091
 ├── mail-service/             pengirim email (outbox dan SMTP), :8092
 ├── payment-service/          perpanjang langganan lewat Stripe, :8093
-├── db/                       Dockerfile, migrations (skema, indeks, role per service), dan scripts
+├── db/                       Dockerfile, migrations (skema, indeks, role per service), dan scripts (apply_schema, reset_seed_dev, backfill)
 ├── deploy/nginx/             konfigurasi nginx (reverse proxy, rate limit)
-├── scripts/                  backup-prod.sh, create-demo-accounts.sh, dan verify-user.sh
+├── scripts/                  backup-prod, reset-demo, create-demo-accounts, verify-user, check-mail-mode, check-service-isolation (lihat "Daftar script")
 ├── docker-compose.yml        stack development (hot reload)
 ├── docker-compose.prod.yml   stack demo/produksi (nginx hanya di 127.0.0.1)
 ├── Makefile                  perintah umum: make up, make tunnel, make prod-up, dan lainnya
