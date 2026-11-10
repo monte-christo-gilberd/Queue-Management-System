@@ -60,6 +60,12 @@ SHELL := bash
 # Penanda nilai EXPO_PUBLIC_GOOGLE_* terakhir yang dibangun ke cache Metro (tidak ikut git). Lihat google_metro_cache.
 GOOGLE_STAMP := .metro-google.stamp
 
+# Kunci JWT dev di keys-dev/ dibuat ulang setiap `make up` / `make tunnel` dan dihapus `make down`.
+# Kunci prod di keys/ tidak pernah disentuh target dev. rm -rf (bukan rm -f) juga membersihkan direktori salah-buat oleh Docker.
+define fresh_auth_keys
+rm -rf keys-dev && AUTH_KEYS_DIR=keys-dev scripts/gen-auth-keys.sh
+endef
+
 # File sementara untuk proses cloudflared (tunnel).
 PIDFILE := /tmp/qms-tunnel.pid
 LOG := /tmp/qms-tunnel.log
@@ -129,7 +135,7 @@ endef
 # Build dan jalankan stack dev. IP LAN dibaca otomatis dari rute default, atau dari IP=... bila diberikan.
 up:
 	$(need_env)
-	scripts/gen-auth-keys.sh
+	$(fresh_auth_keys)
 	scripts/check-google-config.sh .env
 	$(google_metro_cache)
 	ip="$(IP)"
@@ -147,6 +153,7 @@ up:
 tunnel:
 	command -v cloudflared >/dev/null || { echo "cloudflared belum terpasang" >&2; exit 1; }
 	$(need_env)
+	$(fresh_auth_keys)
 	scripts/check-google-config.sh .env
 	$(google_metro_cache)
 	$(stop_tunnel); rm -f $(LOG)
@@ -176,6 +183,8 @@ tunnel:
 down:
 	$(stop_tunnel)
 	docker compose down
+	rm -f $(GOOGLE_STAMP)
+	rm -rf keys-dev
 
 # Restart service yang perlu dimuat ulang setelah kode Go berubah.
 restart:

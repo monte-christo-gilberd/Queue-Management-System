@@ -3,7 +3,8 @@
 # yang ditimpa (menimpa kunci membuat semua token login yang beredar tidak sah).
 #   keys/auth-private.pem : kunci privat. HANYA di-mount ke auth-service (penerbit token).
 #   keys/auth-public.pem  : kunci publik. Di-mount ke backend (verifikasi lokal) dan auth-service.
-# Dijalankan dari akar repo (juga otomatis oleh `make up` dan `make prod-up`):
+# Dijalankan dari akar repo (otomatis oleh `make prod-up`; untuk dev, `make up` dan `make tunnel` menghapus keys/
+# lalu memanggil script ini, dan `make down` menghapus keys/, jadi kunci dev baru tiap sesi):
 #   scripts/gen-auth-keys.sh
 # Rotasi kunci: hapus kedua berkas, jalankan ulang, lalu restart backend dan auth-service. Semua user harus login ulang.
 set -euo pipefail

@@ -29,7 +29,7 @@ Variabel lingkungan yang dibaca beberapa skrip:
 
 ## gen-auth-keys.sh
 
-Membuat pasangan kunci RSA 2048 bit untuk token login (JWT RS256) di folder `keys/`.
+Membuat pasangan kunci RSA 2048 bit untuk token login (JWT RS256) di folder `keys/`. Dev: `make up` dan `make tunnel` membuat kunci baru (menghapus `keys/` dulu), `make down` menghapusnya. Prod: idempoten, kunci tidak diganti oleh `make prod-up`.
 
 | Berkas | Isi | Dipasang ke |
 |---|---|---|

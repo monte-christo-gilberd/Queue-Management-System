@@ -4,5 +4,6 @@
 .env.*
 *.pem
 keys/
+keys-dev/
 .git
 *.md

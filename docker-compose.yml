@@ -30,7 +30,7 @@
 # Saat ada perubahan, periksa:
 #   [SINKRON] Subnet 172.28.0.0/16 (networks.internal) harus sama dengan
 #             TRUSTED_PROXIES backend. Bila subnet diubah, ubah keduanya.
-#   [PENTING] Backend memverifikasi JWT secara LOKAL dengan kunci publik (keys/auth-public.pem). Jangan tambahkan
+#   [PENTING] Backend memverifikasi JWT secara LOKAL dengan kunci publik (keys-dev/auth-public.pem). Jangan tambahkan
 #             depends_on dari backend, nginx, atau service lain ke auth-service: bila auth-service mati, user yang
 #             sudah login tetap bisa memakai aplikasi. Dijaga scripts/check-service-isolation.sh.
 #   [PENTING] Kunci dibuat `scripts/gen-auth-keys.sh` (otomatis oleh `make up`). Kunci privat hanya di-mount ke
@@ -219,7 +219,7 @@ services:
       - ./payment-service:/src
       - go_build_cache:/root/.cache/go-build
       - go_mod_cache:/go/pkg/mod
-      - ./keys/auth-public.pem:/run/keys/auth-public.pem:ro
+      - ./keys-dev/auth-public.pem:/run/keys/auth-public.pem:ro
     stop_grace_period: 3s
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8093/health || exit 1"]
@@ -267,7 +267,7 @@ services:
       - go_build_cache:/root/.cache/go-build
       - go_mod_cache:/go/pkg/mod
       # Folder kunci (privat dan publik), hanya baca.
-      - ./keys:/run/keys:ro
+      - ./keys-dev:/run/keys:ro
     stop_grace_period: 3s
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8094/health || exit 1"]
@@ -336,7 +336,7 @@ services:
     volumes:
       - ./backend:/src
       # Hanya kunci publik. Kunci privat tidak pernah di-mount ke backend.
-      - ./keys/auth-public.pem:/run/keys/auth-public.pem:ro
+      - ./keys-dev/auth-public.pem:/run/keys/auth-public.pem:ro
       - go_build_cache:/root/.cache/go-build
       - go_mod_cache:/go/pkg/mod
     # `go run` tidak selalu meneruskan SIGTERM ke proses anak; jangan tunggu 10 detik.
