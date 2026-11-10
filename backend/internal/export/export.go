@@ -21,13 +21,17 @@ const (
 	XLSX Format = "xlsx"
 )
 
-// ParseFormat menerima "csv" atau "xlsx" (persis, huruf kecil). Selain itu: ok false.
+// ParseFormat mengubah teks dari request menjadi Format. Mengembalikan ok true bila teksnya "csv" atau "xlsx".
 func ParseFormat(s string) (Format, bool) {
+	// memilih berdasarkan nilai s yang sudah diubah menjadi Format
 	switch Format(s) {
+	// s sama dengan "csv"
 	case CSV:
 		return CSV, true
+	// s sama dengan "xlsx"
 	case XLSX:
 		return XLSX, true
+	// s bukan format yang didukung
 	default:
 		return "", false
 	}
@@ -38,9 +42,11 @@ func (f Format) Extension() string { return string(f) }
 
 // ContentType mengembalikan MIME type (penanda jenis isi berkas) untuk header HTTP Content-Type.
 func (f Format) ContentType() string {
+	// format XLSX memakai MIME type spreadsheet Office Open XML
 	if f == XLSX {
 		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	}
+	// selain XLSX (yaitu CSV) memakai text/csv dengan charset UTF-8
 	return "text/csv; charset=utf-8"
 }
 
@@ -64,13 +70,18 @@ type Sink interface {
 	Close() error
 }
 
-// NewSink membuat sink untuk satu antrian. Tidak ada byte yang ditulis sebelum WriteTickets atau Close pertama.
+// NewSink membuat Sink (penerima data ekspor, lihat tipe Sink) untuk satu antrian, sesuai format f.
+// Tidak ada byte yang ditulis ke w sebelum WriteTickets atau Close pertama.
 func NewSink(f Format, w io.Writer, queue model.HistoryQueue) (Sink, error) {
+	// memilih implementasi Sink sesuai format f
 	switch f {
+	// format CSV: buat csvSink, tidak ada error yang mungkin terjadi
 	case CSV:
 		return newCSVSink(w, queue), nil
+	// format XLSX: buat xlsxSink, pembuatannya bisa gagal sehingga error ikut dikembalikan
 	case XLSX:
 		return newXLSXSink(w, queue)
+	// format tidak dikenal: kembalikan error dan Sink kosong
 	default:
 		return nil, fmt.Errorf("export: format tidak dikenal %q", f)
 	}
@@ -87,10 +98,13 @@ var outcomeLabels = map[string]string{
 
 // OutcomeLabel: label Indonesia untuk hasil akhir (sama dengan yang ditampilkan di layar riwayat).
 func OutcomeLabel(status string) string {
+	// ubah teks status menjadi tipe HistoryOutcome
 	outcome := model.HistoryOutcome(status)
+	// cari label Indonesia; ok false berarti status belum punya label
 	if label, ok := outcomeLabels[outcome]; ok {
 		return label
 	}
+	// tidak ada label: tampilkan nilai status apa adanya
 	return outcome
 }
 
@@ -99,13 +113,17 @@ func OutcomeLabel(status string) string {
 // Excel atau LibreOffice tidak menjalankannya sebagai rumus bila berkas dibuka (atau dikonversi) lalu dihitung.
 // Berlaku untuk teks dari pengguna (nama, email, catatan, nama counter).
 func SafeCell(s string) string {
+	// teks kosong tidak perlu diproteksi
 	if s == "" {
 		return s
 	}
+	// lihat karakter pertama saja, karena hanya karakter itu yang menentukan rumus
 	switch s[0] {
+	// karakter pertama berbahaya: beri awalan tanda kutip satu
 	case '=', '+', '-', '@', '\t', '\r':
 		return "'" + s
 	}
+	// karakter pertama aman: kembalikan teks apa adanya
 	return s
 }
 
@@ -117,13 +135,17 @@ var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 // huruf kecil ASCII, angka, dan tanda hubung.
 // Contoh: FileName("Loket Utama!", 54, CSV) = "riwayat-loket-utama-54.csv".
 func FileName(queueName string, queueID int64, f Format) string {
+	// ubah ke huruf kecil, ganti karakter non-alfanumerik dengan "-", lalu buang "-" di awal dan akhir
 	slug := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(queueName), "-"), "-")
+	// batasi slug maksimal 40 karakter, lalu buang "-" yang mungkin tersisa di ujung
 	if len(slug) > 40 {
 		slug = strings.Trim(slug[:40], "-")
 	}
+	// nama antrian tidak menghasilkan karakter apa pun (misalnya hanya simbol): pakai nama cadangan
 	if slug == "" {
 		slug = "antrian"
 	}
+	// gabungkan menjadi riwayat-<slug>-<id>.<ekstensi>
 	return fmt.Sprintf("riwayat-%s-%d.%s", slug, queueID, f.Extension())
 }
 
@@ -132,17 +154,21 @@ func formatTime(t time.Time) string { return t.UTC().Format(TimeLayout) }
 
 // nullTime memformat waktu opsional; kosong bila tidak ada (sel dikosongkan, bukan "0001-01-01").
 func nullTime(valid bool, t time.Time) string {
+	// valid false berarti waktu tidak pernah diisi (misalnya belum dipanggil): kembalikan teks kosong
 	if !valid {
 		return ""
 	}
+	// waktu ada: format sesuai TimeLayout
 	return formatTime(t)
 }
 
 // ticketLabel membentuk nomor tiket yang tampil, misalnya A-001: prefix (kosong dianggap "A"), lalu nomor
 // tiga digit dengan nol di depan.
 func ticketLabel(prefix string, number int) string {
+	// prefix kosong dipakai huruf "A" sebagai cadangan
 	if prefix == "" {
 		prefix = "A"
 	}
+	// %03d: angka dengan minimal tiga digit, diisi nol di depan
 	return fmt.Sprintf("%s-%03d", prefix, number)
 }
