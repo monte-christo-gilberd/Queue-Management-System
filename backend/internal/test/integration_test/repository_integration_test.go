@@ -144,19 +144,27 @@ func joinTicket(t *testing.T, db *sqlx.DB, queueID, userID int64) model.Ticket {
 	return tk
 }
 
+// insertUser menyiapkan akun uji lewat INSERT langsung. Pembuatan akun sekarang dilakukan auth-service, jadi
+// UserRepository backend tidak lagi punya Create; pengujian Create dan ErrDuplicate ada di tes store auth-service.
+func insertUser(ctx context.Context, db *sqlx.DB, email, username, passwordHash string) (model.User, error) {
+	var u model.User
+	err := db.GetContext(ctx, &u,
+		`INSERT INTO users(email, username, password_hash) VALUES ($1, $2, $3)
+		 RETURNING id, email, username, password_hash, google_id, created_at`,
+		email, username, passwordHash)
+	return u, err
+}
+
 func TestUserRepository(t *testing.T) {
 	db := newTestDB(t)
 	repo := repository.NewUserRepository(db)
 	ctx := context.Background()
 
-	u, err := repo.Create(ctx, "a@b.c", "abc", "hash")
+	u, err := insertUser(ctx, db, "a@b.c", "abc", "hash")
 	require.NoError(t, err)
 	assert.NotZero(t, u.ID)
 	assert.Equal(t, "hash", u.PasswordHash.String)
 	assert.False(t, u.GoogleID.Valid)
-
-	_, err = repo.Create(ctx, "a@b.c", "other", "hash")
-	assert.ErrorIs(t, err, apperror.ErrDuplicate)
 
 	got, err := repo.FindByEmail(ctx, "a@b.c")
 	require.NoError(t, err)
@@ -499,12 +507,12 @@ func TestUserRepository_FindByLogin(t *testing.T) {
 	repo := repository.NewUserRepository(db)
 	ctx := context.Background()
 
-	a, err := repo.Create(ctx, "a@b.c", "budi", "hash-a")
+	a, err := insertUser(ctx, db, "a@b.c", "budi", "hash-a")
 	require.NoError(t, err)
-	b, err := repo.Create(ctx, "b@b.c", "budi", "hash-b")
+	b, err := insertUser(ctx, db, "b@b.c", "budi", "hash-b")
 	require.NoError(t, err)
 	// username "b@b.c" milik user lain: email-nya harus didahulukan saat login dengan "b@b.c".
-	c, err := repo.Create(ctx, "c@b.c", "b@b.c", "hash-c")
+	c, err := insertUser(ctx, db, "c@b.c", "b@b.c", "hash-c")
 	require.NoError(t, err)
 
 	byEmail, err := repo.FindByLogin(ctx, "a@b.c")

@@ -52,22 +52,8 @@ func (a *AppRouter) WithHistory(h HistoryHandler) *AppRouter {
 	return a
 }
 
-// WithPasswordReset memasang endpoint lupa/reset password (opsional; tanpa ini rute tidak ada).
-func (a *AppRouter) WithPasswordReset(h PasswordHandler) *AppRouter {
-	// simpan handler reset password, lalu kembalikan router yang sama
-	a.passwordHandler = h
-	return a
-}
-
-// WithEmailVerification memasang endpoint verifikasi email: POST /users/verify-email (publik, token di tautan email)
-// dan POST /users/me/verify-email/resend (butuh login). Opsional; tanpa ini rutenya tidak ada.
-func (a *AppRouter) WithEmailVerification(h EmailVerificationHandler) *AppRouter {
-	// simpan handler verifikasi email, lalu kembalikan router yang sama
-	a.verifyHandler = h
-	return a
-}
-
-// WithDisplay memasang layar publik: konfigurasi owner di /queues/:id/display dan rute publik /display/:token.
+// WithDisplay memasang endpoint layar publik: konfigurasi oleh owner (/queues/:id/display) dan layar tanpa login
+// (/display/:token). Opsional; tanpa ini rutenya tidak ada.
 func (a *AppRouter) WithDisplay(h DisplayHandler) *AppRouter {
 	// simpan handler layar publik, lalu kembalikan router yang sama
 	a.displayHandler = h
@@ -107,32 +93,12 @@ func SetupRouter(
 	api := engine.Group("/api")
 	v1 := api.Group("/v1")
 
-	// rute publik user: register dan login
-	users := v1.Group("/users")
-	registerUserRoutes(
-		users,
-		router.userHandler,
-	)
-
-	// reset password bersifat publik; hanya didaftarkan bila handler-nya dipasang
-	if router.passwordHandler != nil {
-		users.POST("/forgot-password", router.passwordHandler.ForgotPassword)
-		users.POST("/reset-password", router.passwordHandler.ResetPassword)
-	}
-
-	// verifikasi email bersifat publik (token ada di tautan email); hanya didaftarkan bila dipasang
-	if router.verifyHandler != nil {
-		users.POST("/verify-email", router.verifyHandler.Verify)
-	}
-
+	// register, login, reset password, dan verifikasi email dilayani auth-service (nginx mengarahkan path-nya ke sana),
+	// jadi tidak ada rute publik di bawah /users di backend. Backend hanya memverifikasi token yang diterbitkannya.
 	// Tiket saya: butuh login, tidak ada di bawah /queues karena tidak terkait satu antrian.
 	me := v1.Group("/users/me")
 	// semua rute di grup "me" harus lewat pemeriksaan login
 	me.Use(router.authMiddleware)
-	// kirim ulang email verifikasi (butuh login); hanya didaftarkan bila dipasang
-	if router.verifyHandler != nil {
-		me.POST("/verify-email/resend", router.verifyHandler.Resend)
-	}
 	// rute profil user; hanya didaftarkan bila userHandler ada
 	if router.userHandler != nil {
 		me.GET("", router.userHandler.Me)

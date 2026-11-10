@@ -29,8 +29,8 @@ func (f *fakeChecker) PasswordChangedAt(context.Context, int64) (*time.Time, err
 func revocationProbe(checker middleware.SessionRevocationChecker, claims jwt.MapClaims) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.GET("/x", middleware.RequireAuthWithRevocation(authSecret, checker), func(c *gin.Context) { c.Status(http.StatusOK) })
-	tok, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(authSecret))
+	e.GET("/x", middleware.RequireAuthWithRevocation(testVerifier(""), checker), func(c *gin.Context) { c.Status(http.StatusOK) })
+	tok, _ := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(testKey)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)

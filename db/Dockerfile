@@ -10,7 +10,7 @@
 #
 # Saat ada perubahan, periksa:
 #   [PENTING] Urutan nama berkas menentukan urutan eksekusi. Jangan mengganti nama berkas
-#             sembarangan, dan pastikan role di 03..05 dibuat sebelum dipakai.
+#             sembarangan, dan pastikan role di 03..06 dibuat sebelum dipakai.
 #   [PENTING] Data lama tidak berubah. Perubahan skema di sini hanya berlaku pada database
 #             baru (volume kosong). Untuk database yang sudah ada, pakai migrasi terpisah.
 # =============================================================================
@@ -19,7 +19,7 @@
 FROM postgres:16-alpine
 
 # Init script di /docker-entrypoint-initdb.d dijalankan berurutan saat container pertama kali dibuat.
-# Urutan nama = urutan jalan: 01a..01h (skema per domain), 02 (index), 03..05 (role per service). Lihat migrations/README.md.
+# Urutan nama = urutan jalan: 01a..01h (skema per domain), 02 (index), 03..06 (role per service). Lihat migrations/README.md.
 # Menyalin semua script SQL dan shell dari migrations/ ke folder init. Entrypoint image postgres menjalankannya
 # berurutan (alfabetis) saat data directory kosong.
 COPY migrations/*.sql migrations/*.sh /docker-entrypoint-initdb.d/

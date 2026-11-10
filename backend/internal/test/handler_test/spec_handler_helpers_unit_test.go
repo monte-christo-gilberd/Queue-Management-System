@@ -246,20 +246,6 @@ type specUserSvc struct {
 	calls   int
 }
 
-func (s *specUserSvc) Register(_ context.Context, email, username, password string) (string, error) {
-	s.calls++
-	s.gotID = email + "|" + username
-	s.gotPass = password
-	return s.token, s.err
-}
-
-func (s *specUserSvc) Login(_ context.Context, identifier, password string) (string, error) {
-	s.calls++
-	s.gotID = identifier
-	s.gotPass = password
-	return s.token, s.err
-}
-
 func (s *specUserSvc) Profile(_ context.Context, userID int64) (model.Profile, error) {
 	return model.Profile{User: model.User{ID: userID}}, s.err
 }

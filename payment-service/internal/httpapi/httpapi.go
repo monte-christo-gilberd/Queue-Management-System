@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rsa"
 	"errors"
 	"fmt"
 	"io"
@@ -33,16 +34,22 @@ type Billing interface {
 type API struct {
 	// svc: lapisan bisnis pembayaran.
 	svc Billing
-	// jwtSecret: kunci untuk memverifikasi JWT login.
-	jwtSecret []byte
+	// pub: kunci publik RSA untuk memverifikasi JWT login RS256 (diterbitkan auth-service).
+	pub *rsa.PublicKey
+	// legacy: secret HS256 lama, hanya masa transisi. Kosong = token HS256 ditolak.
+	legacy []byte
 	// log: pencatat peristiwa dan galat.
 	log *slog.Logger
 }
 
-// New membuat API dengan service billing, secret JWT, dan logger.
-func New(svc Billing, jwtSecret string, log *slog.Logger) *API {
-	// Simpan secret sebagai byte agar langsung dipakai verifikasi JWT.
-	return &API{svc: svc, jwtSecret: []byte(jwtSecret), log: log}
+// New membuat API dengan service billing, kunci publik JWT, secret HS256 lama (boleh kosong), dan logger.
+func New(svc Billing, pub *rsa.PublicKey, legacySecret string, log *slog.Logger) *API {
+	a := &API{svc: svc, pub: pub, log: log}
+	// Secret lama hanya dipakai bila diisi; kosong berarti token HS256 ditolak.
+	if legacySecret != "" {
+		a.legacy = []byte(legacySecret)
+	}
+	return a
 }
 
 // Handler membangun router HTTP untuk ketiga endpoint.
@@ -136,20 +143,27 @@ func (a *API) webhook(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// authenticate memverifikasi JWT QMS (HS256, JWT_SECRET sama dengan backend) dan mengembalikan id user.
+// authenticate memverifikasi JWT QMS secara lokal (RS256 dengan kunci publik; HS256 hanya dengan secret transisi)
+// dan mengembalikan id user. Tidak menghubungi auth-service.
 func (a *API) authenticate(r *http.Request) (int64, bool) {
 	// Ambil header Authorization dan pastikan berbentuk "Bearer <token>".
 	h := r.Header.Get("Authorization")
 	if !strings.HasPrefix(h, "Bearer ") {
 		return 0, false
 	}
-	// Parse dan verifikasi token. Hanya algoritma HMAC yang diterima, dan kuncinya adalah secret QMS.
+	// Parse dan verifikasi token. Algoritma ditegakkan per kunci: RS256 hanya dengan kunci publik, HS256 hanya
+	// dengan secret lama. Ini mencegah algorithm confusion dan menolak alg=none.
 	tok, err := jwt.Parse(strings.TrimPrefix(h, "Bearer "), func(t *jwt.Token) (any, error) {
-		// Algoritma bukan HMAC: tolak, supaya token tidak bisa diverifikasi dengan kunci yang salah.
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
+		switch t.Method {
+		case jwt.SigningMethodRS256:
+			return a.pub, nil
+		case jwt.SigningMethodHS256:
+			// HS256 hanya sah selama masa transisi (secret lama diisi).
+			if len(a.legacy) > 0 {
+				return a.legacy, nil
+			}
 		}
-		return a.jwtSecret, nil
+		return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
 	})
 	// Parse gagal atau token tidak valid (kedaluwarsa, tanda tangan salah): tolak.
 	if err != nil || !tok.Valid {

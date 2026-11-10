@@ -6,7 +6,7 @@
 # Cara kerja   : pola yang cocok diabaikan. Baris "!" mengembalikan berkas yang sudah diabaikan.
 # =============================================================================
 
-# Abaikan semua berkas .env, supaya rahasia (kunci Stripe, JWT_SECRET) tidak pernah masuk image.
+# Abaikan semua berkas .env, supaya rahasia (kunci Stripe, kunci JWT) tidak pernah masuk image.
 .env
 # Abaikan varian lain .env (mis. .env.local). Pola ini juga mencakup .env itu sendiri.
 .env.*

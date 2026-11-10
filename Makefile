@@ -92,6 +92,7 @@ endef
 # Build dan jalankan stack dev. IP LAN dibaca otomatis dari rute default, atau dari IP=... bila diberikan.
 up:
 	$(need_env)
+	scripts/gen-auth-keys.sh
 	ip="$(IP)"
 	[ -n "$$ip" ] || ip=$$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' || true)
 	[ -n "$$ip" ] || { echo "IP LAN tidak terdeteksi; beri manual: make up IP=<ip>" >&2; exit 1; }
@@ -115,7 +116,7 @@ tunnel:
 	  [ -n "$$url" ] && break; sleep 1
 	done
 	[ -n "$$url" ] || { echo "URL tunnel tidak muncul, lihat $(LOG)" >&2; $(stop_tunnel); exit 1; }
-	QMS_PUBLIC_ORIGIN="$$url" docker compose up -d --build --force-recreate backend qr-service notify-service mail-service mailpit nginx frontend db
+	QMS_PUBLIC_ORIGIN="$$url" docker compose up -d --build --force-recreate backend auth-service qr-service notify-service mail-service mailpit nginx frontend db
 	$(warm_metro)
 	echo "Link: $$url"
 	echo "Hentikan: make down"
@@ -129,7 +130,7 @@ down:
 
 # Restart service yang perlu dimuat ulang setelah kode Go berubah.
 restart:
-	docker compose restart backend qr-service notify-service mail-service payment-service
+	docker compose restart backend auth-service qr-service notify-service mail-service payment-service
 
 # Reset database dev ke data seed (db/scripts/reset_seed_dev.sql).
 seed:
@@ -174,6 +175,7 @@ PROD := docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) $(PROD_
 # Jalankan stack prod. Memeriksa MAIL_MODE dulu (scripts/check-mail-mode.sh) dan menolak konfigurasi salah.
 # Bila berpindah dari mailpit ke smtp, sisa container Mailpit dihentikan supaya tidak membingungkan.
 prod-up:
+	scripts/gen-auth-keys.sh
 	MAIL_MODE=$(or $(MAIL_MODE),smtp) QMS_ENV_FILE=$(PROD_ENV) scripts/check-mail-mode.sh
 	$(PROD) up -d --build
 	$(if $(PROD_PROFILE),,docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) --profile mailpit rm -sf mailpit >/dev/null 2>&1 || true)

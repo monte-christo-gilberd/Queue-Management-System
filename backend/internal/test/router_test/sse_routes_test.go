@@ -2,13 +2,10 @@ package router_test
 
 import (
 	"context"
-	"strconv"
-	"time"
 
 	"qms/internal/model"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt"
 )
 
 type stubTicket struct{}
@@ -43,13 +40,4 @@ func (stubValidator) ViewQueue(
 	requesterID int64,
 ) (model.Queue, bool, error) {
 	return model.Queue{ID: queueID, OwnerID: requesterID}, true, nil
-}
-
-func issueTestToken(secret string, userID int64) string {
-	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": strconv.FormatInt(userID, 10),
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-	s, _ := tok.SignedString([]byte(secret))
-	return s
 }

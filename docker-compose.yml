@@ -15,6 +15,7 @@
 #   notify-service :8091  Web Push (LISTEN Postgres)
 #   mail-service   :8092  pengirim email (outbox + SMTP), hanya jaringan internal
 #   payment-service:8093  perpanjangan langganan lewat Stripe / simulator dev
+#   auth-service   :8094  login, registrasi, reset password, verifikasi email (penerbit JWT RS256)
 #   db             :5432  PostgreSQL 16, tidak dipetakan ke host
 #   mailpit        :1025 (SMTP), :8025 (UI), hanya di 127.0.0.1 host
 #
@@ -29,7 +30,12 @@
 # Saat ada perubahan, periksa:
 #   [SINKRON] Subnet 172.28.0.0/16 (networks.internal) harus sama dengan
 #             TRUSTED_PROXIES backend. Bila subnet diubah, ubah keduanya.
-#   [SINKRON] Port internal (8090/8091/8092/8093/8080) harus sama dengan PORT di
+#   [PENTING] Backend memverifikasi JWT secara LOKAL dengan kunci publik (keys/auth-public.pem). Jangan tambahkan
+#             depends_on dari backend, nginx, atau service lain ke auth-service: bila auth-service mati, user yang
+#             sudah login tetap bisa memakai aplikasi. Dijaga scripts/check-service-isolation.sh.
+#   [PENTING] Kunci dibuat `scripts/gen-auth-keys.sh` (otomatis oleh `make up`). Kunci privat hanya di-mount ke
+#             auth-service.
+#   [SINKRON] Port internal (8090/8091/8092/8093/8094/8080) harus sama dengan PORT di
 #             environment service dan dengan upstream di deploy/nginx/server.conf.
 #   [SINKRON] MAILPIT_UI_PORT dibaca Makefile (target up, tunnel, mailpit) untuk
 #             menampilkan link Mailpit. Ubah di .env, bukan di Makefile.
@@ -65,6 +71,9 @@ services:
       # Kosong = role payment_rw tidak dibuat (db/migrations/05_payment_role.sh): hanya payment-service yang belum bisa
       # terhubung, database dan antrian tetap start.
       PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-}
+      # Kosong = role auth_rw tidak dibuat (db/migrations/06_auth_role.sh): auth-service tidak bisa terhubung, login baru gagal.
+      # Wajib diisi agar kelalaian ini ketahuan sejak `up`, bukan saat user tidak bisa login.
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
     volumes:
       # Data database. Bertahan saat container dibuat ulang. Hapus volume untuk memulai dari nol.
       - db_data:/var/lib/postgresql/data
@@ -189,7 +198,10 @@ services:
     environment:
       PORT: "8093"
       DATABASE_URL: postgresql://payment_rw:${PAYMENT_DB_PASSWORD:-unset}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      # Kunci publik penanda token login (diterbitkan auth-service). Verifikasi lokal, tanpa jaringan.
+      JWT_PUBLIC_KEY_FILE: /run/keys/auth-public.pem
+      # Hanya masa transisi: secret HS256 lama agar token yang sudah terbit tetap sah sampai kedaluwarsa (24 jam).
+      JWT_LEGACY_HS256_SECRET: ${JWT_LEGACY_HS256_SECRET:-}
       # APP_ENV kosong di dev. Bila diisi `production`, service menolak start bersama DEV_PAYMENT_SIMULATOR.
       APP_ENV: ${APP_ENV:-}
       # Origin publik aplikasi; dipakai untuk URL kembali dari checkout Stripe.
@@ -207,12 +219,58 @@ services:
       - ./payment-service:/src
       - go_build_cache:/root/.cache/go-build
       - go_mod_cache:/go/pkg/mod
+      - ./keys/auth-public.pem:/run/keys/auth-public.pem:ro
     stop_grace_period: 3s
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8093/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 40
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # auth-service: login, registrasi, reset password, dan verifikasi email. TERPISAH dari backend: backend memverifikasi
+  # JWT RS256 secara lokal (kunci publik) dan tidak memanggil service ini, jadi tidak ada depends_on dari/ke backend.
+  # Bila ini mati, user yang sudah login tetap bisa memakai aplikasi; hanya login baru, registrasi, reset password,
+  # dan verifikasi email yang gagal (nginx menjawab 503 AUTH_UNAVAILABLE). Hanya bergantung pada db; mail-service
+  # dipanggil lewat HTTP tanpa depends_on (email yang macet tidak menahan login). Role auth_rw hanya menyentuh users
+  # dan user_action_tokens.
+  auth-service:
+    build:
+      context: ./auth-service
+      target: dev
+    environment:
+      PORT: "8094"
+      DATABASE_URL: postgresql://auth_rw:${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+      APP_ENV: ${APP_ENV:-}
+      # Dipakai membuat tautan di email (reset password, verifikasi).
+      PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
+      # Kunci privat penanda token login. Hanya service ini yang memegangnya.
+      AUTH_JWT_PRIVATE_KEY_FILE: /run/keys/auth-private.pem
+      AUTH_JWT_KID: ${AUTH_JWT_KID:-qms-1}
+      # [SINKRON] Harus sama dengan subnet networks.internal di bawah (IP klien dari X-Forwarded-For).
+      TRUSTED_PROXIES: 172.28.0.0/16
+      MAIL_SERVICE_URL: http://mail-service:8092
+      MAIL_SERVICE_TOKEN: ${MAIL_SERVICE_TOKEN:?set MAIL_SERVICE_TOKEN in .env}
+      # [SINKRON] Harus sama dengan nilai di backend (guard verifikasi di sana).
+      EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-}
+    volumes:
+      - ./auth-service:/src
+      - go_build_cache:/root/.cache/go-build
+      - go_mod_cache:/go/pkg/mod
+      # Folder kunci (privat dan publik), hanya baca.
+      - ./keys:/run/keys:ro
+    stop_grace_period: 3s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8094/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    # Hanya menunggu db. Tidak ada depends_on dari backend ke service ini.
     depends_on:
       db:
         condition: service_healthy
@@ -242,7 +300,7 @@ services:
       - internal
     restart: unless-stopped
 
-  # backend: API utama (Gin). Mengelola auth, antrian, tiket, SSE, dan memanggil qr-service serta mail-service.
+  # backend: API utama (Gin). Mengelola antrian, tiket, SSE, profil, dan memanggil qr-service. Login ada di auth-service.
   backend:
     build:
       context: ./backend
@@ -251,7 +309,10 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-qms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
       PORT: "8080"
       APP_ENV: ${APP_ENV:-}
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      # Kunci publik penanda token login (diterbitkan auth-service). Verifikasi lokal, tanpa jaringan.
+      JWT_PUBLIC_KEY_FILE: /run/keys/auth-public.pem
+      # Hanya masa transisi: secret HS256 lama agar token yang sudah terbit tetap sah sampai kedaluwarsa (24 jam).
+      JWT_LEGACY_HS256_SECRET: ${JWT_LEGACY_HS256_SECRET:-}
       # Origin yang boleh memanggil API (CORS) dan dipakai untuk membuat tautan di email.
       ALLOWED_ORIGINS: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
       PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
@@ -263,16 +324,15 @@ services:
       QR_HTTP_TIMEOUT: ${QR_HTTP_TIMEOUT:-1}
       # Batas menunggu request selesai saat berhenti; harus lebih kecil dari stop_grace_period di bawah.
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-2}
-      # Verifikasi email: kosong = nyala bila mail-service terpasang (selalu, di compose ini). `false` mematikan.
-      # Email verifikasi masuk ke Mailpit di dev.
+      # Guard verifikasi email (join dan buat antrian butuh email terverifikasi). Kosong = nyala. `false` mematikan.
+      # Backend hanya MEMBACA status verifikasi; email dikirim auth-service (Mailpit di dev).
+      # [SINKRON] Harus sama dengan nilai di auth-service.
       EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
-      # Lupa/reset password: backend memanggil mail-service (jaringan internal). Email yang macet tidak boleh
-      # menahan backend, jadi tidak ada depends_on.
-      MAIL_SERVICE_URL: http://mail-service:8092
-      MAIL_SERVICE_TOKEN: ${MAIL_SERVICE_TOKEN:?set MAIL_SERVICE_TOKEN in .env}
     volumes:
       - ./backend:/src
+      # Hanya kunci publik. Kunci privat tidak pernah di-mount ke backend.
+      - ./keys/auth-public.pem:/run/keys/auth-public.pem:ro
       - go_build_cache:/root/.cache/go-build
       - go_mod_cache:/go/pkg/mod
     # `go run` tidak selalu meneruskan SIGTERM ke proses anak; jangan tunggu 10 detik.

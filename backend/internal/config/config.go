@@ -1,6 +1,10 @@
 package config
 
 import (
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -17,19 +21,21 @@ import (
 // Dibuat oleh Load() dan dipakai di main() (cmd/server/main.go) untuk merangkai database, service, klien
 // microservice (qrclient dan mailclient), dan router. Load() juga memvalidasi isinya.
 //
-// Wajib diisi: DATABASE_URL, JWT_SECRET, ALLOWED_ORIGINS, PUBLIC_APP_URL, QR_SERVICE_URL, QR_SERVICE_TOKEN.
-// Opsional: MAIL_SERVICE_URL dan MAIL_SERVICE_TOKEN (harus keduanya atau tidak sama sekali), VAPID_PUBLIC_KEY,
-// APP_ENV, TRUSTED_PROXIES, dan PORT (bawaan 8080).
+// Wajib diisi: DATABASE_URL, JWT_PUBLIC_KEY_FILE, ALLOWED_ORIGINS, PUBLIC_APP_URL, QR_SERVICE_URL, QR_SERVICE_TOKEN.
+// Opsional: JWT_LEGACY_HS256_SECRET (hanya masa transisi), VAPID_PUBLIC_KEY, APP_ENV, TRUSTED_PROXIES, dan PORT (bawaan 8080).
 // Opsional dengan nilai bawaan dalam detik: QR_HTTP_TIMEOUT (1) dan SHUTDOWN_TIMEOUT (8).
-// EMAIL_VERIFICATION_REQUIRED: bawaan ikut ada-tidaknya MAIL_SERVICE_URL.
+// EMAIL_VERIFICATION_REQUIRED: bawaan true. Harus sama dengan nilai di auth-service.
 type Config struct {
 	// Env: APP_ENV. Bila "production", validateProduction() menolak secret lemah (terlalu pendek atau nilai contoh) dan origin/URL yang tidak https.
 	Env string
 	// URL koneksi ke PostgreSQL (DATABASE_URL), dipakai database.Connect.
 	DatabaseURL string
-	// kunci rahasia untuk menandatangani token login JWT (JWT_SECRET).
-	// JSON Web Token: token login yang diterbitkan server
-	JWTSecret string
+	// JWTPublicKey: kunci publik RSA untuk memverifikasi token login RS256 (JWT_PUBLIC_KEY_FILE). Token diterbitkan
+	// auth-service dengan kunci privat; backend hanya memverifikasi, secara lokal, tanpa menghubungi auth-service.
+	JWTPublicKey *rsa.PublicKey
+	// JWTLegacySecret: secret HS256 lama (JWT_LEGACY_HS256_SECRET). Hanya selama masa transisi (24 jam setelah
+	// deploy) agar token yang sudah terbit tetap sah. Kosong = token HS256 ditolak.
+	JWTLegacySecret string
 	// port HTTP tempat server listen (PORT). Bila kosong, default 8080.
 	Port string
 	// origin yang boleh memanggil API dari browser.
@@ -56,17 +62,10 @@ type Config struct {
 	// Nilai yang bukan angka membuat Load() gagal.
 	ShutdownTimeout time.Duration
 
-	// EmailVerificationRequired: bila true, email baru dikirimi tautan verifikasi saat registrasi dan akun yang belum
-	// terverifikasi tidak bisa bergabung ke antrian atau membuat antrian (EMAIL_VERIFICATION_REQUIRED).
-	// Bila kosong: true jika MAIL_SERVICE_URL terisi, selain itu false. true tanpa mail-service membuat Load() gagal,
-	// karena tidak ada yang bisa mengirim tautan dan semua user baru akan terkunci.
+	// EmailVerificationRequired: bila true, akun yang belum terverifikasi tidak bisa bergabung ke antrian atau
+	// membuat antrian (EMAIL_VERIFICATION_REQUIRED). Pengiriman email verifikasinya dilakukan auth-service, jadi
+	// nilai ini harus sama di kedua service. Bawaan true; false mematikan guard.
 	EmailVerificationRequired bool
-
-	// mail-service (reset password): microservice terpisah yang mengirim email. Opsional sebagai pasangan: keduanya diisi atau keduanya kosong. Kosong = fitur
-	// lupa password tidak dipasang (rute 404).
-	MailServiceURL string
-	// token autentikasi backend ke mail-service (MAIL_SERVICE_TOKEN).
-	MailServiceToken string
 
 	// kunci publik VAPID. Opsional; kosong = fitur push mati.
 	// Voluntary Application Server Identification: pasangan kunci untuk Web Push, yaitu notifikasi
@@ -96,25 +95,17 @@ func Load() (Config, error) {
 	// mengisi Config dari environment variable. ALLOWED_ORIGINS dan TRUSTED_PROXIES memakai parser daftar koma yang sama.
 	// URL publik dan URL qr-service dibuang '/' di akhirnya agar tidak menghasilkan '//' saat digabung dengan path.
 	cfg := Config{
-		Env:            strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV"))),
-		DatabaseURL:    firstEnv("BACKEND_DATABASE_URL", "DATABASE_URL"),
-		JWTSecret:      os.Getenv("JWT_SECRET"),
-		Port:           firstEnv("BACKEND_PORT", "PORT"),
-		AllowedOrigins: (parseOrigins(os.Getenv("ALLOWED_ORIGINS"))),
-		TrustedProxies: parseOrigins(os.Getenv("TRUSTED_PROXIES")),
+		Env:             strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV"))),
+		DatabaseURL:     firstEnv("BACKEND_DATABASE_URL", "DATABASE_URL"),
+		JWTLegacySecret: os.Getenv("JWT_LEGACY_HS256_SECRET"),
+		Port:            firstEnv("BACKEND_PORT", "PORT"),
+		AllowedOrigins:  (parseOrigins(os.Getenv("ALLOWED_ORIGINS"))),
+		TrustedProxies:  parseOrigins(os.Getenv("TRUSTED_PROXIES")),
 
 		PublicAppURL:   strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/"),
 		QRServiceURL:   strings.TrimRight(os.Getenv("QR_SERVICE_URL"), "/"),
 		QRServiceToken: os.Getenv("QR_SERVICE_TOKEN"),
 		VAPIDPublicKey: os.Getenv("VAPID_PUBLIC_KEY"),
-
-		MailServiceURL:   strings.TrimRight(os.Getenv("MAIL_SERVICE_URL"), "/"),
-		MailServiceToken: os.Getenv("MAIL_SERVICE_TOKEN"),
-	}
-
-	// MAIL_SERVICE_URL dan MAIL_SERVICE_TOKEN harus sama-sama diisi atau sama-sama kosong. Hanya salah satu = error.
-	if (cfg.MailServiceURL == "") != (cfg.MailServiceToken == "") {
-		return Config{}, fmt.Errorf("MAIL_SERVICE_URL and MAIL_SERVICE_TOKEN must be set together")
 	}
 
 	// pengecekan apakah cfg.DatabaseURL ada
@@ -122,10 +113,16 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("missing required env var: DATABASE_URL")
 	}
 
-	// pengecekan apakah cfg.JWTSecret ada
-	if cfg.JWTSecret == "" {
-		return Config{}, fmt.Errorf("missing required env var: JWT_SECRET")
+	// kunci publik untuk memverifikasi token RS256 wajib ada dan harus berupa kunci RSA yang sah
+	keyPath := strings.TrimSpace(os.Getenv("JWT_PUBLIC_KEY_FILE"))
+	if keyPath == "" {
+		return Config{}, fmt.Errorf("missing required env var: JWT_PUBLIC_KEY_FILE")
 	}
+	pub, err := loadPublicKey(keyPath)
+	if err != nil {
+		return Config{}, fmt.Errorf("JWT_PUBLIC_KEY_FILE: %w", err)
+	}
+	cfg.JWTPublicKey = pub
 
 	// ALLOWED_ORIGINS wajib ada. parseOrigins mengembalikan nil bila string kosong.
 	// Catatan: isi yang hanya berupa koma atau spasi
@@ -182,17 +179,14 @@ func Load() (Config, error) {
 	}
 	cfg.ShutdownTimeout = shutdownTimeout
 
-	// EMAIL_VERIFICATION_REQUIRED: kosong = ikut ada-tidaknya mail-service. Bukan boolean = error.
-	cfg.EmailVerificationRequired = cfg.MailServiceURL != ""
+	// EMAIL_VERIFICATION_REQUIRED: kosong = true (aman). Bukan boolean = error.
+	cfg.EmailVerificationRequired = true
 	if raw := strings.TrimSpace(os.Getenv("EMAIL_VERIFICATION_REQUIRED")); raw != "" {
 		required, err := strconv.ParseBool(raw)
 		if err != nil {
 			return Config{}, fmt.Errorf("invalid EMAIL_VERIFICATION_REQUIRED: %w", err)
 		}
 		cfg.EmailVerificationRequired = required
-	}
-	if cfg.EmailVerificationRequired && cfg.MailServiceURL == "" {
-		return Config{}, fmt.Errorf("EMAIL_VERIFICATION_REQUIRED needs MAIL_SERVICE_URL and MAIL_SERVICE_TOKEN")
 	}
 
 	// pengecekan apakah cfg.Env adalah "production"
@@ -209,9 +203,8 @@ func Load() (Config, error) {
 
 // nilai contoh dari .env.example (change-me-...) dan kata umum (secret, password) yang tidak boleh dipakai sebagai secret atau token saat production
 var weakSecrets = map[string]bool{
-	"change-me-jwt-secret":                           true,
-	"change-me-service-token-at-least-32-bytes":      true,
-	"change-me-mail-service-token-at-least-32-bytes": true,
+	"change-me-jwt-secret":                      true,
+	"change-me-service-token-at-least-32-bytes": true,
 	"secret":   true,
 	"password": true,
 }
@@ -219,17 +212,13 @@ var weakSecrets = map[string]bool{
 // validateProduction menolak konfigurasi yang tidak aman saat APP_ENV=production.
 func (c Config) validateProduction() error {
 
-	// pengecekan apakah c.JWTSecret lebih pendek dari 32 atau ada di weakSecrets
-	if len(c.JWTSecret) < 32 || weakSecrets[c.JWTSecret] {
-		return fmt.Errorf("production: JWT_SECRET must be at least 32 chars and not a default value")
+	// secret HS256 lama (hanya transisi) tetap harus kuat bila diisi
+	if c.JWTLegacySecret != "" && (len(c.JWTLegacySecret) < 32 || weakSecrets[c.JWTLegacySecret]) {
+		return fmt.Errorf("production: JWT_LEGACY_HS256_SECRET must be at least 32 chars and not a default value")
 	}
 	// pengecekan apakah c.QRServiceToken lebih pendek dari 32 atau ada di weakSecrets
 	if len(c.QRServiceToken) < 32 || weakSecrets[c.QRServiceToken] {
 		return fmt.Errorf("production: QR_SERVICE_TOKEN must be at least 32 chars and not a default value")
-	}
-	// pengecekan apakah c.MailServiceToken ada dan lebih pendek dari 32 atau ada di weakSecrets
-	if c.MailServiceToken != "" && (len(c.MailServiceToken) < 32 || weakSecrets[c.MailServiceToken]) {
-		return fmt.Errorf("production: MAIL_SERVICE_TOKEN must be at least 32 chars and not a default value")
 	}
 	for _, o := range c.AllowedOrigins {
 		// menolak wildcard * karena mengizinkan origin mana pun
@@ -285,4 +274,25 @@ func validatePublicURL(raw string) error {
 		return fmt.Errorf("public URL must include a host")
 	}
 	return nil
+}
+
+// loadPublicKey membaca kunci publik RSA dari berkas PEM (format PKIX, "PUBLIC KEY").
+func loadPublicKey(path string) (*rsa.PublicKey, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		return nil, errors.New("not a PEM file")
+	}
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse public key: %w", err)
+	}
+	rsaKey, ok := key.(*rsa.PublicKey)
+	if !ok {
+		return nil, errors.New("public key is not RSA")
+	}
+	return rsaKey, nil
 }

@@ -1,6 +1,10 @@
 package config
 
 import (
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -8,7 +12,7 @@ import (
 	"strings"
 )
 
-// MinSecretLen: panjang minimum JWT_SECRET di produksi (sama dengan backend).
+// MinSecretLen: panjang minimum JWT_LEGACY_HS256_SECRET di produksi bila diisi (sama dengan backend).
 const MinSecretLen = 32
 
 // Config adalah konfigurasi runtime payment-service.
@@ -17,8 +21,12 @@ type Config struct {
 	Port string
 	// DatabaseURL: URL PostgreSQL (DATABASE_URL). Wajib.
 	DatabaseURL string
-	// JWTSecret: kunci HS256 yang sama dengan backend, untuk memverifikasi login user. Wajib.
-	JWTSecret string
+	// JWTPublicKey: kunci publik RSA (JWT_PUBLIC_KEY_FILE) untuk memverifikasi token login RS256 yang diterbitkan
+	// auth-service. Verifikasi dilakukan lokal, jadi pembayaran tetap bisa dimulai saat auth-service mati. Wajib.
+	JWTPublicKey *rsa.PublicKey
+	// JWTLegacySecret: secret HS256 lama (JWT_LEGACY_HS256_SECRET), hanya selama masa transisi agar token yang sudah
+	// terbit tetap sah. Kosong = token HS256 ditolak.
+	JWTLegacySecret string
 	// PublicOrigin: origin publik app, tujuan kembali dari Stripe Checkout (QMS_PUBLIC_ORIGIN). Tanpa garis miring di akhir.
 	PublicOrigin string
 	// Production: true bila APP_ENV=production. Mengaktifkan pemeriksaan yang lebih ketat.
@@ -81,17 +89,17 @@ func Load() (Config, error) {
 	// Baca semua variabel dari environment, dengan nilai bawaan untuk Amount dan Currency.
 	cfg := Config{
 		// PAYMENT_* didahulukan (dipakai file .env root); PORT dan DATABASE_URL tetap berlaku di container.
-		Port:          strings.TrimSpace(firstEnv("PAYMENT_PORT", "PORT")),
-		DatabaseURL:   strings.TrimSpace(firstEnv("PAYMENT_DATABASE_URL", "DATABASE_URL")),
-		JWTSecret:     os.Getenv("JWT_SECRET"),
-		PublicOrigin:  strings.TrimRight(strings.TrimSpace(os.Getenv("QMS_PUBLIC_ORIGIN")), "/"),
-		Production:    strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production"),
-		StripeKey:     strings.TrimSpace(os.Getenv("STRIPE_API_KEY")),
-		StripeBaseURL: strings.TrimSpace(os.Getenv("STRIPE_API_BASE_URL")),
-		WebhookSecret: strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
-		PriceID:       strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID")),
-		Amount:        50000,
-		Currency:      "idr",
+		Port:            strings.TrimSpace(firstEnv("PAYMENT_PORT", "PORT")),
+		DatabaseURL:     strings.TrimSpace(firstEnv("PAYMENT_DATABASE_URL", "DATABASE_URL")),
+		JWTLegacySecret: os.Getenv("JWT_LEGACY_HS256_SECRET"),
+		PublicOrigin:    strings.TrimRight(strings.TrimSpace(os.Getenv("QMS_PUBLIC_ORIGIN")), "/"),
+		Production:      strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production"),
+		StripeKey:       strings.TrimSpace(os.Getenv("STRIPE_API_KEY")),
+		StripeBaseURL:   strings.TrimSpace(os.Getenv("STRIPE_API_BASE_URL")),
+		WebhookSecret:   strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
+		PriceID:         strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID")),
+		Amount:          50000,
+		Currency:        "idr",
 	}
 	// DEV_PAYMENT_SIMULATOR bernilai true bila berisi "true" atau "1".
 	if v := strings.ToLower(strings.TrimSpace(os.Getenv("DEV_PAYMENT_SIMULATOR"))); v == "true" || v == "1" {
@@ -105,13 +113,19 @@ func Load() (Config, error) {
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL must be set")
 	}
-	// JWT_SECRET wajib: tanpanya login tidak bisa diverifikasi.
-	if cfg.JWTSecret == "" {
-		return Config{}, fmt.Errorf("JWT_SECRET must be set")
+	// JWT_PUBLIC_KEY_FILE wajib: tanpanya login tidak bisa diverifikasi.
+	keyPath := strings.TrimSpace(os.Getenv("JWT_PUBLIC_KEY_FILE"))
+	if keyPath == "" {
+		return Config{}, fmt.Errorf("JWT_PUBLIC_KEY_FILE must be set")
 	}
-	// Produksi: secret harus cukup panjang.
-	if cfg.Production && len(cfg.JWTSecret) < MinSecretLen {
-		return Config{}, fmt.Errorf("JWT_SECRET must be at least %d characters when APP_ENV=production", MinSecretLen)
+	pub, err := loadPublicKey(keyPath)
+	if err != nil {
+		return Config{}, fmt.Errorf("JWT_PUBLIC_KEY_FILE: %w", err)
+	}
+	cfg.JWTPublicKey = pub
+	// Produksi: secret transisi, bila diisi, harus cukup panjang.
+	if cfg.Production && cfg.JWTLegacySecret != "" && len(cfg.JWTLegacySecret) < MinSecretLen {
+		return Config{}, fmt.Errorf("JWT_LEGACY_HS256_SECRET must be at least %d characters when APP_ENV=production", MinSecretLen)
 	}
 	// Periksa origin publik: harus URL absolut dengan skema http atau https.
 	u, err := url.Parse(cfg.PublicOrigin)
@@ -153,4 +167,28 @@ func Load() (Config, error) {
 		cfg.Currency = v
 	}
 	return cfg, nil
+}
+
+// loadPublicKey membaca kunci publik RSA dari berkas PEM (format PKIX, "PUBLIC KEY").
+func loadPublicKey(path string) (*rsa.PublicKey, error) {
+	// Baca isi berkas kunci.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	// Decode blok PEM.
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		return nil, errors.New("not a PEM file")
+	}
+	// Ubah ke kunci publik; harus RSA.
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse public key: %w", err)
+	}
+	rsaKey, ok := key.(*rsa.PublicKey)
+	if !ok {
+		return nil, errors.New("public key is not RSA")
+	}
+	return rsaKey, nil
 }

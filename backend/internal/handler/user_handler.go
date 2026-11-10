@@ -14,21 +14,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// UserService adalah logika akun user, profil, preferensi, dan foto profil (dipenuhi oleh service).
+// UserService adalah logika profil user, preferensi, dan foto profil (dipenuhi oleh service).
 type UserService interface {
-	// Register membuat akun baru dan mengembalikan token login.
-	Register(
-		ctx context.Context,
-		email,
-		username,
-		password string,
-	) (string, error)
-	// Login memeriksa identifier (email atau username) dan password, lalu mengembalikan token login.
-	Login(
-		ctx context.Context,
-		email,
-		password string,
-	) (string, error)
 	// Profile mengambil profil user.
 	Profile(
 		ctx context.Context,
@@ -67,7 +54,7 @@ type UserService interface {
 // avatarFormOverhead: ruang untuk bagian multipart di luar berkas (batas, header field).
 const avatarFormOverhead = 64 << 10
 
-// UserHandler menangani rute akun user: daftar, login, profil, preferensi, dan foto profil.
+// UserHandler menangani rute akun user: profil, preferensi, dan foto profil. Daftar dan login ada di auth-service.
 type UserHandler struct {
 	// service berisi logika akun user.
 	service UserService
@@ -81,130 +68,6 @@ func NewUserHandler(
 	return &UserHandler{
 		service: service,
 	}
-}
-
-// Register: POST /api/v1/users/register. Membuat akun baru dan mengembalikan token login.
-func (h *UserHandler) Register(
-	c *gin.Context,
-) {
-
-	// ambil context request dan siapkan penampung body
-	ctx := c.Request.Context()
-	var request dto.RegisterRequest
-
-	// baca body JSON; gagal berarti format request salah
-	err := c.BindJSON(&request)
-	if err != nil {
-		respondError(
-			c,
-			http.StatusBadRequest,
-			"BAD_REQUEST",
-			"invalid request body",
-		)
-		return
-	}
-
-	// buat akun baru; error diterjemahkan ke respons HTTP di bawah
-	token, err := h.service.Register(
-		ctx,
-		request.Email,
-		request.Username,
-		request.Password,
-	)
-	if err != nil {
-		// password kurang dari 8 atau lebih dari 72 karakter: 400
-		if errors.Is(err, apperror.ErrWeakPassword) {
-			respondError(c, http.StatusBadRequest, "WEAK_PASSWORD", "password must be 8 to 72 characters")
-			return
-		}
-		// email atau username sudah dipakai: 409
-		if errors.Is(err, apperror.ErrDuplicate) {
-			respondError(
-				c,
-				http.StatusConflict,
-				"CONFLICT",
-				"conflict",
-			)
-			return
-		}
-		// error lain: 500 tanpa detail
-		respondError(
-			c,
-			http.StatusInternalServerError,
-			"INTERNAL_ERROR",
-			"internal server error",
-		)
-		return
-	}
-
-	// berhasil: kirim token login
-	respondData(
-		c,
-		http.StatusOK,
-		dto.AuthResponse{
-			Token: token,
-		},
-	)
-
-}
-
-// Login: POST /api/v1/users/login. Memeriksa kredensial dan mengembalikan token login.
-func (h *UserHandler) Login(
-	c *gin.Context,
-) {
-
-	// ambil context request dan siapkan penampung body
-	ctx := c.Request.Context()
-	var request dto.LoginRequest
-
-	// baca body JSON; gagal berarti format request salah
-	err := c.BindJSON(&request)
-	if err != nil {
-		respondError(
-			c,
-			http.StatusBadRequest,
-			"BAD_REQUEST",
-			"invalid request body",
-		)
-		return
-	}
-
-	// identifier diambil dari email atau username; kosong berarti tidak ada yang diisi
-	identifier := request.Login()
-	if identifier == "" {
-		respondError(
-			c,
-			http.StatusBadRequest,
-			"BAD_REQUEST",
-			"identifier (email or username) is required",
-		)
-		return
-	}
-
-	// periksa kredensial; error apa pun dibalas sama agar tidak membocorkan akun yang ada
-	token, err := h.service.Login(
-		ctx,
-		identifier,
-		request.Password,
-	)
-	if err != nil {
-		respondError(
-			c,
-			http.StatusUnauthorized,
-			"UNAUTHORIZED",
-			"unauthorized user",
-		)
-		return
-	}
-
-	// kredensial benar: kirim token login
-	respondData(
-		c,
-		http.StatusOK,
-		dto.AuthResponse{
-			Token: token,
-		},
-	)
 }
 
 // Me: GET /api/v1/users/me — profil user yang login (butuh token).

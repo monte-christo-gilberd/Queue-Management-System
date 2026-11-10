@@ -11,7 +11,7 @@
 # Dijalankan    : `docker compose up` (dev), `docker compose up --build` (prod).
 #
 # Konfigurasi lewat environment saat run, TIDAK dibakar ke image:
-#   DATABASE_URL, JWT_SECRET, ALLOWED_ORIGINS, PUBLIC_APP_URL, PUBLIC_QR_URL,
+#   DATABASE_URL, JWT_PUBLIC_KEY_FILE (di-mount), ALLOWED_ORIGINS, PUBLIC_APP_URL, PUBLIC_QR_URL,
 #   QR_SERVICE_URL, QR_SERVICE_TOKEN, TRUSTED_PROXIES (opsional), PORT (default 8080).
 #
 # Saat ada perubahan, periksa:
@@ -68,7 +68,7 @@ RUN apk add --no-cache ca-certificates tzdata \
 COPY --from=build /out/qms /usr/local/bin/qms
 
 # Konfigurasi lewat environment saat run (tidak dibakar ke image):
-#   DATABASE_URL, JWT_SECRET, ALLOWED_ORIGINS, PUBLIC_APP_URL, PUBLIC_QR_URL,
+#   DATABASE_URL, JWT_PUBLIC_KEY_FILE (di-mount), ALLOWED_ORIGINS, PUBLIC_APP_URL, PUBLIC_QR_URL,
 #   QR_SERVICE_URL, QR_SERVICE_TOKEN, TRUSTED_PROXIES (opsional), PORT (default 8080).
 # Port default server. Harus sama dengan upstream di nginx (backend:8080).
 ENV PORT=8080

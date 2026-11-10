@@ -5,8 +5,10 @@
 // Layar publik menampilkan nomor tanpa login lewat token di URL. Riwayat antrian dan tiket dapat dibaca kembali.
 //
 // Binary ini hanya menyambungkan komponen dan menjalankan HTTP server. Logika ada di internal/service,
-// akses data di internal/repository, dan endpoint di internal/handler. Layanan lain (qr-service, mail-service,
-// notify-service, payment-service) berjalan terpisah dan dipanggil lewat HTTP atau notifikasi database.
+// akses data di internal/repository, dan endpoint di internal/handler. Login, registrasi, reset password, dan
+// verifikasi email ada di auth-service (backend hanya memverifikasi tokennya secara lokal, tanpa memanggilnya).
+// Hanya qr-service yang dipanggil backend lewat HTTP; layanan notifikasi, email, dan pembayaran berjalan terpisah
+// dan bekerja lewat database.
 package main
 
 import (
@@ -19,7 +21,6 @@ import (
 	"qms/internal/database"
 	"qms/internal/handler"
 	"qms/internal/httpserver"
-	"qms/internal/mailclient"
 	"qms/internal/middleware"
 	"qms/internal/qrclient"
 	"qms/internal/repository"
@@ -47,8 +48,8 @@ func main() {
 // lalu menjalankan server sampai proses menerima SIGINT atau SIGTERM.
 //
 // Service dirangkai dengan pola With* (memasang dependensi pilihan setelah konstruktor). Service yang belum dipasang
-// guard-nya (pemeriksa hak akses) menolak akses, bukan membukanya. Reset password dan push notification hanya
-// dipasang ke router bila config-nya diisi.
+// guard-nya (pemeriksa hak akses) menolak akses, bukan membukanya. Push notification hanya dipasang ke router
+// bila config-nya diisi.
 //
 // Berhenti dengan rapi: koneksi SSE ditutup, request yang sedang berjalan dituntaskan (paling lama
 // SHUTDOWN_TIMEOUT), lalu koneksi database ditutup oleh defer. Error saat start (config, database) masih langsung
@@ -101,29 +102,12 @@ func run() error {
 	// goroutine = fungsi yang berjalan bersamaan dengan program utama
 	go hub.Run()
 
-	// verifikasi email: hanya dibuat bila EMAIL_VERIFICATION_REQUIRED (bawaan: ikut ada-tidaknya mail-service).
-	// nil berarti fitur mati: tidak ada email dikirim, tidak ada guard, dan semua akun dilaporkan terverifikasi.
-	// Dibuat sebelum service lain karena user, queue, dan ticket service memakainya.
-	var verification *service.EmailVerificationService
+	// guard verifikasi email: hanya dibuat bila EMAIL_VERIFICATION_REQUIRED (bawaan true). Backend hanya MEMBACA status
+	// verifikasi dari database; pengiriman email dan penandaannya dilakukan auth-service. nil berarti guard mati.
+	// Dibuat sebelum service lain karena queue dan ticket service memakainya.
+	var verification *service.EmailVerificationGuard
 	if cfg.EmailVerificationRequired {
-
-		verifyRepo := repository.
-			NewEmailVerificationRepository(db)
-
-		verifyService := service.
-			NewEmailVerificationService(
-				verifyRepo,
-
-				// klien HTTP ke mail-service
-				mailclient.New(
-					cfg.MailServiceURL,
-					cfg.MailServiceToken,
-					0,
-				),
-				cfg.PublicAppURL,
-			)
-		verification = verifyService
-
+		verification = service.NewEmailVerificationGuard(repository.NewVerificationRepository(db))
 	} else {
 		log.Println("verifikasi email mati: akun baru tidak perlu verifikasi")
 	}
@@ -140,18 +124,15 @@ func run() error {
 	avatarRepo := repository.
 		NewAvatarRepository(db)
 
-	// inisialisasi layer service user, dengan JWT untuk autentikasi
-	// JWT Token = token login yang ditandatangani server
+	// inisialisasi layer service user (profil, preferensi, foto). Login dan registrasi ada di auth-service.
 	userService := service.
-		NewUserService(userRepo, cfg.JWTSecret).
+		NewUserService(userRepo).
 
 		// memasang fitur avatar
 		WithAvatars(avatarRepo)
 
-	// memasang pengirim email verifikasi (registrasi) dan status verifikasi di profil
-	if verification != nil {
-		userService.WithEmailVerifier(verification)
-	}
+	// memasang status verifikasi di profil (false = semua akun dilaporkan terverifikasi)
+	userService.WithEmailVerification(verification != nil)
 
 	// inisialisasi layer handler user
 	userHandler := handler.
@@ -240,29 +221,14 @@ func run() error {
 	sseHandler := handler.
 		NewSSEHandler(hub, queueService)
 
-	// Reset password: pencabutan sesi butuh pembacaan password_changed_at, jadi middleware memakai repo ini.
-	//
-	// inisialisasi layer repository reset password
-	resetRepo := repository.
-		NewPasswordResetRepository(db)
+	// Pencabutan sesi: token yang terbit sebelum password diganti ditolak. password_changed_at dibaca langsung dari
+	// database (bukan lewat auth-service), jadi pencabutan tetap bekerja saat auth-service mati.
+	sessionRepo := repository.
+		NewSessionRepository(db)
 
-	// inisialisasi layer service reset password (dibuat selalu; yang bersyarat hanya pemasangan ke router)
-	resetService := service.
-		NewPasswordResetService(
-			resetRepo,
-
-			// klien HTTP ke mail-service
-			mailclient.New(
-				cfg.MailServiceURL,
-				cfg.MailServiceToken,
-				0,
-			),
-			cfg.PublicAppURL,
-		)
-
-	// inisialisasi layer handler reset password
-	resetHandler := handler.
-		NewPasswordHandler(resetService)
+	// pemeriksa token lokal: RS256 dengan kunci publik, plus HS256 lama hanya selama masa transisi (JWT_LEGACY_HS256_SECRET)
+	tokenVerifier := middleware.
+		NewTokenVerifier(cfg.JWTPublicKey, cfg.JWTLegacySecret)
 
 	// inisialisasi router
 	appRouter := router.NewAppRouter(
@@ -272,22 +238,12 @@ func run() error {
 
 		// middleware autentikasi JWT dengan pencabutan sesi (revocation): menolak token yang terbit sebelum password diganti
 		middleware.RequireAuthWithRevocation(
-			cfg.JWTSecret,
-			resetRepo,
+			tokenVerifier,
+			sessionRepo,
 		),
 		sseHandler,
 		cfg.AllowedOrigins,
 	)
-
-	// memasang endpoint verifikasi email (verify publik dan resend untuk user login) hanya bila verifikasi menyala
-	if verification != nil {
-
-		verifyHandler := handler.
-			NewEmailVerificationHandler(verification)
-
-		appRouter.
-			WithEmailVerification(verifyHandler)
-	}
 
 	// inisialisasi layer repository note
 	noteRepo := repository.
@@ -375,18 +331,6 @@ func run() error {
 	// memasang endpoint riwayat antrian (owner) dan riwayat tiket (customer) ke appRouter
 	appRouter.
 		WithHistory(historyHandler)
-
-	// jika MAIL_SERVICE_URL diisi, endpoint reset password dipasang
-	if cfg.MailServiceURL != "" {
-
-		// memasang endpoint reset password ke appRouter
-		appRouter.
-			WithPasswordReset(resetHandler)
-	} else {
-
-		// tanpa MAIL_SERVICE_URL, reset password tidak dipasang
-		log.Println("MAIL_SERVICE_URL kosong: lupa/reset password tidak dipasang")
-	}
 
 	// inisialisasi layer repository push notification
 	pushRepo := repository.

@@ -28,12 +28,8 @@ type TicketHandler interface {
 	MyTickets(c *gin.Context)
 }
 
-// UserHandler adalah handler untuk akun user: daftar, login, profil, preferensi, dan foto profil.
+// UserHandler adalah handler untuk akun user: profil, preferensi, dan foto profil. Daftar dan login ada di auth-service.
 type UserHandler interface {
-	// Register mendaftarkan akun baru.
-	Register(c *gin.Context)
-	// Login memverifikasi kredensial dan menerbitkan token login.
-	Login(c *gin.Context)
 	// Me menampilkan profil user yang sedang login.
 	Me(c *gin.Context)
 	// UpdateMe mengubah profil user yang sedang login.
@@ -46,22 +42,6 @@ type UserHandler interface {
 	GetAvatar(c *gin.Context)
 	// DeleteAvatar menghapus foto profil.
 	DeleteAvatar(c *gin.Context)
-}
-
-// PasswordHandler adalah handler untuk lupa dan reset password.
-type PasswordHandler interface {
-	// ForgotPassword mengirim tautan reset password ke email user.
-	ForgotPassword(c *gin.Context)
-	// ResetPassword mengganti password memakai token dari tautan reset.
-	ResetPassword(c *gin.Context)
-}
-
-// EmailVerificationHandler adalah handler untuk verifikasi alamat email.
-type EmailVerificationHandler interface {
-	// Verify memverifikasi email memakai token dari tautan di email.
-	Verify(c *gin.Context)
-	// Resend mengirim ulang email verifikasi untuk user yang sedang login.
-	Resend(c *gin.Context)
 }
 
 // DisplayHandler adalah handler untuk layar publik antrian: konfigurasi oleh owner dan tampilan tanpa login.
@@ -165,10 +145,6 @@ type AppRouter struct {
 	displayHandler DisplayHandler
 	// pushHandler menangani Web Push (opsional).
 	pushHandler PushHandler
-	// passwordHandler menangani lupa dan reset password (opsional).
-	passwordHandler PasswordHandler
-	// verifyHandler: verifikasi email (opsional; tanpa ini rute /users/verify-email tidak ada).
-	verifyHandler EmailVerificationHandler
 	// ticketHandler menangani tiket dan join antrian.
 	ticketHandler TicketHandler
 	// userHandler menangani akun user.

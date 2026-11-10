@@ -22,6 +22,7 @@ Docker menjalankan file di `/docker-entrypoint-initdb.d` menurut urutan nama, ha
 | `03_notify_role.sh` | role `notify_ro` (notify-service) | seluruh `01*` |
 | `04_mail_role.sh` | role `mail_rw` (mail-service) | seluruh `01*` |
 | `05_payment_role.sh` | role `payment_rw` (payment-service) | seluruh `01*` |
+| `06_auth_role.sh` | role `auth_rw` (auth-service): `users` dan `user_action_tokens` saja | seluruh `01*` |
 
 Menjalankan manual di database kosong (tanpa Docker):
 
@@ -43,8 +44,8 @@ for f in db/migrations/01*.sql db/migrations/02_Indexes.sql; do psql -d qms_db -
   satu karakter di badan fungsi berarti mengubah skema dan perlu diterapkan juga ke `apply_schema.sql`.
 - Tes integrasi backend memuat semua `01*.sql` lalu `02_Indexes.sql` ke schema sementara (urut menurut nama). Jangan
   memakai nama berawalan schema (`public.xxx`) atau perintah tingkat database (`CREATE DATABASE`, `\connect`).
-- Skrip role (`03..05`) memberi hak sendiri. Tabel berisi data sensitif (`user_avatars`, `user_action_tokens`,
-  `queue_displays`) sengaja tidak diberi hak ke role mana pun selain pemilik.
+- Skrip role (`03..06`) memberi hak sendiri. Tabel berisi data sensitif (`user_avatars`, `user_action_tokens`,
+  `queue_displays`) sengaja tidak diberi hak ke role mana pun selain pemilik, kecuali `user_action_tokens` untuk `auth_rw`.
 
 ## Menambah atau mengubah skema
 

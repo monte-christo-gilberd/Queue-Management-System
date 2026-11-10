@@ -127,18 +127,6 @@ func TestSpec_MeResponse_ExposesIsOwnerFlag(t *testing.T) {
 	assert.Equal(t, "a", got["username"])
 }
 
-func TestSpec_AuthResponse_ExposesTokenKey(t *testing.T) {
-	got := specMarshalMap(t, dto.AuthResponse{Token: "jwt"})
-	assert.Equal(t, map[string]interface{}{"token": "jwt"}, got)
-}
-
-func TestSpec_LoginRequest_PrefersIdentifierThenEmail(t *testing.T) {
-	// TC-01-01 / TC-01-02: identifier (email atau username); field email tetap diterima sebagai alias.
-	assert.Equal(t, "budi", dto.LoginRequest{Identifier: "budi", Email: "budi@x.com"}.Login())
-	assert.Equal(t, "budi@x.com", dto.LoginRequest{Email: "budi@x.com"}.Login())
-	assert.Equal(t, "", dto.LoginRequest{}.Login())
-}
-
 func TestNormalizeTicketPrefix(t *testing.T) {
 	cases := []struct {
 		in   string

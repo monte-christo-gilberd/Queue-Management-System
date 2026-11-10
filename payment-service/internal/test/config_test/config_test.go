@@ -1,16 +1,41 @@
 package config_test
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"qms/payment-service/internal/config"
 )
 
+// publicKeyFile menulis kunci publik RSA yang sah (format PKIX, seperti keluaran openssl) ke berkas sementara.
+func publicKeyFile(t *testing.T) string {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "pub.pem")
+	if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func setBase(t *testing.T) {
 	t.Helper()
 	t.Setenv("DATABASE_URL", "postgresql://payment_rw:x@db:5432/qms_db")
-	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("JWT_PUBLIC_KEY_FILE", publicKeyFile(t))
+	t.Setenv("JWT_LEGACY_HS256_SECRET", "")
 	t.Setenv("QMS_PUBLIC_ORIGIN", "https://qms.example.com")
 	for _, k := range []string{"APP_ENV", "STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_API_BASE_URL", "STRIPE_PRICE_ID",
 		"SUBSCRIPTION_PRICE_AMOUNT", "SUBSCRIPTION_CURRENCY", "PORT", "DEV_PAYMENT_SIMULATOR"} {
@@ -60,8 +85,8 @@ func TestPlaceholderKeysAreNotConfigured(t *testing.T) {
 func TestProductionRules(t *testing.T) {
 	setBase(t)
 	t.Setenv("APP_ENV", "production")
-	t.Setenv("JWT_SECRET", "short")
-	if _, err := config.Load(); err == nil || !strings.Contains(err.Error(), "JWT_SECRET") {
+	t.Setenv("JWT_LEGACY_HS256_SECRET", "short")
+	if _, err := config.Load(); err == nil || !strings.Contains(err.Error(), "JWT_LEGACY_HS256_SECRET") {
 		t.Fatalf("err = %v", err)
 	}
 	setBase(t)
@@ -74,7 +99,7 @@ func TestProductionRules(t *testing.T) {
 
 func TestRequiredAndInvalid(t *testing.T) {
 	for k, v := range map[string]string{
-		"DATABASE_URL": "", "JWT_SECRET": "", "QMS_PUBLIC_ORIGIN": "not a url",
+		"DATABASE_URL": "", "JWT_PUBLIC_KEY_FILE": "", "QMS_PUBLIC_ORIGIN": "not a url",
 		"STRIPE_API_BASE_URL": "nope", "SUBSCRIPTION_PRICE_AMOUNT": "-5", "SUBSCRIPTION_CURRENCY": "rupiah",
 	} {
 		setBase(t)

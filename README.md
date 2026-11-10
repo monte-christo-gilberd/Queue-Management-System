@@ -189,7 +189,7 @@ Nginx hanya terikat ke `127.0.0.1:8080`; `cloudflared` di host menunjuk ke `http
 
 ### Daftar script
 
-Semua script berada di `scripts/` (dijalankan dari akar `queue-management-system/`) dan `db/scripts/`. Sebagian besar dipanggil lewat `make`; yang lain dijalankan langsung. Tabel ini menjelaskan kapan masing-masing dipakai.
+Semua script berada di `scripts/` (dijalankan dari akar `queue-management-system/`) dan `db/scripts/`. Sebagian besar dipanggil lewat `make`; yang lain dijalankan langsung. Tabel ini menjelaskan kapan masing-masing dipakai; penjelasan rinci per skrip ada di [scripts/README.md](scripts/README.md).
 
 | Script | Fungsi | Cara pakai | Dipanggil dari |
 |---|---|---|---|
@@ -198,7 +198,8 @@ Semua script berada di `scripts/` (dijalankan dari akar `queue-management-system
 | `scripts/create-demo-accounts.sh` | Membuat 1 owner (langganan 30 hari) dan 4 customer demo dengan sandi acak. Daftar akun ditulis ke `~/qms-demo-accounts.txt`. Tidak menimpa berkas yang sudah ada. | `scripts/create-demo-accounts.sh` (stack prod harus sudah berjalan) | Manual |
 | `scripts/verify-user.sh` | Menandai satu email sebagai terverifikasi langsung di database. Dipakai bila email verifikasi tidak sampai. | `make verify-user EMAIL=<email> [STACK=prod]`, atau `scripts/verify-user.sh <email> [prod]` | `make verify-user` |
 | `scripts/check-mail-mode.sh` | Memeriksa `MAIL_MODE` dan `SMTP_*` di `.env.prod` sebelum stack prod naik. Menolak konfigurasi yang salah. | Otomatis lewat `make prod-up`, atau `MAIL_MODE=smtp scripts/check-mail-mode.sh .env.prod` | `make prod-up` |
-| `scripts/check-service-isolation.sh` | Memastikan `notify-service` tidak bergantung pada mail-service, Mailpit, atau SMTP (dev dan prod), dan `payment-service` terpisah dari jalur antrian. Membutuhkan `docker` dan `python3`. | `scripts/check-service-isolation.sh` (jalankan setelah mengubah `docker-compose*.yml`) | Manual, tidak ada di Makefile |
+| `scripts/gen-auth-keys.sh` | Membuat pasangan kunci RSA untuk token login (`keys/`, tidak ikut git). Idempoten; tidak menimpa kunci yang ada. | Otomatis lewat `make up` dan `make prod-up` | `make up`, `make prod-up` |
+| `scripts/check-service-isolation.sh` | Memastikan `notify-service` tidak bergantung pada mail-service, Mailpit, atau SMTP (dev dan prod), `payment-service` dan `auth-service` terpisah dari jalur antrian, dan kunci privat JWT hanya di-mount ke `auth-service`. Membutuhkan `docker` dan `python3`. | `scripts/check-service-isolation.sh` (jalankan setelah mengubah `docker-compose*.yml`) | Manual, tidak ada di Makefile |
 | `db/scripts/apply_schema.sql` | Penyesuaian skema yang idempoten untuk database yang sudah berjalan. Tidak menyentuh data. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql`. Prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`. Lalu restart backend dan notify-service. | Manual (lihat [Notifikasi](#notifikasi-notify-service) dan [Email](#email-mailpit-atau-smtp-nyata)) |
 | `db/scripts/reset_seed_dev.sql` | Mengembalikan database dev ke data seed. Ditolak di prod setelah `make prod-guard`. | `make seed` | `make seed`, tes Playwright |
 | `db/scripts/backfill_currently_served.sql` | Backfill sekali jalan: tiket `completed` terakhir di antrian aktif menjadi `currently_served`. Berakhir dengan `ROLLBACK`: periksa jumlah baris, lalu ganti ke `COMMIT`. Jalankan setelah backup dan `apply_schema.sql`. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/backfill_currently_served.sql` | Manual |

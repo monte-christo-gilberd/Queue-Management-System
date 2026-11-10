@@ -25,6 +25,7 @@
 #   notify-service :8091  Web Push
 #   mail-service   :8092  pengirim email (SMTP nyata atau Mailpit), hanya jaringan internal
 #   payment-service:8093  perpanjangan langganan Stripe, hanya jaringan internal
+#   auth-service   :8094  login, registrasi, reset password, verifikasi email (penerbit JWT RS256), hanya internal
 #   db             :5432  PostgreSQL 16, tidak dipetakan ke host
 #   mailpit        :8025  UI, hanya 127.0.0.1 (profile mailpit saja)
 #
@@ -44,7 +45,10 @@
 #             upstream di deploy/nginx/nginx.prod.conf.
 #   [SINKRON] MAIL_MODE (dibaca make prod-up dan scripts/check-mail-mode.sh) menentukan
 #             profile mailpit dan nilai SMTP_* (diatur Makefile lewat export).
-#   [PENTING] Jangan tambahkan depends_on dari backend ke payment-service atau mail-service.
+#   [PENTING] Jangan tambahkan depends_on dari backend ke payment-service, mail-service, atau auth-service. Backend
+#             memverifikasi JWT secara lokal dengan kunci publik (keys/auth-public.pem), jadi user yang sudah login
+#             tetap bisa memakai aplikasi saat auth-service mati. Kunci dibuat scripts/gen-auth-keys.sh (otomatis
+#             oleh `make prod-up`); kunci privat hanya di-mount ke auth-service.
 #             Isolasi ini dijaga scripts/check-service-isolation.sh.
 #   [PENTING] Ganti nama volume (db_data_prod, mailpit_data_prod) berarti data prod tidak terpakai.
 #   [PENTING] Jangan pernah mengaktifkan DEV_PAYMENT_SIMULATOR di file ini (tidak ada, sengaja).
@@ -66,6 +70,8 @@ services:
       MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}
       # Kosong = role payment_rw tidak dibuat (db/migrations/05_payment_role.sh); database dan antrian tetap start.
       PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-}
+      # Wajib diisi agar role auth_rw (db/migrations/06_auth_role.sh) selalu dibuat; tanpanya tidak ada yang bisa login.
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
     volumes:
       # Data database prod. Terpisah dari dev. Bertahan saat container dibuat ulang.
       - db_data_prod:/var/lib/postgresql/data
@@ -167,7 +173,9 @@ services:
       # production: service menolak start bila DEV_PAYMENT_SIMULATOR menyala (tidak diteruskan di file ini).
       APP_ENV: production
       DATABASE_URL: postgresql://payment_rw:${PAYMENT_DB_PASSWORD:-unset}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      # Kunci publik penanda token login; verifikasi lokal. Secret lama hanya masa transisi.
+      JWT_PUBLIC_KEY_FILE: /run/keys/auth-public.pem
+      JWT_LEGACY_HS256_SECRET: ${JWT_LEGACY_HS256_SECRET:-}
       QMS_PUBLIC_ORIGIN: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
       # Kunci Stripe: opsional di sini. Kosong = checkout menjawab 503 (lihat README bagian Pembayaran).
       STRIPE_API_KEY: ${STRIPE_API_KEY:-}
@@ -176,7 +184,49 @@ services:
       STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
       SUBSCRIPTION_PRICE_AMOUNT: ${SUBSCRIPTION_PRICE_AMOUNT:-50000}
       SUBSCRIPTION_CURRENCY: ${SUBSCRIPTION_CURRENCY:-idr}
+    volumes:
+      - ./keys/auth-public.pem:/run/keys/auth-public.pem:ro
     # Hanya menunggu db. Tidak ada depends_on dari backend ke service ini (lihat komentar di atas).
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # auth-service: login, registrasi, reset password, dan verifikasi email. TERPISAH dari backend (lihat komentar di
+  # compose dev): backend memverifikasi JWT RS256 secara lokal dan tidak memanggil service ini, jadi bila ini mati,
+  # user yang sudah login tetap bisa memakai aplikasi; hanya login baru, registrasi, reset password, dan verifikasi
+  # email yang gagal (nginx menjawab 503 AUTH_UNAVAILABLE). Hanya bergantung pada db.
+  auth-service:
+    build:
+      context: ./auth-service
+      target: prod
+    environment:
+      PORT: "8094"
+      # production: menolak start bila PUBLIC_APP_URL bukan https atau token mail lemah.
+      APP_ENV: production
+      DATABASE_URL: postgresql://auth_rw:${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+      PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
+      AUTH_JWT_PRIVATE_KEY_FILE: /run/keys/auth-private.pem
+      AUTH_JWT_KID: ${AUTH_JWT_KID:-qms-1}
+      # [SINKRON] Harus sama dengan subnet networks.internal di bawah.
+      TRUSTED_PROXIES: 172.29.0.0/16
+      MAIL_SERVICE_URL: http://mail-service:8092
+      MAIL_SERVICE_TOKEN: ${MAIL_SERVICE_TOKEN:?set MAIL_SERVICE_TOKEN in .env}
+      # [SINKRON] Harus sama dengan nilai di backend.
+      EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-8}
+    volumes:
+      # Folder kunci (privat dan publik), hanya baca.
+      - ./keys:/run/keys:ro
+    stop_grace_period: 10s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8094/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    # Hanya menunggu db. Tidak ada depends_on dari backend ke service ini.
     depends_on:
       db:
         condition: service_healthy
@@ -220,7 +270,11 @@ services:
       APP_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-qms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
       PORT: "8080"
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      # Kunci publik penanda token login (diterbitkan auth-service). Verifikasi lokal, tanpa jaringan.
+      JWT_PUBLIC_KEY_FILE: /run/keys/auth-public.pem
+      # Hanya masa transisi: secret HS256 lama agar token yang sudah terbit tetap sah sampai kedaluwarsa (24 jam).
+      # Isi dengan JWT_SECRET lama saat deploy pertama, hapus setelah 24 jam.
+      JWT_LEGACY_HS256_SECRET: ${JWT_LEGACY_HS256_SECRET:-}
       ALLOWED_ORIGINS: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
       PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
       # Hanya nginx (jaringan internal) yang boleh menentukan IP klien.
@@ -231,14 +285,14 @@ services:
       QR_HTTP_TIMEOUT: ${QR_HTTP_TIMEOUT:-1}
       # Batas menunggu request selesai saat berhenti; harus lebih kecil dari stop_grace_period di bawah.
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-8}
-      # Verifikasi email: kosong = nyala (mail-service selalu terpasang di prod). `false` mematikan.
-      # Email terkirim lewat MAIL_MODE: smtp (inbox asli) atau mailpit (ditangkap Mailpit, tidak terkirim).
+      # Guard verifikasi email (join dan buat antrian butuh email terverifikasi). Kosong = nyala. `false` mematikan.
+      # Backend hanya MEMBACA status verifikasi; email dikirim auth-service lewat MAIL_MODE (smtp atau mailpit).
+      # [SINKRON] Harus sama dengan nilai di auth-service.
       EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
-      # Lupa/reset password: backend memanggil mail-service (jaringan internal). Email yang macet tidak boleh
-      # menahan backend, jadi tidak ada depends_on.
-      MAIL_SERVICE_URL: http://mail-service:8092
-      MAIL_SERVICE_TOKEN: ${MAIL_SERVICE_TOKEN:?set MAIL_SERVICE_TOKEN in .env}
+    volumes:
+      # Hanya kunci publik. Kunci privat tidak pernah di-mount ke backend.
+      - ./keys/auth-public.pem:/run/keys/auth-public.pem:ro
     # stop_grace_period lebih besar dari SHUTDOWN_TIMEOUT (8s) agar request sempat selesai sebelum kontainer dihentikan paksa.
     stop_grace_period: 10s
     # /health dipakai nginx (depends_on service_healthy) sebelum menerima trafik.

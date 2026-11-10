@@ -9,7 +9,6 @@ import (
 	"qms/internal/model"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -28,55 +27,36 @@ func NewUserRepository(
 	}
 }
 
-// Create menyimpan user baru dengan email, username, dan hash password, lalu mengembalikan user yang baru dibuat.
-// Mengembalikan ErrDuplicate bila melanggar UNIQUE (kode pgconn 23505).
-func (r *UserRepository) Create(
+// FindByLogin mengembalikan user yang email-nya ATAU username-nya sama dengan identifier.
+// Username tidak unik di schema, jadi bisa lebih dari satu baris; kecocokan email didahulukan.
+// Hasil dibatasi 10 agar input acak tidak menarik banyak baris. Dipakai fitur sisip customer oleh owner
+// (service.AccountFinder); login itu sendiri sekarang ada di auth-service.
+func (r *UserRepository) FindByLogin(
 	ctx context.Context,
-	email,
-	username,
-	passwordHash string,
-) (model.User, error) {
+	identifier string,
+) ([]model.User, error) {
 
 	const query = `
-		INSERT INTO users(
-			email,
-			username,
-			password_hash
-			)
-		VALUES ($1, $2, $3)
-		RETURNING
+		SELECT
 			id,
 			email,
 			username,
 			password_hash,
 			google_id,
 			created_at
+		FROM users
+		WHERE email = $1 OR username = $1
+		ORDER BY (email = $1) DESC, id ASC
+		LIMIT 10
 	`
-	var user model.User
+	var users []model.User
 
-	// Jalankan INSERT user baru dan ambil kembali kolom user yang baru dibuat (RETURNING) ke user.
-	err := r.db.GetContext(
-		ctx,
-		&user,
-		query,
-		email,
-		username,
-		passwordHash,
-	)
-
-	var pgErr *pgconn.PgError
-	// Jika error berasal dari PostgreSQL dengan kode 23505 (pelanggaran UNIQUE), kembalikan ErrDuplicate.
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return model.User{}, apperror.ErrDuplicate
-	}
-	// Error lain dibungkus dengan konteks "create user".
-	if err != nil {
+	// Ambil semua user yang cocok; hasilnya diisi ke users.
+	if err := r.db.SelectContext(ctx, &users, query, identifier); err != nil {
 		// Bungkus error database dengan pesan konteks; %w menjaga error asli tetap bisa dicek.
-		return model.User{}, fmt.Errorf("create user: %w", err)
+		return nil, fmt.Errorf("find user by login: %w", err)
 	}
-
-	return user, nil
-
+	return users, nil
 }
 
 // FindByEmail mengambil satu user berdasarkan email.
@@ -116,45 +96,6 @@ func (r *UserRepository) FindByEmail(
 		return model.User{}, fmt.Errorf("find user by email: %w", err)
 	}
 	return user, nil
-}
-
-// FindByLogin mengembalikan user yang email-nya ATAU username-nya sama dengan identifier.
-// Username tidak unik di schema, jadi bisa lebih dari satu baris; kecocokan email didahulukan.
-// Hasil dibatasi 10 agar input acak tidak menarik banyak baris.
-func (r *UserRepository) FindByLogin(
-	ctx context.Context,
-	identifier string,
-) ([]model.User, error) {
-
-	const query = `
-		SELECT
-			id,
-			email,
-			username,
-			password_hash,
-			google_id,
-			created_at
-		FROM users
-		WHERE email = $1 OR username = $1
-		ORDER BY (email = $1) DESC, id ASC
-		LIMIT 10
-	`
-	users := []model.User{}
-
-	// Ambil maksimal 10 user yang email atau usernamenya sama dengan identifier; hasilnya diisi ke users.
-	err := r.db.SelectContext(
-		ctx,
-		&users,
-		query,
-		identifier,
-	)
-	// Jika query gagal, kembalikan nil dan error yang sudah dibungkus dengan konteks "find user by login".
-	if err != nil {
-		// Bungkus error database dengan pesan konteks; %w menjaga error asli tetap bisa dicek.
-		return nil, fmt.Errorf("find user by login: %w", err)
-	}
-
-	return users, nil
 }
 
 // FindByID mengembalikan user berdasarkan id.

@@ -34,7 +34,7 @@ func fatal(msg string, err error) {
 func main() {
 	// Muat .env di folder akar proyek (../.env, relatif terhadap folder payment-service/). Di container tidak ada file ini.
 	_ = godotenv.Load("../.env")
-	// Baca dan validasi konfigurasi. Galat berarti DATABASE_URL, JWT_SECRET, atau QMS_PUBLIC_ORIGIN belum benar.
+	// Baca dan validasi konfigurasi. Galat berarti DATABASE_URL, JWT_PUBLIC_KEY_FILE, atau QMS_PUBLIC_ORIGIN belum benar.
 	cfg, err := config.Load()
 	if err != nil {
 		fatal("config", err)
@@ -77,8 +77,8 @@ func main() {
 	srv := &http.Server{
 		// Alamat dan port dari konfigurasi.
 		Addr: ":" + cfg.Port,
-		// Handler API yang memakai service billing dan JWT_SECRET untuk memverifikasi login.
-		Handler: httpapi.New(svc, cfg.JWTSecret, slog.Default()).Handler(),
+		// Handler API yang memakai service billing dan kunci publik JWT untuk memverifikasi login secara lokal.
+		Handler: httpapi.New(svc, cfg.JWTPublicKey, cfg.JWTLegacySecret, slog.Default()).Handler(),
 		// Batas waktu membaca header request.
 		ReadHeaderTimeout: 10 * time.Second,
 		// Batas waktu membaca seluruh request.

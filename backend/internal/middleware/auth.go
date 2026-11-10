@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/rsa"
 	"errors"
 	"net/http"
 	"qms/internal/apperror"
@@ -19,10 +20,53 @@ type SessionRevocationChecker interface {
 	PasswordChangedAt(ctx context.Context, userID int64) (*time.Time, error)
 }
 
+// TokenVerifier memeriksa tanda tangan dan masa berlaku JWT secara lokal, tanpa panggilan jaringan. Token
+// diterbitkan auth-service dengan RS256; backend hanya memegang kunci publik, jadi bila auth-service mati token
+// yang sudah terbit tetap bisa diverifikasi.
+type TokenVerifier struct {
+	pub    *rsa.PublicKey
+	legacy []byte
+}
+
+// NewTokenVerifier membuat TokenVerifier. legacyHS256Secret boleh kosong; bila diisi, token HS256 lama (terbitan
+// sebelum auth-service dipisah) tetap diterima sampai kedaluwarsa. Hapus setelah 24 jam.
+func NewTokenVerifier(pub *rsa.PublicKey, legacyHS256Secret string) *TokenVerifier {
+	v := &TokenVerifier{pub: pub}
+	if legacyHS256Secret != "" {
+		v.legacy = []byte(legacyHS256Secret)
+	}
+	return v
+}
+
+// Verify mengembalikan klaim token yang sah. Algoritma ditegakkan per kunci: RS256 hanya dengan kunci publik,
+// HS256 hanya dengan secret lama. Ini mencegah algorithm confusion (HS256 yang ditandatangani memakai kunci publik
+// sebagai secret) dan menolak algoritma `none`.
+func (v *TokenVerifier) Verify(raw string) (jwt.MapClaims, error) {
+	parsed, err := jwt.Parse(raw, func(t *jwt.Token) (interface{}, error) {
+		switch t.Method {
+		case jwt.SigningMethodRS256:
+			return v.pub, nil
+		case jwt.SigningMethodHS256:
+			if len(v.legacy) > 0 {
+				return v.legacy, nil
+			}
+		}
+		return nil, errors.New("unexpected signing method")
+	})
+	if err != nil || !parsed.Valid {
+		return nil, errors.New("invalid token")
+	}
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, errors.New("invalid claims")
+	}
+	return claims, nil
+}
+
 // RequireAuth memeriksa JWT saja (tanpa akses database).
 // Dipakai di tes. Produksi memakai RequireAuthWithRevocation (lihat cmd/server/main.go).
-func RequireAuth(jwtSecret string) gin.HandlerFunc {
-	return RequireAuthWithRevocation(jwtSecret, nil)
+func RequireAuth(verifier *TokenVerifier) gin.HandlerFunc {
+	return RequireAuthWithRevocation(verifier, nil)
 }
 
 // RequireAuthWithRevocation seperti RequireAuth, ditambah pencabutan sesi: token yang terbit (klaim `iat`, waktu
@@ -31,7 +75,7 @@ func RequireAuth(jwtSecret string) gin.HandlerFunc {
 //
 // Hasilnya fungsi middleware: bila token valid, user_id disimpan di context lalu request diteruskan; bila tidak,
 // request dihentikan dengan status 401 (atau 500 bila pengecekan pencabutan gagal karena database).
-func RequireAuthWithRevocation(jwtSecret string, checker SessionRevocationChecker) gin.HandlerFunc {
+func RequireAuthWithRevocation(verifier *TokenVerifier, checker SessionRevocationChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		// membaca header Authorization; tanpa prefix "Bearer" request ditolak
@@ -49,29 +93,14 @@ func RequireAuthWithRevocation(jwtSecret string, checker SessionRevocationChecke
 		// mengambil token dari header dengan membuang prefix "Bearer "
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 
-		// memverifikasi tanda tangan dan masa berlaku token memakai JWT_SECRET
-		jwtToken, err := jwt.Parse(
-			token, func(t *jwt.Token) (interface{}, error) {
-				return []byte(jwtSecret), nil
-			})
+		// memverifikasi tanda tangan dan masa berlaku token secara lokal (kunci publik RS256)
+		claims, err := verifier.Verify(token)
 		if err != nil {
 			abortError(
 				c,
 				http.StatusUnauthorized,
 				"UNAUTHORIZED",
 				"invalid jwt token",
-			)
-			return
-		}
-
-		// membaca isi token (claims); gagal bila bentuknya tidak dikenali
-		claims, ok := jwtToken.Claims.(jwt.MapClaims)
-		if !ok {
-			abortError(
-				c,
-				http.StatusUnauthorized,
-				"UNAUTHORIZED",
-				"invalid token claims",
 			)
 			return
 		}
@@ -102,7 +131,7 @@ func RequireAuthWithRevocation(jwtSecret string, checker SessionRevocationChecke
 
 		// pencabutan sesi: hanya untuk token yang punya klaim `iat` dan checker sudah dipasang
 		// iat (issued at) adalah waktu token diterbitkan, dalam detik sejak 1 Januari 1970 (Unix time).
-		// Klaim ini diisi di service/user_service.go saat login. JSON mengubah angka menjadi float64, jadi dibaca sebagai float64.
+		// Klaim ini diisi auth-service saat login. JSON mengubah angka menjadi float64, jadi dibaca sebagai float64.
 		if iat, ok := claims["iat"].(float64); ok && checker != nil {
 
 			// mengambil waktu terakhir password user diganti dari database

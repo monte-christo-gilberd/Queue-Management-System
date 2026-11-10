@@ -6,43 +6,6 @@ import (
 	"qms/internal/model"
 )
 
-// RegisterRequest: body POST untuk registrasi akun. Email dan username tidak boleh berisi tag HTML.
-type RegisterRequest struct {
-	// Email: alamat email akun baru. Wajib diisi.
-	Email string `json:"email" binding:"required,no_html_tags"`
-	// Username: nama tampilan akun baru. Wajib diisi.
-	Username string `json:"username" binding:"required,no_html_tags"`
-	// Password: password akun baru. Panjangnya diperiksa service.
-	Password string `json:"password" binding:"required"`
-}
-
-// LoginRequest: body login. Menerima email ATAU username lewat Identifier. Field Email tetap diterima sebagai
-// alias supaya klien lama tidak rusak.
-type LoginRequest struct {
-	// Identifier: email atau username. Dipakai bila diisi.
-	Identifier string `json:"identifier" binding:"omitempty,no_html_tags"`
-	// Email: alias lama untuk Identifier. Dipakai hanya bila Identifier kosong.
-	Email string `json:"email" binding:"omitempty,no_html_tags"`
-	// Password: password akun.
-	Password string `json:"password" binding:"required"`
-}
-
-// Login mengembalikan identifier yang dipakai: `identifier` jika ada, kalau tidak `email`.
-func (r LoginRequest) Login() string {
-	// Klien baru mengirim identifier: pakai itu.
-	if r.Identifier != "" {
-		return r.Identifier
-	}
-	// Klien lama hanya mengirim email: pakai field email sebagai alias.
-	return r.Email
-}
-
-// AuthResponse: respons login dan registrasi, berisi token JWT.
-type AuthResponse struct {
-	// Token: JWT yang dipakai klien di header Authorization.
-	Token string `json:"token"`
-}
-
 // MeResponse: profil user yang sedang login. is_owner = punya baris di tabel owners.
 // subscription_expires_at hanya ada untuk owner (null untuk customer).
 type MeResponse struct {
@@ -91,24 +54,4 @@ func NewMeResponse(p model.Profile) MeResponse {
 		EmailNotifications: p.User.EmailNotifications,
 		EmailVerified:      p.EmailVerified,
 	}
-}
-
-// ForgotPasswordRequest: POST /users/forgot-password. Respons selalu sama (202) apa pun isinya, selama formatnya sah.
-type ForgotPasswordRequest struct {
-	// Email: alamat email akun yang lupa password. Maksimal 254 karakter.
-	Email string `json:"email" binding:"required,max=254,no_html_tags"`
-}
-
-// VerifyEmailRequest: POST /users/verify-email. Token dari tautan di email.
-type VerifyEmailRequest struct {
-	// Token: token verifikasi dari tautan di email. Maksimal 200 karakter.
-	Token string `json:"token" binding:"required,max=200"`
-}
-
-// ResetPasswordRequest: POST /users/reset-password. Panjang password diperiksa service.
-type ResetPasswordRequest struct {
-	// Token: token reset password dari tautan di email. Maksimal 200 karakter.
-	Token string `json:"token" binding:"required,max=200"`
-	// Password: password baru. Panjangnya diperiksa service.
-	Password string `json:"password" binding:"required"`
 }

@@ -1,0 +1,8 @@
+# Dikecualikan dari build context auth-service.
+# Abaikan semua berkas .env dan kunci, supaya rahasia (kunci privat JWT, password) tidak pernah masuk image.
+.env
+.env.*
+*.pem
+keys/
+.git
+*.md

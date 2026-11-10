@@ -3,7 +3,6 @@ package service_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type fakeUserRepo struct {
@@ -96,168 +94,14 @@ func (r *fakeUserRepo) FindByEmail(
 	return r.findUser, r.findErr
 }
 
-func TestLogin_Success(t *testing.T) {
-	// langkah 1: siapkan hash bcrypt dari password yang akan dites
-	hashBytes, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
-
-	// langkah 2: buat fake, isi findUser dengan hash itu
-	repo := &fakeUserRepo{
-		findUser: model.User{
-			ID:           1,
-			PasswordHash: sql.NullString{String: string(hashBytes), Valid: true},
-		},
-	}
-
-	// langkah 3: buat service ASLI (bukan fake), suntik fake repo ke dalamnya
-	svc := service.NewUserService(repo, "test-secret")
-
-	// langkah 4: panggil Login ASLI (dari UserService, bukan dari fake)
-	token, err := svc.Login(context.Background(), "test@test.com", "password123")
-
-	// langkah 5: assert
-	assert.NoError(t, err)
-	assert.NotEmpty(t, token)
-}
-
-func TestLogin_WrongPassword(t *testing.T) {
-	// langkah 1: siapkan hash bcrypt dari password yang akan dites
-	hashBytes, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
-
-	// langkah 2: buat fake, isi findUser dengan hash itu
-	repo := &fakeUserRepo{
-		findUser: model.User{
-			ID:           1,
-			PasswordHash: sql.NullString{String: string(hashBytes), Valid: true},
-		},
-	}
-
-	// langkah 3: buat service ASLI (bukan fake), suntik fake repo ke dalamnya
-	svc := service.NewUserService(repo, "test-secret")
-
-	// langkah 4: panggil Login ASLI (dari UserService, bukan dari fake) dengan password salah
-	token, err := svc.Login(context.Background(), "test@test.com", "salah_password")
-
-	// langkah 5: assert
-	assert.Error(t, err)
-	assert.Empty(t, token)
-}
-
-func TestLogin_EmailNotFound(t *testing.T) {
-
-	repo := &fakeUserRepo{
-		findUsers: []model.User{},
-	}
-
-	svc := service.NewUserService(repo, "test-secret")
-
-	token, err := svc.Login(context.Background(), "test@test.com", "salah_password")
-
-	assert.Error(t, err)
-	assert.Empty(t, token)
-}
-
-func TestRegister_Success(t *testing.T) {
-
-	repo := &fakeUserRepo{
-		createUser: model.User{ID: 1}, // minimal ID yang valid
-	}
-
-	svc := service.NewUserService(repo, "test-secret")
-
-	token, err := svc.Register(context.Background(), "test@test.com", "budi", "password123")
-
-	assert.NoError(t, err)
-	assert.NotEmpty(t, token)
-}
-
-func TestRegister_EmailAlreadyExist(t *testing.T) {
-
-	repo := &fakeUserRepo{
-		createErr: apperror.ErrDuplicate,
-	}
-
-	svc := service.NewUserService(repo, "test-secret")
-
-	token, err := svc.Register(context.Background(), "test@test.com", "budi", "password123")
-
-	assert.Error(t, err)
-	assert.Empty(t, token)
-}
-
-func hashFor(t *testing.T, password string) sql.NullString {
-	t.Helper()
-	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return sql.NullString{String: string(h), Valid: true}
-}
-
-func TestLogin_PassesIdentifierThroughAsIs(t *testing.T) {
-	repo := &fakeUserRepo{findUsers: []model.User{{ID: 1, PasswordHash: hashFor(t, "pw")}}}
-	svc := service.NewUserService(repo, "test-secret")
-
-	_, err := svc.Login(context.Background(), "budi", "pw")
-
-	assert.NoError(t, err)
-	assert.Equal(t, "budi", repo.lastIdentifier)
-}
-
-func TestLogin_ByUsernameSucceeds(t *testing.T) {
-	repo := &fakeUserRepo{findUsers: []model.User{{ID: 3, Username: "budi", PasswordHash: hashFor(t, "pw")}}}
-	svc := service.NewUserService(repo, "test-secret")
-
-	token, err := svc.Login(context.Background(), "budi", "pw")
-
-	assert.NoError(t, err)
-	assert.NotEmpty(t, token)
-}
-
-// Username tidak unik: dua user berbeda dengan username sama; hanya yang passwordnya cocok masuk.
-func TestLogin_SharedUsernameMatchesByPassword(t *testing.T) {
-	repo := &fakeUserRepo{findUsers: []model.User{
-		{ID: 1, PasswordHash: hashFor(t, "alpha")},
-		{ID: 2, PasswordHash: hashFor(t, "beta")},
-	}}
-	svc := service.NewUserService(repo, "test-secret")
-
-	token, err := svc.Login(context.Background(), "budi", "beta")
-
-	assert.NoError(t, err)
-	assert.NotEmpty(t, token)
-}
-
-func TestLogin_SharedUsernameWrongPasswordFails(t *testing.T) {
-	repo := &fakeUserRepo{findUsers: []model.User{
-		{ID: 1, PasswordHash: hashFor(t, "alpha")},
-		{ID: 2, PasswordHash: hashFor(t, "beta")},
-	}}
-	svc := service.NewUserService(repo, "test-secret")
-
-	token, err := svc.Login(context.Background(), "budi", "gamma")
-
-	assert.ErrorIs(t, err, apperror.ErrNotFound)
-	assert.Empty(t, token)
-}
-
-func TestLogin_SkipsGoogleOnlyAccounts(t *testing.T) {
-	repo := &fakeUserRepo{findUsers: []model.User{{ID: 1, PasswordHash: sql.NullString{}}}}
-	svc := service.NewUserService(repo, "test-secret")
-
-	token, err := svc.Login(context.Background(), "budi", "")
-
-	assert.Error(t, err)
-	assert.Empty(t, token)
-}
-
 func TestProfile_ReportsOwnerFlag(t *testing.T) {
-	svc := service.NewUserService(&fakeUserRepo{isOwner: true}, "test-secret")
+	svc := service.NewUserService(&fakeUserRepo{isOwner: true})
 	p, err := svc.Profile(context.Background(), 7)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(7), p.User.ID)
 	assert.True(t, p.IsOwner)
 
-	svc = service.NewUserService(&fakeUserRepo{isOwner: false}, "test-secret")
+	svc = service.NewUserService(&fakeUserRepo{isOwner: false})
 	p, err = svc.Profile(context.Background(), 8)
 	assert.NoError(t, err)
 	assert.False(t, p.IsOwner)
@@ -266,7 +110,7 @@ func TestProfile_ReportsOwnerFlag(t *testing.T) {
 
 func TestProfile_SubscriptionExpiryOnlyForOwner(t *testing.T) {
 	exp := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
-	svc := service.NewUserService(&fakeUserRepo{isOwner: true, expiresAt: &exp}, "test-secret")
+	svc := service.NewUserService(&fakeUserRepo{isOwner: true, expiresAt: &exp})
 	p, err := svc.Profile(context.Background(), 7)
 	assert.NoError(t, err)
 	if assert.NotNil(t, p.SubscriptionExpiresAt) {
@@ -274,7 +118,7 @@ func TestProfile_SubscriptionExpiryOnlyForOwner(t *testing.T) {
 	}
 
 	// Customer: expiry tidak dibaca walau repo mengembalikan nilai.
-	svc = service.NewUserService(&fakeUserRepo{isOwner: false, expiresAt: &exp}, "test-secret")
+	svc = service.NewUserService(&fakeUserRepo{isOwner: false, expiresAt: &exp})
 	p, err = svc.Profile(context.Background(), 8)
 	assert.NoError(t, err)
 	assert.Nil(t, p.SubscriptionExpiresAt)
@@ -282,7 +126,7 @@ func TestProfile_SubscriptionExpiryOnlyForOwner(t *testing.T) {
 
 func TestUpdateUsername_TrimsAndValidatesLength(t *testing.T) {
 	repo := &fakeUserRepo{}
-	svc := service.NewUserService(repo, "test-secret")
+	svc := service.NewUserService(repo)
 
 	u, err := svc.UpdateUsername(context.Background(), 7, "  Budi Baru  ")
 	assert.NoError(t, err)
@@ -352,7 +196,7 @@ func pngBytes(t *testing.T, w, h int) []byte {
 
 func TestAvatar_SetStoresProcessedJPEGAndProfileReportsIt(t *testing.T) {
 	store := newFakeAvatarStore()
-	svc := service.NewUserService(&fakeUserRepo{}, "s").WithAvatars(store)
+	svc := service.NewUserService(&fakeUserRepo{}).WithAvatars(store)
 	ctx := context.Background()
 
 	p, err := svc.Profile(ctx, 7)
@@ -375,7 +219,7 @@ func TestAvatar_SetStoresProcessedJPEGAndProfileReportsIt(t *testing.T) {
 
 func TestAvatar_InvalidUploadsMapToAppErrorsAndStoreNothing(t *testing.T) {
 	store := newFakeAvatarStore()
-	svc := service.NewUserService(&fakeUserRepo{}, "s").WithAvatars(store)
+	svc := service.NewUserService(&fakeUserRepo{}).WithAvatars(store)
 	ctx := context.Background()
 
 	assert.ErrorIs(t, svc.SetAvatar(ctx, 7, strings.NewReader("bukan gambar")), apperror.ErrUnsupportedImage)
@@ -386,7 +230,7 @@ func TestAvatar_InvalidUploadsMapToAppErrorsAndStoreNothing(t *testing.T) {
 
 func TestAvatar_ReplaceDeleteAndDeleteTwice(t *testing.T) {
 	store := newFakeAvatarStore()
-	svc := service.NewUserService(&fakeUserRepo{}, "s").WithAvatars(store)
+	svc := service.NewUserService(&fakeUserRepo{}).WithAvatars(store)
 	ctx := context.Background()
 
 	assert.NoError(t, svc.SetAvatar(ctx, 7, bytes.NewReader(pngBytes(t, 50, 50))))
@@ -400,7 +244,7 @@ func TestAvatar_ReplaceDeleteAndDeleteTwice(t *testing.T) {
 }
 
 func TestAvatar_WithoutStoreBehavesAsNoPhoto(t *testing.T) {
-	svc := service.NewUserService(&fakeUserRepo{}, "s")
+	svc := service.NewUserService(&fakeUserRepo{})
 	ctx := context.Background()
 	p, err := svc.Profile(ctx, 7)
 	assert.NoError(t, err)
@@ -412,7 +256,7 @@ func TestAvatar_WithoutStoreBehavesAsNoPhoto(t *testing.T) {
 
 func TestSetEmailNotifications_PassesValueThroughBothWays(t *testing.T) {
 	repo := &fakeUserRepo{}
-	svc := service.NewUserService(repo, "test-secret")
+	svc := service.NewUserService(repo)
 	for _, want := range []bool{false, true} {
 		assert.NoError(t, svc.SetEmailNotifications(context.Background(), 7, want))
 		if assert.NotNil(t, repo.gotEmailPref) {

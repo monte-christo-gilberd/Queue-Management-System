@@ -13,7 +13,7 @@
 #   [SINKRON] PORT default 8093. HEALTHCHECK memakai ${PORT:-8093}, dan upstream $qms_payment di
 #             deploy/nginx/server.conf memakai payment-service:8093. Ketiganya harus sama.
 #   [PENTING] USER app (UID 10001) dan adduser: jangan dijalankan sebagai root.
-#   [PENTING] Kunci Stripe dan JWT_SECRET diisi saat run, tidak dibakar ke image.
+#   [PENTING] Kunci Stripe dan kunci publik JWT (JWT_PUBLIC_KEY_FILE, di-mount) diisi saat run, tidak dibakar ke image.
 # =============================================================================
 
 # Tahap dasar bersama: Go 1.27 di atas Alpine. Dipakai oleh tahap dev dan build.
