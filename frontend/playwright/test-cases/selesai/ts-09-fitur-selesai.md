@@ -16,10 +16,12 @@
 | TC-09-07 | Menyisipkan customer di posisi tertentu | 4.12, US-10 | Selesai | `ts-18-sisip.spec.ts` |
 | TC-09-10 | Riwayat dan ekspor | 4.15, US-13 | Riwayat owner, riwayat customer, dan ekspor | `ts-23-history.spec.ts`, `ts-24-export.spec.ts`, `ts-26-my-history.spec.ts` |
 | TC-09-11 | Catatan per nomor | 4.16, US-12 | Selesai | `ts-15-notes.spec.ts`, `ts-25-notes-list.spec.ts` |
+| TC-09-12 | Login dengan Google | 4.17, US-20 | Selesai di `auth-service` dan frontend: email baru membuat akun terverifikasi tanpa password; email yang sudah terdaftar dengan password wajib konfirmasi password sebelum ditautkan (tidak pernah otomatis). OAuth Google asli tidak bisa diotomasi, jadi popup Google dan dua endpoint disetubkan, ditambah dua tes ke backend sungguhan | `ts-34-google-login.spec.ts` (TC-34-01 sampai 13). Verifikasi ID token di server: tes Go `auth-service` dan skrip end-to-end dengan Google palsu. Google asli: manual (lihat `documentation/docs/setup-google-login.md`) |
 | TC-09-16 | Scan QR dengan kamera | 4.2 langkah 3 | Ada, tetapi kamera tidak bisa diotomasi di Playwright | Verifikasi manual di ponsel lewat HTTPS. Jalur API di `ts-05` dan `ts-10` |
 
 Catatan:
 - TC-09-02 dan TC-09-06 sebelumnya tercatat sebagai backlog atau Tier 2. Kode dan test sudah membuktikan keduanya ada.
+- TC-09-12 butuh client ID Google untuk berjalan: tanpa `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` di bundle, tombol tersembunyi dan tes tampilan di `ts-34` di-skip (tes kontrak API di-skip bila `GOOGLE_CLIENT_IDS` kosong). Aplikasi harus dibuka lewat `http://localhost` atau https, bukan alamat IP.
 - TC-09-16 selesai di sisi aplikasi, tetapi pemindaian dengan kamera hanya bisa diverifikasi manual.
 
 ## Dihapus dari produk atau tidak diperlukan (bukan backlog)

@@ -10,7 +10,6 @@
 
 | TC | Fitur | Sumber | Status di kode | Diuji di |
 |---|---|---|---|---|
-| TC-09-12 | Login dengan Google | 4.17, US-20 | **Belum**: tombol "Login with Google" tampil di layar login dan daftar, tetapi tidak terhubung ke handler. Backend belum punya alur OAuth | — |
 | TC-09-15 | Paket dan pembayaran langganan | 4.18, US-21 | **Sebagian**: pemblokiran owner yang langganannya habis dan pembayaran Stripe untuk perpanjang 1 bulan sudah ada. Pilihan paket (bulanan, tahunan, sekali bayar) belum ada | `ts-04-subscription.spec.ts` |
 
 Nomor TC-09-14 tidak ada di daftar ini. Nomornya tidak diganti, supaya ID yang sudah dipakai tidak bergeser.
@@ -18,12 +17,6 @@ Nomor TC-09-14 tidak ada di daftar ini. Nomornya tidak diganti, supaya ID yang s
 ---
 
 ## Detail item yang belum selesai
-
-### TC-09-12 — Login dengan Google
-| | |
-|---|---|
-| **Expected Result** | Tombol "Login with Google" membuat akun yang langsung bisa dipakai |
-| **Sisa** | Alur OAuth di backend dan penyambungan tombol di frontend |
 
 ### TC-09-15 — Paket dan pembayaran langganan (sisa: pilihan paket)
 | | |

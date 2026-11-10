@@ -7,12 +7,15 @@
  * Bergantung  : LinkGoogleScreen, useAuthStore (pendingGoogleLink, linkGoogle), describeLinkError, sanitizeNext.
  * Catatan     : Link token hanya di memori (hilang saat refresh) dan hanya hidup 5 menit. Tanpa link token yang menunggu
  *               (mis. halaman dibuka langsung atau di-refresh), pengguna dikembalikan ke halaman login. Link token yang
- *               tidak bisa dipakai lagi (habis, terlalu sering salah) juga mengembalikan ke login.
+ *               tidak bisa dipakai lagi (habis, terlalu sering salah) juga mengembalikan ke login, DENGAN pesan: toast
+ *               ditampilkan lewat useToast (provider ada di layout root) karena layar ini ikut dilepas saat dialihkan,
+ *               jadi state pesan galat milik layar tidak sempat tampil.
  */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import { AuthGate } from '@/components/auth/AuthGate';
+import { useToast } from '@/components/ui/Toast';
 import LinkGoogleScreen from '@/components/LinkGoogleScreen';
 import { describeLinkError } from '@/lib/auth-errors';
 import { isLinkSessionOver } from '@/lib/google-login';
@@ -25,6 +28,7 @@ export default function LinkGoogleRoute() {
   const pending = useAuthStore((s) => s.pendingGoogleLink);
   const clearPending = useAuthStore((s) => s.clearPendingGoogleLink);
   const token = useAuthStore((s) => s.token);
+  const { show } = useToast();
   const { next } = useLocalSearchParams<{ next?: string }>();
   const safeNext = sanitizeNext(next, '');
   const [password, setPassword] = useState('');
@@ -47,9 +51,14 @@ export default function LinkGoogleRoute() {
       await linkGoogle(password);
       router.replace((safeNext || DEFAULT_AFTER_LOGIN) as '/dashboard');
     } catch (e) {
-      setErrorMessage(describeLinkError(e));
-      // Sesi penautan berakhir: store sudah mengosongkan link token, efek di atas mengembalikan ke login.
-      if (isLinkSessionOver(e)) setPassword('');
+      if (isLinkSessionOver(e)) {
+        // Sesi penautan berakhir: store sudah mengosongkan link token, jadi efek di atas segera mengalihkan ke login dan
+        // layar ini dilepas. Pesan harus lewat provider global (bukan state layar), kalau tidak tidak pernah tampil.
+        show(describeLinkError(e));
+        setPassword('');
+      } else {
+        setErrorMessage(describeLinkError(e));
+      }
     } finally {
       setLoading(false);
     }

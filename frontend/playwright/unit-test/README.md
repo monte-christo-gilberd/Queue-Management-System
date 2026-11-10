@@ -43,6 +43,17 @@ npm run e2e:report                        # buka laporan HTML
 - **Join dua kali**: oleh user yang sama mengembalikan 200 dengan tiket yang sama (TC-05-04).
 - **TC-04-03**: memakai `owner3` dari seed (langganan kedaluwarsa, satu antrian aktif).
 
+## Login Google (TS-34)
+
+`ts-34-google-login.spec.ts` menguji sisi frontend login Google tanpa Google asli: popup `accounts.google.com` dicegat dan dijawab
+seperti Google mengalihkan balik (dengan `state` yang sah), dan `POST /users/google` serta `/users/google/link` disetubkan. Dua tes
+(TC-34-12, TC-34-13) memanggil backend sungguhan. Prasyarat: bundle dibangun dengan `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` dan aplikasi
+dibuka lewat `http://localhost:8080` (bukan alamat IP; WebCrypto hanya ada di secure origin). Tanpa itu tes tampilan di-skip.
+
+```bash
+QMS_WEB_URL=http://localhost:8080 QMS_API_URL=http://localhost:8080 npx playwright test ts-34
+```
+
 ## Status
 
 Run dari seed bersih: 76 lulus, 0 gagal, 16 di-skip (backlog), TC-04-03 ikut berjalan.

@@ -5,3 +5,4 @@ template-for-frontend
 .env.prod
 
 keys/
+.metro-google.stamp

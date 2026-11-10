@@ -11,6 +11,7 @@ Prasyarat umum: `bash`, `docker` dengan `docker compose`. `check-service-isolati
 |---|---|---|---|
 | [`gen-auth-keys.sh`](#gen-auth-keyssh) | Membuat pasangan kunci RSA untuk token login | dev dan prod | `make up`, `make prod-up` |
 | [`check-service-isolation.sh`](#check-service-isolationsh) | Menjaga isolasi antar service di compose | dev dan prod | manual |
+| [`check-google-config.sh`](#check-google-configsh) | Memeriksa konfigurasi login Google (server dan frontend sinkron) | dev dan prod | `make up`, `make tunnel`, `make prod-up` |
 | [`check-mail-mode.sh`](#check-mail-modesh) | Memeriksa `MAIL_MODE` dan `SMTP_*` sebelum stack prod naik | prod | `make prod-up` |
 | [`verify-user.sh`](#verify-usersh) | Menandai email satu akun terverifikasi langsung di database | dev atau prod | `make verify-user` |
 | [`create-demo-accounts.sh`](#create-demo-accountssh) | Membuat 1 owner dan 4 customer demo | prod | manual |
@@ -72,6 +73,38 @@ QMS_ENV_FILE=.env.prod scripts/check-service-isolation.sh
 Jalankan setiap kali mengubah `docker-compose*.yml` atau `deploy/nginx/*.conf`. Skrip ini tidak ada di Makefile.
 Compose prod butuh variabel wajib terisi; skrip memakai `${QMS_ENV_FILE:-.env}` dan mengisi nilai SMTP palsu untuk
 keperluan parsing saja.
+
+---
+
+## check-google-config.sh
+
+Memeriksa konfigurasi login Google di file env sebelum stack dijalankan. Dipanggil otomatis oleh `make up` dan `make tunnel`
+(membaca `.env`) dan `make prod-up` (membaca `.env.prod`).
+
+| Keadaan | Hasil |
+|---|---|
+| `GOOGLE_CLIENT_IDS` dan `EXPO_PUBLIC_GOOGLE_*` semua kosong | Login Google mati (tombol tersembunyi, rute 404). **Bukan galat** |
+| Client ID frontend **tidak ada** di `GOOGLE_CLIENT_IDS` | **GAGAL (exit 1)**: setiap ID token ditolak server (401, `aud` tidak cocok) |
+| `EXPO_PUBLIC_GOOGLE_*` terisi tetapi `GOOGLE_CLIENT_IDS` kosong | **GAGAL (exit 1)**: tombol tampil tetapi server menjawab 404 |
+| `GOOGLE_CLIENT_IDS` terisi tetapi frontend kosong | Peringatan: tombol tidak akan tampil |
+| Client ID tidak berakhiran `.apps.googleusercontent.com` | Peringatan: kemungkinan nilai contoh atau salah ketik |
+
+```bash
+scripts/check-google-config.sh            # memeriksa .env
+scripts/check-google-config.sh .env.prod  # file env eksplisit
+```
+
+Skrip ini hanya membaca file; tidak menjalankan apa pun dan tidak mencetak nilai client ID.
+
+### Yang ikut dilakukan Makefile untuk login Google
+
+| Target | Tambahan |
+|---|---|
+| `make up` | Memeriksa konfigurasi; **membersihkan cache Metro otomatis** bila `EXPO_PUBLIC_GOOGLE_*` di `.env` berubah sejak build terakhir (penanda `.metro-google.stamp`, tidak ikut git); mencetak pengingat bahwa Google hanya jalan di `http://localhost:8080`, bukan alamat IP LAN |
+| `make tunnel` | Sama, dan mencetak origin tunnel yang harus didaftarkan di Google Cloud (URL berubah tiap sesi, jadi harus didaftarkan ulang setiap kali) |
+| `make prod-up` | Memeriksa `.env.prod`; mencetak origin https yang harus terdaftar dan pengingat memperbarui role `auth_rw` pada database yang sudah ada |
+
+Cache Metro perlu dibersihkan karena Metro menyimpan nilai `EXPO_PUBLIC_*` di cache transformasi, sehingga mengubahnya di `.env` tanpa membersihkan cache membuat bundle memakai nilai lama. Build prod tidak mengalaminya: nilainya masuk sebagai argumen build Docker, yang membuat layer dibangun ulang sendiri.
 
 ---
 

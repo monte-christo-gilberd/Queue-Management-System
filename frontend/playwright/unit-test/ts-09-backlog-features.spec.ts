@@ -9,7 +9,6 @@ import { test } from '@playwright/test';
  * barisnya dari dokumen backlog ke dokumen selesai.
  */
 const OPEN: Array<[title: string, source: string, sisa: string]> = [
-  ['TC-09-12 Login dengan Google', '4.17, US-20', 'tombol Google belum terhubung dan backend belum punya OAuth'],
   ['TC-09-15 Paket dan pembayaran langganan: pilihan paket', '4.18, US-21', 'hanya perpanjang 1 bulan lewat Stripe, pilihan paket belum ada'],
 ];
 
