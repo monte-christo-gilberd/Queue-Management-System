@@ -55,6 +55,7 @@ export default function LoginRoute() {
         onChangeIdentifier={setIdentifier}
         onChangePassword={setPassword}
         onSubmit={handleSubmit}
+        next={safeNext}
         registerHref={safeNext ? `/register?next=${encodeURIComponent(safeNext)}` : '/register'}
         loading={loading}
         errorMessage={errorMessage}

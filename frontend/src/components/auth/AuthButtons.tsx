@@ -58,17 +58,21 @@ type GoogleButtonProps = {
   label?: string;
   /** Dipanggil saat tombol ditekan. */
   onPress?: () => void;
+  /** Bila true, tombol terkunci dan diredupkan (mis. permintaan belum siap atau login sedang berjalan). */
+  disabled?: boolean;
 };
 
 /**
  * Tombol Google: sengaja TIDAK mengikuti tema aplikasi (latar putih, border abu tipis,
  * logo "G" resmi, teks abu gelap) sesuai pedoman branding Google Sign-In.
  */
-export function GoogleButton({ label = 'Login with Google', onPress }: GoogleButtonProps) {
+export function GoogleButton({ label = 'Login with Google', onPress, disabled = false }: GoogleButtonProps) {
   return (
     <Pressable
       onPress={onPress}
-      className="h-12 flex-row items-center justify-center gap-2.5 rounded-[6px] border border-border bg-white active:opacity-[0.85]">
+      disabled={disabled}
+      accessibilityState={{ disabled }}
+      className={`h-12 flex-row items-center justify-center gap-2.5 rounded-[6px] border border-border bg-white active:opacity-[0.85] ${disabled ? 'opacity-60' : ''}`}>
       {/* expo-image tidak dibungkus NativeWind → ukuran lewat style. */}
       <Image source={GOOGLE_G} style={styles.googleLogo} contentFit="contain" />
       <Text className="text-[14px] font-semibold text-textMuted">{label}</Text>

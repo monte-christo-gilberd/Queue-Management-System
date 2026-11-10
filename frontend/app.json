@@ -8,7 +8,8 @@
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "my.id.montechristo.qms"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,15 +19,27 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.frontend"
+      "package": "my.id.montechristo.qms"
     },
     "web": {
       "output": "static"
     },
     "plugins": [
       "expo-router",
-      ["expo-image-picker", { "photosPermission": "Izinkan $(PRODUCT_NAME) mengakses foto untuk foto profil", "cameraPermission": false, "microphonePermission": false }],
-      ["expo-camera", { "cameraPermission": "Izinkan $(PRODUCT_NAME) memakai kamera untuk memindai QR antrian" }],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Izinkan $(PRODUCT_NAME) mengakses foto untuk foto profil",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Izinkan $(PRODUCT_NAME) memakai kamera untuk memindai QR antrian"
+        }
+      ],
       [
         "expo-splash-screen",
         {

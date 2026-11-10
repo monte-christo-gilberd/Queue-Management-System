@@ -75,6 +75,7 @@ export default function RegisterRoute() {
         onChangeConfirmPassword={setConfirmPassword}
         confirmPasswordError={confirmPasswordError}
         onSubmit={handleSubmit}
+        next={safeNext}
         loginHref={safeNext ? `/?next=${encodeURIComponent(safeNext)}` : '/'}
         loading={loading}
         errorMessage={errorMessage}

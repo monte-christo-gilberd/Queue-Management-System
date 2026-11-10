@@ -4,7 +4,8 @@
  * Dipakai oleh : app/index.tsx
  * Bergantung   : ui/Toast (useErrorToast), components/auth/* (AuthLayout, AuthInput, AuthButtons), expo-router
  * Peran        : publik
- * Catatan      : tombol Google hanya placeholder sampai OAuth tersedia di backend; logika submit dan navigasi ada di route.
+ * Catatan      : tombol Google (GoogleSignInSection) menangani loginnya sendiri dan tersembunyi bila Google belum dikonfigurasi;
+ *                logika submit dan navigasi login biasa ada di route.
  */
 import { useErrorToast } from '@/components/ui/Toast';
 import { router, type Href } from 'expo-router';
@@ -13,7 +14,8 @@ import { Pressable, Text, View } from 'react-native';
 import { AppColors } from '@/constants/app-theme';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 import { AuthInput } from '@/components/auth/AuthInput';
-import { GoogleButton, OrDivider, PrimaryAuthButton } from '@/components/auth/AuthButtons';
+import { PrimaryAuthButton } from '@/components/auth/AuthButtons';
+import { GoogleSignInSection } from '@/components/auth/GoogleSignInSection';
 import { LockIcon, PersonIcon } from '@/components/ui/Icon';
 
 /** Props layar login. */
@@ -28,8 +30,8 @@ export type LoginScreenProps = {
   onChangePassword: (value: string) => void;
   /** Dipanggil saat tombol Login ditekan; validasi dan pemanggilan API dilakukan oleh route. */
   onSubmit: () => void;
-  /** Placeholder visual — Google OAuth belum ada di backend. */
-  onGoogleLogin?: () => void;
+  /** Tujuan setelah login Google berhasil (sudah disanitasi). Kosong = /dashboard. */
+  next?: string;
   /** Opsional: override handler "Forgot password?" (default: buka halaman /forgot-password). */
   onForgotPassword?: () => void;
   /** Tujuan tautan "Daftar" (mis. `/register?next=…`). Default `/register`. */
@@ -47,7 +49,7 @@ export default function LoginScreen({
   onChangeIdentifier,
   onChangePassword,
   onSubmit,
-  onGoogleLogin,
+  next,
   onForgotPassword,
   registerHref = '/register',
   loading,
@@ -81,10 +83,7 @@ export default function LoginScreen({
         <Text className="text-[12px] text-placeholder">Forgot password?</Text>
       </Pressable>
 
-      <OrDivider />
-
-      {/* TODO: sambungkan setelah Google OAuth backend tersedia */}
-      <GoogleButton onPress={onGoogleLogin} />
+      <GoogleSignInSection next={next} />
 
       <Pressable onPress={() => router.push(registerHref as Href)} className="mt-2 items-center">
         <Text className="text-[12px] text-placeholder">

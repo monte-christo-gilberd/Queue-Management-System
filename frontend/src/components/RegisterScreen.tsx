@@ -13,7 +13,8 @@ import { Pressable, Text, View } from 'react-native';
 import { AppColors } from '@/constants/app-theme';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 import { AuthInput } from '@/components/auth/AuthInput';
-import { GoogleButton, OrDivider, PrimaryAuthButton } from '@/components/auth/AuthButtons';
+import { PrimaryAuthButton } from '@/components/auth/AuthButtons';
+import { GoogleSignInSection } from '@/components/auth/GoogleSignInSection';
 import { AtIcon, LockIcon, PersonIcon } from '@/components/ui/Icon';
 
 /** Props layar pendaftaran akun. */
@@ -38,8 +39,8 @@ export type RegisterScreenProps = {
   confirmPasswordError?: string;
   /** Dipanggil saat tombol Daftar ditekan; validasi dan pembuatan akun dilakukan oleh route. */
   onSubmit: () => void;
-  /** Placeholder visual — Google OAuth belum ada di backend. */
-  onGoogleLogin?: () => void;
+  /** Tujuan setelah daftar/login Google berhasil (sudah disanitasi). Kosong = /dashboard. */
+  next?: string;
   /** Tujuan tautan "Login" (mis. `/?next=…`). Default `/`. */
   loginHref?: string;
   /** true selama permintaan pendaftaran berjalan; tombol Daftar menampilkan status loading. */
@@ -60,7 +61,7 @@ export default function RegisterScreen({
   onChangeConfirmPassword,
   confirmPasswordError,
   onSubmit,
-  onGoogleLogin,
+  next,
   loginHref = '/',
   loading,
   errorMessage,
@@ -108,10 +109,7 @@ export default function RegisterScreen({
         <PrimaryAuthButton label="Daftar" onPress={onSubmit} loading={loading} />
       </View>
 
-      <OrDivider />
-
-      {/* TODO: sambungkan setelah Google OAuth backend tersedia */}
-      <GoogleButton label="Daftar dengan Google" onPress={onGoogleLogin} />
+      <GoogleSignInSection label="Daftar dengan Google" next={next} />
 
       <Pressable onPress={() => router.replace(loginHref as Href)} className="mt-2 items-center">
         <Text className="text-[12px] text-placeholder">

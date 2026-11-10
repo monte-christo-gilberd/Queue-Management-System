@@ -5,18 +5,34 @@
  *                dan layar owner.
  * Bergantung   : lib/api.ts (apiFetch, setAuthToken, setOnUnauthorized), store/avatarStore.ts, store/safe-storage.ts.
  * Alur         : login/register -> set token -> setAuthToken (klien API). 401 dari API -> logout() ->
- *                AuthGate mengarahkan ke login.
- * Catatan      : key storage `qms-auth`; hanya token dan displayName yang dipersist. Lihat AUTH_FLOW_GUIDE.md.
+ *                AuthGate mengarahkan ke login. Login Google: loginWithGoogle -> token, atau `link_required` (email sudah
+ *                terdaftar dengan password) -> pendingGoogleLink -> layar /link-google -> linkGoogle(password).
+ * Catatan      : key storage `qms-auth`; hanya token dan displayName yang dipersist. `pendingGoogleLink` (link token
+ *                5 menit) SENGAJA hanya di memori: tidak dipersist, hilang saat refresh. Lihat AUTH_FLOW_GUIDE.md.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { apiFetch, setAuthToken, setOnUnauthorized } from '@/lib/api';
+import { confirmGoogleLink, exchangeGoogleIdToken, isLinkSessionOver } from '@/lib/google-login';
 import type { AuthResponse } from '@/types/api';
 
 import { useAvatarStore } from './avatarStore';
 import { createSafeStorage } from './safe-storage';
+
+/**
+ * loadUsername mengambil username dari profil untuk header (backend tidak mengirim nama saat login Google).
+ * Dipanggil setelah token tersimpan. Gagal mengambil tidak boleh menggagalkan login, jadi mengembalikan null.
+ */
+async function loadUsername(): Promise<string | null> {
+  try {
+    const me = await apiFetch<{ username: string }>('/api/v1/users/me');
+    return me.username || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Status autentikasi. Disimpan di AsyncStorage (web: localStorage) sehingga login bertahan saat refresh.
@@ -31,6 +47,20 @@ export type AuthState = {
   login: (identifier: string, password: string) => Promise<void>;
   /** Mendaftar akun baru; menyimpan token. Galat API (mis. CONFLICT) dilempar ke pemanggil. */
   register: (email: string, username: string, password: string) => Promise<void>;
+  /** Link token dari 409 GOOGLE_LINK_REQUIRED, menunggu konfirmasi password. Hanya di memori; null bila tidak ada. */
+  pendingGoogleLink: string | null;
+  /**
+   * Login dengan ID token Google. Mengembalikan `ok` (token tersimpan) atau `link_required` (email sudah terdaftar
+   * dengan password: `pendingGoogleLink` terisi, arahkan ke /link-google). Galat API dilempar ke pemanggil.
+   */
+  loginWithGoogle: (idToken: string) => Promise<'ok' | 'link_required'>;
+  /**
+   * Menautkan akun Google setelah password dibuktikan; menyimpan token. Salah password dilempar (link token tetap
+   * berlaku untuk percobaan berikutnya); bila link token tidak bisa dipakai lagi, `pendingGoogleLink` dikosongkan.
+   */
+  linkGoogle: (password: string) => Promise<void>;
+  /** Membuang link token yang menunggu (pengguna membatalkan). */
+  clearPendingGoogleLink: () => void;
   /** Mengosongkan token, nama tampilan, dan penanda foto profil. */
   logout: () => void;
   /** Dipakai setelah username diubah di profil, supaya header ikut berubah. */
@@ -45,6 +75,7 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       token: null,
       displayName: null,
+      pendingGoogleLink: null,
 
       login: async (identifier, password) => {
         const { token } = await apiFetch<AuthResponse>('/api/v1/users/login', {
@@ -62,10 +93,38 @@ export const useAuthStore = create<AuthState>()(
         set({ token, displayName: username });
       },
 
+      loginWithGoogle: async (idToken) => {
+        const result = await exchangeGoogleIdToken(idToken);
+        if (result.kind === 'link_required') {
+          set({ pendingGoogleLink: result.linkToken });
+          return 'link_required';
+        }
+        set({ token: result.token, pendingGoogleLink: null });
+        // Token sudah terpasang di klien API (subscribe di bawah): ambil username untuk header.
+        set({ displayName: await loadUsername() });
+        return 'ok';
+      },
+
+      linkGoogle: async (password) => {
+        const linkToken = useAuthStore.getState().pendingGoogleLink;
+        if (!linkToken) throw new Error('Tidak ada penautan Google yang menunggu');
+        try {
+          const token = await confirmGoogleLink(linkToken, password);
+          set({ token, pendingGoogleLink: null });
+          set({ displayName: await loadUsername() });
+        } catch (e) {
+          // Link token habis, terbakar, atau akun sudah tertaut: tidak bisa dicoba lagi.
+          if (isLinkSessionOver(e)) set({ pendingGoogleLink: null });
+          throw e;
+        }
+      },
+
+      clearPendingGoogleLink: () => set({ pendingGoogleLink: null }),
+
       logout: () => {
         // Foto user sebelumnya tidak boleh sempat tampil untuk user berikutnya.
         useAvatarStore.getState().setUpdatedAt(null);
-        set({ token: null, displayName: null });
+        set({ token: null, displayName: null, pendingGoogleLink: null });
       },
 
       setDisplayName: (name) => set({ displayName: name }),

@@ -33,12 +33,15 @@ export class ApiError extends Error {
   status: number;
   /** Kode dari backend (mis. `QUEUE_EMPTY`), atau `NETWORK_ERROR` / `UNKNOWN`. */
   code: string;
+  /** Isi objek `error` dari backend apa adanya, untuk galat yang membawa data tambahan (mis. `link_token` pada 409 `GOOGLE_LINK_REQUIRED`). */
+  details?: Record<string, unknown>;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, details?: Record<string, unknown>) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -102,8 +105,8 @@ export async function apiDownload(path: string): Promise<Blob> {
  * mendapat code `UNKNOWN` dan pesan `Permintaan gagal (status)`.
  */
 export function toApiError(status: number, body: unknown): ApiError {
-  const err = (body as { error?: { code?: string; message?: string } } | null)?.error;
-  return new ApiError(status, err?.code ?? 'UNKNOWN', err?.message ?? `Permintaan gagal (${status})`);
+  const err = (body as { error?: { code?: string; message?: string } & Record<string, unknown> } | null)?.error;
+  return new ApiError(status, err?.code ?? 'UNKNOWN', err?.message ?? `Permintaan gagal (${status})`, err ?? undefined);
 }
 
 /** Memanggil endpoint dan mengembalikan isi `data`. Selalu melempar `ApiError` untuk kegagalan. */
