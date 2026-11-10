@@ -30,6 +30,8 @@ export type DashboardProps = {
   topCard?: React.ReactNode;
   /** Owner: true (default). Customer: false, sehingga bagian kosong owner disembunyikan. */
   canCreateQueue?: boolean;
+  /** true selama daftar antrian owner masih dimuat. Menampilkan placeholder, bukan pesan "belum ada antrian". Default false. */
+  loading?: boolean;
 };
 
 /** Menampilkan papan antrian, atau pesan kosong yang sesuai peran bila tidak ada antrian aktif. */
@@ -41,6 +43,7 @@ export default function Dashboard({
   errorMessage,
   topCard,
   canCreateQueue = true,
+  loading = false,
 }: DashboardProps) {
   // Pesan error ditampilkan sebagai toast, bukan teks di dalam layout.
   useErrorToast(errorMessage);
@@ -57,6 +60,11 @@ export default function Dashboard({
 
       {hasActiveQueue ? (
         <View className="w-full gap-4">{boards}</View>
+      ) : loading ? (
+        // Placeholder dengan tinggi tetap: tidak salah menyebut "belum ada antrian", dan area ini tidak melompat saat data datang.
+        <View className="min-h-[160px] w-full items-center justify-center rounded-card bg-surface p-5">
+          <Text className="text-[12px] font-normal text-muted">Memuat antrian...</Text>
+        </View>
       ) : canCreateQueue ? (
         <View className="items-center gap-2 rounded-card bg-surface p-5">
           <View className="mb-1 flex-row gap-2.5">

@@ -9,11 +9,10 @@
  */
 import { useErrorToast } from '@/components/ui/Toast';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { View } from 'react-native';
 
 import CreateQueueModal from '@/components/CreateQueueModal';
-import { JoinQueueModals } from '@/components/ui/JoinQueueModals';
 import Dashboard from '@/components/Dashboard';
 import { MySpotCard, NotQueuingCard } from '@/components/MySpotCard';
 import { QueueTimeline, type TimelineItem } from '@/components/QueueTimeline';
@@ -42,11 +41,18 @@ import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 const DASHBOARD_QUEUE_COUNT = 2;
 
 /**
+ * Modal gabung antrian memakai expo-camera (pemindai QR). Dimuat terpisah agar library kamera tidak ikut di bundle beranda.
+ */
+const JoinQueueModals = lazy(() =>
+  import('@/components/ui/JoinQueueModals').then((m) => ({ default: m.JoinQueueModals })),
+);
+
+/**
  * Beranda. Owner melihat dua antrian aktif terbaru beserta tombol buat antrian. Customer melihat kartu tiket aktif, atau ajakan gabung bila belum punya tiket aktif.
  */
 export default function DashboardRoute() {
   const displayName = useAuthStore((s) => s.displayName);
-  const { queues, error: queuesError, reload: reloadQueues } = useQueueList();
+  const { queues, error: queuesError, loading: queuesLoading, reload: reloadQueues } = useQueueList();
   // Bagian owner (antrian kosong + buat antrian) hanya untuk owner; sebelum profil dimuat, disembunyikan.
   const { isOwner, loaded: meLoaded } = useMe();
   const [createOpen, setCreateOpen] = useState(false);
@@ -62,6 +68,12 @@ export default function DashboardRoute() {
     if (createFromMenu) router.setParams({ create: undefined });
   }
   const [joinOpen, setJoinOpen] = useState(false);
+  // Modal gabung baru dimuat saat pertama kali dibuka, lalu tetap terpasang agar animasi tutupnya jalan.
+  const [joinMounted, setJoinMounted] = useState(false);
+  function openJoin() {
+    setJoinMounted(true);
+    setJoinOpen(true);
+  }
   const isWide = useIsWide();
   // Tiket saya (customer). Hanya tiket menunggu atau sedang dilayani di antrian yang masih aktif yang tampil di beranda;
   // antrian yang ditutup pindah ke Riwayat.
@@ -83,7 +95,7 @@ export default function DashboardRoute() {
           ))}
         </View>
       ) : (
-        <NotQueuingCard onJoin={isWide ? () => setJoinOpen(true) : undefined} />
+        <NotQueuingCard onJoin={isWide ? openJoin : undefined} />
       )
     ) : null;
 
@@ -135,9 +147,14 @@ export default function DashboardRoute() {
         hasActiveQueue={activeQueues.length > 0}
         errorMessage={queuesError}
         canCreateQueue={meLoaded && isOwner}
+        loading={meLoaded && isOwner && queuesLoading}
         topCard={topCard}
       />
-      <JoinQueueModals visible={joinOpen} onClose={() => setJoinOpen(false)} />
+      {joinMounted ? (
+        <Suspense fallback={null}>
+          <JoinQueueModals visible={joinOpen} onClose={() => setJoinOpen(false)} />
+        </Suspense>
+      ) : null}
 
       <CreateQueueModal
         visible={createVisible}
