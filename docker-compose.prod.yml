@@ -1,40 +1,91 @@
-# Stack QMS untuk DEMO/PRODUKSI di satu mesin (laptop) di belakang Cloudflare Tunnel.
-# Tanpa Metro/hot reload, tanpa kode di-mount: semua service memakai target `prod`.
-# Hanya nginx yang membuka port, dan hanya ke 127.0.0.1 (cloudflared di host yang menjangkaunya).
+# =============================================================================
+# docker-compose.prod.yml: stack QMS untuk DEMO/PRODUKSI di satu mesin (laptop)
+# di belakang Cloudflare Tunnel.
+# -----------------------------------------------------------------------------
+# Dipakai oleh  : make prod-up, make prod-down, make prod-backup, make prod-reset,
+#                 make prod-guard, make verify-user STACK=prod, scripts/*.sh (QMS_ENV_FILE).
+# Dijalankan    : `make prod-up` (memeriksa MAIL_MODE dulu) atau
+#                 `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`.
+# Tidak dipakai : docker-compose.yml (dev). Jangan dijalankan bersamaan: port 8080 bentrok.
 #
-#   cp .env.prod.example .env      # isi rahasia (openssl rand -hex 32)
-#   docker compose -f docker-compose.prod.yml up -d --build
+# Beda dengan dev:
+#   - Tanpa Metro/hot reload dan tanpa kode di-mount. Semua service memakai `target: prod`
+#     (binary/bundle yang sudah di-build di dalam image).
+#   - Hanya nginx yang membuka port, dan hanya ke 127.0.0.1. cloudflared di host yang menjangkaunya.
+#   - Database memakai volume sendiri (db_data_prod) dan TIDAK berisi seed.
+#   - SMTP nyata (MAIL_MODE=smtp) atau Mailpit untuk demo (MAIL_MODE=mailpit, profile `mailpit`).
+#   - payment-service dengan APP_ENV=production: simulator dev tidak diteruskan.
+#   - Subnet internal berbeda (172.29.0.0/16) agar tidak bentrok dengan dev (172.28.0.0/16).
+#
+# Service (port internal kontainer; hanya nginx yang dipetakan ke host):
+#   nginx          :80    -> 127.0.0.1:${QMS_HTTP_PORT:-8080}  (target cloudflared)
+#   frontend       build statis (bukan dev server)
+#   backend        :8080  API Go
+#   qr-service     :8090  token join QR, hanya jaringan internal
+#   notify-service :8091  Web Push
+#   mail-service   :8092  pengirim email (SMTP nyata atau Mailpit), hanya jaringan internal
+#   payment-service:8093  perpanjangan langganan Stripe, hanya jaringan internal
+#   db             :5432  PostgreSQL 16, tidak dipetakan ke host
+#   mailpit        :8025  UI, hanya 127.0.0.1 (profile mailpit saja)
+#
+# Konfigurasi lewat environment (sumber: .env.prod, salin dari .env.prod.example). Rahasia dibuat dengan
+# `openssl rand -hex 32`. Variabel bertanda ${VAR:?...} wajib diisi, bila tidak `up` gagal.
+#
+#   cp .env.prod.example .env.prod && chmod 600 .env.prod
+#   make prod-up
 #   -> http://127.0.0.1:${QMS_HTTP_PORT:-8080}   (target tunnel: http://localhost:8080)
 #
-# Jangan jalankan bersamaan dengan docker-compose.yml (dev): port bentrok.
-# Database prod memakai volume sendiri (db_data_prod) dan TIDAK berisi seed.
+# Saat ada perubahan, periksa:
+#   [SINKRON] Subnet 172.29.0.0/16 (networks.internal) harus sama dengan:
+#             - TRUSTED_PROXIES di backend (bawah),
+#             - set_real_ip_from di deploy/nginx/nginx.prod.conf.
+#             Bila diubah di satu tempat saja, IP klien dan rate limit rusak.
+#   [SINKRON] Port internal (8090/8091/8092/8093/8080) harus sama dengan PORT di service dan dengan
+#             upstream di deploy/nginx/nginx.prod.conf.
+#   [SINKRON] MAIL_MODE (dibaca make prod-up dan scripts/check-mail-mode.sh) menentukan
+#             profile mailpit dan nilai SMTP_* (diatur Makefile lewat export).
+#   [PENTING] Jangan tambahkan depends_on dari backend ke payment-service atau mail-service.
+#             Isolasi ini dijaga scripts/check-service-isolation.sh.
+#   [PENTING] Ganti nama volume (db_data_prod, mailpit_data_prod) berarti data prod tidak terpakai.
+#   [PENTING] Jangan pernah mengaktifkan DEV_PAYMENT_SIMULATOR di file ini (tidak ada, sengaja).
+# =============================================================================
+
 name: qms-prod
 
 services:
+  # PostgreSQL 16. Skema dibuat otomatis dari db/migrations/*.sql hanya saat volume db_data_prod
+  # masih kosong. Untuk DB yang sudah berjalan, pakai db/scripts/apply_schema.sql (lihat README).
   db:
     build: ./db
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-qms}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-qms_db}
+      # Password role per service. Dibaca oleh skrip init (db/migrations/03..05_*.sh).
       NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?set NOTIFY_DB_PASSWORD in .env}
       MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}
       # Kosong = role payment_rw tidak dibuat (db/migrations/05_payment_role.sh); database dan antrian tetap start.
       PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-}
     volumes:
+      # Data database prod. Terpisah dari dev. Bertahan saat container dibuat ulang.
       - db_data_prod:/var/lib/postgresql/data
+    # pg_isready: container dianggap siap setelah database menerima koneksi. Service lain menunggu
+    # kondisi service_healthy ini lewat depends_on.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 20
+    # Hanya jaringan internal. Port 5432 tidak dipetakan ke host.
     networks:
       - internal
     restart: unless-stopped
 
+  # qr-service: membuat dan memverifikasi token join QR. Hanya dipanggil backend lewat jaringan internal.
   qr-service:
     build:
       context: ./qr-service
+      # target prod: binary statis hasil build, bukan `go run`.
       target: prod
     environment:
       PORT: "8090"
@@ -55,14 +106,17 @@ services:
     environment:
       PORT: "8092"
       MAIL_SERVICE_TOKEN: ${MAIL_SERVICE_TOKEN:?set MAIL_SERVICE_TOKEN in .env}
+      # Wajib diisi (:?) agar tidak diam-diam mengirim ke server yang salah. Diisi make prod-up sesuai MAIL_MODE.
       SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in .env}
       SMTP_PORT: ${SMTP_PORT:?set SMTP_PORT in .env}
       SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM in .env}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # Default starttls di prod (dev memakai none untuk Mailpit).
       SMTP_TLS: ${SMTP_TLS:-starttls}
       DATABASE_URL: postgresql://mail_rw:${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
       QMS_PUBLIC_ORIGIN: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
+    # Menunggu db. Mailpit hanya disyaratkan bila profile mailpit aktif (required: false).
     depends_on:
       db:
         condition: service_healthy
@@ -78,13 +132,16 @@ services:
   # dikirim ke penerima sebenarnya. SMTP hanya di jaringan internal; UI hanya di 127.0.0.1 host dan tidak lewat
   # nginx/Cloudflare: buka dengan SSH tunnel. Pesan disimpan di volume supaya bertahan saat restart.
   mailpit:
+    # profiles: service ini hanya ikut jalan bila --profile mailpit diberikan (lihat PROD_PROFILE di Makefile).
     profiles: ["mailpit"]
     image: axllent/mailpit:v1.31.6
     environment:
       MP_MAX_MESSAGES: "1000"
       MP_DATABASE: /data/mailpit.db
     volumes:
+      # Pesan Mailpit (SQLite) bertahan saat restart.
       - mailpit_data_prod:/data
+    # Dipetakan hanya ke 127.0.0.1 host. Tidak bisa diakses dari LAN atau tunnel.
     ports:
       - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
     healthcheck:
@@ -107,16 +164,19 @@ services:
       target: prod
     environment:
       PORT: "8093"
+      # production: service menolak start bila DEV_PAYMENT_SIMULATOR menyala (tidak diteruskan di file ini).
       APP_ENV: production
       DATABASE_URL: postgresql://payment_rw:${PAYMENT_DB_PASSWORD:-unset}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       QMS_PUBLIC_ORIGIN: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
+      # Kunci Stripe: opsional di sini. Kosong = checkout menjawab 503 (lihat README bagian Pembayaran).
       STRIPE_API_KEY: ${STRIPE_API_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_API_BASE_URL: ${STRIPE_API_BASE_URL:-}
       STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
       SUBSCRIPTION_PRICE_AMOUNT: ${SUBSCRIPTION_PRICE_AMOUNT:-50000}
       SUBSCRIPTION_CURRENCY: ${SUBSCRIPTION_CURRENCY:-idr}
+    # Hanya menunggu db. Tidak ada depends_on dari backend ke service ini (lihat komentar di atas).
     depends_on:
       db:
         condition: service_healthy
@@ -124,15 +184,19 @@ services:
       - internal
     restart: unless-stopped
 
+  # notify-service: Web Push. Membaca event tiket lewat role notify_ro (baca saja).
+  # Tidak bergantung pada mail-service, Mailpit, atau SMTP (dijaga scripts/check-service-isolation.sh).
   notify-service:
     build:
       context: ./notify-service
       target: prod
     environment:
       DATABASE_URL: postgresql://notify_ro:${NOTIFY_DB_PASSWORD}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+      # Opsional di prod: bila kosong, Web Push tidak aktif, tetapi service tetap start.
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+    # /health dipakai untuk memeriksa service sehat. Tidak ada service yang menunggu service ini.
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8091/health || exit 1"]
       interval: 10s
@@ -146,6 +210,8 @@ services:
       - internal
     restart: unless-stopped
 
+  # backend: API utama (Gin). APP_ENV=production membuat backend menolak start bila rahasia lemah atau origin
+  # bukan https.
   backend:
     build:
       context: ./backend
@@ -158,6 +224,7 @@ services:
       ALLOWED_ORIGINS: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
       PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
       # Hanya nginx (jaringan internal) yang boleh menentukan IP klien.
+      # [SINKRON] Harus sama dengan subnet networks.internal di bawah dan set_real_ip_from di nginx.prod.conf.
       TRUSTED_PROXIES: 172.29.0.0/16
       QR_SERVICE_URL: http://qr-service:8090
       QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
@@ -172,7 +239,9 @@ services:
       # menahan backend, jadi tidak ada depends_on.
       MAIL_SERVICE_URL: http://mail-service:8092
       MAIL_SERVICE_TOKEN: ${MAIL_SERVICE_TOKEN:?set MAIL_SERVICE_TOKEN in .env}
+    # stop_grace_period lebih besar dari SHUTDOWN_TIMEOUT (8s) agar request sempat selesai sebelum kontainer dihentikan paksa.
     stop_grace_period: 10s
+    # /health dipakai nginx (depends_on service_healthy) sebelum menerima trafik.
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
       interval: 10s
@@ -187,27 +256,33 @@ services:
       - internal
     restart: unless-stopped
 
+  # frontend: image nginx yang menyajikan bundle statis dist/ hasil `expo export` (target prod).
+  # Tidak ada dev server. Diakses lewat nginx, tidak dipetakan ke host.
   frontend:
     build:
       context: ./frontend
       target: prod
       args:
-        # Web memanggil API di origin yang sama (lewat nginx).
+        # Build-time, bukan runtime: web memanggil API di origin yang sama (lewat nginx).
         EXPO_PUBLIC_API_URL: origin
     networks:
       - internal
     restart: unless-stopped
 
+  # nginx: satu-satunya pintu masuk. Mengatur IP klien dari CF-Connecting-IP (Cloudflare), rate limit, dan
+  # meneruskan request ke frontend, backend, dan qr-service. Konfigurasi prod dipilih lewat build args.
   nginx:
     build:
       context: ./deploy/nginx
       args:
+        # Memilih file konfigurasi prod (bukan dev) di dalam image.
         NGINX_CONF: nginx.prod.conf
         FRONTEND_UPGRADE: frontend-upgrade.prod.conf
     ports:
       # Hanya loopback: cloudflared di host menjangkau ini; LAN tidak bisa
       # (mencegah pemalsuan CF-Connecting-IP dan melewati aturan WAF).
       - "127.0.0.1:${QMS_HTTP_PORT:-8080}:80"
+    # Menunggu backend dan qr-service sehat sebelum menerima trafik. Frontend cukup sudah start.
     depends_on:
       backend:
         condition: service_healthy
@@ -219,13 +294,18 @@ services:
       - internal
     restart: unless-stopped
 
+# Volume bernama. Terpisah dari dev. Bertahan saat container dibuat ulang.
 volumes:
+  # Data PostgreSQL prod. Kosongkan (down -v) hanya bila ingin menghapus seluruh data.
   db_data_prod:
+  # Pesan Mailpit (hanya bila MAIL_MODE=mailpit).
   mailpit_data_prod:
 
+# Jaringan internal. Subnet berbeda dari dev (172.28.0.0/16) agar tidak bentrok dengan stack dev di mesin yang sama.
 networks:
   internal:
     driver: bridge
+    # [SINKRON] Harus sama dengan TRUSTED_PROXIES (backend) dan set_real_ip_from (nginx.prod.conf).
     ipam:
       config:
         - subnet: 172.29.0.0/16
