@@ -76,7 +76,7 @@ Skema dipecah per domain (`01a_accounts.sql` sampai `01h_role_grants.sql`), lalu
 
 ```bash
 cd qr-service
-cp ../.env.example .env     # salin bagian [qr-service/.env]; isi JOIN_LINK_SECRET (>=32 byte) + QR_SERVICE_TOKEN
+# Memakai ../.env (akar proyek): bagian [qr-service] di sana, isi JOIN_LINK_SECRET (>=32 byte) + QR_SERVICE_TOKEN
 go run ./cmd/qr-service  # http://localhost:8090
 ```
 
@@ -87,7 +87,7 @@ go run ./cmd/qr-service  # http://localhost:8090
 
 ```bash
 cd backend
-cp ../.env.example .env     # salin bagian [backend/.env]; isi DATABASE_URL, JWT_SECRET, PORT, ALLOWED_ORIGINS + variabel QR
+# Memakai ../.env (akar proyek): bagian [backend] di sana, isi BACKEND_DATABASE_URL, JWT_SECRET, BACKEND_PORT, ALLOWED_ORIGINS + variabel QR
 go run ./cmd/server
 ```
 
