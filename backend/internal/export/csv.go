@@ -8,19 +8,27 @@ import (
 	"qms/internal/model"
 )
 
-// utf8BOM membuat Excel membaca CSV sebagai UTF-8 (nama dan catatan berbahasa Indonesia tidak rusak).
+// utf8BOM (byte order mark) adalah tiga byte di awal berkas yang memberi tahu Excel bahwa isinya UTF-8,
+// sehingga nama dan catatan berbahasa Indonesia tidak rusak.
 const utf8BOM = "\xEF\xBB\xBF"
 
+// csvSink adalah Sink untuk CSV. Baris ditulis ke csv.Writer (buffer kecil dari library standar) dan di-Flush
+// setiap halaman, sehingga data terus dikirim ke writer tanpa menumpuk di memori.
 type csvSink struct {
-	w       io.Writer
-	cw      *csv.Writer
-	prefix  string
+	// w adalah tujuan tulis akhir (misalnya response HTTP).
+	w io.Writer
+	// cw adalah penulis CSV dari library standar encoding/csv.
+	cw *csv.Writer
+	// prefix adalah awalan nomor tiket dari antrian (misalnya "A").
+	prefix string
+	// started menandai bahwa BOM dan judul kolom sudah ditulis, supaya tidak ditulis dua kali.
 	started bool
 }
 
+// newCSVSink membuat csvSink untuk antrian queue yang menulis ke w.
 func newCSVSink(w io.Writer, queue model.HistoryQueue) *csvSink {
 	cw := csv.NewWriter(w)
-	cw.UseCRLF = true // Excel di Windows
+	cw.UseCRLF = true // CRLF (carriage return + line feed) adalah akhir baris Windows; dipakai agar Excel di Windows nyaman
 	return &csvSink{w: w, cw: cw, prefix: queue.TicketPrefix}
 }
 
@@ -36,6 +44,7 @@ func (s *csvSink) begin() error {
 	return s.cw.Write(Headers)
 }
 
+// WriteTickets menulis satu baris CSV per tiket dalam halaman ini. Memanggil begin dulu agar judul kolom tertulis.
 func (s *csvSink) WriteTickets(tickets []model.HistoryTicket) error {
 	if err := s.begin(); err != nil {
 		return err
@@ -49,6 +58,7 @@ func (s *csvSink) WriteTickets(tickets []model.HistoryTicket) error {
 	return s.cw.Error()
 }
 
+// Close memastikan BOM dan judul sudah tertulis (untuk antrian tanpa tiket), lalu mengosongkan buffer ke writer.
 func (s *csvSink) Close() error {
 	if err := s.begin(); err != nil {
 		return err
@@ -57,6 +67,8 @@ func (s *csvSink) Close() error {
 	return s.cw.Error()
 }
 
+// csvRow mengubah satu tiket menjadi satu baris CSV sesuai urutan Headers. Teks dari pengguna lewat SafeCell,
+// dan waktu opsional yang kosong dikosongkan lewat nullTime.
 func csvRow(prefix string, t model.HistoryTicket) []string {
 	return []string{
 		ticketLabel(prefix, t.TicketNumber),
