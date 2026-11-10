@@ -15,7 +15,8 @@ import (
 func NoHTMLTags(
 	fl validator.FieldLevel,
 ) bool {
-	// mengambil nilai field sebagai string, lalu mengembalikan true bila tidak ada '<' atau '>'
+	// ambil nilai field yang sedang divalidasi sebagai string
 	value := fl.Field().String()
+	// ContainsAny true bila ada '<' atau '>' di value; dibalik agar validasi lolos hanya saat keduanya tidak ada
 	return !strings.ContainsAny(value, "<>")
 }
