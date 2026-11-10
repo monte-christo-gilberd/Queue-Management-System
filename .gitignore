@@ -7,3 +7,6 @@ template-for-frontend
 keys/
 keys-dev/
 .metro-google.stamp
+
+# Hasil coverage Go (go test -coverprofile)
+coverage.out
