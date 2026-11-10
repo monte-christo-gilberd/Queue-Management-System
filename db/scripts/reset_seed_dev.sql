@@ -12,8 +12,8 @@
 --
 -- PERINGATAN: ini menghapus SEMUA akun dan data. Jangan dijalankan di database produksi.
 -- Jalankan dari folder queue-management-system:
---   set -a && . backend/.env && set +a
---   psql "$DATABASE_URL" -f db/scripts/reset_seed_dev.sql
+--   set -a && . .env && set +a
+--   psql "$BACKEND_DATABASE_URL" -f db/scripts/reset_seed_dev.sql
 -- =============================================================================
 
 -- Hash bcrypt (cost 10) untuk password "password". Sama dengan yang diverifikasi backend.
@@ -46,6 +46,8 @@ TRUNCATE TABLE
     queue_history,
     queue_settings,
     queues,
+    payment_session_credits,
+    payment_webhook_events,
     payments,
     owners,
     users
