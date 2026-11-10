@@ -77,10 +77,14 @@ const verificationSendTimeout = 45 * time.Second
 // UserService: akun user (registrasi, login, profil), foto profil, username, dan preferensi email notifikasi.
 // Token login berupa JWT HS256 yang ditandatangani dengan jwtSecret.
 type UserService struct {
+	// repository: penyimpanan akun dan langganan owner (UserRepository).
 	repository UserRepository
-	jwtSecret  string
-	avatars    AvatarStore
-	verifier   EmailVerifier
+	// jwtSecret: kunci untuk menandatangani JWT login.
+	jwtSecret string
+	// avatars: penyimpanan foto profil. Nil = fitur foto tidak aktif.
+	avatars AvatarStore
+	// verifier: mengirim email verifikasi saat registrasi. Nil = verifikasi dimatikan.
+	verifier EmailVerifier
 }
 
 // WithEmailVerifier menyalakan verifikasi email: Register mengirim tautan verifikasi dan Profile melaporkan

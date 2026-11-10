@@ -71,11 +71,16 @@ type VerificationGuard interface {
 // Layanan ini hanya dibuat bila verifikasi dinyalakan (EMAIL_VERIFICATION_REQUIRED), jadi memilikinya berarti
 // verifikasi berlaku: RequireVerified menolak akun yang belum terverifikasi.
 type EmailVerificationService struct {
-	repo      EmailVerificationRepository
-	mailer    ResetMailer
+	// repo: penyimpanan token verifikasi dan status email user.
+	repo EmailVerificationRepository
+	// mailer: mengirim email verifikasi.
+	mailer ResetMailer
+	// publicURL: alamat dasar aplikasi, dipakai membuat tautan verifikasi.
 	publicURL string
-	now       func() time.Time
-	log       *slog.Logger
+	// now: sumber waktu; bisa diganti di tes.
+	now func() time.Time
+	// log: pencatat peristiwa, mis. saat batas kirim per jam tercapai.
+	log *slog.Logger
 }
 
 // NewEmailVerificationService membuat layanan verifikasi email. publicAppURL dipakai untuk membuat tautan di

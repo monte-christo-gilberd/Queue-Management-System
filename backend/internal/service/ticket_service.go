@@ -215,11 +215,16 @@ var errNoQueueGuard = errors.
 // TicketService: tiket customer dan operasi counter. Mencakup join, next, skip, recall, cancel, remove,
 // sisip posisi (owner), dan status antrian. Aturan waktu dan urutan ada di sini; repository hanya menulis.
 type TicketService struct {
+	// repository: penyimpanan tiket dan pengurutan antrian (TicketRepository).
 	repository TicketRepository
-	tx         TxRunner
-	notifier   EventNotifier
-	guard      QueueGuard
-	accounts   AccountFinder
+	// tx: menjalankan perubahan tiket dalam satu transaksi.
+	tx TxRunner
+	// notifier: mengirim event tiket (joined, next, skipped, dll.). Boleh nil.
+	notifier EventNotifier
+	// guard: memastikan queue ada dan requester berhak mengaksesnya. Nil = fail closed.
+	guard QueueGuard
+	// accounts: mencari akun untuk sisip posisi oleh owner (US-10). Nil = fail closed.
+	accounts AccountFinder
 	// verification: bila terpasang, JoinQueue menolak user yang emailnya belum diverifikasi.
 	verification VerificationGuard
 }
@@ -636,9 +641,10 @@ func (s *TicketService) SkipTicket(
 
 // retireOutcome: hasil satu pengeluaran tiket dari antrian (cancel atau remove).
 type retireOutcome struct {
-	changed     bool         // false bila tiket sudah tidak aktif (no-op)
-	target      model.Ticket // keadaan tiket yang dikeluarkan
-	promoted    model.Ticket // waiting teratas yang naik ke currently_served, bila ada
+	changed  bool         // false bila tiket sudah tidak aktif (no-op)
+	target   model.Ticket // keadaan tiket yang dikeluarkan
+	promoted model.Ticket // waiting teratas yang naik ke currently_served, bila ada
+	// hasPromoted: true bila promoted berisi tiket yang naik ke currently_served.
 	hasPromoted bool
 }
 

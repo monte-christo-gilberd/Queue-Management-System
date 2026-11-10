@@ -15,7 +15,9 @@ import (
 // EmailVerificationRepository: status verifikasi email di users dan token sekali pakai (user_action_tokens,
 // purpose 'email_verify'). Pembuatan token dan penghitungan batas per jam dipakai bersama dengan reset password.
 type EmailVerificationRepository struct {
-	db     *sqlx.DB
+	// db: koneksi PostgreSQL untuk query status verifikasi di tabel users.
+	db *sqlx.DB
+	// tokens: repository token bersama (PasswordResetRepository) untuk membuat dan menghitung token verifikasi.
 	tokens *PasswordResetRepository
 }
 

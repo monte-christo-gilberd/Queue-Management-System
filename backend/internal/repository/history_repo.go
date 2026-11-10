@@ -15,6 +15,7 @@ import (
 
 // HistoryRepository: akses data riwayat, yaitu antrian yang sudah ditutup milik owner dan riwayat tiket customer.
 type HistoryRepository struct {
+	// db: koneksi PostgreSQL untuk query di luar transaksi.
 	db *sqlx.DB
 }
 

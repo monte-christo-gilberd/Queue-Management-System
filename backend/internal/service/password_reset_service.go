@@ -60,11 +60,16 @@ type ResetMailer interface {
 // PasswordResetService: alur reset password lewat tautan sekali pakai. Token berlaku 30 menit, dan tiap akun
 // hanya bisa meminta 3 token per jam.
 type PasswordResetService struct {
-	repo      PasswordResetRepository
-	mailer    ResetMailer
+	// repo: penyimpanan token reset dan penggantian password.
+	repo PasswordResetRepository
+	// mailer: mengirim email berisi tautan reset password.
+	mailer ResetMailer
+	// publicURL: alamat dasar aplikasi, dipakai membuat tautan reset (tanpa garis miring di akhir).
 	publicURL string
-	now       func() time.Time
-	log       *slog.Logger
+	// now: sumber waktu; bisa diganti di tes.
+	now func() time.Time
+	// log: pencatat peristiwa, mis. saat batas permintaan per jam tercapai.
+	log *slog.Logger
 }
 
 // NewPasswordResetService membuat layanan reset password. publicAppURL dipakai untuk membuat tautan di email;

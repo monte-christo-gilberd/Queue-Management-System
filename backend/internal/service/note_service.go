@@ -30,8 +30,10 @@ type NoteRepository interface {
 // NoteService: catatan owner per nomor tiket. Hanya owner antrian yang boleh membaca dan menulis.
 // Non-owner mendapat apperror.ErrNotFound, sama seperti endpoint antrian lainnya.
 type NoteService struct {
+	// repository: penyimpanan catatan per tiket (NoteRepository).
 	repository NoteRepository
-	guard      QueueGuard
+	// guard: memastikan requester adalah owner antrian. Nil = fail closed.
+	guard QueueGuard
 }
 
 // NewNoteService membuat NoteService dengan repository. Guard owner dipasang sesudahnya lewat WithQueueGuard.

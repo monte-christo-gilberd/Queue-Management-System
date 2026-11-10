@@ -73,11 +73,16 @@ type CounterTicketReleaser interface {
 
 // CounterService: CRUD counter antrian (4.11). Hanya owner. Antrian yang sudah ditutup tidak bisa diubah (D6).
 type CounterService struct {
+	// repository: penyimpanan counter (CounterRepository).
 	repository CounterRepository
-	tx         TxRunner
-	guard      QueueGuard
-	tickets    CounterTicketReleaser
-	notifier   EventNotifier
+	// tx: menjalankan perubahan counter dalam satu transaksi.
+	tx TxRunner
+	// guard: memastikan requester adalah owner dan antrian masih buka.
+	guard QueueGuard
+	// tickets: melepas nomor yang dilayani sebelum counter dihapus. Nil = hapus counter gagal tertutup.
+	tickets CounterTicketReleaser
+	// notifier: mengirim event counter_updated. Boleh nil.
+	notifier EventNotifier
 }
 
 // NewCounterService membuat CounterService dengan repository dan TxRunner. Notifier opsional (variadic).

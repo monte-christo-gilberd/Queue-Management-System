@@ -13,6 +13,7 @@ import (
 
 // DisplayRepository: konfigurasi layar publik (queue_displays) dan query data layar.
 type DisplayRepository struct {
+	// db: koneksi PostgreSQL untuk query di luar transaksi.
 	db *sqlx.DB
 }
 

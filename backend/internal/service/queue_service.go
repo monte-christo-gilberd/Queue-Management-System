@@ -101,11 +101,17 @@ type TicketHolderChecker interface {
 // QueueService: antrian (buat, ubah, tutup, prefix nomor, pengaturan skip) dan pengecekan kepemilikan.
 // Dependency yang tidak wajib dipasang lewat With... (lihat WithTicketHolderChecker, WithVerificationGuard).
 type QueueService struct {
-	repository   QueueRepository
+	// repository: penyimpanan antrian, pengaturan, dan counter default (QueueRepository).
+	repository QueueRepository
+	// subscription: mengecek langganan aktif owner (SubscriptionChecker).
 	subscription SubscriptionChecker
-	tx           TxRunner
-	notifier     EventNotifier
-	holders      TicketHolderChecker
+	// tx: menjalankan pembuatan antrian dalam satu transaksi.
+	tx TxRunner
+	// notifier: mengirim event antrian (queue_updated, queue_closed). Boleh nil.
+	notifier EventNotifier
+	// holders: mengecek apakah user pernah punya tiket di antrian (akses baca untuk pemegang tiket). Nil = tidak dipakai.
+	holders TicketHolderChecker
+	// verification: mewajibkan email terverifikasi sebelum membuat antrian. Nil = verifikasi dimatikan.
 	verification VerificationGuard
 }
 

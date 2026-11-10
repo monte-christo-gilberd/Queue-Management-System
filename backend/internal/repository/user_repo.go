@@ -15,6 +15,7 @@ import (
 
 // UserRepository mengakses data akun user di tabel users, serta status owner di tabel owners.
 type UserRepository struct {
+	// db: koneksi PostgreSQL untuk query di luar transaksi.
 	db *sqlx.DB
 }
 

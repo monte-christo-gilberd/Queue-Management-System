@@ -12,6 +12,7 @@ import (
 
 // QueueRepository mengakses data antrian: tabel queues, queue_settings, dan counters.
 type QueueRepository struct {
+	// db: koneksi PostgreSQL untuk query di luar transaksi.
 	db *sqlx.DB
 }
 

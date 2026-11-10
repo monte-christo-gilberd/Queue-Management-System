@@ -52,20 +52,27 @@ type HistoryRepository interface {
 
 // HistoryQueuesPage: satu halaman daftar riwayat. NextCursor kosong = tidak ada halaman berikutnya.
 type HistoryQueuesPage struct {
-	Queues     []model.HistoryQueue
+	// Queues: ringkasan antrian di halaman ini.
+	Queues []model.HistoryQueue
+	// NextCursor: kursor halaman berikutnya. Kosong = tidak ada halaman berikutnya.
 	NextCursor string
 }
 
 // MyHistoryPage: satu halaman riwayat tiket customer. NextCursor kosong = tidak ada halaman berikutnya.
 type MyHistoryPage struct {
-	Tickets    []model.UserHistoryTicket
+	// Tickets: tiket riwayat di halaman ini.
+	Tickets []model.UserHistoryTicket
+	// NextCursor: kursor halaman berikutnya. Kosong = tidak ada halaman berikutnya.
 	NextCursor string
 }
 
 // HistoryQueueDetail: ringkasan antrian dan satu halaman nomornya.
 type HistoryQueueDetail struct {
-	Queue      model.HistoryQueue
-	Tickets    []model.HistoryTicket
+	// Queue: ringkasan antrian yang dibuka.
+	Queue model.HistoryQueue
+	// Tickets: satu halaman nomor di antrian ini.
+	Tickets []model.HistoryTicket
+	// NextCursor: kursor halaman nomor berikutnya. Kosong = tidak ada halaman berikutnya.
 	NextCursor string
 }
 
@@ -73,6 +80,7 @@ type HistoryQueueDetail struct {
 // tetap di dashboard dan daftar antrian. Data dibaca langsung dari tabel live (D1), dan kepemilikan dicek
 // di query, jadi non-owner mendapat daftar kosong atau ErrNotFound.
 type HistoryService struct {
+	// repository: pembacaan riwayat (HistoryRepository).
 	repository HistoryRepository
 }
 

@@ -14,6 +14,7 @@ import (
 // CounterRepository: akses data counter per antrian (tabel counters), termasuk penguncian antrian dan
 // nomor tiket yang sedang dilayani tiap counter.
 type CounterRepository struct {
+	// db: koneksi PostgreSQL untuk query di luar transaksi.
 	db *sqlx.DB
 }
 

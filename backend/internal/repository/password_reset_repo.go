@@ -14,6 +14,7 @@ import (
 
 // PasswordResetRepository: token sekali pakai (user_action_tokens) dan penggantian password.
 type PasswordResetRepository struct {
+	// db: koneksi PostgreSQL untuk query di luar transaksi.
 	db *sqlx.DB
 }
 

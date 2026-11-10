@@ -10,11 +10,17 @@ import (
 // (satu query untuk banyak layar). Invalidate(queueID) dipanggil Hub SEBELUM event disebar, jadi klien yang mengambil
 // ulang setelah sinyal tidak pernah mendapat snapshot yang lebih lama dari event itu.
 type DisplayCache struct {
-	mu      sync.Mutex
-	ttl     time.Duration
-	now     func() time.Time
+	// mu: mengunci semua akses ke peta cache dan status pemuatan.
+	mu sync.Mutex
+	// ttl: umur snapshot sejak disimpan.
+	ttl time.Duration
+	// now: sumber waktu; bisa diganti di tes.
+	now func() time.Time
+	// byToken: snapshot per token layar.
 	byToken map[string]*displayEntry
+	// byQueue: daftar token per antrian, dipakai Invalidate untuk membuang entri sekaligus.
 	byQueue map[int64]map[string]struct{}
+	// loading: pemuatan yang sedang berjalan per token, supaya permintaan bersamaan menunggu hasil yang sama.
 	loading map[string]*displayCall
 	// epoch naik di tiap Invalidate. Pemuatan yang mulai sebelum Invalidate tidak boleh disimpan atau dipakai
 	// bersama oleh permintaan yang datang sesudahnya.
@@ -23,19 +29,27 @@ type DisplayCache struct {
 
 // displayEntry: satu snapshot yang tersimpan di cache, lengkap dengan antrian dan waktu kedaluwarsanya.
 type displayEntry struct {
+	// queueID: antrian pemilik token.
 	queueID int64
-	snap    model.DisplaySnapshot
+	// snap: snapshot layar yang disimpan.
+	snap model.DisplaySnapshot
+	// expires: waktu snapshot ini tidak berlaku lagi.
 	expires time.Time
 }
 
 // displayCall: satu pemuatan snapshot yang sedang berjalan. Permintaan lain untuk token yang sama menunggu
 // wg, lalu memakai hasilnya tanpa query tambahan.
 type displayCall struct {
-	wg      sync.WaitGroup
-	epoch   uint64
+	// wg: ditunggu permintaan lain sampai pemuatan selesai.
+	wg sync.WaitGroup
+	// epoch: nilai epoch cache saat pemuatan dimulai. Bila sudah berubah, hasilnya tidak disimpan.
+	epoch uint64
+	// queueID: antrian pemilik token.
 	queueID int64
-	snap    model.DisplaySnapshot
-	err     error
+	// snap: hasil snapshot dari pemuatan.
+	snap model.DisplaySnapshot
+	// err: galat dari pemuatan, dibagikan ke permintaan yang menunggu.
+	err error
 }
 
 // NewDisplayCache membuat cache kosong dengan umur snapshot ttl. Waktu bisa diganti lewat field now saat tes.

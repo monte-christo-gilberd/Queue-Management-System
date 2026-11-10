@@ -46,11 +46,16 @@ type DisplayCounters interface {
 
 // DisplayService: konfigurasi layar publik (hanya owner antrian) dan snapshot publik (siapa pun yang punya token).
 type DisplayService struct {
-	repo     DisplayRepository
+	// repo: penyimpanan konfigurasi layar (DisplayRepository).
+	repo DisplayRepository
+	// counters: daftar counter beserta nomor yang sedang dilayani untuk snapshot layar.
 	counters DisplayCounters
-	guard    QueueGuard
+	// guard: memastikan requester adalah owner antrian.
+	guard QueueGuard
+	// notifier: mengirim event display_updated. Boleh nil.
 	notifier EventNotifier
-	cache    *DisplayCache
+	// cache: menyimpan snapshot layar agar tidak query database setiap layar meminta.
+	cache *DisplayCache
 }
 
 // NewDisplayService membuat DisplayService. Bila cache nil, dibuat cache baru dengan DisplayCacheTTL.

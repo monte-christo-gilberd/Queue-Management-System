@@ -41,11 +41,16 @@ type QRClient interface {
 // QRService: QR join antrian. QR statis memakai satu kode yang disimpan di queue_settings dan bisa diganti
 // owner. QR dinamis membuat token baru yang berlaku dynamicTTL (bawaan 120 detik).
 type QRService struct {
-	repository   QueueRepository
-	client       QRClient
+	// repository: penyimpanan antrian dan pengaturan QR (QueueRepository).
+	repository QueueRepository
+	// client: layanan qr-service untuk membuat dan memverifikasi token join (QRClient).
+	client QRClient
+	// publicAppURL: alamat dasar aplikasi, dipakai membuat tautan join.
 	publicAppURL string
-	notifier     EventNotifier
-	dynamicTTL   time.Duration
+	// notifier: mengirim event queue_qr_updated. Boleh nil.
+	notifier EventNotifier
+	// dynamicTTL: masa berlaku QR dinamis. Bawaan 120 detik.
+	dynamicTTL time.Duration
 }
 
 // NewQRService membuat QRService. publicAppURL dipakai untuk membuat tautan join. Notifier opsional

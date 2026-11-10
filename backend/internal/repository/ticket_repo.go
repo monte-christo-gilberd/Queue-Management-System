@@ -13,6 +13,7 @@ import (
 
 // TicketRepository membungkus koneksi *sqlx.DB dan menyediakan query untuk tabel tickets.
 type TicketRepository struct {
+	// db: koneksi PostgreSQL untuk query di luar transaksi.
 	db *sqlx.DB
 }
 
