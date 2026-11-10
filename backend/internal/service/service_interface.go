@@ -5,6 +5,7 @@ import (
 	"qms/internal/model"
 )
 
+// QueueServiceInterface: kontrak service antrian yang dipakai handler dan router. Dipenuhi *QueueService.
 type QueueServiceInterface interface {
 	CreateQueue(
 		ctx context.Context,
@@ -35,6 +36,7 @@ type QueueServiceInterface interface {
 	) error
 }
 
+// TicketServiceInterface: kontrak service tiket yang dipakai handler dan router. Dipenuhi *TicketService.
 type TicketServiceInterface interface {
 	JoinQueue(
 		ctx context.Context,
@@ -59,6 +61,7 @@ type TicketServiceInterface interface {
 	) (model.QueueStatus, error)
 }
 
+// UserServiceInterface: kontrak service akun yang dipakai handler dan router. Dipenuhi *UserService.
 type UserServiceInterface interface {
 	Register(
 		ctx context.Context,
@@ -73,6 +76,7 @@ type UserServiceInterface interface {
 	) (string, error)
 }
 
+// EventNotifierInterface: kontrak pengirim event untuk handler. Bentuknya sama dengan EventNotifier.
 type EventNotifierInterface interface {
 	Notify(
 		queueID int64,

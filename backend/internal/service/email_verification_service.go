@@ -19,6 +19,8 @@ const (
 	verifyMaxPerHour = 3
 )
 
+// EmailVerificationRepository: penyimpanan token verifikasi email dan status verifikasi user. Dipenuhi
+// repository (email_verification_repo.go).
 type EmailVerificationRepository interface {
 	// FindForVerification: id, email, username, dan status verifikasi; apperror.ErrNotFound bila user tidak ada.
 	FindForVerification(
@@ -76,11 +78,14 @@ type EmailVerificationService struct {
 	log       *slog.Logger
 }
 
+// NewEmailVerificationService membuat layanan verifikasi email. publicAppURL dipakai untuk membuat tautan di
+// email; garis miring di akhirnya dibuang.
 func NewEmailVerificationService(
 	repo EmailVerificationRepository,
 	mailer ResetMailer,
 	publicAppURL string,
 ) *EmailVerificationService {
+	// Rakit layanan: garis miring di akhir URL dibuang, waktu memakai time.Now, dan logger default.
 	return &EmailVerificationService{
 		repo:      repo,
 		mailer:    mailer,
@@ -99,19 +104,23 @@ func (s *EmailVerificationService) SendVerification(
 	requestIP string,
 ) error {
 
+	// Ambil data user (id, email, username, status verifikasi) dari database.
 	user, err := s.repo.FindForVerification(
 		ctx,
 		userID,
 	)
 
+	// gagal membaca database: kembalikan error ke pemanggil.
 	if err != nil {
 		return err
 	}
+	// Email sudah terverifikasi: tidak perlu mengirim apa pun, cukup kembalikan nil.
 	if user.EmailVerifiedAt.Valid {
 		return nil
 	}
 
 	now := s.now()
+	// Hitung token verifikasi yang sudah dibuat akun ini dalam satu jam terakhir.
 	recent, err := s.repo.CountRecentTokens(
 		ctx,
 		userID,
@@ -119,9 +128,11 @@ func (s *EmailVerificationService) SendVerification(
 		now.Add(-time.Hour),
 	)
 
+	// gagal membaca database: kembalikan error ke pemanggil.
 	if err != nil {
 		return err
 	}
+	// Sudah mencapai batas per jam: catat peringatan lalu tolak dengan ErrTooManyVerifyEmails.
 	if recent >= verifyMaxPerHour {
 
 		s.log.Warn(
@@ -133,10 +144,13 @@ func (s *EmailVerificationService) SendVerification(
 		return apperror.ErrTooManyVerifyEmails
 	}
 
+	// Buat token mentah acak yang akan dikirim lewat email.
 	raw, err := newActionToken()
+	// gagal membuat token: kembalikan error ke pemanggil.
 	if err != nil {
 		return err
 	}
+	// Simpan hash token beserta waktu kedaluwarsa; token lama yang belum dipakai dibatalkan dalam satu transaksi.
 	if err := s.repo.CreateToken(
 		ctx,
 		userID,
@@ -147,6 +161,7 @@ func (s *EmailVerificationService) SendVerification(
 	); err != nil {
 		return err
 	}
+	// Kirim email berisi tautan verifikasi yang memuat token mentah dan lama berlakunya dalam jam.
 	return s.mailer.Send(
 		ctx,
 		user.Email,
@@ -164,11 +179,14 @@ func (s *EmailVerificationService) Verify(
 	ctx context.Context,
 	token string,
 ) error {
+	// Buang spasi di ujung token agar tidak salah cocok.
 	token = strings.TrimSpace(token)
 
+	// Token kosong tidak mungkin sah: tolak sebagai token tidak valid.
 	if token == "" {
 		return apperror.ErrInvalidResetToken
 	}
+	// Cocokkan hash token dengan database, lalu tandai email terverifikasi dan token terpakai.
 	return s.repo.VerifyEmail(
 		ctx,
 		hashActionToken(token),
@@ -181,15 +199,18 @@ func (s *EmailVerificationService) RequireVerified(
 	ctx context.Context,
 	userID int64,
 ) error {
-	
+
+	// Baca status verifikasi email user dari database.
 	verified, err := s.repo.IsVerified(
 		ctx,
 		userID,
 	)
 
+	// gagal membaca database: kembalikan error ke pemanggil.
 	if err != nil {
 		return err
 	}
+	// Email belum diverifikasi: tolak dengan ErrEmailNotVerified.
 	if !verified {
 		return apperror.ErrEmailNotVerified
 	}

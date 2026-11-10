@@ -11,6 +11,7 @@ import (
 // MaxNoteLength: batas panjang catatan dalam karakter (rune), setelah dipangkas spasi.
 const MaxNoteLength = 1000
 
+// NoteRepository: penyimpanan catatan per tiket. Dipenuhi repository (note_repo.go).
 type NoteRepository interface {
 	GetNote(
 		ctx context.Context,
@@ -33,6 +34,7 @@ type NoteService struct {
 	guard      QueueGuard
 }
 
+// NewNoteService membuat NoteService dengan repository. Guard owner dipasang sesudahnya lewat WithQueueGuard.
 func NewNoteService(
 	repository NoteRepository,
 ) *NoteService {
@@ -56,12 +58,15 @@ func (s *NoteService) GetNote(
 	requesterID,
 	ticketID int64,
 ) (model.TicketNote, error) {
+	// Guard belum dipasang: tolak operasi (fail closed) agar tidak ada yang lolos tanpa pengecekan owner.
 	if s.guard == nil {
 		return model.TicketNote{}, errNoQueueGuard
 	}
+	// Pastikan requester adalah owner antrian; jika bukan, guard mengembalikan error dan proses dihentikan.
 	if _, err := s.guard.GetQueue(ctx, queueID, requesterID); err != nil {
 		return model.TicketNote{}, err
 	}
+	// Ambil catatan tiket dari repository; tiket tanpa catatan menghasilkan Note null, bukan error.
 	return s.repository.GetNote(ctx, queueID, ticketID)
 }
 
@@ -74,17 +79,22 @@ func (s *NoteService) SaveNote(
 	ticketID int64,
 	note string,
 ) (model.UpsertedNote, error) {
+	// Guard belum dipasang: tolak operasi (fail closed) agar tidak ada yang lolos tanpa pengecekan owner.
 	if s.guard == nil {
 		return model.UpsertedNote{}, errNoQueueGuard
 	}
+	// Pastikan requester adalah owner antrian; jika bukan, guard mengembalikan error dan proses dihentikan.
 	if _, err := s.guard.GetQueue(ctx, queueID, requesterID); err != nil {
 		return model.UpsertedNote{}, err
 	}
 
+	// Buang spasi di awal dan akhir catatan sebelum diperiksa dan disimpan.
 	note = strings.TrimSpace(note)
+	// Catatan kosong atau lebih dari MaxNoteLength karakter (rune) tidak valid: tolak tanpa menyentuh catatan lama.
 	if note == "" || utf8.RuneCountInString(note) > MaxNoteLength {
 		return model.UpsertedNote{}, apperror.ErrInvalidNote
 	}
 
+	// Buat catatan baru bila belum ada, atau timpa catatan lama bila sudah ada.
 	return s.repository.UpsertNote(ctx, queueID, ticketID, requesterID, note)
 }

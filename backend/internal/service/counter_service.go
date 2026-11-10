@@ -17,6 +17,8 @@ const MaxCounters = 10
 // MaxCounterNameLength: panjang nama counter dalam karakter (rune), setelah dipangkas (D3).
 const MaxCounterNameLength = 30
 
+// CounterRepository: penyimpanan counter. Metode yang menerima tx dipakai di dalam transaksi yang mengunci
+// antrian. Dipenuhi repository (counter_repo.go).
 type CounterRepository interface {
 	ListWithServing(
 		ctx context.Context,
@@ -78,6 +80,7 @@ type CounterService struct {
 	notifier   EventNotifier
 }
 
+// NewCounterService membuat CounterService dengan repository dan TxRunner. Notifier opsional (variadic).
 func NewCounterService(
 	repository CounterRepository,
 	tx TxRunner,
@@ -87,6 +90,7 @@ func NewCounterService(
 		repository: repository,
 		tx:         tx,
 	}
+	// Bila ada notifier yang diberikan, pakai yang pertama sebagai notifier service ini.
 	if len(notifiers) > 0 {
 		svc.notifier = notifiers[0]
 	}
@@ -115,12 +119,15 @@ func (s *CounterService) List(
 	queueID,
 	requesterID int64,
 ) ([]model.CounterWithServing, error) {
+	// Guard belum dipasang: tolak karena pengecekan owner tidak mungkin dilakukan (fail closed).
 	if s.guard == nil {
 		return nil, errNoQueueGuard
 	}
+	// Pastikan requester adalah owner antrian lewat guard; bila gagal, kembalikan error.
 	if _, err := s.guard.GetQueue(ctx, queueID, requesterID); err != nil {
 		return nil, err
 	}
+	// Ambil daftar counter beserta nomor yang sedang dilayani dari repository.
 	return s.repository.ListWithServing(ctx, queueID)
 }
 
@@ -132,42 +139,55 @@ func (s *CounterService) Create(
 	requesterID int64,
 	name string,
 ) (model.Counter, error) {
+	// Guard belum dipasang: tolak karena pengecekan owner tidak tersedia.
 	if s.guard == nil {
 		return model.Counter{}, errNoQueueGuard
 	}
+	// Pastikan requester owner dan antrian masih buka; bila tidak, kembalikan error.
 	if err := s.ensureOpen(ctx, queueID, requesterID); err != nil {
 		return model.Counter{}, err
 	}
 
+	// Rapikan nama (pangkas spasi, cek panjang); nama kosong diizinkan untuk nama otomatis.
 	name, err := normalizeCounterName(name, true)
+	// Nama tidak valid: kembalikan error.
 	if err != nil {
 		return model.Counter{}, err
 	}
 
 	var created model.Counter
+	// Jalankan pembuatan counter di dalam transaksi agar jumlah counter bisa dihitung dengan aman.
 	err = s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
+		// Kunci baris antrian supaya pembuatan counter lain menunggu; gagal mengunci berarti error.
 		if err := s.repository.LockQueue(ctx, tx, queueID); err != nil {
 			return err
 		}
+		// Ambil daftar nama counter yang sudah ada di antrian ini.
 		names, err := s.repository.Names(ctx, tx, queueID)
+		// Gagal membaca daftar nama: batalkan transaksi.
 		if err != nil {
 			return err
 		}
+		// Jumlah counter sudah mencapai batas maksimum: tolak pembuatan counter baru.
 		if len(names) >= MaxCounters {
 			return apperror.ErrCounterLimit
 		}
+		// Nama kosong: beri nama otomatis; bila nama diisi tetapi sudah dipakai counter lain, tolak dengan ErrDuplicateCounterName.
 		if name == "" {
 			name = nextCounterName(names)
 		} else if containsName(names, name) {
 			return apperror.ErrDuplicateCounterName
 		}
+		// Simpan counter baru ke repository dengan nama final.
 		created, err = s.repository.Insert(ctx, tx, queueID, name)
 		return err
 	})
+	// Transaksi gagal: kembalikan error tanpa counter.
 	if err != nil {
 		return model.Counter{}, err
 	}
 
+	// Beri tahu klien bahwa ada counter baru dibuat.
 	s.notify(queueID, created.ID, "created")
 	return created, nil
 }
@@ -180,23 +200,31 @@ func (s *CounterService) Rename(
 	counterID int64,
 	name string,
 ) (model.Counter, error) {
+	// Guard belum dipasang: tolak karena pengecekan owner tidak tersedia.
 	if s.guard == nil {
 		return model.Counter{}, errNoQueueGuard
 	}
+	// Pastikan requester owner dan antrian masih buka; bila tidak, kembalikan error.
 	if err := s.ensureOpen(ctx, queueID, requesterID); err != nil {
 		return model.Counter{}, err
 	}
+	// Rapikan nama baru; nama kosong tidak diizinkan saat rename.
 	name, err := normalizeCounterName(name, false)
+	// Nama tidak valid: kembalikan error.
 	if err != nil {
 		return model.Counter{}, err
 	}
 
 	var renamed model.Counter
+	// Jalankan pengambilan dan perubahan nama di dalam satu transaksi.
 	err = s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
+		// Ambil counter yang akan diganti namanya; bila tidak ada, batalkan transaksi.
 		counter, err := s.repository.Get(ctx, tx, queueID, counterID)
+		// Gagal membaca counter: batalkan transaksi.
 		if err != nil {
 			return err
 		}
+		// Simpan nama baru ke repository; gagal berarti transaksi dibatalkan.
 		if err := s.repository.Rename(ctx, tx, queueID, counterID, name); err != nil {
 			return err
 		}
@@ -204,10 +232,12 @@ func (s *CounterService) Rename(
 		renamed = counter
 		return nil
 	})
+	// Transaksi gagal: kembalikan error tanpa counter.
 	if err != nil {
 		return model.Counter{}, err
 	}
 
+	// Beri tahu klien bahwa counter sudah diganti namanya.
 	s.notify(queueID, counterID, "renamed")
 	return renamed, nil
 }
@@ -220,33 +250,44 @@ func (s *CounterService) Delete(
 	requesterID,
 	counterID int64,
 ) error {
+	// Guard belum dipasang: tolak karena pengecekan owner tidak tersedia.
 	if s.guard == nil {
 		return errNoQueueGuard
 	}
+	// Releaser nomor belum dipasang: hapus counter ditolak karena nomor yang dilayani tidak bisa dilepas.
 	if s.tickets == nil {
 		return errNoTicketReleaser
 	}
+	// Pastikan requester owner dan antrian masih buka; bila tidak, kembalikan error.
 	if err := s.ensureOpen(ctx, queueID, requesterID); err != nil {
 		return err
 	}
 
+	// Jalankan pelepasan nomor dan penghapusan counter dalam satu transaksi.
 	err := s.tx.WithTx(ctx, func(tx *sqlx.Tx) error {
+		// Ambil counter yang akan dihapus; gagal berarti transaksi dibatalkan.
 		counter, err := s.repository.Get(ctx, tx, queueID, counterID)
+		// Gagal membaca counter: batalkan transaksi.
 		if err != nil {
 			return err
 		}
+		// Counter default tidak boleh dihapus: kembalikan ErrDefaultCounter.
 		if counter.IsDefault {
 			return apperror.ErrDefaultCounter
 		}
+		// Kembalikan nomor yang sedang dilayani counter ini ke antrian; gagal berarti transaksi dibatalkan.
 		if err := s.tickets.ReleaseCounterTicket(ctx, tx, queueID, counterID); err != nil {
 			return err
 		}
+		// Hapus counter dari repository sebagai langkah terakhir transaksi.
 		return s.repository.Delete(ctx, tx, queueID, counterID)
 	})
+	// Transaksi gagal: kembalikan error.
 	if err != nil {
 		return err
 	}
 
+	// Beri tahu klien bahwa counter sudah dihapus.
 	s.notify(queueID, counterID, "deleted")
 	return nil
 }
@@ -257,17 +298,22 @@ func (s *CounterService) ensureOpen(
 	queueID,
 	requesterID int64,
 ) error {
+	// Ambil antrian lewat guard; guard juga memastikan requester adalah owner.
 	queue, err := s.guard.GetQueue(ctx, queueID, requesterID)
+	// Bukan owner atau antrian tidak ada: kembalikan error.
 	if err != nil {
 		return err
 	}
+	// Antrian sudah ditutup: perubahan counter tidak boleh dilakukan.
 	if queue.Status == "closed" {
 		return apperror.ErrQueueClosed
 	}
 	return nil
 }
 
+// notify mengirim event counter_updated dengan aksi created, renamed, atau deleted.
 func (s *CounterService) notify(queueID, counterID int64, action string) {
+	// Kirim event counter_updated ke notifier berisi ID antrian, ID counter, dan jenis aksinya.
 	notifyEvent(s.notifier, queueID, EventCounterUpdated, map[string]interface{}{
 		"queue_id":   queueID,
 		"counter_id": counterID,
@@ -278,13 +324,17 @@ func (s *CounterService) notify(queueID, counterID int64, action string) {
 // normalizeCounterName memangkas spasi dan memeriksa panjang. Nama kosong diizinkan hanya bila allowEmpty
 // (buat counter tanpa nama, nama otomatis).
 func normalizeCounterName(name string, allowEmpty bool) (string, error) {
+	// Buang spasi di awal dan akhir nama.
 	name = strings.TrimSpace(name)
+	// Nama kosong setelah dipangkas: diterima hanya bila allowEmpty, selain itu error.
 	if name == "" {
+		// Nama kosong diizinkan (nama otomatis akan dibuat nanti): kembalikan nama kosong tanpa error.
 		if allowEmpty {
 			return "", nil
 		}
 		return "", apperror.ErrInvalidCounterName
 	}
+	// Panjang nama dalam karakter (rune) melebihi batas: tolak dengan ErrInvalidCounterName.
 	if utf8.RuneCountInString(name) > MaxCounterNameLength {
 		return "", apperror.ErrInvalidCounterName
 	}
@@ -293,8 +343,11 @@ func normalizeCounterName(name string, allowEmpty bool) (string, error) {
 
 // nextCounterName: "Counter N" dengan N terkecil (mulai 2) yang belum dipakai nama lain di antrian.
 func nextCounterName(names []string) string {
+	// Coba N = 2, 3, 4, ... sampai ditemukan nama "Counter N" yang belum dipakai.
 	for n := 2; ; n++ {
+		// Bentuk kandidat nama "Counter N" untuk nilai N saat ini.
 		candidate := fmt.Sprintf("Counter %d", n)
+		// Nama kandidat belum dipakai counter lain: itulah nama yang dipakai.
 		if !containsName(names, candidate) {
 			return candidate
 		}
@@ -302,7 +355,9 @@ func nextCounterName(names []string) string {
 }
 
 func containsName(names []string, name string) bool {
+	// Telusuri setiap nama yang sudah dipakai di antrian.
 	for _, n := range names {
+		// Nama ditemukan dalam daftar: langsung kembalikan true.
 		if n == name {
 			return true
 		}

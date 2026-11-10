@@ -8,6 +8,8 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// QueueRepository: penyimpanan antrian, pengaturan skip, QR, dan counter default. Dipenuhi repository
+// (queue_repo.go).
 type QueueRepository interface {
 	CreateNewQueue(
 		ctx context.Context,
@@ -77,6 +79,8 @@ type QueueRepository interface {
 		queueID int64,
 	) (model.Counter, error)
 }
+
+// SubscriptionChecker: mengecek apakah owner punya langganan aktif. Dipenuhi repository (owner_repo.go).
 type SubscriptionChecker interface {
 	IsActive(
 		ctx context.Context,
@@ -94,6 +98,8 @@ type TicketHolderChecker interface {
 	) (bool, error)
 }
 
+// QueueService: antrian (buat, ubah, tutup, prefix nomor, pengaturan skip) dan pengecekan kepemilikan.
+// Dependency yang tidak wajib dipasang lewat With... (lihat WithTicketHolderChecker, WithVerificationGuard).
 type QueueService struct {
 	repository   QueueRepository
 	subscription SubscriptionChecker
@@ -103,6 +109,8 @@ type QueueService struct {
 	verification VerificationGuard
 }
 
+// NewQueueService membuat QueueService dengan repository, pengecek langganan, dan TxRunner. Notifier opsional
+// (variadic): hanya notifiers[0] yang dipakai.
 func NewQueueService(
 	repository QueueRepository,
 	subscription SubscriptionChecker,
@@ -114,6 +122,7 @@ func NewQueueService(
 		subscription: subscription,
 		tx:           tx,
 	}
+	// Bila ada notifier yang diberikan, pakai yang pertama sebagai notifier service ini.
 	if len(notifiers) > 0 {
 		svc.notifier = notifiers[0]
 	}
@@ -137,6 +146,8 @@ func (s *QueueService) WithVerificationGuard(
 	return s
 }
 
+// CreateQueue membuat antrian baru beserta counter default. Urutan pemeriksaan: email harus terverifikasi
+// (bila verifikasi dinyalakan), lalu langganan owner harus aktif.
 func (s *QueueService) CreateQueue(
 	ctx context.Context,
 	ownerID int64,
@@ -147,24 +158,29 @@ func (s *QueueService) CreateQueue(
 	// Verifikasi email diperiksa lebih dulu daripada langganan: user yang belum terverifikasi tidak perlu
 	// diminta membayar sebelum tahu bahwa emailnya harus diverifikasi.
 	if s.verification != nil {
+		// Minta guard memastikan email owner sudah terverifikasi; bila belum, kembalikan error ke pemanggil.
 		if err := s.verification.RequireVerified(ctx, ownerID); err != nil {
 			return model.Queue{}, err
 		}
 	}
 
+	// Pastikan langganan owner aktif sebelum antrian dibuat.
 	err := s.isSubscribed(
 		ctx,
 		ownerID,
 	)
+	// Gagal cek langganan (langganan tidak aktif atau error lain): hentikan proses dan kembalikan error.
 	if err != nil {
 		return model.Queue{}, err
 	}
 
 	var queue model.Queue
+	// Jalankan pembuatan antrian di dalam transaksi supaya antrian dan counter default tersimpan bersama.
 	err = s.tx.WithTx(
 		ctx,
 		func(tx *sqlx.Tx) error {
 			var err error
+			// Simpan antrian baru lewat repository di dalam transaksi ini.
 			queue, err = s.repository.CreateNewQueue(
 				ctx,
 				tx,
@@ -172,6 +188,7 @@ func (s *QueueService) CreateQueue(
 				queueName,
 				queueDescription,
 			)
+			// Gagal menyimpan antrian: batalkan transaksi dengan mengembalikan error.
 			if err != nil {
 				return err
 			}
@@ -179,6 +196,7 @@ func (s *QueueService) CreateQueue(
 		},
 	)
 
+	// Transaksi gagal: kembalikan error ke pemanggil tanpa antrian.
 	if err != nil {
 		return model.Queue{}, err
 	}
@@ -192,15 +210,19 @@ func (s *QueueService) SetTicketPrefix(
 	requesterID int64,
 	prefix string,
 ) error {
+	// Pastikan langganan requester aktif; bila tidak, kembalikan error.
 	if err := s.isSubscribed(ctx, requesterID); err != nil {
 		return err
 	}
+	// Pastikan requester adalah owner antrian; bila bukan, kembalikan error.
 	if _, err := s.validateOwnership(ctx, queueID, requesterID); err != nil {
 		return err
 	}
+	// Simpan prefix nomor tiket yang baru ke antrian.
 	if err := s.repository.SetTicketPrefix(ctx, queueID, prefix); err != nil {
 		return err
 	}
+	// Kirim event queue_updated agar klien yang terhubung tahu prefix sudah berubah.
 	notifyEvent(s.notifier, queueID, EventQueueUpdated, map[string]interface{}{"queue_id": queueID})
 	return nil
 }
@@ -212,6 +234,7 @@ func (s *QueueService) CreateDefaultCounter(
 	queueID int64,
 	name string,
 ) (model.Counter, error) {
+	// Teruskan pembuatan counter default ke repository dan kembalikan hasilnya apa adanya.
 	return s.repository.CreateDefaultCounter(ctx, queueID, name)
 }
 
@@ -220,20 +243,25 @@ func (s *QueueService) GetCounterByQueue(
 	ctx context.Context,
 	queueID int64,
 ) (model.Counter, error) {
+	// Ambil counter milik antrian dari repository dan kembalikan hasilnya.
 	return s.repository.GetCounterByQueue(ctx, queueID)
 }
 
+// GetQueue mengembalikan antrian hanya untuk owner-nya. Dipakai sebagai QueueGuard oleh service lain.
+// Selain owner: ErrNotFound.
 func (s *QueueService) GetQueue(
 	ctx context.Context,
 	queueID,
 	requesterID int64,
 ) (model.Queue, error) {
 
+	// Ambil antrian sekaligus pastikan requester adalah owner-nya.
 	queue, err := s.validateOwnership(
 		ctx,
 		queueID,
 		requesterID,
 	)
+	// Bukan owner atau antrian tidak ditemukan: kembalikan error.
 	if err != nil {
 		return model.Queue{}, err
 	}
@@ -249,27 +277,34 @@ func (s *QueueService) ViewQueue(
 	requesterID int64,
 ) (model.Queue, bool, error) {
 
+	// Ambil data antrian dari repository.
 	queue, err := s.repository.GetQueueByID(
 		ctx,
 		queueID,
 	)
+	// Antrian tidak bisa dibaca: kembalikan error.
 	if err != nil {
 		return model.Queue{}, false, err
 	}
 
+	// Requester adalah owner antrian: kembalikan antrian dengan isOwner true.
 	if requesterID == queue.OwnerID {
 		return queue, true, nil
 	}
 
+	// Cek pemegang tiket hanya bila checker dipasang (lihat WithTicketHolderChecker).
 	if s.holders != nil {
+		// Periksa apakah requester pernah punya tiket di antrian ini, dalam status apa pun.
 		isHolder, err := s.holders.HasAnyTicket(
 			ctx,
 			queueID,
 			requesterID,
 		)
+		// Pengecekan tiket gagal: kembalikan error.
 		if err != nil {
 			return model.Queue{}, false, err
 		}
+		// Requester pemegang tiket: boleh membaca antrian, tetapi bukan owner.
 		if isHolder {
 			return queue, false, nil
 		}
@@ -284,13 +319,16 @@ func (s *QueueService) GetActiveQueue(
 	queueID int64,
 ) (model.Queue, error) {
 
+	// Ambil antrian dari repository untuk dicek statusnya.
 	queue, err := s.repository.GetQueueByID(
 		ctx,
 		queueID,
 	)
+	// Antrian tidak ditemukan atau gagal dibaca: kembalikan error.
 	if err != nil {
 		return model.Queue{}, err
 	}
+	// Status antrian bukan "active" (sudah ditutup): kembalikan ErrQueueClosed.
 	if queue.Status != "active" {
 		return model.Queue{}, apperror.ErrQueueClosed
 	}
@@ -298,26 +336,32 @@ func (s *QueueService) GetActiveQueue(
 	return queue, nil
 }
 
+// ListQueue mengembalikan daftar antrian milik requester. Tanpa langganan aktif, hanya antrian yang masih
+// aktif yang dikembalikan.
 func (s *QueueService) ListQueue(
 	ctx context.Context,
 	requesterID int64,
 ) ([]model.Queue, error) {
 
+	// Cek langganan requester; hasilnya (nil bila aktif, error bila tidak) menentukan filter di bawah.
 	err := s.isSubscribed(
 		ctx,
 		requesterID,
 	)
 
 	activeOnly := true
+	// Langganan aktif (err nil): tampilkan semua antrian, termasuk yang sudah ditutup.
 	if err == nil {
 		activeOnly = false
 	}
 
+	// Ambil daftar antrian milik requester sesuai filter activeOnly.
 	queues, err := s.repository.ListQueueByOwner(
 		ctx,
 		requesterID,
 		activeOnly,
 	)
+	// Gagal mengambil daftar: kembalikan slice kosong beserta error.
 	if err != nil {
 		return []model.Queue{}, err
 	}
@@ -325,6 +369,7 @@ func (s *QueueService) ListQueue(
 	return queues, nil
 }
 
+// UpdateQueue mengubah nama dan deskripsi antrian (owner dengan langganan aktif), lalu mengirim event queue_updated.
 func (s *QueueService) UpdateQueue(
 	ctx context.Context,
 	queueID,
@@ -333,23 +378,28 @@ func (s *QueueService) UpdateQueue(
 	queueDescription string,
 ) error {
 
+	// Pastikan langganan requester aktif sebelum mengubah antrian.
 	err := s.isSubscribed(
 		ctx,
 		requesterID,
 	)
+	// Langganan tidak aktif atau error: hentikan proses.
 	if err != nil {
 		return err
 	}
 
+	// Pastikan requester adalah owner antrian.
 	_, err = s.validateOwnership(
 		ctx,
 		queueID,
 		requesterID,
 	)
+	// Bukan owner atau antrian tidak ada: hentikan proses.
 	if err != nil {
 		return err
 	}
 
+	// Simpan nama dan deskripsi baru ke repository.
 	err = s.repository.UpdateQueueDetails(
 		ctx,
 		queueID,
@@ -357,9 +407,11 @@ func (s *QueueService) UpdateQueue(
 		queueDescription,
 	)
 
+	// Penyimpanan gagal: kembalikan error tanpa mengirim event.
 	if err != nil {
 		return err
 	}
+	// Beri tahu klien bahwa antrian sudah berubah.
 	notifyEvent(
 		s.notifier,
 		queueID,
@@ -377,9 +429,11 @@ func (s *QueueService) GetSkipSettings(
 	queueID,
 	requesterID int64,
 ) (model.SkipSettings, error) {
+	// Pastikan requester adalah owner; bila bukan, kembalikan error.
 	if _, err := s.validateOwnership(ctx, queueID, requesterID); err != nil {
 		return model.SkipSettings{}, err
 	}
+	// Ambil pengaturan skip antrian dari repository.
 	return s.repository.GetSkipSettings(ctx, queueID)
 }
 
@@ -390,60 +444,78 @@ func (s *QueueService) UpdateSkipSettings(
 	requesterID int64,
 	settings model.SkipSettings,
 ) (model.SkipSettings, error) {
+	// Pastikan langganan requester aktif.
 	if err := s.isSubscribed(ctx, requesterID); err != nil {
 		return model.SkipSettings{}, err
 	}
+	// Pastikan requester adalah owner dan ambil data antrian untuk dicek statusnya.
 	queue, err := s.validateOwnership(ctx, queueID, requesterID)
+	// Bukan owner atau antrian tidak ada: hentikan proses.
 	if err != nil {
 		return model.SkipSettings{}, err
 	}
+	// Antrian sudah ditutup: pengaturan skip tidak boleh diubah lagi.
 	if queue.Status == "closed" {
 		return model.SkipSettings{}, apperror.ErrQueueClosed
 	}
 
+	// Periksa mode skip yang dipilih dan terapkan aturan untuk tiap mode.
 	switch settings.Fallback {
+	// Mode remove atau back tidak memakai N, jadi N dikosongkan (0).
 	case model.SkipFallbackRemove, model.SkipFallbackBack:
 		settings.N = 0
+	// Mode after_n wajib punya N minimal 1.
 	case model.SkipFallbackAfterN:
+		// N kurang dari 1 untuk mode after_n tidak valid.
 		if settings.N < 1 {
 			return model.SkipSettings{}, apperror.ErrInvalidSkipSettings
 		}
+	// Mode tidak dikenal: tolak dengan ErrInvalidSkipSettings.
 	default:
 		return model.SkipSettings{}, apperror.ErrInvalidSkipSettings
 	}
+	// Batas kembali harus minimal 1; nilai lebih kecil tidak valid.
 	if settings.MaxReturns < 1 {
 		return model.SkipSettings{}, apperror.ErrInvalidSkipSettings
 	}
 
+	// Simpan pengaturan skip baru; bila gagal, kembalikan error.
 	if err := s.repository.UpdateSkipSettings(ctx, queueID, settings); err != nil {
 		return model.SkipSettings{}, err
 	}
 	return settings, nil
 }
 
+// CloseQueue menutup antrian (hanya owner). Setelah ditutup, antrian tidak menerima tiket baru dan
+// tidak bisa diubah lagi; event queue_closed dikirim.
 func (s *QueueService) CloseQueue(
 	ctx context.Context,
 	queueID,
 	requesterID int64,
 ) error {
 
+	// Pastikan requester adalah owner antrian.
 	_, err := s.validateOwnership(
 		ctx,
 		queueID,
 		requesterID,
 	)
+	// Bukan owner atau antrian tidak ada: hentikan proses.
 	if err != nil {
 		return err
 	}
 
+	// Tandai antrian sebagai ditutup di repository.
 	err = s.repository.CloseQueue(
 		ctx,
 		queueID,
 	)
+	// Gagal menutup antrian: kembalikan error tanpa mengirim event.
 	if err != nil {
 		return err
 	}
 
+	// Beri tahu klien bahwa antrian sudah ditutup.
 	notifyEvent(
 		s.notifier,
 		queueID,
@@ -456,38 +528,46 @@ func (s *QueueService) CloseQueue(
 	return nil
 }
 
+// isSubscribed memastikan langganan owner aktif; bila tidak, ErrSubscriptionInactive.
 func (s *QueueService) isSubscribed(
 	ctx context.Context,
 	ownerID int64,
 ) error {
 
+	// Tanyakan ke pengecek langganan apakah owner punya langganan aktif.
 	isSubscribed, err := s.subscription.IsActive(
 		ctx,
 		ownerID,
 	)
 
+	// Pengecekan langganan gagal: kembalikan error.
 	if err != nil {
 		return err
 	}
 
+	// Langganan tidak aktif: kembalikan ErrSubscriptionInactive.
 	if !isSubscribed {
 		return apperror.ErrSubscriptionInactive
 	}
 	return nil
 }
 
+// validateOwnership mengambil antrian dan memastikan requester adalah owner-nya; selain itu ErrNotFound.
 func (s *QueueService) validateOwnership(
 	ctx context.Context,
 	queueID,
 	requesterID int64,
 ) (model.Queue, error) {
+	// Ambil antrian dari repository berdasarkan ID-nya.
 	queue, err := s.repository.GetQueueByID(
 		ctx,
 		queueID,
 	)
+	// Antrian tidak ditemukan atau gagal dibaca: kembalikan error.
 	if err != nil {
 		return model.Queue{}, err
 	}
+	// Requester bukan owner: sembunyikan keberadaan antrian dengan ErrNotFound.
 	if requesterID != queue.OwnerID {
 		return model.Queue{}, apperror.ErrNotFound
 	}
