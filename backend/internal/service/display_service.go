@@ -15,7 +15,8 @@ const (
 	DisplayMaxCount = 10
 	// DisplayDefaultUpcoming dipakai saat layar pertama kali diaktifkan tanpa jumlah.
 	DisplayDefaultUpcoming = 5
-	displayTokenBytes      = 24
+	// displayTokenBytes: jumlah byte acak untuk token layar (24 byte menjadi 32 karakter base64url).
+	displayTokenBytes = 24
 	// DisplayCacheTTL: umur snapshot di cache. Event membatalkannya lebih cepat; TTL hanya jaring pengaman.
 	DisplayCacheTTL = time.Second
 

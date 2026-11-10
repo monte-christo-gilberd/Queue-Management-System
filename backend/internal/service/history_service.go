@@ -257,13 +257,15 @@ func clampLimit(limit, def, max int) int {
 	}
 }
 
-// Kursor daftar antrian: "<closed_at dalam mikrodetik>.<id>". Mikrodetik karena itu presisi Postgres, jadi
-// perbandingan keyset tidak meleset.
+// encodeQueueCursor membuat kursor daftar antrian: "<closed_at dalam mikrodetik>.<id>". Mikrodetik karena itu
+// presisi Postgres, jadi perbandingan keyset tidak meleset.
 func encodeQueueCursor(closedAt time.Time, id int64) string {
 	// Format kursor: mikrodetik waktu dan id dipisah titik.
 	return fmt.Sprintf("%d.%d", closedAt.UnixMicro(), id)
 }
 
+// decodeQueueCursor mengubah kursor string kembali menjadi posisi keyset. Kursor kosong menghasilkan nil
+// (mulai dari halaman pertama). Format yang salah: ErrInvalidCursor.
 func decodeQueueCursor(cursor string) (*model.HistoryQueueCursor, error) {
 	// Kursor kosong: tidak ada posisi awal, kembalikan nil agar query mulai dari halaman pertama.
 	if cursor == "" {
@@ -287,7 +289,8 @@ func decodeQueueCursor(cursor string) (*model.HistoryQueueCursor, error) {
 	return &model.HistoryQueueCursor{ClosedAt: time.UnixMicro(micro).UTC(), ID: id}, nil
 }
 
-// Kursor daftar nomor: nomor tiket terakhir yang sudah dikirim.
+// decodeTicketCursor mengubah kursor daftar nomor (nomor tiket terakhir yang sudah dikirim) menjadi integer.
+// Kursor kosong menghasilkan 0 (mulai dari awal). Bukan angka atau negatif: ErrInvalidCursor.
 func decodeTicketCursor(cursor string) (int, error) {
 	// Kursor kosong: mulai dari awal, yaitu posisi nol.
 	if cursor == "" {

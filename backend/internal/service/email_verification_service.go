@@ -13,6 +13,7 @@ const (
 	// PurposeEmailVerify: nilai kolom user_action_tokens.purpose untuk token verifikasi email.
 	PurposeEmailVerify = "email_verify"
 
+	// verifyTokenTTL: masa berlaku token verifikasi email.
 	verifyTokenTTL = 24 * time.Hour
 	// Batas per akun per jam, di atas batas rute di nginx: satu akun tidak bisa membanjiri kotak masuk sendiri
 	// (atau alamat yang salah ketik) dengan email verifikasi.

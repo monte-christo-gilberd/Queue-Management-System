@@ -21,10 +21,12 @@ const (
 	// PurposePasswordReset: nilai kolom user_action_tokens.purpose untuk token reset password.
 	PurposePasswordReset = "password_reset"
 
+	// resetTokenTTL: masa berlaku token reset password.
 	resetTokenTTL = 30 * time.Minute
 	// Batas per akun, di atas batas per IP di nginx: satu orang tidak bisa membanjiri kotak masuk korban.
 	resetMaxPerHour = 3
 
+	// minPasswordRunes: panjang minimal password dalam karakter (rune).
 	minPasswordRunes = 8
 	// bcrypt hanya memakai 72 byte pertama (dan menolak lebih dari itu).
 	maxPasswordBytes = 72

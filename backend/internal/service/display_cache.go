@@ -134,6 +134,8 @@ func (c *DisplayCache) Invalidate(queueID int64) {
 	delete(c.byQueue, queueID)
 }
 
+// store menyimpan snapshot ke cache untuk token dan antrian itu. Dipanggil Get saat mutex sudah terkunci.
+// Bila cache sudah melebihi 1000 entri, entri yang kedaluwarsa dibuang lebih dulu.
 func (c *DisplayCache) store(token string, queueID int64, snap model.DisplaySnapshot) {
 	// Cache sudah terlalu besar: buang dulu entri yang sudah kedaluwarsa agar memori tidak terus membesar.
 	if len(c.byToken) > 1000 {

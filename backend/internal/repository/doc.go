@@ -11,8 +11,8 @@
 //   - Metode yang menerima *sqlx.Tx dipakai service di dalam transaksi (lihat database.WithTx). Metode
 //     tanpa tx membaca langsung dari *sqlx.DB.
 //   - Baris yang tidak ditemukan diterjemahkan ke apperror.ErrNotFound (sql.ErrNoRows tidak keluar dari
-//     package ini). Pelanggaran UNIQUE diterjemahkan ke apperror.ErrDuplicate, dan dibaca dari kode error
-//     pgconn.
+//     package ini). Pelanggaran UNIQUE dibaca dari kode error pgconn (23505), lalu diterjemahkan ke
+//     apperror.ErrDuplicate, atau ErrDuplicateCounterName untuk nama counter yang bentrok.
 //
 // Isinya:
 //   - queue_repo.go: QueueRepository, yaitu antrian, pengaturan skip, QR, dan counter default.

@@ -6,8 +6,10 @@
 //     Handler yang menerjemahkan error itu menjadi kode HTTP.
 //   - Kepemilikan dicek di service. Owner antrian memakai QueueGuard (GetQueue). Non-owner mendapat
 //     apperror.ErrNotFound, bukan ErrForbidden, supaya keberadaan antrian tidak bocor.
-//   - Fail closed: service yang butuh QueueGuard, TicketHolderChecker, atau TicketReleaser tetapi belum
-//     dipasang akan menolak operasi (errNoQueueGuard dan sejenisnya), bukan melewatinya diam-diam.
+//   - Fail closed: service yang butuh QueueGuard, AccountFinder, atau CounterTicketReleaser tetapi belum
+//     dipasang akan menolak operasi (errNoQueueGuard, errNoAccountFinder, errNoTicketReleaser), bukan
+//     melewatinya diam-diam. Pengecualian: TicketHolderChecker yang tidak dipasang berarti pemegang tiket
+//     tidak mendapat akses baca, dan VerificationGuard yang tidak dipasang berarti tidak ada pemeriksaan.
 //   - Setiap perubahan yang menyentuh beberapa tabel dijalankan dalam satu transaksi lewat TxRunner.
 //   - Setelah perubahan berhasil, service mengirim event lewat EventNotifier supaya layar yang terbuka
 //     (SSE) ikut diperbarui. Notifier boleh nil (mis. di tes), jadi notifyEvent diam saja bila tidak dipasang.

@@ -181,6 +181,7 @@ func (s *CounterService) Create(
 		if name == "" {
 			name = nextCounterName(names)
 		} else if containsName(names, name) {
+			// Nama yang diisi owner sudah dipakai counter lain di antrian ini: tolak.
 			return apperror.ErrDuplicateCounterName
 		}
 		// Simpan counter baru ke repository dengan nama final.
@@ -359,6 +360,7 @@ func nextCounterName(names []string) string {
 	}
 }
 
+// containsName melaporkan apakah name sudah ada di daftar names. Pencocokan persis, jadi huruf besar dan kecil dibedakan.
 func containsName(names []string, name string) bool {
 	// Telusuri setiap nama yang sudah dipakai di antrian.
 	for _, n := range names {
