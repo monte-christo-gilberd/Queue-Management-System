@@ -2,9 +2,12 @@
  * Profile: halaman profil user (nama, email, foto, notifikasi, password, dan status langganan untuk owner).
  *
  * Dipakai oleh : app/(owner)/profile/index.tsx
- * Bergantung   : ui/ConfirmModal, ui/Toast, ui/AppButton, ui/FormField, ui/Icon, hooks/use-avatar-source, hooks/use-is-wide, utils/profile (USERNAME_MAX), expo-image
+ * Bergantung   : layout/ResponsiveScreenLayout, ui/ConfirmModal, ui/ModalCard, ui/Toast, ui/AppButton, ui/FormField, ui/Icon,
+ *                hooks/use-avatar-source (tipe), hooks/use-is-wide, utils/profile (USERNAME_MAX), utils/avatar-preview,
+ *                utils/cn, constants/app-theme, expo-image, expo-router
  * Peran        : owner dan customer (kartu langganan hanya untuk owner; ajakan "Jadi Owner" untuk user biasa)
  * Catatan      : banner verifikasi email hanya tampil bila `emailVerified` false; tombol simpan dan validasi nama ada di route.
+ *                Foto profil di kartu kiri bisa diketuk untuk melihatnya diperbesar di popup; tanpa foto tidak bisa diketuk.
  */
 import { Image } from 'expo-image';
 import { useState } from 'react';
@@ -14,10 +17,11 @@ import { useErrorToast } from '@/components/ui/Toast';
 import type { AvatarSource } from '@/hooks/use-avatar-source';
 import { USERNAME_MAX } from '@/utils/profile';
 import { router } from 'expo-router';
-import { Pressable, Switch, Text, View } from 'react-native';
+import { Pressable, Switch, Text, useWindowDimensions, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
 import { useIsWide } from '@/hooks/use-is-wide';
+import { getAvatarPreviewSize } from '@/utils/avatar-preview';
 import { cn } from '@/utils/cn';
 import ResponsiveScreenLayout, {
   type OwnerMenuItem,
@@ -26,6 +30,7 @@ import ResponsiveScreenLayout, {
 import { AppButton } from '@/components/ui/AppButton';
 import { FormField } from '@/components/ui/FormField';
 import { PersonIcon } from '@/components/ui/Icon';
+import { ModalCard } from '@/components/ui/ModalCard';
 
 /** Props halaman profil user. */
 export type ProfileProps = {
@@ -55,29 +60,29 @@ export type ProfileProps = {
   errorMessage?: string;
   /** Pesan sukses di bawah tombol simpan (mis. "Perubahan tersimpan"). */
   savedMessage?: string;
-  /** Kartu langganan hanya untuk owner. */
+  /** true bila user adalah owner; hanya owner yang melihat kartu status langganan. */
   isOwner: boolean;
   /** User biasa (profil sudah dimuat, bukan owner): tampilkan ajakan "Jadi Owner" ke halaman Subscription. */
   canBecomeOwner?: boolean;
-  /** Status langganan owner: true berarti aktif (badge "Aktif"), false berarti "Belum Bayar". Hanya dipakai bila `isOwner`. Default false. */
+  /** Status langganan owner: true berarti aktif (badge "Aktif"), false berarti belum aktif atau sudah habis (badge "Belum Bayar"). Hanya dipakai bila `isOwner`. Default false. */
   subscriptionPaid?: boolean;
-  /** Keterangan di bawah status, mis. "Aktif hingga 1 Feb 2025". */
+  /** Keterangan di bawah status dari route, mis. "Aktif hingga 1 Feb 2025". */
   subscriptionDescription?: string;
-  /** Foto profil; null = tampilkan ikon. */
+  /** Sumber foto profil untuk tampilan kecil dan popup; null atau kosong berarti tampilkan ikon orang. */
   avatarSource?: AvatarSource | null;
   /** Server menyimpan foto untuk user ini (menentukan tombol Hapus Foto). */
   hasAvatar?: boolean;
   /** Unggah atau hapus foto sedang berjalan. */
   avatarBusy?: boolean;
-    /** Dipanggil saat tombol Unggah atau Ganti Foto ditekan; pemilihan berkas dilakukan route. Opsional. */
+  /** Dipanggil saat tombol Unggah atau Ganti Foto ditekan; pemilihan berkas dilakukan route. Opsional. */
   onPickAvatar?: () => void;
   /** Dipanggil setelah user mengonfirmasi hapus foto. */
   onDeleteAvatar?: () => void;
-  /** Email notifikasi tiket menyala (dari server). */
+  /** Nilai switch notifikasi email tiket (dari server). Default true. */
   emailNotifications?: boolean;
-    /** true saat perubahan notifikasi email sedang disimpan; switch dinonaktifkan. Default false. */
+  /** true saat perubahan notifikasi email sedang disimpan; switch dinonaktifkan. Default false. */
   emailNotificationsBusy?: boolean;
-    /** Dipanggil dengan nilai baru saat switch notifikasi email diubah. Opsional. */
+  /** Dipanggil dengan nilai baru saat switch notifikasi email diubah. Opsional. */
   onToggleEmailNotifications?: (enabled: boolean) => void;
   /** Minta tautan buat password baru dikirim ke email akun (item 9). */
   onPressChangePassword?: () => void;
@@ -115,10 +120,17 @@ export default function Profile({
   onPickAvatar,
   onDeleteAvatar,
 }: ProfileProps) {
+  // Galat dari route ditampilkan sebagai toast.
   useErrorToast(errorMessage);
   // Hapus foto selalu lewat konfirmasi; onDeleteAvatar baru dipanggil setelah pengguna memastikan.
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // true saat popup foto yang diperbesar terbuka; hanya bisa dibuka bila foto ada (lihat avatar di bawah).
+  const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
+  // Layar lebar memakai dua kolom (lihat JSX).
   const isWide = useIsWide();
+  // Sisi foto besar dihitung dari ukuran jendela agar selalu muat di dalam popup, di layar sempit maupun pendek.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const avatarPreviewSize = getAvatarPreviewSize(windowWidth, windowHeight);
 
   // Layar lebar: kolom kiri (foto dan status) dan kanan (form); layar sempit: satu kolom bertumpuk.
   return (
@@ -129,24 +141,32 @@ export default function Profile({
       activeTab="profile">
       <View className={isWide ? 'flex-row items-start gap-6' : 'gap-4'}>
         <View className={cn('gap-4', isWide && 'w-80')}>
-          {/* Foto profil: hanya terlihat oleh pemiliknya. Tanpa foto, tampil ikon. */}
+          {/* Kartu foto profil: tampil untuk semua user yang login. Tanpa foto, tampil ikon. */}
           <View
             className={cn(
               'items-center gap-3 rounded-card bg-surface',
               isWide ? 'w-80 py-8' : 'py-3.5',
             )}>
-            <View className="h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-full bg-dark">
-              {avatarSource ? (
+            {/* Bila foto ada, avatar bisa diketuk untuk melihat foto yang diperbesar. Tanpa foto (hanya ikon) tidak ada yang diperbesar. */}
+            {avatarSource ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Perbesar foto profil"
+                onPress={() => setAvatarPreviewOpen(true)}
+                className="h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-full bg-dark">
                 <Image
                   source={avatarSource}
                   style={{ width: 88, height: 88 }}
                   contentFit="cover"
                   accessibilityLabel="Foto profil"
                 />
-              ) : (
+              </Pressable>
+            ) : (
+              <View className="h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-full bg-dark">
                 <PersonIcon size={40} color={AppColors.white} />
-              )}
-            </View>
+              </View>
+            )}
+            {/* Tombol foto: Unggah atau Ganti memilih berkas lewat route; Hapus hanya bila server menyimpan foto. */}
             <View className="flex-row gap-2">
               <AppButton
                 label={hasAvatar ? 'Ganti Foto' : 'Unggah Foto'}
@@ -167,7 +187,7 @@ export default function Profile({
             </View>
           </View>
 
-          {/* Status subscription (owner): link ke halaman Subscription selalu ada, untuk bayar atau memperpanjang. */}
+          {/* Status subscription: hanya untuk owner. Link ke halaman Subscription selalu ada; di sana owner menambah masa langganan 30 hari (tanpa pembayaran). */}
           {isOwner ? (
             <View className="gap-2 rounded-card border border-line p-4">
               <View className="flex-row items-center justify-between">
@@ -200,7 +220,7 @@ export default function Profile({
             </View>
           ) : null}
 
-          {/* Belum owner: jalan menjadi owner = bayar langganan 1 bulan pertama (halaman Subscription). */}
+          {/* Ajakan Jadi Owner: hanya untuk user biasa yang profilnya sudah dimuat (canBecomeOwner). Di halaman Subscription, 30 hari pertama langsung menjadikan akun owner (tanpa pembayaran). */}
           {canBecomeOwner ? (
             <View className="gap-2 rounded-card border border-line p-4">
               <Text className="text-[14px] font-bold text-foreground">Jadi Owner</Text>
@@ -214,7 +234,9 @@ export default function Profile({
           ) : null}
         </View>
 
+        {/* Kolom kanan: form nama dan email, banner verifikasi, simpan, notifikasi, dan password. */}
         <View className={cn('gap-4', isWide && 'flex-1')}>
+          {/* Form: nama bisa diubah; email hanya tampil (editable false). */}
           <FormField
             label="Nama User"
             value={username}
@@ -224,7 +246,7 @@ export default function Profile({
           />
           <FormField label="Email User" value={email} editable={false} placeholder="Email User" />
 
-          {/* Banner verifikasi: hanya saat server mewajibkan verifikasi dan email belum terverifikasi. */}
+          {/* Banner verifikasi: hanya tampil bila emailVerified false (profil sudah dimuat dan email belum terverifikasi). Tombol meminta kirim ulang tautan. */}
           {emailVerified ? null : (
             <View
               accessibilityRole="alert"
@@ -245,6 +267,7 @@ export default function Profile({
             </View>
           )}
 
+          {/* Tombol simpan: aktif hanya bila canSave; penyimpanan dilakukan route. */}
           <AppButton
             label="Simpan Perubahan"
             variant="dark"
@@ -252,10 +275,12 @@ export default function Profile({
             loading={loading}
             disabled={!canSave}
           />
+          {/* Pesan sukses di bawah tombol; hanya tampil bila route mengisi savedMessage. */}
           {savedMessage ? (
             <Text className="text-[13px] font-semibold text-primary">{savedMessage}</Text>
           ) : null}
 
+          {/* Notifikasi email: switch untuk menyalakan atau mematikan email tiket; dikunci selama menyimpan. */}
           <View className="gap-2 rounded-card border border-line p-4">
             <View className="flex-row items-center justify-between gap-3">
               <View className="flex-1 gap-1">
@@ -274,6 +299,7 @@ export default function Profile({
             </View>
           </View>
 
+          {/* Password: tidak ada form di sini; tombol meminta tautan buat password baru dikirim ke email akun. */}
           <View className="gap-2 rounded-card border border-line p-4">
             <Text className="text-[14px] font-bold text-foreground">Password</Text>
             <Text className="text-[12px] font-normal text-muted">
@@ -289,6 +315,7 @@ export default function Profile({
           </View>
         </View>
       </View>
+      {/* Konfirmasi hapus foto: terbuka dari tombol Hapus Foto; onDeleteAvatar baru jalan setelah "Ya, Hapus". */}
       <ConfirmModal
         visible={confirmDelete}
         title="Hapus foto profil?"
@@ -301,6 +328,38 @@ export default function Profile({
         }}
         onCancel={() => setConfirmDelete(false)}
       />
+      {/* Popup foto diperbesar: terbuka dengan mengetuk avatar; ditutup dengan tombol X di pojok kanan atas, tap di luar kartu, atau tombol back perangkat. */}
+      {/* compact: bingkai putih di sekeliling foto hanya 8 px; ukuran foto dihitung getAvatarPreviewSize dengan angka yang sama. */}
+      <ModalCard visible={avatarPreviewOpen} onRequestClose={() => setAvatarPreviewOpen(false)} compact>
+        {/* Isi hanya dirender bila foto ada, agar popup tidak kosong saat foto dihapus. */}
+        {avatarSource ? (
+          <View className="items-center">
+            {/* Pembungkus selebar foto supaya tombol X menempel di pojok foto, bukan di tepi kartu. */}
+            <View style={{ width: avatarPreviewSize, height: avatarPreviewSize }}>
+              {/* Foto tersimpan persegi 512x512, jadi ditampilkan utuh (bukan lingkaran) dengan sudut membulat. */}
+              <View
+                className="overflow-hidden rounded-card bg-dark"
+                style={{ width: avatarPreviewSize, height: avatarPreviewSize }}>
+                <Image
+                  source={avatarSource}
+                  style={{ width: avatarPreviewSize, height: avatarPreviewSize }}
+                  contentFit="cover"
+                  accessibilityLabel="Foto profil diperbesar"
+                />
+              </View>
+              {/* Latar gelap semi-transparan agar tanda X tetap terbaca di atas foto yang terang. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Tutup foto"
+                onPress={() => setAvatarPreviewOpen(false)}
+                hitSlop={8}
+                className="absolute right-2 top-2 h-8 w-8 items-center justify-center rounded-full bg-modalBackdrop">
+                <Text className="text-[20px] font-bold leading-[20px] text-white">×</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+      </ModalCard>
     </ResponsiveScreenLayout>
   );
 }

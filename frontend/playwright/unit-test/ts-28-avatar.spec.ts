@@ -203,4 +203,33 @@ test.describe('TS-28 Foto profil', () => {
     await expect(page.getByAltText('Antrian')).toBeVisible();
     await expect(page.getByAltText('Foto profil')).toHaveCount(0);
   });
+
+  test('TC-28-09 Klik foto di kartu profil memperbesarnya, X menutup, dan tanpa foto tidak bisa diklik', async ({ page, request }) => {
+    const acc = await registerAccount(request, 'avt');
+    await signInWithToken(page, acc.token, acc.username, '/profile');
+
+    // Tanpa foto, avatar hanya ikon: tidak ada tombol untuk memperbesar.
+    const enlarge = page.getByRole('button', { name: 'Perbesar foto profil' });
+    await expect(enlarge).toHaveCount(0);
+
+    await choosePhoto(page, 'Unggah Foto', { name: 'a.png', mimeType: 'image/png', buffer: makePng(300, 300) });
+    await expect(action(page, 'Hapus Foto')).toBeVisible();
+
+    // Klik avatar kiri: foto muncul di popup dan jauh lebih besar daripada avatar 88 px.
+    await enlarge.click();
+    const big = page.getByAltText('Foto profil diperbesar');
+    await expect(big).toBeVisible();
+    const box = await big.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThan(200);
+
+    // Tombol X di pojok kanan atas menutup popup.
+    await page.getByRole('button', { name: 'Tutup foto' }).click();
+    await expect(big).toHaveCount(0);
+
+    // Tap di luar kartu (latar gelap) juga menutup.
+    await enlarge.click();
+    await expect(big).toBeVisible();
+    await page.mouse.click(5, 5);
+    await expect(big).toHaveCount(0);
+  });
 });
