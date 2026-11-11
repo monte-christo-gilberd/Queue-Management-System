@@ -3,7 +3,7 @@
  *
  * Dipakai oleh : components/LoginScreen.tsx, components/RegisterScreen.tsx,
  *                components/ForgotPasswordScreen.tsx, components/ResetPasswordScreen.tsx,
- *                components/VerifyEmailScreen.tsx
+ *                components/VerifyEmailScreen.tsx, components/LinkGoogleScreen.tsx
  * Bergantung   : components/auth/LogoMark, react-native-safe-area-context
  * Catatan      : Latar gelap dan blob dekoratif tetap di luar ScrollView; hanya isi form yang bisa di-scroll.
  */
@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LogoMark } from '@/components/auth/LogoMark';
 
+/** Props AuthLayout. */
 type AuthLayoutProps = {
   /** Judul besar di bawah logo. */
   title: string;
@@ -43,6 +44,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
 
       {/* SafeAreaView dari safe-area-context tidak dibungkus NativeWind → style. */}
       <SafeAreaView style={{ flex: 1 }}>
+        {/* keyboardShouldPersistTaps="handled": tombol tetap bisa ditekan sekali saat keyboard terbuka. */}
         <ScrollView
           contentContainerClassName="grow items-center justify-center p-6"
           keyboardShouldPersistTaps="handled"

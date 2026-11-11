@@ -2,7 +2,8 @@
  * LoginScreen: layar login dengan email atau username dan password.
  *
  * Dipakai oleh : app/index.tsx
- * Bergantung   : ui/Toast (useErrorToast), components/auth/* (AuthLayout, AuthInput, AuthButtons), expo-router
+ * Bergantung   : ui/Toast (useErrorToast), ui/Icon, constants/app-theme, expo-router,
+ *                components/auth/* (AuthLayout, AuthInput, AuthButtons, GoogleSignInSection)
  * Peran        : publik
  * Catatan      : tombol Google (GoogleSignInSection) menangani loginnya sendiri dan tersembunyi bila Google belum dikonfigurasi;
  *                logika submit dan navigasi login biasa ada di route.
@@ -55,6 +56,7 @@ export default function LoginScreen({
   loading,
   errorMessage,
 }: LoginScreenProps) {
+  // Tampilkan galat dari route sebagai toast tiap pesan berubah.
   useErrorToast(errorMessage);
   return (
     <AuthLayout title="Queue Management System" subtitle="Kelola antrian Anda dari mana saja">
@@ -75,14 +77,17 @@ export default function LoginScreen({
         showPasswordToggle
       />
 
+      {/* Jarak ekstra di atas tombol utama supaya terpisah dari field. */}
       <View className="mt-2.5">
         <PrimaryAuthButton label="Login" onPress={onSubmit} loading={loading} />
       </View>
 
+      {/* push (bukan replace): pengguna bisa kembali ke login dari halaman lupa password. */}
       <Pressable onPress={onForgotPassword ?? (() => router.push('/forgot-password'))} className="self-end">
         <Text className="text-[12px] text-placeholder">Forgot password?</Text>
       </Pressable>
 
+      {/* Bagian ini tidak merender apa pun bila Google belum dikonfigurasi. */}
       <GoogleSignInSection next={next} />
 
       <Pressable onPress={() => router.push(registerHref as Href)} className="mt-2 items-center">

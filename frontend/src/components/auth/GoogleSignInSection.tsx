@@ -51,22 +51,28 @@ export function GoogleSignInSection(props: GoogleSignInSectionProps) {
 
 /** Bagian dalam: memanggil hook Google. Hanya dirender bila client ID platform ada. */
 function GoogleSignInEnabled({ label, next }: GoogleSignInSectionProps) {
+  // Aksi login Google dari store dan fungsi toast untuk pesan galat.
   const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
   const { show } = useToast();
   const [loading, setLoading] = useState(false);
 
+  // Dipanggil hook Google dengan ID token setelah pengguna memilih akun.
   const onIdToken = useCallback(
     async (idToken: string) => {
+      // Kunci tombol selama login berjalan.
       setLoading(true);
       try {
+        // Server menukar ID token dengan sesi, atau meminta penautan akun.
         const result = await loginWithGoogle(idToken);
         if (result === 'link_required') {
           // Email sudah terdaftar dengan password: minta konfirmasi password sebelum menautkan.
           router.push((next ? `/link-google?next=${encodeURIComponent(next)}` : '/link-google') as Href);
         } else {
+          // replace (bukan push) agar tombol kembali tidak membawa pengguna ke halaman login lagi.
           router.replace((next || DEFAULT_AFTER_LOGIN) as '/dashboard');
         }
       } catch (e) {
+        // Galat API diubah ke pesan ramah lewat toast.
         show(describeGoogleError(e));
       } finally {
         setLoading(false);
@@ -75,6 +81,7 @@ function GoogleSignInEnabled({ label, next }: GoogleSignInSectionProps) {
     [loginWithGoogle, next, show],
   );
 
+  // ready: permintaan auth Google siap dipakai. signIn: membuka layar pilih akun Google.
   const { ready, signIn } = useGoogleSignIn((t) => void onIdToken(t), show);
 
   // Membuka layar Google bisa melempar (mis. WebCrypto/popup diblokir). Tangkap supaya jadi toast, bukan layar galat.
@@ -86,6 +93,7 @@ function GoogleSignInEnabled({ label, next }: GoogleSignInSectionProps) {
     }
   }, [signIn, show]);
 
+  // Tombol dikunci sampai permintaan siap atau saat login sedang berjalan.
   return (
     <>
       <OrDivider />

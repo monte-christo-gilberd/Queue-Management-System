@@ -28,6 +28,8 @@ export type ResetPasswordScreenProps = {
   onChangePassword: (value: string) => void;
   /** Dipanggil setiap konfirmasi password berubah, dengan nilai terbaru. */
   onChangeConfirmPassword: (value: string) => void;
+  /** Dipanggil saat field konfirmasi password kehilangan fokus; route memakainya untuk mulai menampilkan galat konfirmasi. */
+  onBlurConfirmPassword?: () => void;
   /** Pesan galat konfirmasi, tampil sebagai teks di bawah field konfirmasi (bukan toast). Opsional. */
   confirmPasswordError?: string;
   /** Dipanggil saat tombol Simpan Password ditekan atau Enter di field konfirmasi; hanya dipakai di mode form. */
@@ -45,13 +47,16 @@ export default function ResetPasswordScreen({
   confirmPassword,
   onChangePassword,
   onChangeConfirmPassword,
+  onBlurConfirmPassword,
   confirmPasswordError,
   onSubmit,
   loading,
   errorMessage,
 }: ResetPasswordScreenProps) {
+  // Hanya galat dari route yang menjadi toast; galat konfirmasi tampil inline di bawah field.
   useErrorToast(errorMessage);
 
+  // Tautan tidak bisa dipakai (token hilang, salah, kedaluwarsa, atau sudah dipakai): arahkan untuk meminta tautan baru.
   if (mode === 'invalid') {
     return (
       <AuthLayout title="Tautan Tidak Berlaku" subtitle="Tautan salah, kedaluwarsa, atau sudah dipakai">
@@ -65,6 +70,7 @@ export default function ResetPasswordScreen({
     );
   }
 
+  // Password sudah diganti: arahkan ke login, sesi di perangkat lain sudah dikeluarkan oleh server.
   if (mode === 'done') {
     return (
       <AuthLayout title="Password Diganti" subtitle="Masuk dengan password baru Anda">
@@ -78,6 +84,7 @@ export default function ResetPasswordScreen({
     );
   }
 
+  // Mode form: dua field password dan tombol simpan. Enter di field konfirmasi sama dengan menekan tombol.
   return (
     <AuthLayout title="Buat Password Baru" subtitle="Minimal 8 karakter">
       <AuthInput
@@ -93,10 +100,12 @@ export default function ResetPasswordScreen({
         placeholder="KONFIRMASI PASSWORD"
         value={confirmPassword}
         onChangeText={onChangeConfirmPassword}
+        onBlur={onBlurConfirmPassword}
         secureTextEntry
         showPasswordToggle
         onSubmitEditing={onSubmit}
       />
+      {/* Pesan inline, bukan toast: tampil setelah blur atau submit dan hilang saat isinya sudah sama. */}
       {confirmPasswordError ? <Text className="text-[12px] text-white">{confirmPasswordError}</Text> : null}
 
       <View className="mt-2.5">

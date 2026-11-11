@@ -42,6 +42,7 @@ export default function LinkGoogleScreen({
   loading,
   errorMessage,
 }: LinkGoogleScreenProps) {
+  // Tampilkan galat dari route sebagai toast tiap pesan berubah.
   useErrorToast(errorMessage);
   return (
     <AuthLayout title="Tautkan Akun Google" subtitle="Konfirmasi password untuk melanjutkan">

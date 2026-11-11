@@ -2,7 +2,8 @@
  * AuthInput: field input gaya halaman auth (outline tipis, latar transparan, ikon di kiri).
  *
  * Dipakai oleh : components/LoginScreen.tsx, components/RegisterScreen.tsx,
- *                components/ForgotPasswordScreen.tsx, components/ResetPasswordScreen.tsx
+ *                components/ForgotPasswordScreen.tsx, components/ResetPasswordScreen.tsx,
+ *                components/LinkGoogleScreen.tsx
  * Bergantung   : components/auth/EyeToggle, constants/app-theme, utils/cn
  * Catatan      : Mode password (showPasswordToggle) hanya mengendalikan secureTextEntry; state-nya lokal.
  */
@@ -13,6 +14,7 @@ import { AppColors } from '@/constants/app-theme';
 import { cn } from '@/utils/cn';
 import { EyeToggle } from '@/components/auth/EyeToggle';
 
+/** Props AuthInput: semua props TextInput ditambah ikon dan opsi tombol mata. */
 type AuthInputProps = TextInputProps & {
   /** Ikon di kiri input (ReactNode). Ukurannya diatur pemanggil. */
   icon: React.ReactNode;
@@ -52,7 +54,7 @@ export function AuthInput({ icon, className, showPasswordToggle = false, ...inpu
   );
 }
 
-// outlineStyle hanya ada di web dan bukan utility Tailwind-RN → tetap StyleSheet.
+/** Gaya input. outlineStyle hanya ada di web dan bukan utility Tailwind-RN, jadi tetap StyleSheet. */
 const styles = StyleSheet.create({
   input: Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {},
 });

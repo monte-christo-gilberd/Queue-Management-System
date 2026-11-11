@@ -10,6 +10,7 @@ import { Animated, Easing, Platform, Pressable, StyleSheet, View } from 'react-n
 
 import { AppColors } from '@/constants/app-theme';
 
+/** Props EyeToggle. */
 type EyeToggleProps = {
   /** true = password terlihat (mata biasa), false = tersembunyi (mata dicoret). */
   visible: boolean;
@@ -17,6 +18,7 @@ type EyeToggleProps = {
   onPress: () => void;
 };
 
+/** Ketebalan garis ikon mata dalam piksel. */
 const STROKE = 1.5;
 
 /**
@@ -24,9 +26,10 @@ const STROKE = 1.5;
  * garis coret "/" digambar masuk (scaleX) dengan iris sedikit mengecil; saat terlihat garis ditarik keluar.
  */
 export function EyeToggle({ visible, onPress }: EyeToggleProps) {
+  // Nilai animasi: 0 = terlihat, 1 = tersembunyi. Disimpan di ref agar tidak dibuat ulang tiap render.
   const open = useRef(new Animated.Value(visible ? 1 : 0)).current;
 
-  // Web tidak mendukung useNativeDriver, jadi animasi di web berjalan di sisi JS.
+  // Jalankan animasi tiap visible berubah. Web tidak mendukung useNativeDriver, jadi animasi di web berjalan di sisi JS.
   useEffect(() => {
     Animated.timing(open, {
       toValue: visible ? 1 : 0,
@@ -36,7 +39,7 @@ export function EyeToggle({ visible, onPress }: EyeToggleProps) {
     }).start();
   }, [visible, open]);
 
-  // 0 = terlihat (tanpa coretan), 1 = tersembunyi (coretan penuh)
+  // Nilai animasi dipetakan ke skala coretan (0 = terlihat tanpa coretan, 1 = tersembunyi dengan coretan penuh) dan skala iris.
   const slash = open.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
   const iris = open.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] });
 
@@ -63,6 +66,7 @@ export function EyeToggle({ visible, onPress }: EyeToggleProps) {
   );
 }
 
+/** Gaya bagian-bagian ikon mata (kotak, kelopak, iris, garis coret). */
 const styles = StyleSheet.create({
   box: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   lidWrap: {

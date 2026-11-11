@@ -2,7 +2,8 @@
  * AuthButtons: kumpulan tombol dan pemisah untuk halaman auth (tombol utama, pemisah "atau", tombol Google).
  *
  * Dipakai oleh : components/LoginScreen.tsx, components/RegisterScreen.tsx, components/ForgotPasswordScreen.tsx,
- *                components/ResetPasswordScreen.tsx, components/VerifyEmailScreen.tsx
+ *                components/ResetPasswordScreen.tsx, components/VerifyEmailScreen.tsx, components/LinkGoogleScreen.tsx,
+ *                components/auth/GoogleSignInSection.tsx
  * Bergantung   : expo-image, constants/app-theme, assets/images/google-g.svg
  * Catatan      : Logo G dimuat lewat require (SVG sebagai modul).
  */
@@ -15,6 +16,7 @@ import { AppColors } from '@/constants/app-theme';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const GOOGLE_G = require('../../../assets/images/google-g.svg');
 
+/** Props tombol utama auth. */
 type PrimaryAuthButtonProps = {
   /** Teks tombol; tampil dalam huruf kapital lewat gaya. */
   label: string;
@@ -26,6 +28,7 @@ type PrimaryAuthButtonProps = {
 
 /** Tombol utama: persegi membulat SOLID PUTIH, teks tebal warna aksen biru. */
 export function PrimaryAuthButton({ label, onPress, loading = false }: PrimaryAuthButtonProps) {
+  // disabled saat loading mencegah submit ganda; spinner menggantikan teks supaya lebar tombol tetap.
   return (
     <Pressable
       onPress={onPress}
@@ -53,6 +56,7 @@ export function OrDivider() {
   );
 }
 
+/** Props tombol Google. */
 type GoogleButtonProps = {
   /** Teks tombol. Default "Login with Google". */
   label?: string;
@@ -67,6 +71,7 @@ type GoogleButtonProps = {
  * logo "G" resmi, teks abu gelap) sesuai pedoman branding Google Sign-In.
  */
 export function GoogleButton({ label = 'Login with Google', onPress, disabled = false }: GoogleButtonProps) {
+  // accessibilityState memberi tahu pembaca layar bahwa tombol terkunci; opacity hanya penanda visual.
   return (
     <Pressable
       onPress={onPress}
@@ -80,6 +85,7 @@ export function GoogleButton({ label = 'Login with Google', onPress, disabled = 
   );
 }
 
+/** Gaya untuk komponen yang tidak lewat NativeWind (expo-image). */
 const styles = StyleSheet.create({
   googleLogo: { width: 18, height: 18 },
 });

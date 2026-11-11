@@ -13,5 +13,6 @@ import { Redirect } from 'expo-router';
  * Stub: login sekarang ada di "/", jadi route lama /login hanya meneruskan ke sana.
  */
 export default function LoginRedirect() {
+  // Redirect (bukan salinan UI) supaya hanya ada satu halaman login.
   return <Redirect href="/" />;
 }

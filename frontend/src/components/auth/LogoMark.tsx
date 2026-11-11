@@ -8,6 +8,7 @@ import { View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
 
+/** Props LogoMark. */
 type LogoMarkProps = {
   /** Tinggi logo dalam piksel; lebarnya 1.4 kali nilai ini. Default 72. */
   size?: number;

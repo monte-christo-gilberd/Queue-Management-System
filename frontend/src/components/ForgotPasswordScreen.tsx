@@ -41,6 +41,7 @@ export default function ForgotPasswordScreen({
   errorMessage,
   sentMessage,
 }: ForgotPasswordScreenProps) {
+  // Tampilkan galat dari route sebagai toast tiap pesan berubah.
   useErrorToast(errorMessage);
 
   // Pesan konfirmasi dibuat netral agar tidak memberi tahu apakah email tersebut terdaftar.
@@ -50,6 +51,7 @@ export default function ForgotPasswordScreen({
         <Text accessibilityRole="alert" className="text-center text-[13px] leading-5 text-white">
           {sentMessage}
         </Text>
+        {/* replace: kembali ke login mengganti layar konfirmasi, bukan menumpuknya di riwayat. */}
         <View className="mt-2.5">
           <PrimaryAuthButton label="Kembali ke Login" onPress={() => router.replace('/')} loading={false} />
         </View>
@@ -57,6 +59,7 @@ export default function ForgotPasswordScreen({
     );
   }
 
+  // Bentuk awal: form email.
   return (
     <AuthLayout
       title="Lupa Password"

@@ -4,7 +4,9 @@
  * Dipakai oleh : app/register.tsx
  * Bergantung   : ui/Toast (useErrorToast), components/auth/* (AuthLayout, AuthInput, AuthButtons), expo-router
  * Peran        : publik
- * Catatan      : pengecekan kesamaan password dilakukan di route; komponen hanya menampilkan pesannya.
+ * Catatan      : pengecekan kesamaan password dilakukan di route; komponen hanya menampilkan pesannya sebagai teks di bawah
+ *                field konfirmasi (bukan toast), dan memberi tahu route saat field itu kehilangan fokus. Galat dari route
+ *                (isian wajib, password lemah, galat server) tetap tampil sebagai toast.
  */
 import { useErrorToast } from '@/components/ui/Toast';
 import { router, type Href } from 'expo-router';
@@ -35,7 +37,12 @@ export type RegisterScreenProps = {
   onChangePassword: (value: string) => void;
   /** Dipanggil setiap konfirmasi password berubah, dengan nilai terbaru. */
   onChangeConfirmPassword: (value: string) => void;
-  /** Pesan error di bawah field konfirmasi (mis. "Password tidak sama"); logika pengecekannya di route. */
+  /** Dipanggil saat field konfirmasi password kehilangan fokus; route memakainya untuk mulai menampilkan galat konfirmasi. */
+  onBlurConfirmPassword?: () => void;
+  /**
+   * Pesan error di bawah field konfirmasi (mis. "Password tidak sama"), tampil sebagai teks, bukan toast. Logika dan
+   * waktu tampilnya (setelah blur atau submit) diatur route. Kosong berarti tidak ada pesan.
+   */
   confirmPasswordError?: string;
   /** Dipanggil saat tombol Daftar ditekan; validasi dan pembuatan akun dilakukan oleh route. */
   onSubmit: () => void;
@@ -59,6 +66,7 @@ export default function RegisterScreen({
   onChangeEmail,
   onChangePassword,
   onChangeConfirmPassword,
+  onBlurConfirmPassword,
   confirmPasswordError,
   onSubmit,
   next,
@@ -66,9 +74,10 @@ export default function RegisterScreen({
   loading,
   errorMessage,
 }: RegisterScreenProps) {
-  // Pesan error konfirmasi password dan galat dari route sama-sama tampil sebagai toast.
-  useErrorToast(confirmPasswordError);
+  // Hanya galat dari route yang menjadi toast. Galat konfirmasi password tampil inline di bawah field, karena toast
+  // yang muncul sejak karakter pertama mengganggu pengguna yang masih mengetik.
   useErrorToast(errorMessage);
+  // Empat field berurutan, tombol Daftar, pendaftaran dengan Google, lalu tautan kembali ke login.
   return (
     <AuthLayout title="Buat Akun" subtitle="Daftar untuk mulai mengelola antrian Anda">
       <AuthInput
@@ -100,17 +109,22 @@ export default function RegisterScreen({
           placeholder="KONFIRMASI PASSWORD"
           value={confirmPassword}
           onChangeText={onChangeConfirmPassword}
+          onBlur={onBlurConfirmPassword}
           secureTextEntry
           showPasswordToggle
         />
+        {/* Pesan inline, bukan toast: tampil setelah blur atau submit dan hilang saat isinya sudah sama. */}
+        {confirmPasswordError ? <Text className="text-[12px] text-white">{confirmPasswordError}</Text> : null}
       </View>
 
       <View className="mt-2.5">
         <PrimaryAuthButton label="Daftar" onPress={onSubmit} loading={loading} />
       </View>
 
+      {/* Jalur alternatif tanpa password; next diteruskan agar pengguna kembali ke halaman asal setelah masuk. */}
       <GoogleSignInSection label="Daftar dengan Google" next={next} />
 
+      {/* replace (bukan push) supaya tombol kembali tidak membawa pengguna lagi ke form daftar. */}
       <Pressable onPress={() => router.replace(loginHref as Href)} className="mt-2 items-center">
         <Text className="text-[12px] text-placeholder">
           Sudah punya akun? <Text className="font-bold text-white">Login</Text>
