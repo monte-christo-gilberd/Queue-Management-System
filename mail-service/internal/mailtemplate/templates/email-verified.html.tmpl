@@ -1,0 +1,7 @@
+{{define "content"}}
+      <h1 style="font-size:20px;margin:0 0 12px;">Email Anda terverifikasi</h1>
+      <p style="margin:0 0 12px;">Halo {{.Name}},</p>
+      <p style="margin:0 0 16px;">Email Anda sudah terverifikasi. Sekarang Anda bisa bergabung ke antrian dan membuat antrian.</p>
+      <p style="margin:0 0 16px;"><a href="{{.Link}}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;">Buka Antrian</a></p>
+      <p style="margin:0 0 12px;color:#6b7280;font-size:12px;">Jika tombol tidak berfungsi, salin tautan ini ke browser:<br>{{.Link}}</p>
+{{end}}

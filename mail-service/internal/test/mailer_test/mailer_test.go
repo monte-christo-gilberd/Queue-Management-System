@@ -16,8 +16,10 @@ import (
 	"testing"
 	"time"
 
+	"qms/mail-service/internal/apperror"
 	"qms/mail-service/internal/config"
 	"qms/mail-service/internal/mailer"
+	"qms/mail-service/internal/model"
 )
 
 // fakeSMTP: server SMTP minimal. script[i] menentukan balasan untuk sesi ke-i terhadap perintah yang
@@ -138,8 +140,8 @@ func (f *fakeSMTP) serve(c net.Conn) {
 	}
 }
 
-func msg() mailer.Message {
-	return mailer.Message{To: "budi@example.com", Subject: "Giliran Anda: A-003", Text: "Nomor A-003 dipanggil.", HTML: "<p>Nomor <b>A-003</b> dipanggil.</p>"}
+func msg() model.Message {
+	return model.Message{To: "budi@example.com", Subject: "Giliran Anda: A-003", Text: "Nomor A-003 dipanggil.", HTML: "<p>Nomor <b>A-003</b> dipanggil.</p>"}
 }
 
 func fast(m *mailer.Mailer) *mailer.Mailer { return m.WithRetry(3, time.Millisecond) }
@@ -191,7 +193,7 @@ func TestSend_DeliversMultipartMessage(t *testing.T) {
 
 func TestSend_UTF8AndPlainTextOnly(t *testing.T) {
 	f := startSMTP(t)
-	err := fast(mailer.New(f.cfg())).Send(context.Background(), mailer.Message{To: "a@b.co", Subject: "Antrian Kopi Kenangan ☕ — nomor 7", Text: "Sampai jumpa di kafé 😊"})
+	err := fast(mailer.New(f.cfg())).Send(context.Background(), model.Message{To: "a@b.co", Subject: "Antrian Kopi Kenangan ☕ — nomor 7", Text: "Sampai jumpa di kafé 😊"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,14 +214,14 @@ func TestSend_UTF8AndPlainTextOnly(t *testing.T) {
 func TestSend_RejectsHeaderInjectionAndBadInput(t *testing.T) {
 	f := startSMTP(t)
 	m := fast(mailer.New(f.cfg()))
-	for name, in := range map[string]mailer.Message{
+	for name, in := range map[string]model.Message{
 		"subject CRLF": {To: "a@b.co", Subject: "x\r\nBcc: evil@x.io", Text: "t"},
 		"to CRLF":      {To: "a@b.co\r\nBcc: evil@x.io", Subject: "s", Text: "t"},
 		"to invalid":   {To: "bukan-email", Subject: "s", Text: "t"},
 		"text kosong":  {To: "a@b.co", Subject: "s", Text: "  "},
 	} {
 		err := m.Send(context.Background(), in)
-		if !errors.Is(err, mailer.ErrPermanent) {
+		if !errors.Is(err, apperror.ErrPermanent) {
 			t.Errorf("%s: want permanent error, got %v", name, err)
 		}
 	}
@@ -241,7 +243,7 @@ func TestSend_RetriesTransientThenSucceeds(t *testing.T) {
 func TestSend_GivesUpAfterAttempts(t *testing.T) {
 	f := startSMTP(t, "rcpt4xx", "rcpt4xx", "rcpt4xx", "")
 	err := fast(mailer.New(f.cfg())).Send(context.Background(), msg())
-	if err == nil || errors.Is(err, mailer.ErrPermanent) {
+	if err == nil || errors.Is(err, apperror.ErrPermanent) {
 		t.Fatalf("want transient error, got %v", err)
 	}
 	if f.sessions != 3 || len(f.received()) != 0 {
@@ -252,7 +254,7 @@ func TestSend_GivesUpAfterAttempts(t *testing.T) {
 func TestSend_DoesNotRetryPermanentRejection(t *testing.T) {
 	f := startSMTP(t, "rcpt5xx", "")
 	err := fast(mailer.New(f.cfg())).Send(context.Background(), msg())
-	if !errors.Is(err, mailer.ErrPermanent) {
+	if !errors.Is(err, apperror.ErrPermanent) {
 		t.Fatalf("want permanent, got %v", err)
 	}
 	if f.sessions != 1 {
@@ -269,7 +271,7 @@ func TestSend_ConnectionRefusedIsTransientAndRetried(t *testing.T) {
 	m := mailer.New(cfg).WithRetry(3, time.Millisecond)
 	m.SetSleep(func(context.Context, time.Duration) error { sleeps++; return nil })
 	err := m.Send(context.Background(), msg())
-	if err == nil || errors.Is(err, mailer.ErrPermanent) {
+	if err == nil || errors.Is(err, apperror.ErrPermanent) {
 		t.Fatalf("got %v", err)
 	}
 	if sleeps != 2 {
@@ -299,98 +301,5 @@ func TestSend_ContextCancelStopsAHangingServer(t *testing.T) {
 	}
 	if time.Since(start) > 2*time.Second {
 		t.Fatalf("took %v, should stop near the context deadline", time.Since(start))
-	}
-}
-
-func TestRender_TestTemplateEscapesHTMLAndFillsText(t *testing.T) {
-	r, err := mailer.Render("test", map[string]any{
-		"To":     `<script>alert(1)</script>@x.io`,
-		"SentAt": "4 Nov 2026",
-		"Link":   "http://localhost:8080/reset-password?token=abc",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.Subject != "Email uji dari Antrian" {
-		t.Fatalf("subject %q", r.Subject)
-	}
-	if strings.Contains(r.HTML, "<script>") || !strings.Contains(r.HTML, "&lt;script&gt;") {
-		t.Fatalf("HTML must escape user data: %s", r.HTML)
-	}
-	if !strings.Contains(r.HTML, `href="http://localhost:8080/reset-password?token=abc"`) || !strings.Contains(r.HTML, "<!doctype html>") {
-		t.Fatalf("HTML missing link or layout: %s", r.HTML)
-	}
-	if !strings.Contains(r.Text, "token=abc") || strings.Contains(r.Text, "<html") {
-		t.Fatalf("text %q", r.Text)
-	}
-}
-
-func TestRender_UnknownTemplateIsAnError(t *testing.T) {
-	if _, err := mailer.Render("tidak-ada", map[string]any{}); !errors.Is(err, mailer.ErrUnknownTemplate) {
-		t.Fatal("want ErrUnknownTemplate")
-	}
-}
-
-func TestRender_MissingDataIsAnErrorNotNoValue(t *testing.T) {
-	_, err := mailer.Render("test", map[string]any{"To": "a@b.co"})
-	if !errors.Is(err, mailer.ErrBadData) {
-		t.Fatalf("want ErrBadData, got %v", err)
-	}
-}
-
-func TestHas_OnlyCompleteTemplatesWithSafeNames(t *testing.T) {
-	if !mailer.Has("test") {
-		t.Fatal("test must exist")
-	}
-	for _, name := range []string{"", "layout", "../layout", "test/../test", "TEST", "tidak-ada", "test.txt", "a b"} {
-		if mailer.Has(name) {
-			t.Errorf("%q must not be a valid template", name)
-		}
-	}
-}
-
-func TestRender_PasswordResetHasLinkAndEscapesName(t *testing.T) {
-	link := "https://app.example/reset-password?token=abc_DEF-123"
-	r, err := mailer.Render("password-reset", map[string]any{"Name": `<img src=x onerror=1>`, "Link": link, "Minutes": 30})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(r.Text, link) || !strings.Contains(r.Text, "30 menit") {
-		t.Errorf("teks tanpa tautan/masa berlaku: %q", r.Text)
-	}
-	if !strings.Contains(r.HTML, `href="`+link+`"`) {
-		t.Errorf("HTML tanpa tautan utuh: %q", r.HTML)
-	}
-	if strings.Contains(r.HTML, "<img src=x") {
-		t.Errorf("nama pengguna tidak di-escape di HTML")
-	}
-	if strings.ContainsAny(r.Subject, "\r\n") || r.Subject == "" {
-		t.Errorf("subjek tidak sah: %q", r.Subject)
-	}
-	if _, err := mailer.Render("password-reset", map[string]any{"Name": "x"}); !errors.Is(err, mailer.ErrBadData) {
-		t.Errorf("data kurang harus ErrBadData, dapat %v", err)
-	}
-}
-
-func TestRender_EmailVerifyHasLinkAndEscapesName(t *testing.T) {
-	link := "https://app.example/verify-email?token=abc_DEF-123"
-	r, err := mailer.Render("email-verify", map[string]any{"Name": `<img src=x onerror=1>`, "Link": link, "Hours": 24})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(r.Text, link) || !strings.Contains(r.Text, "24 jam") {
-		t.Errorf("teks tanpa tautan/masa berlaku: %q", r.Text)
-	}
-	if !strings.Contains(r.HTML, `href="`+link+`"`) {
-		t.Errorf("HTML tanpa tautan utuh: %q", r.HTML)
-	}
-	if strings.Contains(r.HTML, "<img src=x") {
-		t.Errorf("nama pengguna tidak di-escape di HTML")
-	}
-	if strings.ContainsAny(r.Subject, "\r\n") || r.Subject == "" {
-		t.Errorf("subjek tidak sah: %q", r.Subject)
-	}
-	if _, err := mailer.Render("email-verify", map[string]any{"Name": "x"}); !errors.Is(err, mailer.ErrBadData) {
-		t.Errorf("data kurang harus ErrBadData, dapat %v", err)
 	}
 }

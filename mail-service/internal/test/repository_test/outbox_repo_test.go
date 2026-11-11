@@ -1,4 +1,4 @@
-package outbox_test
+package repository_test
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"qms/mail-service/internal/outbox"
+	"qms/mail-service/internal/repository"
 )
 
 // unreachablePool membuat pool ke alamat yang pasti menolak koneksi. pgxpool tidak menyambung saat dibuat,
@@ -26,7 +26,7 @@ func unreachablePool(t *testing.T) *pgxpool.Pool {
 }
 
 func TestPG_QueriesReturnErrorWhenDatabaseUnreachable(t *testing.T) {
-	st := outbox.NewPG(unreachablePool(t))
+	st := repository.NewOutboxRepository(unreachablePool(t))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -54,7 +54,7 @@ func TestPG_ListenReturnsWhenContextEnds(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		outbox.Listen(ctx, pool, func() { t.Error("wake tidak boleh dipanggil tanpa koneksi") },
+		repository.Listen(ctx, pool, func() { t.Error("wake tidak boleh dipanggil tanpa koneksi") },
 			slog.New(slog.NewTextHandler(io.Discard, nil)))
 		close(done)
 	}()
@@ -69,5 +69,5 @@ func TestPG_ListenStopsImmediatelyWhenAlreadyCancelled(t *testing.T) {
 	pool := unreachablePool(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	outbox.Listen(ctx, pool, func() {}, nil)
+	repository.Listen(ctx, pool, func() {}, nil)
 }

@@ -13,13 +13,14 @@ const MinTokenLen = 32
 
 // Config adalah konfigurasi runtime mail-service.
 type Config struct {
-	// Port: port HTTP tempat layanan mendengarkan. Bawaan 8092.
+	// Port: port HTTP tempat layanan mendengarkan (env PORT). Bawaan 8092, spasi di tepi dibuang.
 	Port string
-	// ServiceToken: nilai X-Service-Token yang wajib dibawa setiap pemanggil API kirim.
+	// ServiceToken: nilai X-Service-Token yang wajib dibawa setiap pemanggil API kirim (env MAIL_SERVICE_TOKEN).
+	// Wajib diisi dan minimal MinTokenLen karakter, tanpa bawaan.
 	ServiceToken string
-	// SMTP: pengaturan server email tujuan kirim.
+	// SMTP: pengaturan server email tujuan kirim (env SMTP_*, lihat LoadSMTP).
 	SMTP SMTP
-	// Outbox: pengaturan worker yang mengirim email dari tabel notification_outbox.
+	// Outbox: pengaturan worker yang mengirim email dari tabel notification_outbox (lihat loadOutbox).
 	Outbox Outbox
 }
 
@@ -28,7 +29,8 @@ type Config struct {
 type Outbox struct {
 	// DatabaseURL: URL PostgreSQL untuk outbox (DATABASE_URL). Kosong = worker mati.
 	DatabaseURL string
-	// PublicOrigin: alamat dasar aplikasi (QMS_PUBLIC_ORIGIN), dipakai membuat tautan di email. Tanpa garis miring di akhir.
+	// PublicOrigin: alamat dasar aplikasi (QMS_PUBLIC_ORIGIN), dipakai membuat tautan di email. Tanpa garis miring
+	// di akhir. Wajib berupa URL http atau https absolut bila DatabaseURL diisi, tanpa bawaan.
 	PublicOrigin string
 	// Rate: jumlah email per detik (OUTBOX_RATE). Bawaan 5, batas (0, 100].
 	Rate float64
@@ -48,24 +50,33 @@ func Load() (Config, error) {
 	}
 	// PORT kosong: pakai bawaan 8092.
 	if cfg.Port == "" {
+		// Bawaan 8092 agar sama dengan port di compose dan healthcheck.
 		cfg.Port = "8092"
 	}
 	// Token terlalu pendek atau kosong: tolak, karena API kirim tidak bisa diamankan.
 	if len(cfg.ServiceToken) < MinTokenLen {
+		// Token pendek mudah ditebak, jadi layanan menolak start.
 		return Config{}, fmt.Errorf("MAIL_SERVICE_TOKEN must be set and at least %d characters", MinTokenLen)
 	}
 	// Baca dan validasi pengaturan SMTP.
 	smtp, err := LoadSMTP()
+	// Galat SMTP sudah menyebut variabel yang salah.
 	if err != nil {
+		// Teruskan agar main berhenti dengan pesan jelas.
 		return Config{}, err
 	}
+	// Simpan hasil pembacaan SMTP.
 	cfg.SMTP = smtp
 	// Baca dan validasi pengaturan outbox.
 	ob, err := loadOutbox()
+	// Galat outbox sudah menyebut variabel yang salah.
 	if err != nil {
+		// Teruskan agar main berhenti dengan pesan jelas.
 		return Config{}, err
 	}
+	// Simpan hasil pembacaan outbox.
 	cfg.Outbox = ob
+	// Konfigurasi lengkap dan valid.
 	return cfg, nil
 }
 
@@ -80,29 +91,38 @@ func loadOutbox() (Outbox, error) {
 	}
 	// OUTBOX_RATE diisi: ubah ke angka dan pastikan berada di (0, 100].
 	if v := strings.TrimSpace(os.Getenv("OUTBOX_RATE")); v != "" {
+		// ParseFloat menerima desimal, mis. 0.5 email per detik.
 		f, err := strconv.ParseFloat(v, 64)
+		// Batas atas 100 mencegah banjir ke SMTP; nol atau negatif tidak punya arti sebagai laju.
 		if err != nil || f <= 0 || f > 100 {
 			return Outbox{}, fmt.Errorf("OUTBOX_RATE must be a number in (0, 100], got %q", v)
 		}
+		// Pakai laju dari environment.
 		ob.Rate = f
 	}
 	// OUTBOX_MAX_ATTEMPTS diisi: ubah ke bilangan bulat dan pastikan berada di [1, 50].
 	if v := strings.TrimSpace(os.Getenv("OUTBOX_MAX_ATTEMPTS")); v != "" {
+		// Hanya bilangan bulat yang berarti sebagai jumlah percobaan.
 		n, err := strconv.Atoi(v)
+		// Minimal 1 agar email dicoba sekali; maksimal 50 agar baris macet tidak diulang selamanya.
 		if err != nil || n < 1 || n > 50 {
 			return Outbox{}, fmt.Errorf("OUTBOX_MAX_ATTEMPTS must be an integer in [1, 50], got %q", v)
 		}
+		// Pakai batas percobaan dari environment.
 		ob.MaxAttempts = n
 	}
 	// Outbox tidak aktif (DATABASE_URL kosong): tidak perlu memeriksa tautan publik.
 	if !ob.Enabled() {
+		// Tanpa outbox tidak ada tautan yang dibuat, jadi tidak perlu diperiksa.
 		return ob, nil
 	}
 	// Tautan di email harus absolut; tanpa itu pelanggan menerima tautan rusak.
 	u, err := url.Parse(ob.PublicOrigin)
 	// Hanya http atau https dengan host yang boleh dipakai; selain itu tolak.
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		// Pesan menyebut variabel dan nilai yang salah supaya mudah diperbaiki.
 		return Outbox{}, fmt.Errorf("QMS_PUBLIC_ORIGIN must be an absolute http(s) URL when DATABASE_URL is set, got %q", ob.PublicOrigin)
 	}
+	// Konfigurasi outbox valid.
 	return ob, nil
 }

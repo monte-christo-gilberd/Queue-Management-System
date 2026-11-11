@@ -1,4 +1,4 @@
-package httpapi_test
+package router_test
 
 import (
 	"context"
@@ -11,20 +11,24 @@ import (
 	"testing"
 	"time"
 
-	"qms/mail-service/internal/httpapi"
-	"qms/mail-service/internal/mailer"
+	"qms/mail-service/internal/handler"
+	"qms/mail-service/internal/mailtemplate"
+	"qms/mail-service/internal/middleware"
+	"qms/mail-service/internal/model"
+	"qms/mail-service/internal/router"
+	"qms/mail-service/internal/service"
 )
 
 const token = "0123456789abcdef0123456789abcdef"
 
 type fakeSender struct {
 	mu    sync.Mutex
-	sent  []mailer.Message
+	sent  []model.Message
 	err   error
 	block chan struct{}
 }
 
-func (f *fakeSender) Send(ctx context.Context, m mailer.Message) error {
+func (f *fakeSender) Send(ctx context.Context, m model.Message) error {
 	if f.block != nil {
 		select {
 		case <-f.block:
@@ -53,7 +57,14 @@ func do(t *testing.T, h http.Handler, method, path, tok, body string) *httptest.
 	return w
 }
 
-func newAPI(s httpapi.Sender) http.Handler { return httpapi.New(s, token, nil).Handler() }
+// newAPI merangkai service, handler, middleware, dan router seperti di main.
+func newAPI(s service.Sender) http.Handler {
+	svc := service.NewMailService(s, mailtemplate.New(), nil)
+	return router.SetupRouter(router.NewAppRouter(
+		handler.NewMailHandler(svc),
+		middleware.ServiceToken(token),
+	).WithSystem(handler.NewSystemHandler()))
+}
 
 const okBody = `{"to":"budi@example.com","template":"test","data":{"To":"budi@example.com","SentAt":"4 Nov","Link":"http://x.test/a?b=1"}}`
 
@@ -173,5 +184,28 @@ func TestUnknownRouteIs404JSON(t *testing.T) {
 	w := do(t, newAPI(&fakeSender{}), "GET", "/internal/v1/nope", token, "")
 	if w.Code != 404 || errCode(t, w) != "NOT_FOUND" {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body)
+	}
+}
+
+func TestResponseShapesAndHeaders(t *testing.T) {
+	h := newAPI(&fakeSender{})
+	w := do(t, h, "GET", "/health", "", "")
+	if strings.TrimSpace(w.Body.String()) != `{"status":"ok"}` {
+		t.Errorf("health body = %s", w.Body)
+	}
+	w = do(t, h, "POST", "/internal/v1/send", token, okBody)
+	if strings.TrimSpace(w.Body.String()) != `{"data":{"status":"sent"}}` {
+		t.Errorf("send body = %s", w.Body)
+	}
+	if w.Header().Get("Content-Type") != "application/json" || w.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("headers = %v", w.Header())
+	}
+	w = do(t, h, "GET", "/nope", token, "")
+	if !strings.Contains(w.Body.String(), `"route not found"`) {
+		t.Errorf("404 body = %s", w.Body)
+	}
+	w = do(t, h, "POST", "/internal/v1/send", "salah", okBody)
+	if !strings.Contains(w.Body.String(), `"invalid service token"`) {
+		t.Errorf("401 body = %s", w.Body)
 	}
 }

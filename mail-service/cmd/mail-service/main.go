@@ -1,10 +1,12 @@
-// mail-service: satu-satunya pengirim email di QMS. Stateless dan tanpa database: menerima permintaan lewat
-// API internal bertoken, mengisi templat, dan mengirim lewat SMTP (Mailpit di dev, SMTP nyata di produksi).
+// mail-service: satu-satunya pengirim email di QMS. Menerima permintaan lewat API internal bertoken, mengisi
+// templat, dan mengirim lewat SMTP (Mailpit di dev, SMTP nyata di produksi). Bila DATABASE_URL diisi, worker
+// outbox juga mengirim email dari tabel notification_outbox.
 package main
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,123 +15,64 @@ import (
 	"time"
 
 	"qms/mail-service/internal/config"
-	"qms/mail-service/internal/httpapi"
+	"qms/mail-service/internal/handler"
 	"qms/mail-service/internal/mailer"
-	"qms/mail-service/internal/outbox"
-
-	"github.com/jackc/pgx/v5/pgxpool"
+	"qms/mail-service/internal/mailtemplate"
+	"qms/mail-service/internal/middleware"
+	"qms/mail-service/internal/repository"
+	"qms/mail-service/internal/router"
+	"qms/mail-service/internal/service"
 )
 
-// fatal mencatat galat dengan pesan msg lalu menghentikan proses dengan kode 1.
-func fatal(msg string, err error) {
-	// Catat galat dalam format JSON sebelum proses berhenti.
-	slog.Error(msg, "err", err)
-	// Hentikan proses dengan status gagal.
-	os.Exit(1)
-}
-
-// sendTest: `mail-service send-test <alamat>` mengirim satu email uji lewat SMTP yang dikonfigurasi lalu keluar.
-// Hanya butuh SMTP_*; dipakai memeriksa jalur email tanpa lewat API.
-func sendTest(to string) {
-	// Baca konfigurasi SMTP. Galat berarti SMTP_* belum lengkap atau tidak valid.
-	smtpCfg, err := config.LoadSMTP()
-	if err != nil {
-		fatal("config", err)
-	}
-	// Isi templat "test" dengan alamat tujuan, waktu kirim, dan tautan contoh.
-	r, err := mailer.Render("test", map[string]any{
-		"To":     to,
-		"SentAt": time.Now().Format("2 Jan 2006 15:04:05 MST"),
-		"Link":   "http://localhost:8080/reset-password?token=contoh-token-uji",
-	})
-	// Templat gagal diisi: hentikan.
-	if err != nil {
-		fatal("render", err)
-	}
-	// Beri pengiriman batas waktu 30 detik.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	// Kirim email uji. Galat berarti SMTP tidak bisa dipakai, jadi hentikan dengan status gagal.
-	if err := mailer.New(smtpCfg).Send(ctx, mailer.Message{To: to, Subject: r.Subject, Text: r.Text, HTML: r.HTML}); err != nil {
-		fatal("send test email", err)
-	}
-	// Berhasil: catat alamat SMTP yang dipakai.
-	slog.Info("test email sent", "smtp", smtpCfg.Addr())
-}
-
-// runOutbox menjalankan worker outbox. Kegagalan menyambung database tidak mematikan layanan (API kirim tetap
-// jalan); worker dicoba lagi sampai berhasil.
-func runOutbox(ctx context.Context, cfg config.Config) {
-	// Pool koneksi ke database outbox. Nil selama belum berhasil tersambung.
-	var pool *pgxpool.Pool
-	// Ulangi sambungan selama belum berhasil dan konteks belum batal.
-	for pool == nil && ctx.Err() == nil {
-		// Buat pool, lalu ping untuk memastikan database benar-benar bisa dijangkau.
-		p, err := pgxpool.New(ctx, cfg.Outbox.DatabaseURL)
-		if err == nil {
-			err = p.Ping(ctx)
-		}
-		// Gagal tersambung: catat, tunggu 5 detik, lalu coba lagi (kecuali shutdown dimulai).
-		if err != nil {
-			slog.Error("outbox database not reachable, retrying", "err", err)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-			}
-			continue
-		}
-		// Berhasil tersambung: simpan pool.
-		pool = p
-	}
-	// Konteks batal sebelum berhasil tersambung: tidak ada yang perlu dijalankan.
-	if pool == nil {
-		return
-	}
-	// Tutup pool saat worker berhenti.
-	defer pool.Close()
-	// Rangkai worker: store PostgreSQL, pengirim SMTP, dan konfigurasi outbox.
-	w := outbox.NewWorker(outbox.NewPG(pool), mailer.New(cfg.SMTP), outbox.Config{
-		PublicOrigin: cfg.Outbox.PublicOrigin,
-		Rate:         cfg.Outbox.Rate,
-		MaxAttempts:  cfg.Outbox.MaxAttempts,
-	}, slog.Default())
-	// Dengarkan NOTIFY mail_outbox di goroutine terpisah untuk membangunkan worker saat ada baris baru.
-	go outbox.Listen(ctx, pool, w.Wake, slog.Default())
-	// Catat laju dan batas percobaan yang aktif.
-	slog.Info("outbox worker started", "rate_per_sec", cfg.Outbox.Rate, "max_attempts", cfg.Outbox.MaxAttempts)
-	// Jalankan worker sampai konteks batal.
-	w.Run(ctx)
-}
-
-// main menjalankan perintah send-test bila diminta, atau menyalakan API dan worker outbox.
+// main menjalankan run, lalu mencatat galatnya dan keluar dengan kode 1 bila gagal.
 func main() {
 	// Atur logger default ke JSON di stdout.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
+	// Jalankan perintah atau layanan. Galat berarti proses harus berhenti dengan status gagal.
+	if err := run(); err != nil {
+		// Catat galat dalam format JSON sebelum proses berhenti.
+		slog.Error("mail-service stopped", "err", err)
+		// Hentikan proses dengan status gagal.
+		os.Exit(1)
+	}
+}
+
+// run menjalankan perintah send-test bila diminta, atau menyalakan API dan worker outbox sampai ada sinyal berhenti.
+func run() error {
 	// Argumen pertama "send-test": jalankan perintah uji email, lalu keluar tanpa menyalakan server.
 	if len(os.Args) > 1 && os.Args[1] == "send-test" {
 		// Perintah harus tepat dengan satu alamat tujuan.
 		if len(os.Args) != 3 {
-			fatal("usage", errors.New("mail-service send-test <alamat-email>"))
+			// Alamat tujuan wajib persis satu argumen.
+			return errors.New("usage: mail-service send-test <alamat-email>")
 		}
-		sendTest(os.Args[2])
-		return
+		// Kirim satu email uji dan selesai.
+		return sendTest(os.Args[2])
 	}
 
 	// Mode layanan: baca konfigurasi. Galat berarti token atau SMTP belum benar.
 	cfg, err := config.Load()
+	// Konfigurasi salah: gagal cepat sebelum menerima permintaan apa pun.
 	if err != nil {
-		fatal("config", err)
+		// Awalan config memudahkan melihat asal galat di log.
+		return fmt.Errorf("config: %w", err)
 	}
-	// Rangkai API dengan Mailer, token layanan, dan logger.
-	api := httpapi.New(mailer.New(cfg.SMTP), cfg.ServiceToken, slog.Default())
+	// Rangkai lapisan: pengirim SMTP, pengisi templat, service, handler, dan router.
+	renderer := mailtemplate.New()
+	// Mailer dan service dibuat sekali dan dipakai bersama oleh semua permintaan.
+	mailSvc := service.NewMailService(mailer.New(cfg.SMTP), renderer, slog.Default())
+	// Router mendaftarkan rute kirim yang dilindungi token, lalu rute health dan 404.
+	appRouter := router.NewAppRouter(
+		handler.NewMailHandler(mailSvc),
+		middleware.ServiceToken(cfg.ServiceToken),
+	).WithSystem(handler.NewSystemHandler())
 	// Server HTTP dengan batas waktu baca, tulis (60 detik karena kirim sinkron bisa lama), dan koneksi diam.
 	srv := &http.Server{
 		// Alamat dan port dari konfigurasi.
 		Addr: ":" + cfg.Port,
 		// Handler API.
-		Handler: api.Handler(),
+		Handler: router.SetupRouter(appRouter),
 		// Batas waktu membaca header request (5 detik).
 		ReadHeaderTimeout: 5 * time.Second,
 		// Batas waktu membaca seluruh request (10 detik).
@@ -142,30 +85,103 @@ func main() {
 
 	// Konteks yang batal saat SIGINT atau SIGTERM diterima.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// Lepas pendaftaran sinyal saat run selesai.
 	defer stop()
 	// Outbox aktif bila DATABASE_URL diisi: jalankan worker di goroutine terpisah.
 	if cfg.Outbox.Enabled() {
-		go runOutbox(ctx, cfg)
+		// Worker outbox jalan terpisah agar tidak memblokir API.
+		go runOutbox(ctx, cfg, renderer)
 	} else {
 		// Tanpa database, worker outbox tidak jalan; layanan hanya melayani API kirim langsung.
 		slog.Warn("DATABASE_URL not set: outbox worker disabled, only POST /internal/v1/send is served")
 	}
-	// Jalankan server HTTP di goroutine terpisah. Galat selain penutupan normal menghentikan proses.
+	// Jalankan server HTTP di goroutine terpisah. Galat selain penutupan normal dikirim lewat saluran.
+	serverErr := make(chan error, 1)
+	// ListenAndServe memblokir, jadi dijalankan di goroutine sementara run menunggu sinyal.
 	go func() {
 		// Catat alamat, SMTP, dan mode TLS saat server mulai mendengarkan.
 		slog.Info("mail-service listening", "addr", srv.Addr, "smtp", cfg.SMTP.Addr(), "tls", cfg.SMTP.TLS)
-		// Galat selain penutupan normal: hentikan proses.
+		// Galat selain penutupan normal: laporkan agar proses berhenti.
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			fatal("server", err)
+			serverErr <- fmt.Errorf("server: %w", err)
 		}
 	}()
-	// Tunggu sampai ada sinyal berhenti.
-	<-ctx.Done()
+	// Tunggu sampai ada sinyal berhenti atau server gagal.
+	select {
+	// Server gagal start atau berhenti tiba-tiba: kembalikan galatnya.
+	case err := <-serverErr:
+		return err
+	// Sinyal berhenti diterima: lanjut ke shutdown.
+	case <-ctx.Done():
+	}
 
 	// Mulai shutdown: beri email yang sedang dikirim waktu sampai 30 detik untuk selesai.
 	slog.Info("shutting down, waiting for in-flight emails")
+	// Server berhenti menerima koneksi baru, tetapi permintaan yang berjalan diberi waktu selesai.
 	shCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Lepas timer saat run selesai.
 	defer cancel()
 	// Hentikan server. Galatnya diabaikan karena proses akan berakhir.
 	_ = srv.Shutdown(shCtx)
+	// Shutdown selesai.
+	return nil
+}
+
+// sendTest: `mail-service send-test <alamat>` mengirim satu email uji lewat SMTP yang dikonfigurasi lalu keluar.
+// Hanya butuh SMTP_*; dipakai memeriksa jalur email tanpa lewat API.
+func sendTest(
+	to string,
+) error {
+	// Baca konfigurasi SMTP. Galat berarti SMTP_* belum lengkap atau tidak valid.
+	smtpCfg, err := config.LoadSMTP()
+	if err != nil {
+		// Awalan config memudahkan melihat asal galat di log.
+		return fmt.Errorf("config: %w", err)
+	}
+	// Rangkai service dengan pengirim SMTP dan pengisi templat, lalu kirim email uji.
+	svc := service.NewMailService(mailer.New(smtpCfg), mailtemplate.New(), slog.Default())
+	// Kirim email uji.
+	if err := svc.SendTest(context.Background(), to); err != nil {
+		// Teruskan galat SMTP apa adanya agar penyebab terlihat.
+		return err
+	}
+	// Berhasil: catat alamat SMTP yang dipakai.
+	slog.Info("test email sent", "smtp", smtpCfg.Addr())
+	// Selesai tanpa galat.
+	return nil
+}
+
+// runOutbox menjalankan worker outbox. Kegagalan menyambung database tidak mematikan layanan (API kirim tetap
+// jalan); sambungan dicoba lagi sampai berhasil.
+func runOutbox(
+	ctx context.Context,
+	cfg config.Config,
+	renderer service.TemplateRenderer,
+) {
+	// Sambung ke database outbox, diulang sampai berhasil. Nil bila konteks batal lebih dulu.
+	pool := repository.ConnectWithRetry(ctx, cfg.Outbox.DatabaseURL)
+	if pool == nil {
+		// Shutdown dimulai sebelum database tersambung: tidak ada yang dijalankan.
+		return
+	}
+	// Tutup pool saat worker berhenti.
+	defer pool.Close()
+	// Rangkai worker: repository PostgreSQL, pengirim SMTP, pengisi templat, dan konfigurasi outbox.
+	w := service.NewOutboxService(
+		repository.NewOutboxRepository(pool),
+		mailer.New(cfg.SMTP),
+		renderer,
+		service.OutboxConfig{
+			PublicOrigin: cfg.Outbox.PublicOrigin,
+			Rate:         cfg.Outbox.Rate,
+			MaxAttempts:  cfg.Outbox.MaxAttempts,
+		},
+		slog.Default(),
+	)
+	// Dengarkan NOTIFY mail_outbox di goroutine terpisah untuk membangunkan worker saat ada baris baru.
+	go repository.Listen(ctx, pool, w.Wake, slog.Default())
+	// Catat laju dan batas percobaan yang aktif.
+	slog.Info("outbox worker started", "rate_per_sec", cfg.Outbox.Rate, "max_attempts", cfg.Outbox.MaxAttempts)
+	// Jalankan worker sampai konteks batal.
+	w.Run(ctx)
 }

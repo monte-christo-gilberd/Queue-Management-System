@@ -1,4 +1,4 @@
-package outbox_test
+package service_test
 
 import (
 	"context"
@@ -12,12 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"qms/mail-service/internal/mailer"
-	"qms/mail-service/internal/outbox"
+	"qms/mail-service/internal/apperror"
+	"qms/mail-service/internal/mailtemplate"
+	"qms/mail-service/internal/model"
+	"qms/mail-service/internal/service"
 )
 
 type row struct {
-	outbox.Item
+	model.OutboxItem
 	sent, failed bool
 	lastErr      string
 	retryIn      time.Duration
@@ -28,26 +30,26 @@ type memStore struct {
 	rows map[int64]*row
 }
 
-func newStore(items ...outbox.Item) *memStore {
+func newStore(items ...model.OutboxItem) *memStore {
 	s := &memStore{rows: map[int64]*row{}}
 	for _, it := range items {
 		it.Attempts = 0
-		s.rows[it.ID] = &row{Item: it}
+		s.rows[it.ID] = &row{OutboxItem: it}
 	}
 	return s
 }
 
-func (s *memStore) Claim(_ context.Context, limit int, _ time.Duration) ([]outbox.Item, error) {
+func (s *memStore) Claim(_ context.Context, limit int, _ time.Duration) ([]model.OutboxItem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var out []outbox.Item
+	var out []model.OutboxItem
 	for id := int64(1); id <= int64(len(s.rows)) && len(out) < limit; id++ {
 		r := s.rows[id]
 		if r.sent || r.failed || r.retryIn > 0 {
 			continue
 		}
 		r.Attempts++
-		out = append(out, r.Item)
+		out = append(out, r.OutboxItem)
 	}
 	return out, nil
 }
@@ -77,11 +79,11 @@ func (s *memStore) get(id int64) row {
 
 type sender struct {
 	mu   sync.Mutex
-	got  []mailer.Message
+	got  []model.Message
 	errs []error // diambil berurutan; habis = sukses
 }
 
-func (s *sender) Send(_ context.Context, m mailer.Message) error {
+func (s *sender) Send(_ context.Context, m model.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.errs) > 0 {
@@ -94,14 +96,14 @@ func (s *sender) Send(_ context.Context, m mailer.Message) error {
 	s.got = append(s.got, m)
 	return nil
 }
-func (s *sender) sent() []mailer.Message {
+func (s *sender) sent() []model.Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]mailer.Message(nil), s.got...)
+	return append([]model.Message(nil), s.got...)
 }
 
-func item(id int64, kind, email, payload string) outbox.Item {
-	return outbox.Item{ID: id, Kind: kind, Email: email, Payload: json.RawMessage(payload)}
+func item(id int64, kind, email, payload string) model.OutboxItem {
+	return model.OutboxItem{ID: id, Kind: kind, Email: email, Payload: json.RawMessage(payload)}
 }
 
 func pl(name, queue string, number int) string {
@@ -109,15 +111,15 @@ func pl(name, queue string, number int) string {
 	return string(b)
 }
 
-func newWorker(st outbox.Store, sd outbox.Sender) *outbox.Worker {
-	return outbox.NewWorker(st, sd, outbox.Config{
+func newWorker(st service.OutboxStore, sd service.Sender) *service.OutboxService {
+	return service.NewOutboxService(st, sd, mailtemplate.New(), service.OutboxConfig{
 		PublicOrigin: "https://qms.example/", Rate: 1000, MaxAttempts: 3, Poll: 10 * time.Millisecond,
 		BackoffBase: time.Minute, BackoffMax: 4 * time.Minute,
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 // runUntil menjalankan worker sampai cond benar atau waktu habis.
-func runUntil(t *testing.T, w *outbox.Worker, cond func() bool) {
+func runUntil(t *testing.T, w *service.OutboxService, cond func() bool) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -139,7 +141,7 @@ func TestLabel_MatchesTicketFormat(t *testing.T) {
 		n    int
 		want string
 	}{{"A", 1, "A-001"}, {"", 12, "A-012"}, {"B2", 1234, "B2-1234"}} {
-		if got := outbox.Label(c.p, c.n); got != c.want {
+		if got := service.Label(c.p, c.n); got != c.want {
 			t.Errorf("Label(%q,%d)=%q, want %q", c.p, c.n, got, c.want)
 		}
 	}
@@ -231,7 +233,7 @@ func TestWorker_BackoffDoublesAndIsCapped(t *testing.T) {
 
 func TestWorker_PermanentRejectionIsNotRetried(t *testing.T) {
 	st := newStore(item(1, "joined", "bad@x.test", pl("N", "Q", 1)))
-	sd := &sender{errs: []error{fmt.Errorf("%w: 550 no such user", mailer.ErrPermanent)}}
+	sd := &sender{errs: []error{fmt.Errorf("%w: 550 no such user", apperror.ErrPermanent)}}
 	runUntil(t, newWorker(st, sd), func() bool { return st.get(1).failed })
 	if r := st.get(1); r.Attempts != 1 || !strings.Contains(r.lastErr, "550") {
 		t.Fatalf("%+v", r)
@@ -279,13 +281,13 @@ func TestWorker_OneBadRowDoesNotBlockOthers(t *testing.T) {
 }
 
 func TestWorker_RateLimitSpacesSends(t *testing.T) {
-	var items []outbox.Item
+	var items []model.OutboxItem
 	for i := int64(1); i <= 6; i++ {
 		items = append(items, item(i, "joined", "a@x.test", pl("N", "Q", int(i))))
 	}
 	st := newStore(items...)
 	sd := &sender{}
-	w := outbox.NewWorker(st, sd, outbox.Config{PublicOrigin: "http://h", Rate: 20, Poll: 10 * time.Millisecond},
+	w := service.NewOutboxService(st, sd, mailtemplate.New(), service.OutboxConfig{PublicOrigin: "http://h", Rate: 20, Poll: 10 * time.Millisecond},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	start := time.Now()
 	runUntil(t, w, func() bool { return len(sd.sent()) == 6 })
@@ -313,5 +315,29 @@ func TestWorker_WakeIsNonBlocking(t *testing.T) {
 	w := newWorker(newStore(), &sender{})
 	for i := 0; i < 100; i++ {
 		w.Wake() // tanpa penerima; tidak boleh menggantung
+	}
+}
+
+func TestWorker_QueueClosedGoesToOwnerWithHistoryLink(t *testing.T) {
+	st := newStore(item(1, "queue-closed", "owner@x.test", pl("Sari", "Loket Pajak", 0)))
+	sd := &sender{}
+	runUntil(t, newWorker(st, sd), func() bool { return len(sd.sent()) == 1 })
+	m := sd.sent()[0]
+	if m.To != "owner@x.test" {
+		t.Errorf("To = %q", m.To)
+	}
+	if m.Subject != "Antrian Loket Pajak sudah ditutup" {
+		t.Errorf("subjek = %q", m.Subject)
+	}
+	for _, body := range []string{m.Text, m.HTML} {
+		if !strings.Contains(body, "https://qms.example/riwayat") || strings.Contains(body, "/ticket/") {
+			t.Errorf("tautan salah: %q", body)
+		}
+		if !strings.Contains(body, "Sari") || !strings.Contains(body, "Loket Pajak") {
+			t.Errorf("tanpa nama atau antrian: %q", body)
+		}
+	}
+	if !st.get(1).sent {
+		t.Error("baris belum ditandai terkirim")
 	}
 }

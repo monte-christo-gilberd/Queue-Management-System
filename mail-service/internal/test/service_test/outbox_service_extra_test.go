@@ -1,4 +1,4 @@
-package outbox_test
+package service_test
 
 import (
 	"context"
@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"qms/mail-service/internal/mailer"
-	"qms/mail-service/internal/outbox"
+	"qms/mail-service/internal/apperror"
+	"qms/mail-service/internal/mailtemplate"
+	"qms/mail-service/internal/model"
+	"qms/mail-service/internal/service"
 )
 
 // claimErrStore: Claim selalu gagal; dipakai untuk menguji cabang galat klaim.
@@ -21,7 +23,7 @@ type claimErrStore struct {
 	calls atomic.Int32
 }
 
-func (s *claimErrStore) Claim(context.Context, int, time.Duration) ([]outbox.Item, error) {
+func (s *claimErrStore) Claim(context.Context, int, time.Duration) ([]model.OutboxItem, error) {
 	s.calls.Add(1)
 	return nil, errors.New("db down")
 }
@@ -40,7 +42,7 @@ func (s *markErrStore) MarkFailed(context.Context, int64, string) error {
 // cancelSender: membatalkan konteks saat mengirim, lalu mengembalikan galat sementara.
 type cancelSender struct{ cancel context.CancelFunc }
 
-func (s cancelSender) Send(context.Context, mailer.Message) error {
+func (s cancelSender) Send(context.Context, model.Message) error {
 	s.cancel()
 	return errors.New("connection reset")
 }
@@ -48,7 +50,7 @@ func (s cancelSender) Send(context.Context, mailer.Message) error {
 func quietLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func TestNewWorker_NilLoggerUsesDefault(t *testing.T) {
-	w := outbox.NewWorker(newStore(), &sender{}, outbox.Config{}, nil)
+	w := service.NewOutboxService(newStore(), &sender{}, mailtemplate.New(), service.OutboxConfig{}, nil)
 	if w == nil {
 		t.Fatal("NewWorker mengembalikan nil")
 	}
@@ -76,7 +78,7 @@ func TestWorker_ShutdownWhileWaitingForRateLimitSendsNothing(t *testing.T) {
 	st := newStore(item(1, "joined", "a@x.test", pl("N", "Q", 1)), item(2, "joined", "a@x.test", pl("N", "Q", 2)))
 	sd := &sender{}
 	// 0,5 email per detik: giliran kirim pertama baru tiba setelah 2 detik.
-	w := outbox.NewWorker(st, sd, outbox.Config{PublicOrigin: "http://h", Rate: 0.5, Poll: time.Hour}, quietLog())
+	w := service.NewOutboxService(st, sd, mailtemplate.New(), service.OutboxConfig{PublicOrigin: "http://h", Rate: 0.5, Poll: time.Hour}, quietLog())
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { w.Run(ctx); close(done) }()
@@ -141,7 +143,7 @@ func TestWorker_MarkRetryErrorIsLogged(t *testing.T) {
 
 func TestWorker_MarkFailedErrorIsLogged(t *testing.T) {
 	st := &markErrStore{memStore: newStore(item(1, "joined", "bad@x.test", pl("N", "Q", 1)))}
-	sd := &sender{errs: []error{fmt.Errorf("%w: 550", mailer.ErrPermanent)}}
+	sd := &sender{errs: []error{fmt.Errorf("%w: 550", apperror.ErrPermanent)}}
 	w := newWorker(st, sd)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
