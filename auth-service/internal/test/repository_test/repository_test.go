@@ -1,4 +1,4 @@
-package store_test
+package repository_test
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"qms/auth-service/internal/apperror"
-	"qms/auth-service/internal/store"
+	"qms/auth-service/internal/repository"
 )
 
 var ctx = context.Background()
@@ -42,7 +42,7 @@ func TestUserStore_Create(t *testing.T) {
 			WithArgs("a@b.c", "abc", "hash").
 			WillReturnRows(sqlmock.NewRows(userCols).AddRow(1, "a@b.c", "abc", "hash", nil, now))
 
-		u, err := store.NewUserStore(db).Create(ctx, "a@b.c", "abc", "hash")
+		u, err := repository.NewUserRepository(db).Create(ctx, "a@b.c", "abc", "hash")
 
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), u.ID)
@@ -54,7 +54,7 @@ func TestUserStore_Create(t *testing.T) {
 		db, mock := newMock(t)
 		mock.ExpectQuery(`INSERT INTO users`).WillReturnError(&pgconn.PgError{Code: "23505"})
 
-		_, err := store.NewUserStore(db).Create(ctx, "a@b.c", "abc", "hash")
+		_, err := repository.NewUserRepository(db).Create(ctx, "a@b.c", "abc", "hash")
 
 		assert.ErrorIs(t, err, apperror.ErrDuplicate)
 	})
@@ -64,7 +64,7 @@ func TestUserStore_Create(t *testing.T) {
 		boom := errors.New("koneksi putus")
 		mock.ExpectQuery(`INSERT INTO users`).WillReturnError(boom)
 
-		_, err := store.NewUserStore(db).Create(ctx, "a@b.c", "abc", "hash")
+		_, err := repository.NewUserRepository(db).Create(ctx, "a@b.c", "abc", "hash")
 
 		assert.ErrorIs(t, err, boom)
 		assert.NotErrorIs(t, err, apperror.ErrDuplicate)
@@ -74,7 +74,7 @@ func TestUserStore_Create(t *testing.T) {
 		db, mock := newMock(t)
 		mock.ExpectQuery(`INSERT INTO users`).WillReturnError(&pgconn.PgError{Code: "23502"})
 
-		_, err := store.NewUserStore(db).Create(ctx, "a@b.c", "abc", "hash")
+		_, err := repository.NewUserRepository(db).Create(ctx, "a@b.c", "abc", "hash")
 
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, apperror.ErrDuplicate)
@@ -90,7 +90,7 @@ func TestUserStore_FindByLogin(t *testing.T) {
 			AddRow(1, "a@b.c", "budi", "h1", nil, now).
 			AddRow(2, "b@b.c", "budi", nil, "google-sub", now))
 
-	users, err := store.NewUserStore(db).FindByLogin(ctx, "budi")
+	users, err := repository.NewUserRepository(db).FindByLogin(ctx, "budi")
 
 	require.NoError(t, err)
 	require.Len(t, users, 2)
@@ -103,7 +103,7 @@ func TestUserStore_FindByLogin_NoMatchIsEmptyNotError(t *testing.T) {
 	db, mock := newMock(t)
 	mock.ExpectQuery(`FROM users`).WillReturnRows(sqlmock.NewRows(userCols))
 
-	users, err := store.NewUserStore(db).FindByLogin(ctx, "tidak-ada")
+	users, err := repository.NewUserRepository(db).FindByLogin(ctx, "tidak-ada")
 
 	require.NoError(t, err)
 	assert.Empty(t, users)
@@ -113,7 +113,7 @@ func TestUserStore_FindByEmailAndForVerification_NotFoundMapsToErrNotFound(t *te
 	db, mock := newMock(t)
 	mock.ExpectQuery(`SELECT id, email, username FROM users WHERE email = \$1`).WithArgs("x@y.z").WillReturnError(sql.ErrNoRows)
 	mock.ExpectQuery(`SELECT id, email, username, email_verified_at FROM users WHERE id = \$1`).WithArgs(9).WillReturnError(sql.ErrNoRows)
-	s := store.NewUserStore(db)
+	s := repository.NewUserRepository(db)
 
 	_, err := s.FindByEmail(ctx, "x@y.z")
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
@@ -128,7 +128,7 @@ func TestUserStore_FindForVerification_ReadsVerifiedAt(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "username", "email_verified_at"}).AddRow(1, "a@b.c", "abc", now))
 	mock.ExpectQuery(`email_verified_at FROM users`).WithArgs(2).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "username", "email_verified_at"}).AddRow(2, "c@d.e", "cde", nil))
-	s := store.NewUserStore(db)
+	s := repository.NewUserRepository(db)
 
 	verified, err := s.FindForVerification(ctx, 1)
 	require.NoError(t, err)
@@ -148,7 +148,7 @@ func TestUserStore_PasswordChangedAt(t *testing.T) {
 	mock.ExpectQuery(`SELECT password_changed_at FROM users`).WithArgs(3).WillReturnError(sql.ErrNoRows)
 	boom := errors.New("db down")
 	mock.ExpectQuery(`SELECT password_changed_at FROM users`).WithArgs(4).WillReturnError(boom)
-	s := store.NewUserStore(db)
+	s := repository.NewUserRepository(db)
 
 	got, err := s.PasswordChangedAt(ctx, 1)
 	require.NoError(t, err)
@@ -176,7 +176,7 @@ func TestTokenStore_CountRecentTokens(t *testing.T) {
 		WithArgs(7, "password_reset", since).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
-	n, err := store.NewTokenStore(db).CountRecentTokens(ctx, 7, "password_reset", since)
+	n, err := repository.NewTokenRepository(db).CountRecentTokens(ctx, 7, "password_reset", since)
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, n)
@@ -192,7 +192,7 @@ func TestTokenStore_CreateToken_RevokesOldThenInsertsInOneTransaction(t *testing
 		WithArgs(7, "email_verify", "hash", exp, "1.2.3.4").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
-	err := store.NewTokenStore(db).CreateToken(ctx, 7, "email_verify", "hash", exp, "1.2.3.4")
+	err := repository.NewTokenRepository(db).CreateToken(ctx, 7, "email_verify", "hash", exp, "1.2.3.4")
 
 	assert.NoError(t, err)
 }
@@ -204,7 +204,7 @@ func TestTokenStore_CreateToken_InsertFailureRollsBack(t *testing.T) {
 	mock.ExpectExec(`INSERT INTO user_action_tokens`).WillReturnError(errors.New("disk penuh"))
 	mock.ExpectRollback()
 
-	err := store.NewTokenStore(db).CreateToken(ctx, 7, "email_verify", "hash", time.Now(), "")
+	err := repository.NewTokenRepository(db).CreateToken(ctx, 7, "email_verify", "hash", time.Now(), "")
 
 	assert.Error(t, err)
 }
@@ -220,7 +220,7 @@ func TestTokenStore_ResetPassword_ConsumesTokenSetsPasswordRevokesOthersAtomical
 		WithArgs(7).WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectCommit()
 
-	assert.NoError(t, store.NewTokenStore(db).ResetPassword(ctx, "tokhash", "newhash"))
+	assert.NoError(t, repository.NewTokenRepository(db).ResetPassword(ctx, "tokhash", "newhash"))
 }
 
 func TestTokenStore_ResetPassword_InvalidTokenChangesNothing(t *testing.T) {
@@ -229,7 +229,7 @@ func TestTokenStore_ResetPassword_InvalidTokenChangesNothing(t *testing.T) {
 	mock.ExpectQuery(`UPDATE user_action_tokens`).WithArgs("salah").WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback() // password tidak disentuh: tidak ada UPDATE users yang diharapkan
 
-	err := store.NewTokenStore(db).ResetPassword(ctx, "salah", "newhash")
+	err := repository.NewTokenRepository(db).ResetPassword(ctx, "salah", "newhash")
 
 	assert.ErrorIs(t, err, apperror.ErrInvalidResetToken)
 }
@@ -245,7 +245,7 @@ func TestTokenStore_VerifyEmail_MarksVerifiedWithCoalesceAndRevokesOthers(t *tes
 		WithArgs(7).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	assert.NoError(t, store.NewTokenStore(db).VerifyEmail(ctx, "tokhash"))
+	assert.NoError(t, repository.NewTokenRepository(db).VerifyEmail(ctx, "tokhash"))
 }
 
 func TestTokenStore_VerifyEmail_InvalidTokenChangesNothing(t *testing.T) {
@@ -254,7 +254,7 @@ func TestTokenStore_VerifyEmail_InvalidTokenChangesNothing(t *testing.T) {
 	mock.ExpectQuery(`UPDATE user_action_tokens`).WithArgs("salah").WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 
-	assert.ErrorIs(t, store.NewTokenStore(db).VerifyEmail(ctx, "salah"), apperror.ErrInvalidResetToken)
+	assert.ErrorIs(t, repository.NewTokenRepository(db).VerifyEmail(ctx, "salah"), apperror.ErrInvalidResetToken)
 }
 
 // --- Login Google ---
@@ -268,7 +268,7 @@ func TestUserStore_FindByGoogleIDEmailAndID(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows(userCols).AddRow(1, "a@b.c", "abc", "hash", nil, now))
 	mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(1).
 		WillReturnRows(sqlmock.NewRows(userCols).AddRow(1, "a@b.c", "abc", "hash", nil, now))
-	s := store.NewUserStore(db)
+	s := repository.NewUserRepository(db)
 
 	byGoogle, err := s.FindByGoogleID(ctx, "g-1")
 	require.NoError(t, err)
@@ -291,7 +291,7 @@ func TestUserStore_GoogleFinders_NoRowMapsToErrNotFoundAndOtherErrorsAreWrapped(
 	mock.ExpectQuery(`lower\(email\)`).WillReturnError(sql.ErrNoRows)
 	mock.ExpectQuery(`WHERE id = \$1`).WillReturnError(sql.ErrNoRows)
 	mock.ExpectQuery(`google_id = \$1`).WillReturnError(boom)
-	s := store.NewUserStore(db)
+	s := repository.NewUserRepository(db)
 
 	_, err := s.FindByGoogleID(ctx, "x")
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
@@ -312,7 +312,7 @@ func TestUserStore_CreateGoogle(t *testing.T) {
 			WithArgs("a@b.c", "abc", "g-1").
 			WillReturnRows(sqlmock.NewRows(userCols).AddRow(1, "a@b.c", "abc", nil, "g-1", now))
 
-		u, err := store.NewUserStore(db).CreateGoogle(ctx, "a@b.c", "abc", "g-1")
+		u, err := repository.NewUserRepository(db).CreateGoogle(ctx, "a@b.c", "abc", "g-1")
 
 		require.NoError(t, err)
 		assert.False(t, u.PasswordHash.Valid)
@@ -322,7 +322,7 @@ func TestUserStore_CreateGoogle(t *testing.T) {
 		db, mock := newMock(t)
 		mock.ExpectQuery(`INSERT INTO users`).WillReturnError(&pgconn.PgError{Code: "23505"})
 
-		_, err := store.NewUserStore(db).CreateGoogle(ctx, "a@b.c", "abc", "g-1")
+		_, err := repository.NewUserRepository(db).CreateGoogle(ctx, "a@b.c", "abc", "g-1")
 
 		assert.ErrorIs(t, err, apperror.ErrDuplicate)
 	})
@@ -331,7 +331,7 @@ func TestUserStore_CreateGoogle(t *testing.T) {
 		boom := errors.New("putus")
 		mock.ExpectQuery(`INSERT INTO users`).WillReturnError(boom)
 
-		_, err := store.NewUserStore(db).CreateGoogle(ctx, "a@b.c", "abc", "g-1")
+		_, err := repository.NewUserRepository(db).CreateGoogle(ctx, "a@b.c", "abc", "g-1")
 
 		assert.ErrorIs(t, err, boom)
 		assert.NotErrorIs(t, err, apperror.ErrDuplicate)
@@ -344,26 +344,26 @@ func TestUserStore_LinkGoogle(t *testing.T) {
 		db, mock := newMock(t)
 		mock.ExpectExec(q).WithArgs(7, "g-1").WillReturnResult(sqlmock.NewResult(0, 1))
 
-		assert.NoError(t, store.NewUserStore(db).LinkGoogle(ctx, 7, "g-1"))
+		assert.NoError(t, repository.NewUserRepository(db).LinkGoogle(ctx, 7, "g-1"))
 	})
 	t.Run("sudah tertaut ke akun Google lain: tidak ada baris berubah", func(t *testing.T) {
 		db, mock := newMock(t)
 		mock.ExpectExec(q).WithArgs(7, "g-1").WillReturnResult(sqlmock.NewResult(0, 0))
 
-		assert.ErrorIs(t, store.NewUserStore(db).LinkGoogle(ctx, 7, "g-1"), apperror.ErrDuplicate)
+		assert.ErrorIs(t, repository.NewUserRepository(db).LinkGoogle(ctx, 7, "g-1"), apperror.ErrDuplicate)
 	})
 	t.Run("google_id sudah dipakai akun lain (UNIQUE)", func(t *testing.T) {
 		db, mock := newMock(t)
 		mock.ExpectExec(q).WillReturnError(&pgconn.PgError{Code: "23505"})
 
-		assert.ErrorIs(t, store.NewUserStore(db).LinkGoogle(ctx, 7, "g-1"), apperror.ErrDuplicate)
+		assert.ErrorIs(t, repository.NewUserRepository(db).LinkGoogle(ctx, 7, "g-1"), apperror.ErrDuplicate)
 	})
 	t.Run("galat lain dibungkus", func(t *testing.T) {
 		db, mock := newMock(t)
 		boom := errors.New("putus")
 		mock.ExpectExec(q).WillReturnError(boom)
 
-		err := store.NewUserStore(db).LinkGoogle(ctx, 7, "g-1")
+		err := repository.NewUserRepository(db).LinkGoogle(ctx, 7, "g-1")
 
 		assert.ErrorIs(t, err, boom)
 		assert.NotErrorIs(t, err, apperror.ErrDuplicate)

@@ -1,4 +1,4 @@
-package auth_test
+package service_test
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"qms/auth-service/internal/apperror"
-	"qms/auth-service/internal/auth"
+	"qms/auth-service/internal/service"
 	"qms/auth-service/internal/test/testutil"
 )
 
@@ -369,10 +369,10 @@ func TestPasswordReset_EmailTokenCannotResetPassword(t *testing.T) {
 }
 
 func TestValidatePassword(t *testing.T) {
-	assert.ErrorIs(t, auth.ValidatePassword("1234567"), apperror.ErrWeakPassword)
-	assert.NoError(t, auth.ValidatePassword("12345678"))
-	assert.NoError(t, auth.ValidatePassword(strings.Repeat("a", 72)))
-	assert.ErrorIs(t, auth.ValidatePassword(strings.Repeat("a", 73)), apperror.ErrWeakPassword)
+	assert.ErrorIs(t, service.ValidatePassword("1234567"), apperror.ErrWeakPassword)
+	assert.NoError(t, service.ValidatePassword("12345678"))
+	assert.NoError(t, service.ValidatePassword(strings.Repeat("a", 72)))
+	assert.ErrorIs(t, service.ValidatePassword(strings.Repeat("a", 73)), apperror.ErrWeakPassword)
 }
 
 // --- Verifikasi email ---

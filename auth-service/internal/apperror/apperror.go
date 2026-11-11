@@ -25,7 +25,7 @@ var (
 	// ErrGoogleUnavailable: kunci publik Google tidak bisa diambil, jadi token tidak bisa diperiksa.
 	ErrGoogleUnavailable = errors.New("google verification unavailable")
 	// ErrGoogleLinkRequired: email sudah terdaftar dengan password; akun Google hanya boleh ditautkan setelah user
-	// membuktikan password-nya. Dibungkus auth.LinkRequiredError yang membawa link token.
+	// membuktikan password-nya. Dibungkus service.LinkRequiredError yang membawa link token.
 	ErrGoogleLinkRequired = errors.New("google link required")
 	// ErrInvalidLinkToken: link token tidak sah, kedaluwarsa, salah tujuan, atau sudah terlalu sering salah password.
 	ErrInvalidLinkToken = errors.New("invalid link token")

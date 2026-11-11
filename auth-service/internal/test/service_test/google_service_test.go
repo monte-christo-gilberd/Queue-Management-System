@@ -1,4 +1,4 @@
-package auth_test
+package service_test
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"qms/auth-service/internal/apperror"
-	"qms/auth-service/internal/auth"
 	"qms/auth-service/internal/model"
+	"qms/auth-service/internal/service"
 	"qms/auth-service/internal/test/testutil"
 )
 
@@ -21,14 +21,14 @@ import (
 func googleEnv(t *testing.T) *testutil.Env {
 	t.Helper()
 	env := testutil.NewService(t, false)
-	env.Google.Identities["tok"] = auth.GoogleIdentity{Subject: "g-1", Email: "budi@gmail.com", Name: "Budi Santoso"}
+	env.Google.Identities["tok"] = model.GoogleIdentity{Subject: "g-1", Email: "budi@gmail.com", Name: "Budi Santoso"}
 	return env
 }
 
 // linkTokenFor mengambil link token dari galat GOOGLE_LINK_REQUIRED.
 func linkTokenFor(t *testing.T, err error) string {
 	t.Helper()
-	var link *auth.LinkRequiredError
+	var link *service.LinkRequiredError
 	require.ErrorAs(t, err, &link)
 	require.NotEmpty(t, link.Token)
 	return link.Token
@@ -72,7 +72,7 @@ func TestLoginWithGoogle_MatchesBySubjectEvenIfEmailChangedAtGoogle(t *testing.T
 	env := googleEnv(t)
 	first, err := env.Svc.LoginWithGoogle(ctx, "tok")
 	require.NoError(t, err)
-	env.Google.Identities["tok-baru"] = auth.GoogleIdentity{Subject: "g-1", Email: "budi.baru@gmail.com", Name: "Budi"}
+	env.Google.Identities["tok-baru"] = model.GoogleIdentity{Subject: "g-1", Email: "budi.baru@gmail.com", Name: "Budi"}
 
 	again, err := env.Svc.LoginWithGoogle(ctx, "tok-baru")
 
@@ -130,7 +130,7 @@ func TestLoginWithGoogle_EmailMatchIgnoresCase(t *testing.T) {
 func TestLoginWithGoogle_AccountAlreadyLinkedToAnotherGoogleIsConflict(t *testing.T) {
 	env := googleEnv(t)
 	registered(t, env, "budi@gmail.com", "budi", "rahasia123")
-	env.Google.Identities["tok-lain"] = auth.GoogleIdentity{Subject: "g-lain", Email: "x@gmail.com"}
+	env.Google.Identities["tok-lain"] = model.GoogleIdentity{Subject: "g-lain", Email: "x@gmail.com"}
 	// tautkan akun itu ke g-lain lebih dulu
 	env.Store.Users[0].GoogleID = sql.NullString{String: "g-lain", Valid: true}
 
@@ -203,7 +203,7 @@ func TestLoginWithGoogle_UsernameIsSanitized(t *testing.T) {
 	}
 	for name, tc := range cases {
 		env := testutil.NewService(t, false)
-		env.Google.Identities["t"] = auth.GoogleIdentity{Subject: "g", Email: tc.email, Name: tc.name}
+		env.Google.Identities["t"] = model.GoogleIdentity{Subject: "g", Email: tc.email, Name: tc.name}
 
 		_, err := env.Svc.LoginWithGoogle(ctx, "t")
 
@@ -217,7 +217,7 @@ func TestLoginWithGoogle_UsernameIsSanitized(t *testing.T) {
 
 func TestLoginWithGoogle_UsernameIsCappedAtFiftyRunes(t *testing.T) {
 	env := testutil.NewService(t, false)
-	env.Google.Identities["t"] = auth.GoogleIdentity{Subject: "g", Email: "b@gmail.com", Name: strings.Repeat("é", 80)}
+	env.Google.Identities["t"] = model.GoogleIdentity{Subject: "g", Email: "b@gmail.com", Name: strings.Repeat("é", 80)}
 
 	_, err := env.Svc.LoginWithGoogle(ctx, "t")
 
@@ -397,7 +397,7 @@ func TestLoginWithGoogle_RaceOnCreateRetriesAndFindsTheWinner(t *testing.T) {
 	// Dua login Google pertama untuk akun yang sama serentak: yang kalah menabrak UNIQUE, lalu menemukan akun pemenang.
 	env := googleEnv(t)
 	store := &racingStore{FakeStore: env.Store}
-	svc := auth.NewService(store, env.Store, env.Issuer, env.Mailer, auth.Options{PublicAppURL: "https://app.example"}).WithGoogle(env.Google)
+	svc := service.NewService(store, env.Store, env.Issuer, env.Mailer, service.Options{PublicAppURL: "https://app.example"}).WithGoogle(env.Google)
 
 	token, err := svc.LoginWithGoogle(ctx, "tok")
 

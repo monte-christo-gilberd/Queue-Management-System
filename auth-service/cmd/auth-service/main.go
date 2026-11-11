@@ -7,123 +7,138 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"qms/auth-service/internal/auth"
 	"qms/auth-service/internal/config"
+	"qms/auth-service/internal/database"
 	"qms/auth-service/internal/google"
-	"qms/auth-service/internal/httpapi"
+	"qms/auth-service/internal/handler"
+	"qms/auth-service/internal/httpserver"
 	"qms/auth-service/internal/mailclient"
-	"qms/auth-service/internal/store"
+	"qms/auth-service/internal/middleware"
+	"qms/auth-service/internal/repository"
+	"qms/auth-service/internal/router"
+	"qms/auth-service/internal/service"
+	"qms/auth-service/internal/validator"
 )
 
-// fatal mencatat galat lalu menghentikan proses dengan kode 1.
-func fatal(msg string, err error) {
-	slog.Error(msg, "err", err)
-	os.Exit(1)
+// main hanya memanggil run dan mencatat error-nya. Pekerjaan sebenarnya ada di run agar defer di dalamnya
+// (termasuk db.Close) sudah berjalan sebelum proses berhenti dengan kode 1.
+func main() {
+	// jalankan service; galat berarti server gagal start atau berhenti tidak wajar
+	if err := run(); err != nil {
+		// Catat penyebab berhenti sebagai log terstruktur.
+		slog.Error("auth-service stopped", "err", err)
+		// Keluar dengan kode 1 agar orkestrator (docker) tahu service gagal.
+		os.Exit(1)
+	}
 }
 
-// main membaca konfigurasi, membuka database, merangkai service dan router, lalu menjalankan server sampai
-// menerima SIGINT atau SIGTERM.
-func main() {
+// run membaca konfigurasi, membuka database, merangkai repository, service, handler, dan router dari bawah ke atas,
+// lalu menjalankan server sampai menerima SIGINT atau SIGTERM.
+func run() error {
 	// baca dan validasi konfigurasi; galat berarti server tidak boleh jalan
 	cfg, err := config.Load()
 	if err != nil {
-		fatal("config", err)
+		// Bungkus dengan asal galat agar log jelas.
+		return fmt.Errorf("config: %w", err)
 	}
 	// buka koneksi database dengan role auth_rw dan pastikan terjangkau
-	db, err := store.Connect(cfg.DatabaseURL)
+	db, err := database.Connect(cfg.DatabaseURL)
 	if err != nil {
-		fatal("database", err)
+		// Bungkus dengan asal galat agar log jelas.
+		return fmt.Errorf("database: %w", err)
 	}
 	// tutup koneksi setelah server berhenti
 	defer db.Close()
 
 	// pengirim email opsional: tanpa mail-service, reset password dan verifikasi tidak dipasang
-	var mailer auth.Mailer
+	var mailer service.Mailer
 	if cfg.MailServiceURL != "" {
+		// Timeout 0 berarti klien memakai batas bawaannya.
 		mailer = mailclient.New(cfg.MailServiceURL, cfg.MailServiceToken, 0)
 	} else {
+		// Beri peringatan agar operator tahu fitur email nonaktif.
 		slog.Warn("MAIL_SERVICE_URL kosong: lupa/reset password dan verifikasi email tidak dipasang")
 	}
 
-	// rangkai logika akun dari bawah ke atas: penyimpanan, penerbit token, pengirim email
-	svc := auth.NewService(
-		store.NewUserStore(db),
-		store.NewTokenStore(db),
-		auth.NewTokenIssuer(cfg.JWTPrivateKey, cfg.JWTKeyID),
+	// rangkai logika akun dari bawah ke atas: repository, penerbit token, pengirim email
+	svc := service.NewService(
+		repository.NewUserRepository(db),
+		repository.NewTokenRepository(db),
+		service.NewTokenIssuer(cfg.JWTPrivateKey, cfg.JWTKeyID),
 		mailer,
-		auth.Options{PublicAppURL: cfg.PublicAppURL, VerificationRequired: cfg.EmailVerificationRequired},
+		service.Options{PublicAppURL: cfg.PublicAppURL, VerificationRequired: cfg.EmailVerificationRequired},
 	)
 
 	// login Google opsional: hanya menyala bila GOOGLE_CLIENT_IDS terisi
 	if len(cfg.GoogleClientIDs) > 0 {
+		// Verifier memeriksa ID token Google untuk client ID yang dikonfigurasi.
 		svc.WithGoogle(google.NewVerifier(cfg.GoogleCertsURL, cfg.GoogleClientIDs))
 	} else {
+		// Beri peringatan agar operator tahu login Google nonaktif.
 		slog.Warn("GOOGLE_CLIENT_IDS kosong: login Google tidak dipasang")
 	}
 
 	// pasang aturan validasi no_html_tags sebelum request pertama
-	httpapi.RegisterValidators()
-	// server HTTP dengan batas waktu agar koneksi macet tidak menggantung
-	srv := &http.Server{
-		Addr: ":" + cfg.Port,
-		// Hanya nginx di jaringan internal yang boleh menentukan IP klien (X-Forwarded-For).
-		Handler:           httpapi.NewRouter(svc, mailer != nil, trustedProxies()),
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+	validator.RegisterValidators()
+	// handler akun satu-satunya; dipakai untuk semua rute
+	authHandler := handler.NewAuthHandler(svc)
+	// rangkai router: registrasi dan login wajib, hanya proxy tepercaya yang boleh menentukan IP klien
+	app := router.NewAppRouter(
+		authHandler,
+		middleware.Auth(svc),
+		cfg.TrustedProxies,
+	)
+	// reset password dan verifikasi email hanya dipasang bila mail-service terpasang
+	if mailer != nil {
+		// Pasang rute lupa password dan verifikasi email.
+		app.WithEmail(authHandler)
 	}
+	// rute login Google hanya dipasang bila Google dinyalakan
+	if svc.GoogleEnabled() {
+		// Pasang rute login Google.
+		app.WithGoogle(authHandler)
+	}
+	// server HTTP dengan batas waktu agar koneksi macet tidak menggantung
+	srv := httpserver.New(":"+cfg.Port, router.SetupRouter(app))
 
 	// context yang batal saat SIGINT atau SIGTERM diterima
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// Lepas pendaftaran sinyal saat run selesai.
 	defer stop()
-	// jalankan server di goroutine agar main bisa menunggu sinyal berhenti
+	// jalankan server di goroutine agar run bisa menunggu sinyal berhenti
+	serverErr := make(chan error, 1)
+	// Server berjalan di goroutine terpisah.
 	go func() {
+		// Catat konfigurasi efektif (tanpa rahasia) saat start.
 		slog.Info("auth-service starting", "port", cfg.Port, "email", mailer != nil, "verification", cfg.EmailVerificationRequired, "google", svc.GoogleEnabled())
-		// berhenti karena galat selain penutupan normal: hentikan proses
+		// berhenti karena galat selain penutupan normal: laporkan ke run
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			fatal("server", err)
+			// Kirim galat ke run.
+			serverErr <- err
 		}
 	}()
 
-	// tunggu sinyal berhenti, lalu beri request yang sedang berjalan waktu untuk selesai
-	<-ctx.Done()
+	// tunggu sinyal berhenti atau galat server
+	select {
+	// Server berhenti sendiri karena galat.
+	case err := <-serverErr:
+		// Bungkus dengan asal galat.
+		return fmt.Errorf("server: %w", err)
+	// Sinyal diterima: lanjut ke penutupan bertahap.
+	case <-ctx.Done():
+	}
+	// beri request yang sedang berjalan waktu untuk selesai
 	shutdown, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	// Lepas timer saat run selesai.
 	defer cancel()
+	// Berhenti menerima koneksi baru dan menunggu request berjalan selesai; galat diabaikan karena proses akan berhenti.
 	_ = srv.Shutdown(shutdown)
-}
-
-// trustedProxies membaca TRUSTED_PROXIES (daftar CIDR dipisah koma); kosong = tidak ada proxy yang dipercaya.
-func trustedProxies() []string {
-	raw := os.Getenv("TRUSTED_PROXIES")
-	var out []string
-	start := 0
-	// pecah di setiap koma, buang spasi dan entri kosong
-	for i := 0; i <= len(raw); i++ {
-		if i == len(raw) || raw[i] == ',' {
-			if p := trimSpace(raw[start:i]); p != "" {
-				out = append(out, p)
-			}
-			start = i + 1
-		}
-	}
-	return out
-}
-
-// trimSpace membuang spasi dan tab di kedua ujung s.
-func trimSpace(s string) string {
-	for len(s) > 0 && (s[0] == ' ' || s[0] == '\t') {
-		s = s[1:]
-	}
-	for len(s) > 0 && (s[len(s)-1] == ' ' || s[len(s)-1] == '\t') {
-		s = s[:len(s)-1]
-	}
-	return s
+	return nil
 }

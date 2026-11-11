@@ -11,9 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"qms/auth-service/internal/apperror"
-	"qms/auth-service/internal/auth"
+	"qms/auth-service/internal/handler"
+	"qms/auth-service/internal/middleware"
 	"qms/auth-service/internal/model"
+	"qms/auth-service/internal/router"
+	"qms/auth-service/internal/service"
 )
 
 // Key: kunci RSA bersama untuk semua tes (membuat kunci 2048 bit cukup lambat, jadi dibuat sekali).
@@ -34,7 +39,7 @@ type Token struct {
 	UsedAt    *time.Time
 }
 
-// FakeStore memenuhi auth.UserStore dan auth.TokenStore di memori.
+// FakeStore memenuhi service.UserRepository dan service.TokenRepository di memori.
 type FakeStore struct {
 	mu sync.Mutex
 	// Users: akun yang ada; ID diisi saat Create (mulai dari 1).
@@ -266,7 +271,7 @@ func (s *FakeStore) consume(hash, purpose string) (*Token, error) {
 func (s *FakeStore) ResetPassword(_ context.Context, hash, passwordHash string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	t, err := s.consume(hash, auth.PurposePasswordReset)
+	t, err := s.consume(hash, service.PurposePasswordReset)
 	if err != nil {
 		return err
 	}
@@ -274,7 +279,7 @@ func (s *FakeStore) ResetPassword(_ context.Context, hash, passwordHash string) 
 	now := time.Now()
 	s.Changed[t.UserID] = &now
 	for _, other := range s.tokens {
-		if other.UserID == t.UserID && other.Purpose == auth.PurposePasswordReset && other.UsedAt == nil {
+		if other.UserID == t.UserID && other.Purpose == service.PurposePasswordReset && other.UsedAt == nil {
 			other.UsedAt = &now
 		}
 	}
@@ -285,7 +290,7 @@ func (s *FakeStore) ResetPassword(_ context.Context, hash, passwordHash string) 
 func (s *FakeStore) VerifyEmail(_ context.Context, hash string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	t, err := s.consume(hash, auth.PurposeEmailVerify)
+	t, err := s.consume(hash, service.PurposeEmailVerify)
 	if err != nil {
 		return err
 	}
@@ -352,11 +357,11 @@ func (m *FakeMailer) Sent() []Mail {
 	return append([]Mail(nil), m.sent...)
 }
 
-// FakeGoogle memenuhi auth.GoogleVerifier: ID token "uji" dipetakan ke identitas di memori.
+// FakeGoogle memenuhi service.GoogleVerifier: ID token "uji" dipetakan ke identitas di memori.
 type FakeGoogle struct {
 	mu sync.Mutex
 	// Identities: token → identitas. Token yang tidak ada = ErrGoogleInvalidToken.
-	Identities map[string]auth.GoogleIdentity
+	Identities map[string]model.GoogleIdentity
 	// Err: bila terisi, Verify mengembalikannya untuk semua token (email belum terverifikasi, Google mati, dst.).
 	Err error
 	// Calls: jumlah panggilan Verify.
@@ -364,26 +369,26 @@ type FakeGoogle struct {
 }
 
 // Verify mengembalikan identitas untuk token yang dikenal.
-func (g *FakeGoogle) Verify(_ context.Context, idToken string) (auth.GoogleIdentity, error) {
+func (g *FakeGoogle) Verify(_ context.Context, idToken string) (model.GoogleIdentity, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.Calls++
 	if g.Err != nil {
-		return auth.GoogleIdentity{}, g.Err
+		return model.GoogleIdentity{}, g.Err
 	}
 	ident, ok := g.Identities[idToken]
 	if !ok {
-		return auth.GoogleIdentity{}, apperror.ErrGoogleInvalidToken
+		return model.GoogleIdentity{}, apperror.ErrGoogleInvalidToken
 	}
 	return ident, nil
 }
 
 // Env: Service beserta fake-nya.
 type Env struct {
-	Svc    *auth.Service
+	Svc    *service.Service
 	Store  *FakeStore
 	Mailer *FakeMailer
-	Issuer *auth.TokenIssuer
+	Issuer *service.TokenIssuer
 	Google *FakeGoogle
 }
 
@@ -393,12 +398,12 @@ func NewService(t *testing.T, verification bool) *Env {
 	t.Helper()
 	store := NewFakeStore()
 	mailer := &FakeMailer{}
-	issuer := auth.NewTokenIssuer(Key, "test-kid")
-	svc := auth.NewService(store, store, issuer, mailer, auth.Options{
+	issuer := service.NewTokenIssuer(Key, "test-kid")
+	svc := service.NewService(store, store, issuer, mailer, service.Options{
 		PublicAppURL:         "https://app.example/",
 		VerificationRequired: verification,
 	})
-	google := &FakeGoogle{Identities: map[string]auth.GoogleIdentity{}}
+	google := &FakeGoogle{Identities: map[string]model.GoogleIdentity{}}
 	svc.WithGoogle(google)
 	return &Env{Svc: svc, Store: store, Mailer: mailer, Issuer: issuer, Google: google}
 }
@@ -408,10 +413,25 @@ func NewServiceWithoutGoogle(t *testing.T) *Env {
 	t.Helper()
 	store := NewFakeStore()
 	mailer := &FakeMailer{}
-	issuer := auth.NewTokenIssuer(Key, "test-kid")
-	svc := auth.NewService(store, store, issuer, mailer, auth.Options{PublicAppURL: "https://app.example/"})
+	issuer := service.NewTokenIssuer(Key, "test-kid")
+	svc := service.NewService(store, store, issuer, mailer, service.Options{PublicAppURL: "https://app.example/"})
 	return &Env{Svc: svc, Store: store, Mailer: mailer, Issuer: issuer}
 }
 
 // ErrBoom: galat generik untuk mensimulasikan kegagalan infrastruktur.
 var ErrBoom = errors.New("boom")
+
+// NewEngine merangkai router HTTP seperti di main: registrasi dan login selalu ada, rute email hanya bila emailOn,
+// rute Google hanya bila Google dinyalakan di Svc.
+func NewEngine(env *Env, emailOn bool) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	h := handler.NewAuthHandler(env.Svc)
+	app := router.NewAppRouter(h, middleware.Auth(env.Svc), nil)
+	if emailOn {
+		app.WithEmail(h)
+	}
+	if env.Svc.GoogleEnabled() {
+		app.WithGoogle(h)
+	}
+	return router.SetupRouter(app)
+}

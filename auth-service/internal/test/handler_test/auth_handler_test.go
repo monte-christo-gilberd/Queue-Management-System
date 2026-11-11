@@ -1,4 +1,4 @@
-package httpapi_test
+package handler_test
 
 import (
 	"encoding/json"
@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"qms/auth-service/internal/httpapi"
 	"qms/auth-service/internal/test/testutil"
+	"qms/auth-service/internal/validator"
 )
 
 var registerOnce sync.Once
@@ -23,9 +23,9 @@ var registerOnce sync.Once
 func newRouter(t *testing.T, emailOn, verification bool) (*gin.Engine, *testutil.Env) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	registerOnce.Do(httpapi.RegisterValidators)
+	registerOnce.Do(validator.RegisterValidators)
 	env := testutil.NewService(t, verification)
-	return httpapi.NewRouter(env.Svc, emailOn, nil), env
+	return testutil.NewEngine(env, emailOn), env
 }
 
 func do(e *gin.Engine, method, path, body, bearer string) *httptest.ResponseRecorder {

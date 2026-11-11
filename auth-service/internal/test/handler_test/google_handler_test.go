@@ -1,4 +1,4 @@
-package httpapi_test
+package handler_test
 
 import (
 	"net/http"
@@ -10,16 +10,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"qms/auth-service/internal/apperror"
-	"qms/auth-service/internal/auth"
-	"qms/auth-service/internal/httpapi"
+	"qms/auth-service/internal/model"
 	"qms/auth-service/internal/test/testutil"
+	"qms/auth-service/internal/validator"
 )
 
 // googleRouter: router dengan login Google menyala dan satu ID token uji "tok" (budi@gmail.com).
 func googleRouter(t *testing.T) (*gin.Engine, *testutil.Env) {
 	t.Helper()
 	e, env := newRouter(t, true, false)
-	env.Google.Identities["tok"] = auth.GoogleIdentity{Subject: "g-1", Email: "budi@gmail.com", Name: "Budi"}
+	env.Google.Identities["tok"] = model.GoogleIdentity{Subject: "g-1", Email: "budi@gmail.com", Name: "Budi"}
 	return e, env
 }
 
@@ -35,9 +35,9 @@ func linkTokenOf(t *testing.T, w *httptest.ResponseRecorder) string {
 
 func TestGoogleRoutes_AbsentWhenGoogleIsNotConfigured(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	registerOnce.Do(httpapi.RegisterValidators)
+	registerOnce.Do(validator.RegisterValidators)
 	env := testutil.NewServiceWithoutGoogle(t)
-	e := httpapi.NewRouter(env.Svc, true, nil)
+	e := testutil.NewEngine(env, true)
 
 	assert.Equal(t, http.StatusNotFound, do(e, http.MethodPost, "/api/v1/users/google", `{"id_token":"x"}`, "").Code)
 	assert.Equal(t, http.StatusNotFound, do(e, http.MethodPost, "/api/v1/users/google/link", `{"link_token":"x","password":"y"}`, "").Code)

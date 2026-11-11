@@ -1,4 +1,4 @@
-package auth_test
+package service_test
 
 import (
 	"crypto/rand"
@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"qms/auth-service/internal/auth"
+	"qms/auth-service/internal/service"
 	"qms/auth-service/internal/test/testutil"
 )
 
-func newIssuer() *auth.TokenIssuer { return auth.NewTokenIssuer(testutil.Key, "kid-1") }
+func newIssuer() *service.TokenIssuer { return service.NewTokenIssuer(testutil.Key, "kid-1") }
 
 func TestIssue_ProducesRS256TokenWithSubIatExpAndKid(t *testing.T) {
 	issuer := newIssuer()

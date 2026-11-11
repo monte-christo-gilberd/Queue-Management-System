@@ -71,7 +71,7 @@ Sekali pakai, dan hangus setelah 5 kali salah password (penghitung di memori; sa
 `internal/google` memeriksa ID token sendiri (tanpa `google.golang.org/api`): tanda tangan RS256 dengan JWKS Google
 (di-cache sesuai `Cache-Control`, `kid` tak dikenal paling cepat diambil ulang tiap 1 menit, kunci kedaluwarsa tidak dipakai
 bila Google mati), `iss` Google, `aud` salah satu `GOOGLE_CLIENT_IDS`, `exp`/`iat` dengan toleransi 60 detik, dan
-`email_verified`. Keputusan di `auth/google.go`: akun tertaut (cocok lewat `google_id`) → token; email belum ada → akun baru
+`email_verified`. Keputusan di `service/google_service.go`: akun tertaut (cocok lewat `google_id`) → token; email belum ada → akun baru
 tanpa password dan terverifikasi; email sudah ada dengan password (huruf besar/kecil diabaikan) → 409 dan **tidak** ditautkan
 otomatis.
 
@@ -102,12 +102,20 @@ pakai hanya hash SHA-256, tidak pernah token mentah.
 ## Struktur
 
 ```
-cmd/auth-service/    main: konfigurasi → database → service → router, shutdown rapi
+cmd/auth-service/    main: main() memanggil run(); konfigurasi → database → repository → service → handler → router, shutdown rapi
+internal/apperror/   galat sentinel yang dipetakan handler ke kode HTTP
+internal/config/     env, kunci privat, validasi produksi, TRUSTED_PROXIES
+internal/database/   koneksi PostgreSQL (Connect)
+internal/dto/        body request dan isi respons JSON
 internal/google/     verifikasi ID token Google (JWKS, iss, aud, exp, email_verified)
-internal/config/     env, kunci privat, validasi produksi
-internal/auth/       Service (register, login, Authenticate, reset, verifikasi) dan TokenIssuer (RS256)
-internal/store/      PostgreSQL: UserStore dan TokenStore
-internal/httpapi/    Gin: rute, DTO, middleware requireAuth
+internal/handler/    Gin: 8 handler akun (AuthHandler), respondData/respondError
+internal/httpserver/ http.Server dengan batas waktu
 internal/mailclient/ klien HTTP ke mail-service
+internal/middleware/ Auth: pemeriksaan JWT RS256 dan pencabutan sesi
+internal/model/      User dan GoogleIdentity
+internal/repository/ PostgreSQL: UserRepository dan TokenRepository
+internal/router/     AppRouter, NewAppRouter + WithEmail/WithGoogle, SetupRouter, rute per fitur
+internal/service/    Service (register, login, Authenticate, reset, verifikasi, Google) dan TokenIssuer (RS256)
+internal/validator/  aturan no_html_tags
 internal/test/       tes (fake di memori di testutil, sqlmock untuk SQL)
 ```

@@ -30,9 +30,12 @@ type Client struct {
 
 // New membuat Client. Timeout nol atau negatif diganti defaultTimeout.
 func New(baseURL, serviceToken string, timeout time.Duration) *Client {
+	// Timeout tidak valid (nol atau negatif): pakai nilai bawaan.
 	if timeout <= 0 {
+		// Ganti dengan batas waktu bawaan.
 		timeout = defaultTimeout
 	}
+	// Buat Client; "/" di akhir baseURL dibuang agar tidak ada "//" saat digabung dengan path.
 	return &Client{
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		serviceToken: serviceToken,
@@ -45,11 +48,14 @@ func New(baseURL, serviceToken string, timeout time.Duration) *Client {
 func (c *Client) Send(ctx context.Context, to, template string, data map[string]any) error {
 	// ubah tujuan, nama templat, dan data menjadi JSON
 	body, err := json.Marshal(map[string]any{"to": to, "template": template, "data": data})
+	// Marshal gagal: dipetakan ke ErrUnavailable tanpa membocorkan data.
 	if err != nil {
+		// Tidak ada request yang terkirim.
 		return ErrUnavailable
 	}
 	// buat request POST ke endpoint pengiriman; ikut context agar bisa dibatalkan pemanggil
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/v1/send", bytes.NewReader(body))
+	// Request gagal dibuat (URL tidak valid): dipetakan ke ErrUnavailable.
 	if err != nil {
 		return ErrUnavailable
 	}
@@ -58,6 +64,7 @@ func (c *Client) Send(ctx context.Context, to, template string, data map[string]
 	req.Header.Set("X-Service-Token", c.serviceToken)
 	// kirim; galat berarti tidak terhubung, timeout, atau koneksi putus
 	resp, err := c.httpClient.Do(req)
+	// Galat jaringan: dipetakan ke ErrUnavailable tanpa detail URL atau token.
 	if err != nil {
 		return ErrUnavailable
 	}
@@ -69,5 +76,6 @@ func (c *Client) Send(ctx context.Context, to, template string, data map[string]
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%w: status %d", ErrUnavailable, resp.StatusCode)
 	}
+	// Mail-service menerima permintaan.
 	return nil
 }
