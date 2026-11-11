@@ -115,11 +115,9 @@ func rowsReply(cols []col, rows [][]*string) reply {
 		}
 		msgs = append(msgs, &pgproto3.DataRow{Values: vals})
 	}
-	msgs = append(msgs, &pgproto3.CommandComplete{CommandTag: []byte(fmt.Sprintf("SELECT %d", len(rows)))})
+	msgs = append(msgs, &pgproto3.CommandComplete{CommandTag: fmt.Appendf(nil, "SELECT %d", len(rows))})
 	return reply{msgs: msgs}
 }
-
-func s(v string) *string { return &v }
 
 var ticketCols = []col{
 	{"id", oidInt8}, {"queue_id", oidInt8}, {"ticket_number", oidInt4}, {"user_id", oidInt8},
@@ -151,7 +149,7 @@ func newStore(t *testing.T, replies map[string]reply) (*repository.NotifyReposit
 
 func TestTicketReadsCounterName(t *testing.T) {
 	st, _ := newStore(t, map[string]reply{qTicket: rowsReply(ticketCols, [][]*string{
-		{s("7"), s("3"), s("12"), s("10"), s("called"), s("Poli"), s("B"), s("Counter 2")},
+		{new("7"), new("3"), new("12"), new("10"), new("called"), new("Poli"), new("B"), new("Counter 2")},
 	})})
 	tk, err := st.Ticket(context.Background(), 7)
 	if err != nil {
@@ -165,7 +163,7 @@ func TestTicketReadsCounterName(t *testing.T) {
 
 func TestTicketNullCounterLeavesNameEmpty(t *testing.T) {
 	st, _ := newStore(t, map[string]reply{qTicket: rowsReply(ticketCols, [][]*string{
-		{s("7"), s("3"), s("12"), s("10"), s("waiting"), s("Poli"), s("A"), nil},
+		{new("7"), new("3"), new("12"), new("10"), new("waiting"), new("Poli"), new("A"), nil},
 	})})
 	tk, err := st.Ticket(context.Background(), 7)
 	if err != nil {
@@ -191,7 +189,7 @@ func TestTicketQueryErrorIsReturned(t *testing.T) {
 }
 
 func TestPositionOf(t *testing.T) {
-	st, _ := newStore(t, map[string]reply{qPosition: rowsReply([]col{{"pos", oidInt8}}, [][]*string{{s("4")}})})
+	st, _ := newStore(t, map[string]reply{qPosition: rowsReply([]col{{"pos", oidInt8}}, [][]*string{{new("4")}})})
 	pos, err := st.PositionOf(context.Background(), 1)
 	if err != nil || pos != 4 {
 		t.Fatalf("pos=%d err=%v", pos, err)
@@ -207,7 +205,7 @@ func TestPositionOfQueryError(t *testing.T) {
 
 func TestFirstWaitingReturnsTicket(t *testing.T) {
 	st, _ := newStore(t, map[string]reply{qFirst: rowsReply(firstCols, [][]*string{
-		{s("5"), s("3"), s("8"), s("20"), s("waiting"), s("Poli"), s("A")},
+		{new("5"), new("3"), new("8"), new("20"), new("waiting"), new("Poli"), new("A")},
 	})})
 	tk, err := st.FirstWaiting(context.Background(), 3)
 	if err != nil {
@@ -236,8 +234,8 @@ func TestFirstWaitingQueryErrorIsReturned(t *testing.T) {
 
 func TestSubscriptionsReadsAllRows(t *testing.T) {
 	st, _ := newStore(t, map[string]reply{qSubs: rowsReply(subCols, [][]*string{
-		{s("https://push/a"), s("k1"), s("a1")},
-		{s("https://push/b"), s("k2"), s("a2")},
+		{new("https://push/a"), new("k1"), new("a1")},
+		{new("https://push/b"), new("k2"), new("a2")},
 	})})
 	subs, err := st.Subscriptions(context.Background(), 10)
 	if err != nil {
@@ -265,7 +263,7 @@ func TestSubscriptionsQueryErrorIsReturned(t *testing.T) {
 
 func TestSubscriptionsScanErrorIsReturned(t *testing.T) {
 	// Two columns cannot fill the three destinations, so the row scan fails.
-	st, _ := newStore(t, map[string]reply{qSubs: rowsReply(subCols[:2], [][]*string{{s("https://push/a"), s("k1")}})})
+	st, _ := newStore(t, map[string]reply{qSubs: rowsReply(subCols[:2], [][]*string{{new("https://push/a"), new("k1")}})})
 	if _, err := st.Subscriptions(context.Background(), 10); err == nil {
 		t.Fatal("want scan error")
 	}

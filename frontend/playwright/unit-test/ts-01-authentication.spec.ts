@@ -83,6 +83,9 @@ test.describe('TS-01 Authentication', () => {
     await field(page, 'PASSWORD').fill('Password123!');
     await field(page, 'KONFIRMASI PASSWORD').fill('Password999!');
 
+    // Selama pengguna masih di field konfirmasi, pesan belum tampil; setelah fokus pindah, pesan muncul di bawah field.
+    await expect(page.getByText('Password tidak sama')).toHaveCount(0);
+    await field(page, 'KONFIRMASI PASSWORD').blur();
     await expect(page.getByText('Password tidak sama')).toBeVisible();
     await action(page, 'Daftar').click();
     await expect(page).toHaveURL(/\/register$/);

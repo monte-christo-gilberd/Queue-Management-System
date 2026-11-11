@@ -2,7 +2,7 @@
 
 > **Tujuan**: mencatat fitur dari `product-overview.md` yang sudah ada di kode dan sudah diuji. Fitur ini sudah keluar dari backlog. Test-nya ada di spec tematik yang tercantum di kolom *Diuji di*.
 >
-> Yang masih belum atau baru sebagian selesai ada di `../backlog/ts-09-backlog-features.md`.
+> Tidak ada lagi item backlog. TC-09-15 (paket dan pembayaran langganan) dihapus karena pembayaran diganti tombol tambah 30 hari tanpa pembayaran.
 
 ## Fitur selesai
 

@@ -32,9 +32,3 @@
 | **Steps** | 1. Login sebagai owner berlangganan kedaluwarsa yang sudah punya antrian aktif 2. Buka Dashboard |
 | **Expected Result** | Antrian aktif tetap tampil dan tombol **NEXT** bisa dipakai. Hanya pembuatan antrian baru yang diblokir |
 
-### TC-04-04 — Opsi paket dan pembayaran tampil saat diblokir
-| | |
-|---|---|
-| **Priority** | P1 |
-| **Sumber** | 4.18 langkah 1: "shown pricing/payment options (monthly, yearly, one-time)" — **belum diimplementasikan** (Backlog) |
-| **Expected Result** | Opsi paket (bulanan, tahunan, sekali bayar) tampil. Lihat `test-cases/queue-management/backlog` |

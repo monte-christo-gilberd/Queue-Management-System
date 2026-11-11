@@ -47,8 +47,4 @@ test.describe('TS-04 Langganan owner', () => {
     await expect(page.getByText('Belum ada antrian yang aktif')).toHaveCount(0);
     await expect(action(page, 'Next').first()).toBeVisible();
   });
-
-  test('TC-04-04 Opsi paket dan pembayaran tampil saat diblokir', async () => {
-    test.fixme(true, 'Belum selesai: 4.18 — halaman langganan hanya menawarkan tambah 30 hari (MOCK, tanpa pembayaran); pilihan paket (bulanan, tahunan, sekali bayar) belum ada (lihat test-cases/backlog/ts-09-backlog-features.md).');
-  });
 });

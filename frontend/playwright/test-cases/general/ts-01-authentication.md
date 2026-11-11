@@ -67,8 +67,8 @@
 | | |
 |---|---|
 | **Priority** | P2 |
-| **Steps** | 1. Isi password dan konfirmasi yang berbeda 2. Klik **Daftar** |
-| **Expected Result** | Pesan "Password tidak sama" (atau pesan setara) tampil. Tidak ada akun dibuat |
+| **Steps** | 1. Isi password dan konfirmasi yang berbeda 2. Pindahkan fokus dari field konfirmasi 3. Klik **Daftar** |
+| **Expected Result** | Pesan "Password tidak sama" belum tampil selama pengguna masih mengetik di field konfirmasi, lalu tampil di bawah field setelah fokus pindah. Pendaftaran ditolak dan tidak ada akun dibuat. Rincian perilaku pesan ada di TS-35 |
 
 ### TC-01-09 — Halaman terlindungi mengarahkan ke login, lalu kembali
 | | |
