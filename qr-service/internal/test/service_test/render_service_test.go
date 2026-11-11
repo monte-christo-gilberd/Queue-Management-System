@@ -1,11 +1,12 @@
-package qr_test
+package service_test
 
 import (
 	"bytes"
 	"image/png"
 	"testing"
 
-	"qms/qr-service/internal/qr"
+	"qms/qr-service/internal/model"
+	"qms/qr-service/internal/service"
 )
 
 // Batas ukuran adalah kontrak publik renderer: default 512 px, di-clamp ke
@@ -17,8 +18,11 @@ const (
 	maxSize     = 2048
 )
 
+// renderer adalah service render yang dipakai semua tes di berkas ini.
+var renderer = service.NewRenderService()
+
 func TestRender_DefaultProducesValidPNG(t *testing.T) {
-	out, err := qr.Render(qr.Options{Data: "https://example.com/join?t=abc"})
+	out, err := renderer.Render(model.RenderOptions{Data: "https://example.com/join?t=abc"})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -45,7 +49,7 @@ func TestRender_SizeIsClamped(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		out, err := qr.Render(qr.Options{Data: "x", Size: tc.in})
+		out, err := renderer.Render(model.RenderOptions{Data: "x", Size: tc.in})
 		if err != nil {
 			t.Fatalf("Render(size=%d): %v", tc.in, err)
 		}
@@ -61,18 +65,18 @@ func TestRender_SizeIsClamped(t *testing.T) {
 
 func TestRender_RecoveryLevels(t *testing.T) {
 	for _, level := range []string{"", "L", "M", "Q", "H"} {
-		if _, err := qr.Render(qr.Options{Data: "x", RecoveryLevel: level}); err != nil {
+		if _, err := renderer.Render(model.RenderOptions{Data: "x", RecoveryLevel: level}); err != nil {
 			t.Fatalf("level %q: %v", level, err)
 		}
 	}
 
-	if _, err := qr.Render(qr.Options{Data: "x", RecoveryLevel: "Z"}); err == nil {
+	if _, err := renderer.Render(model.RenderOptions{Data: "x", RecoveryLevel: "Z"}); err == nil {
 		t.Fatal("expected error for invalid recovery level")
 	}
 }
 
 func TestRender_Colors(t *testing.T) {
-	if _, err := qr.Render(qr.Options{
+	if _, err := renderer.Render(model.RenderOptions{
 		Data:            "x",
 		ForegroundColor: "#111827",
 		BackgroundColor: "#ffffff",
@@ -80,10 +84,10 @@ func TestRender_Colors(t *testing.T) {
 		t.Fatalf("valid colors: %v", err)
 	}
 
-	if _, err := qr.Render(qr.Options{Data: "x", ForegroundColor: "#zzzzzz"}); err == nil {
+	if _, err := renderer.Render(model.RenderOptions{Data: "x", ForegroundColor: "#zzzzzz"}); err == nil {
 		t.Fatal("expected error for invalid foreground color")
 	}
-	if _, err := qr.Render(qr.Options{Data: "x", BackgroundColor: "gggggg"}); err == nil {
+	if _, err := renderer.Render(model.RenderOptions{Data: "x", BackgroundColor: "gggggg"}); err == nil {
 		t.Fatal("expected error for invalid background color")
 	}
 }
@@ -91,7 +95,7 @@ func TestRender_Colors(t *testing.T) {
 func TestRender_EmptyDataIsRejected(t *testing.T) {
 	// Handler juga menolak data kosong; di sini dipastikan renderer tidak
 	// menghasilkan PNG kosong yang tidak bisa dipindai.
-	if _, err := qr.Render(qr.Options{Data: ""}); err == nil {
+	if _, err := renderer.Render(model.RenderOptions{Data: ""}); err == nil {
 		t.Fatal("expected error for empty data")
 	}
 }

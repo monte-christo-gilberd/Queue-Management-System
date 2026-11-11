@@ -1,4 +1,4 @@
-package httpapi_test
+package router_test
 
 import (
 	"bytes"
@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"qms/qr-service/internal/httpapi"
-	"qms/qr-service/internal/joinlink"
+	"qms/qr-service/internal/handler"
+	"qms/qr-service/internal/model"
+	"qms/qr-service/internal/router"
+	"qms/qr-service/internal/service"
 )
 
 const (
@@ -52,26 +54,26 @@ type verifyTokenResponse struct {
 
 type testEnv struct {
 	router http.Handler
-	signer *joinlink.Signer
+	signer *service.TokenService
 }
 
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 
-	signer, err := joinlink.New(testSecret)
+	signer, err := service.NewTokenService(testSecret, 2*time.Minute)
 	if err != nil {
-		t.Fatalf("joinlink.New: %v", err)
+		t.Fatalf("service.NewTokenService: %v", err)
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := httpapi.NewRouter(httpapi.Config{
-		Signer:       signer,
-		DynamicTTL:   2 * time.Minute,
-		ServiceToken: testServiceToken,
-		Logger:       logger,
-	})
+	appRouter := router.NewAppRouter(
+		handler.NewHealthHandler(),
+		handler.NewTokenHandler(signer),
+		testServiceToken,
+		logger,
+	).WithRender(handler.NewRenderHandler(service.NewRenderService()))
 
-	return &testEnv{router: router, signer: signer}
+	return &testEnv{router: router.SetupRouter(appRouter), signer: signer}
 }
 
 func (e *testEnv) do(t *testing.T, method, path string, body []byte, headers map[string]string) *httptest.ResponseRecorder {
@@ -157,7 +159,7 @@ func TestIssueToken_Static(t *testing.T) {
 		t.Fatalf("static token must not expire, got %d", *resp.ExpiresAt)
 	}
 
-	claims, err := env.signer.Verify(resp.Token)
+	claims, err := env.signer.VerifyToken(resp.Token)
 	if err != nil {
 		t.Fatalf("issued token does not verify: %v", err)
 	}
@@ -213,7 +215,7 @@ func TestIssueToken_Validation(t *testing.T) {
 
 func TestVerifyToken_Valid(t *testing.T) {
 	env := newTestEnv(t)
-	token, _, err := env.signer.Issue(9, joinlink.TypeStatic, 0)
+	token, _, err := env.signer.Issue(9, model.TypeStatic, 0)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -236,7 +238,7 @@ func TestVerifyToken_Valid(t *testing.T) {
 func TestVerifyToken_Errors(t *testing.T) {
 	env := newTestEnv(t)
 
-	tampered, _, err := env.signer.Issue(9, joinlink.TypeStatic, 0)
+	tampered, _, err := env.signer.Issue(9, model.TypeStatic, 0)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -248,7 +250,7 @@ func TestVerifyToken_Errors(t *testing.T) {
 	}
 	tampered = strings.Join(parts, ".")
 
-	expired, _, err := env.signer.Issue(9, joinlink.TypeDynamic, time.Millisecond)
+	expired, _, err := env.signer.Issue(9, model.TypeDynamic, time.Millisecond)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}

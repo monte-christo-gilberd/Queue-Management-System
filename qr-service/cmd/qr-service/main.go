@@ -5,108 +5,115 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
 
 	"qms/qr-service/internal/config"
-	"qms/qr-service/internal/httpapi"
-	"qms/qr-service/internal/joinlink"
+	"qms/qr-service/internal/handler"
+	"qms/qr-service/internal/httpserver"
+	"qms/qr-service/internal/logging"
+	"qms/qr-service/internal/router"
+	"qms/qr-service/internal/service"
 )
 
-// main menyusun semua dependensi, menjalankan server HTTP, lalu menunggu sinyal berhenti.
+// main hanya memanggil run, lalu menghentikan proses dengan kode 1 bila run gagal.
 func main() {
-	// Muat berkas .env di folder akar proyek (../.env, relatif terhadap folder qr-service/). Di container tidak ada berkas ini,
-	// dan semua nilai datang dari environment.
+	// jalankan service; galat dicatat lalu proses berhenti agar container gagal start cepat
+	if err := run(); err != nil {
+		// catat penyebab, lalu keluar dengan kode 1 agar orkestrator tahu start gagal
+		slog.Error("qr-service stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+// run menyusun semua dependensi, menjalankan server HTTP, lalu menunggu sinyal berhenti.
+func run() error {
+	// muat berkas .env di folder akar proyek (../.env, relatif terhadap folder qr-service/); di container
+	// tidak ada berkas ini, dan semua nilai datang dari environment
 	if err := godotenv.Load("../.env"); err != nil {
-		// .env hanya untuk dev; di container semua variabel datang dari environment.
+		// .env hanya untuk dev; di container semua variabel datang dari environment
 		slog.Debug("no .env file found, relying on process environment")
 	}
 
-	// Baca dan validasi konfigurasi. Bila tidak valid, hentikan proses agar container gagal start cepat.
+	// baca dan validasi konfigurasi; bila tidak valid, kembalikan galat
 	cfg, err := config.Load()
+	// konfigurasi tidak valid (secret kosong, TTL di luar rentang): berhenti sebelum membuka port
 	if err != nil {
-		slog.Error("invalid configuration", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// Buat logger sesuai LOG_LEVEL lalu jadikan default untuk slog di seluruh proses.
-	logger := newLogger(cfg.LogLevel)
+	// buat logger sesuai LOG_LEVEL lalu jadikan default untuk slog di seluruh proses
+	logger := logging.NewLogger(cfg.LogLevel)
 	slog.SetDefault(logger)
 
-	// Buat signer dari JOIN_LINK_SECRET. Secret yang terlalu pendek ditolak di sini.
-	signer, err := joinlink.New(cfg.JoinSecret)
+	// buat service token dari JOIN_LINK_SECRET; secret yang terlalu pendek ditolak di sini
+	tokenService, err := service.NewTokenService(cfg.JoinSecret, cfg.DynamicTTL)
+	// service memeriksa ulang panjang secret: berhenti sebelum membuka port
 	if err != nil {
-		logger.Error("invalid join link secret", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("invalid join link secret: %w", err)
 	}
+	// buat service render QR
+	renderService := service.NewRenderService()
 
-	// Pasang router dengan signer, TTL dinamis, token internal, dan logger.
-	router := httpapi.NewRouter(httpapi.Config{
-		Signer:       signer,
-		DynamicTTL:   cfg.DynamicTTL,
-		ServiceToken: cfg.ServiceToken,
-		Logger:       logger,
-	})
+	// buat handler dari service
+	healthHandler := handler.NewHealthHandler()
+	// handler token dan render memakai service masing-masing
+	tokenHandler := handler.NewTokenHandler(tokenService)
+	renderHandler := handler.NewRenderHandler(renderService)
 
-	// Bungkus router dengan server HTTP yang punya timeout, lalu siapkan context yang batal saat SIGINT/SIGTERM.
-	server := httpapi.NewServer(":"+cfg.Port, router)
+	// pasang router dengan handler wajib, token internal, dan logger, lalu fitur opsional
+	appRouter := router.NewAppRouter(
+		healthHandler,
+		tokenHandler,
+		cfg.ServiceToken,
+		logger,
+	).WithRender(renderHandler)
+	// bangun gin.Engine dengan semua rute dan middleware terpasang
+	engine := router.SetupRouter(appRouter)
 
+	// bungkus router dengan server HTTP yang punya timeout
+	server := httpserver.NewServer(":"+cfg.Port, engine)
+
+	// siapkan context yang batal saat SIGINT/SIGTERM
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// stop melepas penangkap sinyal saat run selesai
 	defer stop()
 
-	// Jalankan server di goroutine terpisah agar main bisa menunggu sinyal berhenti.
+	// jalankan server di goroutine terpisah agar run bisa menunggu sinyal berhenti
 	go func() {
-		// Catat port dan TTL dinamis saat server mulai mendengarkan.
+		// catat port dan TTL dinamis saat server mulai mendengarkan
 		logger.Info("qr-service listening",
 			"port", cfg.Port,
 			"dynamic_ttl_seconds", int(cfg.DynamicTTL.Seconds()),
 		)
-		// Server berhenti karena error (bukan karena Shutdown): catat, lalu batalkan ctx agar proses ikut berhenti.
+		// server berhenti karena error (bukan karena Shutdown): catat, lalu batalkan ctx agar proses ikut berhenti
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("server stopped unexpectedly", "error", err)
 			stop()
 		}
 	}()
 
-	// Tunggu sampai ada sinyal berhenti atau server gagal.
+	// tunggu sampai ada sinyal berhenti atau server gagal
 	<-ctx.Done()
+	// catat bahwa sinyal berhenti sudah diterima
 	logger.Info("shutting down qr-service")
 
-	// Beri server waktu maksimal 10 detik untuk menyelesaikan request yang sedang berjalan.
+	// beri server waktu maksimal 10 detik untuk menyelesaikan request yang sedang berjalan
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// cancel melepas timer context shutdown saat run selesai
 	defer cancel()
-	// Shutdown gagal (mis. timeout): catat, lalu proses tetap berhenti.
+	// shutdown gagal (mis. timeout): catat, lalu proses tetap berhenti
 	if err := server.Shutdown(shutdownCtx); err != nil {
+		// shutdown gagal tidak mengubah hasil run; cukup dicatat
 		logger.Error("graceful shutdown failed", "error", err)
 	}
-}
-
-// newLogger membuat logger JSON ke stdout dengan level dari LOG_LEVEL. Nilai tidak dikenal memakai info.
-func newLogger(level string) *slog.Logger {
-	// Level log yang dipakai handler. Bawaannya info.
-	var lvl slog.Level
-	// Terjemahkan nama level dari env (tanpa memperhatikan huruf besar/kecil) ke slog.Level.
-	switch strings.ToLower(level) {
-	// debug: semua log, termasuk yang tidak penting.
-	case "debug":
-		lvl = slog.LevelDebug
-	// warn: hanya peringatan dan galat.
-	case "warn":
-		lvl = slog.LevelWarn
-	// error: hanya galat.
-	case "error":
-		lvl = slog.LevelError
-	// Nilai lain (termasuk info): info ke atas.
-	default:
-		lvl = slog.LevelInfo
-	}
-	// Buat handler JSON ke stdout dengan level yang sudah dipilih.
-	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
+	// penutupan normal
+	return nil
 }

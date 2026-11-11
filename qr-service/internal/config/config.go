@@ -64,6 +64,7 @@ func Load() (Config, error) {
 		seconds, err := strconv.Atoi(raw)
 		// Teks bukan angka: tolak dengan membungkus error asli.
 		if err != nil {
+			// error asli strconv ikut dibungkus agar jelas nilai mana yang salah
 			return Config{}, fmt.Errorf("invalid QR_DYNAMIC_TTL_SECONDS: %w", err)
 		}
 		// Ubah jumlah detik menjadi durasi.
@@ -79,6 +80,7 @@ func Load() (Config, error) {
 	// TTL lolos validasi: simpan ke konfigurasi.
 	cfg.DynamicTTL = ttl
 
+	// konfigurasi lengkap dan valid
 	return cfg, nil
 }
 

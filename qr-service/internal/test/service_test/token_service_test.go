@@ -1,4 +1,4 @@
-package joinlink_test
+package service_test
 
 import (
 	"crypto/hmac"
@@ -9,14 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"qms/qr-service/internal/joinlink"
+	"qms/qr-service/internal/apperror"
+	"qms/qr-service/internal/model"
+	"qms/qr-service/internal/service"
 )
 
 const testSecret = "0123456789abcdef0123456789abcdef"
 
-func newTestSigner(t *testing.T) *joinlink.Signer {
+func newTestSigner(t *testing.T) *service.TokenService {
 	t.Helper()
-	s, err := joinlink.New(testSecret)
+	s, err := service.NewTokenService(testSecret, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -33,7 +35,7 @@ func sign(secret, signingInput string) string {
 }
 
 func TestNew_RejectsShortSecret(t *testing.T) {
-	if _, err := joinlink.New("short"); err == nil {
+	if _, err := service.NewTokenService("short", 2*time.Minute); err == nil {
 		t.Fatal("expected error for short secret")
 	}
 }
@@ -41,7 +43,7 @@ func TestNew_RejectsShortSecret(t *testing.T) {
 func TestIssueStatic_VerifiesAndHasNoExpiry(t *testing.T) {
 	s := newTestSigner(t)
 
-	token, issued, err := s.Issue(12, joinlink.TypeStatic, 0)
+	token, issued, err := s.Issue(12, model.TypeStatic, 0)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -49,11 +51,11 @@ func TestIssueStatic_VerifiesAndHasNoExpiry(t *testing.T) {
 		t.Fatalf("static token must not have exp, got %d", issued.ExpiresAt)
 	}
 
-	claims, err := s.Verify(token)
+	claims, err := s.VerifyToken(token)
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
-	if claims.QueueID != 12 || claims.Type != joinlink.TypeStatic {
+	if claims.QueueID != 12 || claims.Type != model.TypeStatic {
 		t.Fatalf("unexpected claims: %+v", claims)
 	}
 	if claims.JTI == "" {
@@ -68,7 +70,7 @@ func TestIssueDynamic_HasExpiryWithinTTL(t *testing.T) {
 	s := newTestSigner(t)
 	before := time.Now().Add(2 * time.Minute).Unix()
 
-	token, issued, err := s.Issue(7, joinlink.TypeDynamic, 2*time.Minute)
+	token, issued, err := s.Issue(7, model.TypeDynamic, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -77,22 +79,22 @@ func TestIssueDynamic_HasExpiryWithinTTL(t *testing.T) {
 		t.Fatalf("exp %d outside expected window [%d,%d]", issued.ExpiresAt, before, after)
 	}
 
-	claims, err := s.Verify(token)
+	claims, err := s.VerifyToken(token)
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
-	if claims.Type != joinlink.TypeDynamic || claims.ExpiresAt != issued.ExpiresAt {
+	if claims.Type != model.TypeDynamic || claims.ExpiresAt != issued.ExpiresAt {
 		t.Fatalf("unexpected claims: %+v", claims)
 	}
 }
 
 func TestIssueDynamic_DefaultTTLWhenZero(t *testing.T) {
 	s := newTestSigner(t)
-	_, issued, err := s.Issue(1, joinlink.TypeDynamic, 0)
+	_, issued, err := s.Issue(1, model.TypeDynamic, 0)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
-	want := time.Now().Add(joinlink.DefaultDynamicTTL).Unix()
+	want := time.Now().Add(model.DefaultDynamicTTL).Unix()
 	if diff := issued.ExpiresAt - want; diff < -2 || diff > 2 {
 		t.Fatalf("expected exp near %d, got %d", want, issued.ExpiresAt)
 	}
@@ -101,11 +103,11 @@ func TestIssueDynamic_DefaultTTLWhenZero(t *testing.T) {
 func TestIssue_RotationProducesDifferentTokens(t *testing.T) {
 	s := newTestSigner(t)
 
-	first, _, err := s.Issue(5, joinlink.TypeStatic, 0)
+	first, _, err := s.Issue(5, model.TypeStatic, 0)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
-	second, _, err := s.Issue(5, joinlink.TypeStatic, 0)
+	second, _, err := s.Issue(5, model.TypeStatic, 0)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -117,31 +119,31 @@ func TestIssue_RotationProducesDifferentTokens(t *testing.T) {
 func TestIssue_RejectsInvalidInput(t *testing.T) {
 	s := newTestSigner(t)
 
-	if _, _, err := s.Issue(0, joinlink.TypeStatic, 0); !errors.Is(err, joinlink.ErrInvalidPayload) {
+	if _, _, err := s.Issue(0, model.TypeStatic, 0); !errors.Is(err, apperror.ErrInvalidPayload) {
 		t.Fatalf("expected ErrInvalidPayload for queue 0, got %v", err)
 	}
-	if _, _, err := s.Issue(1, joinlink.Type("other"), 0); !errors.Is(err, joinlink.ErrInvalidPayload) {
+	if _, _, err := s.Issue(1, model.Type("other"), 0); !errors.Is(err, apperror.ErrInvalidPayload) {
 		t.Fatalf("expected ErrInvalidPayload for unknown type, got %v", err)
 	}
 }
 
 func TestVerify_ExpiredDynamic(t *testing.T) {
 	s := newTestSigner(t)
-	token, _, err := s.Issue(3, joinlink.TypeDynamic, time.Millisecond)
+	token, _, err := s.Issue(3, model.TypeDynamic, time.Millisecond)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
 
 	time.Sleep(5 * time.Millisecond)
 
-	if _, err := s.Verify(token); !errors.Is(err, joinlink.ErrExpired) {
+	if _, err := s.VerifyToken(token); !errors.Is(err, apperror.ErrTokenExpired) {
 		t.Fatalf("expected ErrExpired, got %v", err)
 	}
 }
 
 func TestVerify_TamperedPayload(t *testing.T) {
 	s := newTestSigner(t)
-	token, _, err := s.Issue(3, joinlink.TypeStatic, 0)
+	token, _, err := s.Issue(3, model.TypeStatic, 0)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -150,14 +152,14 @@ func TestVerify_TamperedPayload(t *testing.T) {
 	forged := base64.RawURLEncoding.EncodeToString([]byte(`{"qid":99,"typ":"static","jti":"abc"}`))
 	tampered := parts[0] + "." + forged + "." + parts[2]
 
-	if _, err := s.Verify(tampered); !errors.Is(err, joinlink.ErrInvalidSignature) {
+	if _, err := s.VerifyToken(tampered); !errors.Is(err, apperror.ErrTokenInvalidSignature) {
 		t.Fatalf("expected ErrInvalidSignature, got %v", err)
 	}
 }
 
 func TestVerify_TamperedSignature(t *testing.T) {
 	s := newTestSigner(t)
-	token, _, err := s.Issue(3, joinlink.TypeStatic, 0)
+	token, _, err := s.Issue(3, model.TypeStatic, 0)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -167,24 +169,24 @@ func TestVerify_TamperedSignature(t *testing.T) {
 	sig[0] ^= 0xff
 	tampered := parts[0] + "." + parts[1] + "." + string(sig)
 
-	if _, err := s.Verify(tampered); !errors.Is(err, joinlink.ErrInvalidSignature) {
+	if _, err := s.VerifyToken(tampered); !errors.Is(err, apperror.ErrTokenInvalidSignature) {
 		t.Fatalf("expected ErrInvalidSignature, got %v", err)
 	}
 }
 
 func TestVerify_WrongSecret(t *testing.T) {
 	issuer := newTestSigner(t)
-	other, err := joinlink.New("abcdef0123456789abcdef0123456789")
+	other, err := service.NewTokenService("abcdef0123456789abcdef0123456789", 2*time.Minute)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	token, _, err := issuer.Issue(3, joinlink.TypeStatic, 0)
+	token, _, err := issuer.Issue(3, model.TypeStatic, 0)
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	if _, err := other.Verify(token); !errors.Is(err, joinlink.ErrInvalidSignature) {
+	if _, err := other.VerifyToken(token); !errors.Is(err, apperror.ErrTokenInvalidSignature) {
 		t.Fatalf("expected ErrInvalidSignature, got %v", err)
 	}
 }
@@ -199,11 +201,11 @@ func TestVerify_Malformed(t *testing.T) {
 		"v1.!!!.sig",
 		"v1." + base64.RawURLEncoding.EncodeToString([]byte("{}")) + ".sig",
 		"v2." + base64.RawURLEncoding.EncodeToString([]byte("{}")) + ".sig",
-		strings.Repeat("a", joinlink.MaxTokenLength+1),
+		strings.Repeat("a", model.MaxTokenLength+1),
 	}
 
 	for _, token := range cases {
-		if _, err := s.Verify(token); err == nil {
+		if _, err := s.VerifyToken(token); err == nil {
 			t.Fatalf("expected error for %q", token)
 		}
 	}
@@ -215,7 +217,7 @@ func TestVerify_UnsupportedVersion(t *testing.T) {
 	input := "v2." + payload
 	token := input + "." + sign(testSecret, input)
 
-	if _, err := s.Verify(token); !errors.Is(err, joinlink.ErrUnsupportedFormat) {
+	if _, err := s.VerifyToken(token); !errors.Is(err, apperror.ErrTokenUnsupportedFormat) {
 		t.Fatalf("expected ErrUnsupportedFormat, got %v", err)
 	}
 }
@@ -223,10 +225,10 @@ func TestVerify_UnsupportedVersion(t *testing.T) {
 func TestVerify_DynamicWithoutExpiryIsInvalid(t *testing.T) {
 	s := newTestSigner(t)
 	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"qid":1,"typ":"dynamic","jti":"x"}`))
-	input := joinlink.Version + "." + payload
+	input := model.Version + "." + payload
 	token := input + "." + sign(testSecret, input)
 
-	if _, err := s.Verify(token); !errors.Is(err, joinlink.ErrInvalidPayload) {
+	if _, err := s.VerifyToken(token); !errors.Is(err, apperror.ErrInvalidPayload) {
 		t.Fatalf("expected ErrInvalidPayload, got %v", err)
 	}
 }
@@ -234,10 +236,28 @@ func TestVerify_DynamicWithoutExpiryIsInvalid(t *testing.T) {
 func TestVerify_MissingJTI(t *testing.T) {
 	s := newTestSigner(t)
 	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"qid":1,"typ":"static"}`))
-	input := joinlink.Version + "." + payload
+	input := model.Version + "." + payload
 	token := input + "." + sign(testSecret, input)
 
-	if _, err := s.Verify(token); !errors.Is(err, joinlink.ErrInvalidPayload) {
+	if _, err := s.VerifyToken(token); !errors.Is(err, apperror.ErrInvalidPayload) {
 		t.Fatalf("expected ErrInvalidPayload, got %v", err)
+	}
+}
+
+func TestIssueToken_Rules(t *testing.T) {
+	s := newTestSigner(t)
+
+	if _, _, err := s.IssueToken(0, "static", 0); !errors.Is(err, apperror.ErrInvalidQueueID) {
+		t.Fatalf("expected ErrInvalidQueueID, got %v", err)
+	}
+	if _, _, err := s.IssueToken(1, "forever", 0); !errors.Is(err, apperror.ErrInvalidTokenType) {
+		t.Fatalf("expected ErrInvalidTokenType, got %v", err)
+	}
+	if _, _, err := s.IssueToken(1, "dynamic", 5); !errors.Is(err, apperror.ErrTTLOutOfRange) {
+		t.Fatalf("expected ErrTTLOutOfRange, got %v", err)
+	}
+	// static mengabaikan TTL
+	if _, claims, err := s.IssueToken(1, "static", 5); err != nil || claims.ExpiresAt != 0 {
+		t.Fatalf("static must ignore ttl, got %+v %v", claims, err)
 	}
 }

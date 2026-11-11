@@ -80,12 +80,31 @@ Token statis **tidak** punya `exp`. Backend wajib mencocokkannya dengan
 
 | Env | Wajib | Default | Keterangan |
 |---|---|---|---|
-| `PORT` | tidak | `8090` | Port HTTP |
+| `QR_PORT` | tidak | `8090` | Port HTTP (didahulukan dari `PORT`) |
+| `PORT` | tidak | `8090` | Port HTTP (dipakai bila `QR_PORT` kosong) |
 | `JOIN_LINK_SECRET` | ya | — | HMAC secret, minimal 32 byte |
 | `QR_DYNAMIC_TTL_SECONDS` | tidak | `120` | TTL token dinamis (30–600) |
 | `QR_SERVICE_TOKEN` | ya | — | Token internal untuk backend |
 | `LOG_LEVEL` | tidak | `info` | `debug`/`info`/`warn`/`error` |
 
+
+## Struktur kode
+
+```
+cmd/qr-service/   main() -> run(): merangkai config, service, handler, router, server
+internal/
+  apperror/       sentinel error (token dan input)
+  config/         membaca dan memvalidasi env
+  dto/            body JSON request dan response
+  handler/        handler Gin: health, token, render
+  httpserver/     http.Server dengan timeout
+  logging/        logger slog
+  middleware/     ServiceToken, BodyLimit, RequestID, Logger, NoStore
+  model/          Type, Claims, RenderOptions
+  router/         NewAppRouter, With..., SetupRouter, rute per fitur
+  service/        TokenService dan RenderService (tanpa repository: stateless)
+  test/           tes eksternal per package
+```
 
 ## Kode error
 
