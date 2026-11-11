@@ -1,11 +1,11 @@
 -- ============================================================================
 -- 01g_triggers.sql — Trigger
--- Isi      : fungsi dan trigger tickets_notify, tickets_email_outbox
--- Bergantung: 01b (counters), 01c (tickets), 01e (notification_outbox), 01a (users)
+-- Isi      : fungsi dan trigger tickets_notify, tickets_email_outbox, queues_email_outbox
+-- Bergantung: 01b (queues, counters), 01c (tickets), 01e (notification_outbox), 01a (users)
 -- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
 -- ============================================================================
 
--- Dua trigger terpisah pada tickets, masing-masing satu fungsi. Isi fungsi tersimpan apa adanya di katalog
+-- Dua trigger terpisah pada tickets dan satu pada queues, masing-masing satu fungsi. Isi fungsi tersimpan apa adanya di katalog
 -- Postgres (termasuk komentar di dalamnya); jaga isinya sama dengan db/scripts/apply_schema.sql.
 
 -- Sinyal untuk notify-service (LISTEN queue_events). Hanya memancarkan; pengiriman push terjadi di luar
@@ -80,3 +80,33 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER tickets_email_outbox_trg
     AFTER INSERT OR UPDATE OF status ON tickets
     FOR EACH ROW EXECUTE FUNCTION tickets_email_outbox();
+
+-- Menulis notification_outbox kind queue-closed ke OWNER saat antrian ditutup (status active menjadi closed),
+-- lalu membangunkan worker mail-service lewat pg_notify('mail_outbox').
+CREATE FUNCTION queues_email_outbox() RETURNS trigger AS $$
+BEGIN
+    -- Hanya penutupan oleh owner (active menjadi closed) yang menghasilkan email.
+    IF NOT (OLD.status = 'active' AND NEW.status = 'closed') THEN
+        RETURN NULL;
+    END IF;
+
+    -- Sakelar pengguna dibaca saat kejadian, sama seperti email tiket. Tanpa tiket: ticket_id NULL, number 0.
+    -- Satu antrian paling banyak satu email berkat indeks unik parsial (kind, queue_id).
+    INSERT INTO notification_outbox (kind, ticket_id, queue_id, user_id, payload)
+    SELECT 'queue-closed', NULL, q.id, u.id, jsonb_build_object(
+        'queue_id', q.id, 'queue_name', q.queue_name, 'prefix', q.ticket_prefix,
+        'number', 0, 'name', u.username)
+    FROM queues q JOIN users u ON u.id = NEW.owner_id
+    WHERE q.id = NEW.id AND u.email_notifications
+    ON CONFLICT (kind, queue_id) WHERE queue_id IS NOT NULL DO NOTHING;
+
+    IF FOUND THEN
+        PERFORM pg_notify('mail_outbox', '');
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER queues_email_outbox_trg
+    AFTER UPDATE OF status ON queues
+    FOR EACH ROW EXECUTE FUNCTION queues_email_outbox();

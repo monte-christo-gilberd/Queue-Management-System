@@ -1,7 +1,7 @@
 -- ============================================================================
 -- 01e_notifications.sql — Notifikasi
 -- Isi      : push_subscriptions, notification_outbox
--- Bergantung: 01a (users), 01c (tickets)
+-- Bergantung: 01a (users), 01b (queues), 01c (tickets)
 -- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
 -- ============================================================================
 
@@ -16,13 +16,14 @@ CREATE TABLE push_subscriptions (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Outbox email ke pemilik tiket (item 8). Trigger tickets_email_outbox menulis baris di sini DALAM transaksi
--- yang sama dengan perubahan tiket, jadi email tidak hilang walau mail-service mati. Worker di mail-service
+-- Outbox email (item 8): ke pemilik tiket, dan ke owner saat antriannya ditutup (kind queue-closed). Trigger tickets_email_outbox menulis baris di sini DALAM transaksi
+-- yang sama dengan perubahan tiket (atau status antrian), jadi email tidak hilang walau mail-service mati. Worker di mail-service
 -- (role mail_rw) mengirimnya dan mencoba ulang. Terpisah dari push: push tidak bergantung pada email sama sekali.
 CREATE TABLE notification_outbox (
     id               BIGSERIAL PRIMARY KEY,
-    kind             TEXT NOT NULL CHECK (kind IN ('joined', 'cancelled', 'removed', 'completed')),
-    ticket_id        BIGINT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    kind             TEXT NOT NULL CHECK (kind IN ('joined', 'cancelled', 'removed', 'completed', 'queue-closed')),
+    ticket_id        BIGINT REFERENCES tickets(id) ON DELETE CASCADE,   -- NULL untuk queue-closed (tidak ada tiket)
+    queue_id         BIGINT REFERENCES queues(id) ON DELETE CASCADE,    -- diisi hanya untuk queue-closed
     user_id          BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     payload          JSONB NOT NULL,   -- snapshot: queue_id, queue_name, prefix, number, name (tanpa catatan owner)
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -32,5 +33,10 @@ CREATE TABLE notification_outbox (
     last_error       TEXT,
     failed_at        TIMESTAMPTZ,      -- gagal permanen (5xx atau batas percobaan): tidak dicoba lagi
 
-    UNIQUE (kind, ticket_id)           -- satu email per kejadian
+    UNIQUE (kind, ticket_id)           -- satu email per kejadian tiket (NULL dianggap berbeda, jadi tidak menghalangi queue-closed)
 );
+
+-- Satu antrian paling banyak menghasilkan satu email queue-closed.
+CREATE UNIQUE INDEX uq_outbox_kind_queue
+    ON notification_outbox (kind, queue_id)
+    WHERE queue_id IS NOT NULL;

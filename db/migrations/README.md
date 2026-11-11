@@ -14,9 +14,9 @@ Docker menjalankan file di `/docker-entrypoint-initdb.d` menurut urutan nama, ha
 | `01b_queues.sql` | `queues`, `queue_settings`, `counters`, `queue_displays` | 01a |
 | `01c_tickets.sql` | `tickets` (+ dua index unik aturan bisnis), `ticket_notes` | 01a, 01b |
 | `01d_history.sql` | `queue_history` (arsip, tanpa FK ke tabel live) | 01a |
-| `01e_notifications.sql` | `push_subscriptions`, `notification_outbox` | 01a, 01c |
+| `01e_notifications.sql` | `push_subscriptions`, `notification_outbox` | 01a, 01b, 01c |
 | `01f_profile_security.sql` | `user_avatars`, `user_action_tokens` | 01a |
-| `01g_triggers.sql` | fungsi dan trigger `tickets_notify`, `tickets_email_outbox` | 01a, 01b, 01c, 01e |
+| `01g_triggers.sql` | fungsi dan trigger `tickets_notify`, `tickets_email_outbox`, `queues_email_outbox` | 01a, 01b, 01c, 01e |
 | `01h_role_grants.sql` | blok `GRANT` bersyarat untuk role `mail_rw` | 01a, 01e |
 | `02_Indexes.sql` | semua index non-unik, dikelompokkan per tabel | seluruh `01*` |
 | `03_notify_role.sh` | role `notify_ro` (notify-service) | seluruh `01*` |

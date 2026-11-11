@@ -135,8 +135,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS email_notifications BOOLEAN NOT NULL 
 
 CREATE TABLE IF NOT EXISTS notification_outbox (
     id              BIGSERIAL PRIMARY KEY,
-    kind            TEXT NOT NULL CHECK (kind IN ('joined', 'cancelled', 'removed', 'completed')),
-    ticket_id       BIGINT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL CHECK (kind IN ('joined', 'cancelled', 'removed', 'completed', 'queue-closed')),
+    ticket_id       BIGINT REFERENCES tickets(id) ON DELETE CASCADE,
+    queue_id        BIGINT REFERENCES queues(id) ON DELETE CASCADE,
     user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     payload         JSONB NOT NULL,   -- snapshot: queue_id, queue_name, prefix, number, name (tanpa catatan owner)
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -149,6 +150,18 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_pending ON notification_outbox (next_attempt_at)
     WHERE sent_at IS NULL AND failed_at IS NULL;
+
+-- Email queue-closed ke owner saat antrian ditutup: tabel lama perlu kind baru, ticket_id boleh NULL,
+-- dan kolom queue_id. CHECK bawaan kolom bernama notification_outbox_kind_check; dibuang lalu dipasang ulang.
+ALTER TABLE notification_outbox DROP CONSTRAINT IF EXISTS notification_outbox_kind_check;
+ALTER TABLE notification_outbox ADD CONSTRAINT notification_outbox_kind_check
+    CHECK (kind IN ('joined', 'cancelled', 'removed', 'completed', 'queue-closed'));
+ALTER TABLE notification_outbox ALTER COLUMN ticket_id DROP NOT NULL;
+ALTER TABLE notification_outbox ADD COLUMN IF NOT EXISTS queue_id BIGINT REFERENCES queues(id) ON DELETE CASCADE;
+-- Satu antrian paling banyak satu email queue-closed.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_outbox_kind_queue
+    ON notification_outbox (kind, queue_id)
+    WHERE queue_id IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION tickets_email_outbox() RETURNS trigger AS $fn$
 DECLARE
@@ -187,6 +200,36 @@ DROP TRIGGER IF EXISTS tickets_email_outbox_trg ON tickets;
 CREATE TRIGGER tickets_email_outbox_trg
     AFTER INSERT OR UPDATE OF status ON tickets
     FOR EACH ROW EXECUTE FUNCTION tickets_email_outbox();
+
+-- Email queue-closed ke owner saat antrian ditutup. Isi fungsi sama dengan db/migrations/01g_triggers.sql.
+CREATE OR REPLACE FUNCTION queues_email_outbox() RETURNS trigger AS $fn$
+BEGIN
+    -- Hanya penutupan oleh owner (active menjadi closed) yang menghasilkan email.
+    IF NOT (OLD.status = 'active' AND NEW.status = 'closed') THEN
+        RETURN NULL;
+    END IF;
+
+    -- Sakelar pengguna dibaca saat kejadian, sama seperti email tiket. Tanpa tiket: ticket_id NULL, number 0.
+    -- Satu antrian paling banyak satu email berkat indeks unik parsial (kind, queue_id).
+    INSERT INTO notification_outbox (kind, ticket_id, queue_id, user_id, payload)
+    SELECT 'queue-closed', NULL, q.id, u.id, jsonb_build_object(
+        'queue_id', q.id, 'queue_name', q.queue_name, 'prefix', q.ticket_prefix,
+        'number', 0, 'name', u.username)
+    FROM queues q JOIN users u ON u.id = NEW.owner_id
+    WHERE q.id = NEW.id AND u.email_notifications
+    ON CONFLICT (kind, queue_id) WHERE queue_id IS NOT NULL DO NOTHING;
+
+    IF FOUND THEN
+        PERFORM pg_notify('mail_outbox', '');
+    END IF;
+    RETURN NULL;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS queues_email_outbox_trg ON queues;
+CREATE TRIGGER queues_email_outbox_trg
+    AFTER UPDATE OF status ON queues
+    FOR EACH ROW EXECUTE FUNCTION queues_email_outbox();
 
 -- Layar publik antrian (fitur 4.5): lihat db/migrations/01b_queues.sql.
 CREATE TABLE IF NOT EXISTS queue_displays (
