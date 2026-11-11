@@ -56,6 +56,9 @@ Beberapa endpoint (join, next) membalas objek tiket langsung di dalam `data`, ta
 | 429 | `TOO_MANY_REQUESTS` | Kirim ulang email verifikasi melebihi 3 per jam per akun |
 | 429 | `TOO_MANY_DISPLAYS` | Terlalu banyak sambungan layar publik untuk satu antrian |
 | 503 | `BUSY` | Terlalu banyak pengiriman email lupa password berjalan |
+| 413 | `PAYLOAD_TOO_LARGE` | Foto profil lebih dari 5 MB |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | Foto profil bukan JPEG, PNG, atau WebP |
+| 503 | `SERVICE_UNAVAILABLE` | Sambungan SSE (antrian atau layar publik) ditolak karena hub berhenti atau penuh |
 | 409 | `QR_REPLACE_NOT_ALLOWED` | Penggantian kode QR hanya untuk mode statis |
 | 400 | `QR_TYPE_INVALID` | `type` QR bukan `static`/`dynamic` |
 | 404 | `QR_INVALID` | Token join tidak valid, sudah diganti, atau antrian tidak ada |
@@ -127,7 +130,7 @@ Request: `{ "link_token": "...", "password": "rahasia123" }` (`link_token` dari 
 200: `{ "data": { "token": "..." } }`. Akun tertaut ke `google_id` itu dan emailnya ditandai terverifikasi. Password lama tetap berlaku, jadi akun bisa login dengan keduanya.
 Error: 400 `INVALID_TOKEN` (link token tidak sah, kedaluwarsa, sudah dipakai, atau sudah 5 kali salah password), 401 `UNAUTHORIZED` (password salah; sama dengan login gagal), 409 `CONFLICT` (akun sudah tertaut ke akun Google lain), 503 `AUTH_UNAVAILABLE`.
 
-**Link token:** JWT RS256 berumur **5 menit** dengan klaim `purpose: "google_link"`, `gid` (id Google), dan `jti` acak. Sekali pakai; setelah 5 kali salah password token dibakar. Ia ditandatangani kunci yang sama dengan token login dan memuat `sub`, tetapi **bukan token login**: `auth-service`, backend, dan payment-service menolak token ber-`purpose` (401). Jangan disimpan di storage dan jangan dicatat di log.
+**Link token:** JWT RS256 berumur **5 menit** dengan klaim `purpose: "google_link"`, `gid` (id Google), dan `jti` acak. Sekali pakai; setelah 5 kali salah password token dibakar. Ia ditandatangani kunci yang sama dengan token login dan memuat `sub`, tetapi **bukan token login**: `auth-service` dan backend menolak token ber-`purpose` (401). Jangan disimpan di storage dan jangan dicatat di log.
 
 ### POST /api/v1/users/forgot-password
 Tanpa token. Meminta tautan untuk membuat password baru; tautan dikirim ke email akun lewat `mail-service` (templat `password-reset`).
@@ -160,6 +163,8 @@ Request: `{ "token": "<dari tautan>" }`
 
 Error: 400 `INVALID_TOKEN` (tidak ada, kedaluwarsa, atau sudah dipakai; satu pesan untuk ketiganya), 400 `BAD_REQUEST`.
 
+Email konfirmasi: bila token ini membuat akun yang **belum** terverifikasi menjadi terverifikasi, `auth-service` mengirim email templat `email-verified` lewat `mail-service`. Pengiriman best effort dan asinkron: kegagalan hanya masuk log dan tidak pernah mengubah respons 200 di atas. Tidak dikirim bila akun sudah terverifikasi sebelumnya (mis. dari Google) atau bila `MAIL_SERVICE_URL` kosong.
+
 Aturan: token sekali pakai berlaku 24 jam, hanya hash SHA-256 yang disimpan di `user_action_tokens` (`purpose = 'email_verify'`). Tautan: `${PUBLIC_APP_URL}/verify-email?token=...`, email lewat `mail-service` (templat `email-verify`).
 
 ### POST /api/v1/users/me/verify-email/resend
@@ -190,7 +195,7 @@ Spasi di tepi dibuang. Username tidak harus unik.
 Error: 400 `BAD_REQUEST` (kosong, lebih dari 50 karakter, atau mengandung tag HTML seperti `<` dan `>`), 401 `UNAUTHORIZED` (tanpa token atau token tidak valid).
 
 ### PUT /api/v1/users/me/preferences
-Butuh token. Menyalakan atau mematikan email notifikasi tiket (join, batal, dihapus owner, selesai dilayani). Berlaku untuk kejadian berikutnya: email yang sudah masuk antrian kirim tetap terkirim, dan email yang terlewat saat sakelar mati tidak dikirim belakangan.
+Butuh token. Menyalakan atau mematikan email notifikasi (tiket: join, batal, dihapus owner, selesai dilayani; owner: antrian miliknya ditutup). Berlaku untuk kejadian berikutnya: email yang sudah masuk antrian kirim tetap terkirim, dan email yang terlewat saat sakelar mati tidak dikirim belakangan.
 
 Body:
 ```json
@@ -205,7 +210,7 @@ Server menentukan jenis dari **isi berkas** (bukan nama atau header klien). Dite
 
 200: profil terbaru, bentuknya sama dengan `GET /users/me` (`avatar_updated_at` terisi).
 
-Error: 400 `BAD_REQUEST` (field `file` tidak ada, atau berkas rusak atau dimensinya terlalu besar), 413 (lebih dari 5 MB; bila ditolak nginx, bodynya HTML dan bukan JSON), 415 `UNSUPPORTED_MEDIA_TYPE` (bukan JPEG, PNG, atau WebP), 401 `UNAUTHORIZED`. Dibatasi laju 5 permintaan per detik per IP (nginx).
+Error: 400 `BAD_REQUEST` (field `file` tidak ada, atau berkas rusak atau dimensinya terlalu besar), 413 `PAYLOAD_TOO_LARGE` (lebih dari 5 MB; bila ditolak nginx, bodynya HTML dan bukan JSON), 415 `UNSUPPORTED_MEDIA_TYPE` (bukan JPEG, PNG, atau WebP), 401 `UNAUTHORIZED`. Dibatasi laju 5 permintaan per detik per IP (nginx).
 
 ### GET /api/v1/users/me/avatar
 Butuh token. Foto profil **milik sendiri**; tidak ada URL publik dan tidak ada rute untuk melihat foto user lain. 200 `image/jpeg` dengan `ETag`, `Cache-Control: private, no-cache`, dan `X-Content-Type-Options: nosniff`; kirim `If-None-Match` untuk 304. 404 `NOT_FOUND` bila belum ada foto. Karena butuh header `Authorization`, di web foto diambil dengan fetch lalu dijadikan object URL (bukan `<img src>` langsung).
@@ -294,6 +299,8 @@ Menutup antrian. Tidak bisa dibuka lagi. Customer tidak bisa join setelah ditutu
 
 200: `{ "data": { "action": "close", ... } }`
 Error: 400, 404.
+
+Efek samping: bila `users.email_notifications` owner menyala, trigger database menulis satu baris outbox `queue-closed` (paling banyak satu per antrian) dan `mail-service` mengirim email "antrian ditutup" ke owner. Nomor yang sedang dilayani yang ikut menjadi `completed` tetap memicu email "selesai dilayani" bagi pemegangnya, sesuai sakelar masing-masing. Gagal kirim tidak memengaruhi respons.
 
 ### POST /api/v1/queues/:queue_id/next
 Memanggil tiket `waiting` pertama dan menjadikannya `currently_served` (nomor yang sedang dilayani) di sebuah counter. Nomor yang sedang dilayani counter itu sebelumnya otomatis menjadi `completed` (`completed_at` terisi) dalam transaksi yang sama. Hanya owner.
@@ -592,18 +599,18 @@ Heartbeat `: ping` tiap 25 detik seperti stream biasa. Error: 404 (token tidak b
 
 nginx: zona laju `display_zone` (20 permintaan/detik per IP, burst 40) dan log akses yang menyamarkan token (`/api/v1/display/***`).
 
-## Pembayaran langganan (payment-service)
+## Langganan owner (mock)
 
-Dilayani `payment-service` (terpisah dari backend; nginx meneruskan `/api/v1/payments/` ke sana, JSON 503 `PAYMENT_UNAVAILABLE` bila service mati). Amplop respons sama dengan backend. Satu pembayaran = perpanjangan 1 bulan; pembayaran pertama user otomatis membuat baris `owners` (jadi owner).
+Dilayani backend. **Ini mock: tidak ada pembayaran sungguhan** dan tidak ada penyedia pembayaran. Satu panggilan = perpanjangan 30 hari gratis.
 
-### POST /api/v1/payments/checkout
-Butuh token (JWT RS256 yang sama dengan backend, diverifikasi lokal di service dengan kunci publik). Tanpa body. Dibatasi laju per IP di nginx (`payment_zone`).
+### POST /api/v1/owners/subscription/extend
+Butuh token. Tanpa body. Menambah 30 hari ke `owners.subscription_expires_at` dengan rumus `GREATEST(now(), subscription_expires_at) + 30 hari` (langganan yang masih berlaku diperpanjang dari tanggal berakhirnya, yang sudah lewat dihitung dari sekarang). User yang belum punya baris `owners` otomatis dibuatkan (jadi owner). Setiap panggilan menulis satu baris `payments` (`amount` 0, `plan_type` `monthly`, `status` `success`), semuanya dalam satu transaksi.
 
-201: `{ "data": { "checkout_url": "https://checkout.stripe.com/...", "expires_at": "2026-11-06T10:00:00Z" } }`. Klien mengarahkan browser ke `checkout_url`; Stripe kembali ke `${PUBLIC_APP_URL}/subscription?payment=success` atau `?payment=cancel`. Redirect bukan sumber kebenaran: langganan baru bertambah saat webhook diterima.
-Error: 401 `UNAUTHORIZED`, 403 `UNKNOWN_USER`, 502 `PAYMENT_PROVIDER_ERROR`, 503 `PAYMENT_UNAVAILABLE` (Stripe belum dikonfigurasi). Mode dev `DEV_PAYMENT_SIMULATOR` (ditolak bila `APP_ENV=production`) memperpanjang langganan seketika tanpa Stripe.
-
-### POST /api/v1/payments/webhooks/stripe
-Dipanggil server Stripe, bukan klien. Tanda tangan `Stripe-Signature` diverifikasi. `checkout.session.completed` dan `checkout.session.async_payment_succeeded` memperpanjang `owners.subscription_expires_at` 1 bulan (dari yang lebih besar antara sekarang dan masa berlaku saat ini) dan menulis baris `payments`; event dan sesi yang sama tidak diproses dua kali. 200 `{ "data": { "received": true } }`; 400 `BAD_SIGNATURE`; 503 `PAYMENT_UNAVAILABLE`; 500 `INTERNAL` (Stripe mengirim ulang).
+200:
+```json
+{ "data": { "subscription_expires_at": "2026-12-04T02:01:06Z" } }
+```
+Error: 401 `UNAUTHORIZED` (tanpa token atau token tidak valid), 500 `INTERNAL_ERROR` (galat database; tidak ada yang berubah). Lewat nginx, path ini masuk ke backend (`location /api/`).
 
 ## Objek
 

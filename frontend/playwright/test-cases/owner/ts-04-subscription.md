@@ -4,7 +4,7 @@
 > - Web: `http://localhost:8081` · API: `http://localhost:8080`
 > - Akun tanpa langganan: akun baru (tidak punya baris `owners`)
 > - Akun dengan langganan kedaluwarsa (opsional): `QMS_EXPIRED_OWNER_EMAIL` / `QMS_EXPIRED_OWNER_PASSWORD`
-> - Sumber behaviour: `product-overview.md` — US-21, 4.18 (Owner Subscription & Payment)
+> - Sumber behaviour: `product-overview.md` — US-21, 4.18 (langganan owner)
 
 ---
 

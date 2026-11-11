@@ -1,4 +1,4 @@
-# Flow — Queue Management System
+# Flow: Queue Management System
 
 Alur pengguna dan alur sistem, dari sisi owner dan customer. Untuk detail request dan response lihat
 [api-contract.md](api-contract.md). Untuk arsitektur lihat [DESIGN.md](DESIGN.md).
@@ -9,26 +9,27 @@ Alur pengguna dan alur sistem, dari sisi owner dan customer. Untuk detail reques
 sequenceDiagram
     actor U as Pengguna
     participant FE as Frontend
-    participant BE as Backend
-    U->>FE: Isi email/username + password (Daftar)
-    FE->>BE: POST /api/v1/users/register
-    BE-->>FE: 200 { token }
+    participant AS as auth-service
+    U->>FE: Isi email, username, password, konfirmasi password (Daftar)
+    FE->>AS: POST /api/v1/users/register (lewat nginx)
+    AS-->>FE: 200 { token } (JWT RS256)
     FE->>FE: Simpan token (store sesi, persist)
     FE-->>U: Masuk ke Beranda
 ```
 
-- **Daftar**: email, username, dan password (minimal 8 karakter) wajib diisi. Email atau username yang sudah dipakai ditolak (409).
-- **Masuk**: bisa memakai email atau username. Kalau salah, pesan yang sama untuk kedua kasus.
+- **Daftar**: email, username, password (minimal 8 karakter), dan konfirmasi password wajib diisi. Email atau username yang sudah dipakai ditolak (409). Bila konfirmasi berbeda dari password, pesan "Password tidak sama" tampil inline di bawah field konfirmasi (bukan toast), dan baru muncul setelah field itu kehilangan fokus atau tombol Daftar ditekan; pesan hilang saat isinya sudah sama. Login dan pendaftaran dilayani `auth-service` (nginx meneruskan `/api/v1/users/login`, `register`, dan seterusnya ke sana); backend hanya memverifikasi token dengan kunci publik.
+- **Masuk**: halaman masuk ada di `/` (rute lama `/login` hanya mengarahkan ke sana). Bisa memakai email atau username. Kalau salah, pesan yang sama untuk kedua kasus.
+- **Masuk atau daftar dengan Google**: tombol Google tampil hanya bila client ID Google dikonfigurasi. Email Google yang belum terdaftar membuat akun baru yang sudah terverifikasi. Bila email itu sudah terdaftar dengan password, user dibawa ke `/link-google` dan harus memasukkan password akunnya untuk menautkan (tidak ditautkan otomatis; link token hanya hidup 5 menit dan di memori, jadi membuka `/link-google` langsung atau me-refresh mengembalikan ke halaman masuk).
 - **Sesi**: token disimpan di perangkat. Refresh halaman tidak membuat user keluar.
 - **Sesi habis**: API membalas 401, sesi dihapus, dan user diarahkan ke halaman masuk. Setelah masuk lagi, user dibawa kembali ke halaman yang tadi dibuka (`next`).
 - **Keluar**: lewat panel profil (menu "Keluar").
-- **Profil**: ubah username, foto profil (privat, hanya terlihat oleh pemiliknya), dan sakelar "Notifikasi email" (`/profile`, `/profile/edit`).
-- **Lupa atau ganti password**: halaman `forgot-password` meminta tautan lewat email (jawaban selalu netral, tautan berlaku 30 menit dan sekali pakai); tautan membuka `/reset-password`. Setelah password diganti, sesi lain dicabut (401 berikutnya, lalu keluar otomatis). Tombol "Minta Ganti Password" di profil mengirim tautan yang sama. Rute ini hanya ada bila `mail-service` dipasang.
-- **Verifikasi email**: bila `EMAIL_VERIFICATION_REQUIRED` menyala (bawaan: ikut adanya mail-service), registrasi mengirim tautan verifikasi (`email-verify`, berlaku 24 jam, sekali pakai) ke `/verify-email?token=`. Halaman itu publik (tautan sering dibuka di perangkat yang belum masuk) dan menampilkan hasilnya: terverifikasi, tautan tidak berlaku, atau gagal (bisa dicoba lagi). Selama belum terverifikasi, login tetap bisa, tetapi **membuat antrian** dan **join dengan nomor baru** ditolak 403 `EMAIL_NOT_VERIFIED` (pesan mengarahkan ke Profil). **Halaman Profil** menampilkan banner "Email belum diverifikasi" dengan tombol "Kirim Ulang Email Verifikasi" (`POST /users/me/verify-email/resend`, maks 3 per jam per akun); banner hilang setelah verifikasi. Di dev email masuk Mailpit; di prod ikut `MAIL_MODE` (`smtp` = inbox asli seperti Gmail, `mailpit` = ditangkap Mailpit, tidak terkirim; jalan keluarnya `make verify-user EMAIL=... STACK=prod`). Akun yang sudah ada saat fitur dipasang dan akun seed/demo dianggap sudah terverifikasi.
+- **Profil**: ubah username, foto profil (privat, hanya terlihat oleh pemiliknya; tombol "Unggah Foto" atau "Ganti Foto" dan "Hapus Foto" dengan konfirmasi), dan sakelar "Notifikasi email" (`/profile`, `/profile/edit`). Bila foto sudah ada, mengetuk foto profil membuka popup foto yang diperbesar; popup ditutup dengan tombol X kecil di pojok foto, dengan mengetuk di luar kartu, atau tombol back perangkat. Tanpa foto (hanya ikon) tidak ada popup.
+- **Lupa atau ganti password**: halaman `forgot-password` meminta tautan lewat email (jawaban selalu netral, tautan berlaku 30 menit dan sekali pakai); tautan membuka `/reset-password`, yang memakai aturan konfirmasi password yang sama dengan Daftar (pesan inline "Password tidak sama"). Setelah password diganti, sesi lain dicabut (401 berikutnya, lalu keluar otomatis). Tombol "Minta Ganti Password" di profil mengirim tautan yang sama. Rute ini hanya ada bila `mail-service` dipasang.
+- **Verifikasi email**: bila `EMAIL_VERIFICATION_REQUIRED` menyala (bawaan: ikut adanya mail-service), registrasi mengirim tautan verifikasi (`email-verify`, berlaku 24 jam, sekali pakai) ke `/verify-email?token=`. Halaman itu publik (tautan sering dibuka di perangkat yang belum masuk) dan menampilkan hasilnya: "Email Terverifikasi", "Tautan Tidak Berlaku", atau "Verifikasi Gagal" (tombol "Coba Lagi"). Setelah verifikasi berhasil, auth-service juga mengirim email konfirmasi `email-verified` (best effort: gagal kirim tidak mengubah hasil verifikasi). Selama belum terverifikasi, login tetap bisa, tetapi **membuat antrian** dan **join dengan nomor baru** ditolak 403 `EMAIL_NOT_VERIFIED` (pesan mengarahkan ke Profil). **Halaman Profil** menampilkan banner "Email belum diverifikasi" dengan tombol "Kirim Ulang Email Verifikasi" (`POST /users/me/verify-email/resend`, maks 3 per jam per akun); banner hilang setelah verifikasi. Di dev email masuk Mailpit; di prod ikut `MAIL_MODE` (`smtp` = inbox asli seperti Gmail, `mailpit` = ditangkap Mailpit, tidak terkirim; jalan keluarnya `make verify-user EMAIL=... STACK=prod`). Akun yang sudah ada saat fitur dipasang dan akun seed/demo dianggap sudah terverifikasi.
 
 ## 2. Owner: membuat antrian
 
-Syarat: langganan owner aktif. Tanpa langganan, tombol buat antrian tidak bisa dipakai dan API membalas 402. User biasa menjadi owner lewat pembayaran pertama (bagian 8).
+Syarat: langganan owner aktif. Tanpa langganan, tombol buat antrian tidak bisa dipakai dan API membalas 402. User biasa menjadi owner lewat penekanan pertama tombol langganan MOCK (bagian 8).
 
 ```mermaid
 sequenceDiagram
@@ -101,7 +102,8 @@ Tutup antrian:
 2. Antrian berstatus `closed`. Customer yang belum bergabung tidak bisa join lagi (409 `QUEUE_CLOSED`).
 3. Customer yang sudah punya tiket melihat status "antrian ditutup" di halaman mereka. Tiket mereka pindah ke Riwayat.
 4. Event `queue_closed` dikirim ke semua yang sedang tersambung.
-5. Antrian muncul di Riwayat owner (`/history`): daftar antrian yang sudah ditutup (berhalaman), detail tiap nomor dengan hasil dan catatan, dan ekspor CSV atau Excel (`/history/queues/:id/export`).
+5. Owner menerima email `queue-closed` (bagian 6c) bila sakelar "Notifikasi email"-nya menyala; tautannya membuka `/riwayat`.
+6. Antrian muncul di Riwayat owner (`/history`): daftar antrian yang sudah ditutup (berhalaman), detail tiap nomor dengan hasil dan catatan, dan ekspor CSV atau Excel (`/history/queues/:id/export`).
 
 ## 5. Customer: bergabung ke antrian
 
@@ -110,6 +112,7 @@ sequenceDiagram
     actor C as Customer
     participant FE as Frontend
     participant BE as Backend
+    participant QR as qr-service
     C->>FE: Scan QR / buka /join?t=<token>
     alt belum login
         FE-->>C: Halaman masuk (next = /join?t=<token>)
@@ -182,7 +185,7 @@ Push "requeued": saat nomor kembali ke `waiting` (fallback Skip atau counter dih
 
 ## 6c. Email notifikasi
 
-Customer menerima email saat bergabung, membatalkan, nomornya dihapus owner, dan selesai dilayani (termasuk saat antrian ditutup). Alurnya: trigger database menulis `notification_outbox` dalam transaksi yang sama dengan perubahan tiket, lalu worker di `mail-service` mengirim lewat SMTP dan mencoba ulang bila gagal. Scan ulang tidak membuat email kedua. Customer bisa mematikannya di Profil; catatan owner tidak pernah ada di email. Dev: email ditangkap Mailpit.
+Customer menerima email `joined` saat bergabung, `cancelled` saat membatalkan, `removed` saat nomornya dihapus owner, dan `completed` saat selesai dilayani (termasuk saat antrian ditutup). Owner menerima email `queue-closed` saat ia menutup antrian (tautan ke `/riwayat`). Alurnya: trigger database (`tickets_email_outbox_trg` untuk tiket, `queues_email_outbox_trg` untuk penutupan antrian) menulis `notification_outbox` dalam transaksi yang sama dengan perubahan, lalu worker di `mail-service` mengirim lewat SMTP dan mencoba ulang bila gagal. Scan ulang tidak membuat email kedua dan satu antrian hanya menghasilkan satu email `queue-closed`. Pengguna bisa mematikannya di Profil (sakelar "Notifikasi email" berlaku untuk customer dan owner); catatan owner tidak pernah ada di email. Email akun tidak lewat outbox: `email-verify`, `password-reset`, dan `email-verified` dikirim langsung oleh `auth-service` ke mail-service. Dev: email ditangkap Mailpit.
 
 ## 7. Tema tampilan
 
@@ -190,27 +193,29 @@ Customer menerima email saat bergabung, membatalkan, nomornya dihapus owner, dan
 - Pilihan disimpan di perangkat dan dipulihkan saat aplikasi dibuka lagi.
 - Warna papan antrian dan header tidak berubah, karena memang gelap di kedua mode.
 
-## 8. Langganan dan menjadi owner
+## 8. Langganan dan menjadi owner (MOCK)
+
+Tidak ada pembayaran. `payment-service` dan Stripe sudah dihapus; layar Subscription hanya menambah 30 hari langganan.
 
 ```mermaid
 sequenceDiagram
     actor U as User
     participant FE as Frontend
-    participant PS as payment-service
-    participant S as Stripe
+    participant BE as Backend
     U->>FE: Profil → Jadi Owner / Subscription
-    FE->>PS: POST /api/v1/payments/checkout (JWT)
-    PS-->>FE: checkout_url
-    U->>S: Bayar
-    S->>PS: Webhook checkout.session.completed
-    PS->>PS: owners.subscription_expires_at + 1 bulan, catat payments
+    U->>FE: Tekan JADI OWNER (30 HARI) / Tambah 30 Hari
+    FE->>BE: POST /api/v1/owners/subscription/extend (JWT)
+    BE->>BE: owners.subscription_expires_at + 30 hari, catat payments (amount 0)
+    BE-->>FE: 200 { subscription_expires_at }
+    FE->>BE: GET /api/v1/users/me
+    FE-->>U: Status langganan diperbarui
 ```
 
-- Pembayaran pertama user biasa menjadikannya owner; user yang sudah owner memakai "Perpanjang 1 Bulan". Masa berlaku dihitung dari tanggal berakhir bila masih aktif, atau dari sekarang bila sudah lewat.
-- Sumber kebenaran adalah webhook (idempoten per event dan per sesi); redirect browser hanya UX.
-- Backend hanya membaca `subscription_expires_at`. Bila payment-service mati atau Stripe belum dikonfigurasi, nginx/checkout menjawab 503 `PAYMENT_UNAVAILABLE`, antrian tetap berjalan, dan Stripe mengirim ulang webhook.
-- Di dev, `DEV_PAYMENT_SIMULATOR=true` membuat tombol bayar langsung berhasil tanpa Stripe.
+- Calon owner melihat kartu dengan judul "Jadi Owner", keterangan berawalan "[MOCK]", dan tombol "JADI OWNER (30 HARI)". Penekanan pertama membuat akunnya menjadi owner dengan langganan aktif 30 hari. Owner yang sudah ada melihat "Tambah 30 Hari" (tombol "TAMBAH 30 HARI"). Tombol REFRESH memuat ulang status.
+- Tidak ada pengalihan ke pihak ketiga, checkout, atau polling setelah kembali: hasilnya langsung dari respons dan profil dimuat ulang.
+- Masa berlaku dihitung dari tanggal berakhir bila masih aktif, atau dari sekarang bila sudah lewat. Satu baris `payments` dicatat per penekanan (`amount` 0, `status` `success`) sebagai riwayat.
+- Perpanjangan dikerjakan backend itu sendiri, tanpa service terpisah. Pembuatan antrian memeriksa `subscription_expires_at` (402 `SUBSCRIPTION_INACTIVE` bila lewat).
 
 ## 9. Yang belum punya alur
 
-Fitur di bawah ini belum dibangun, sehingga alurnya belum bisa dijalankan: login Google (tombol hanya tampilan), ganti alamat email, QR join di layar publik, plan langganan selain 1 bulan, serta observability dan uji beban.
+Fitur di bawah ini belum dibangun, sehingga alurnya belum bisa dijalankan: ganti alamat email, QR join di layar publik, pembayaran sungguhan dan plan langganan selain tambah 30 hari, serta observability dan uji beban.

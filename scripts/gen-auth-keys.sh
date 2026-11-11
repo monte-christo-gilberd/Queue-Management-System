@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Membuat pasangan kunci RSA untuk token login (JWT RS256) di keys/. Idempoten: bila kunci sudah ada, tidak ada
-# yang ditimpa (menimpa kunci membuat semua token login yang beredar tidak sah).
-#   keys/auth-private.pem : kunci privat. HANYA di-mount ke auth-service (penerbit token).
-#   keys/auth-public.pem  : kunci publik. Di-mount ke backend (verifikasi lokal) dan auth-service.
-# Dijalankan dari akar repo (otomatis oleh `make prod-up`; untuk dev, `make up` dan `make tunnel` menghapus keys/
-# lalu memanggil script ini, dan `make down` menghapus keys/, jadi kunci dev baru tiap sesi):
+# Membuat pasangan kunci RSA untuk token login (JWT RS256) di keys/ (prod, bawaan) atau di folder dari AUTH_KEYS_DIR
+# (dev memakai keys-dev/). Idempoten: bila kunci sudah ada, tidak ada yang ditimpa (menimpa kunci membuat semua token
+# login yang beredar tidak sah).
+#   <folder>/auth-private.pem : kunci privat. HANYA di-mount ke auth-service (penerbit token).
+#   <folder>/auth-public.pem  : kunci publik. Di-mount ke backend (verifikasi lokal) dan auth-service.
+# Dijalankan dari akar repo. Prod: otomatis oleh `make prod-up` (folder keys/). Dev: `make up` dan `make tunnel` menghapus
+# keys-dev/ lalu memanggil script ini dengan AUTH_KEYS_DIR=keys-dev, dan `make down` menghapus keys-dev/, jadi kunci dev
+# baru tiap sesi. keys/ tidak pernah disentuh target dev:
 #   scripts/gen-auth-keys.sh
 # Rotasi kunci: hapus kedua berkas, jalankan ulang, lalu restart backend dan auth-service. Semua user harus login ulang.
 set -euo pipefail
@@ -32,8 +34,8 @@ mkdir -p "$dir"
 openssl pkey -in "$priv" -pubout -out "$pub"
 # Kunci publik harus terbaca oleh user non-root di kontainer backend (UID 10001 pada image prod).
 chmod 644 "$pub"
-# Kunci privat dibaca user non-root di kontainer auth-service (UID 10001), jadi dibuat terbaca grup/lainnya
-# di dalam folder yang hanya bisa dimasuki pemilik host.
+# Kunci privat dibaca user non-root di kontainer auth-service (UID 10001). Berkasnya dibuat 644 dan foldernya 700
+# (hanya pemilik host yang bisa masuk); akses untuk UID 10001 diberikan lewat ACL di bawah.
 chmod 644 "$priv"
 chmod 700 "$dir"
 # chmod 700 saja memblokir UID 10001 (user app di kontainer) sehingga auth-service crash-loop dengan "permission denied".

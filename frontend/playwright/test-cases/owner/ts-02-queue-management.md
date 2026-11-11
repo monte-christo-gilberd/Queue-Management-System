@@ -58,9 +58,23 @@
 | | |
 |---|---|
 | **Priority** | P0 |
-| **Sumber** | 4.2 langkah 1 ("Generate QR Code" → tautan ke halaman join). Implementasi: tautan teks, QR belum ada |
+| **Sumber** | 4.2 langkah 1 ("Generate QR Code" → tautan ke halaman join) |
 | **Steps** | 1. Buka detail antrian aktif |
 | **Expected Result** | Setelah klik **LIHAT QR**, popup menampilkan QR dengan tombol **SALIN TAUTAN** dan **UNDUH PNG** |
+
+### TC-02-07b — Salin tautan menaruh tautan join di clipboard
+| | |
+|---|---|
+| **Priority** | P1 |
+| **Steps** | 1. Buka detail antrian aktif 2. Klik **LIHAT QR** 3. Klik **SALIN TAUTAN** |
+| **Expected Result** | Label berubah menjadi **TAUTAN TERSALIN** lalu kembali ke **SALIN TAUTAN** setelah beberapa detik. Di konteks aman (localhost atau HTTPS), isi clipboard adalah tautan `/join?t=v1.…` |
+
+### TC-02-07c — Salin gagal: ada pesan dan tautan bisa disalin manual
+| | |
+|---|---|
+| **Priority** | P2 |
+| **Steps** | 1. Matikan Clipboard API dan buat `execCommand` gagal 2. Buka popup QR 3. Klik **SALIN TAUTAN** |
+| **Expected Result** | Pesan "Tidak bisa menyalin otomatis. Pilih tautan di bawah lalu salin manual." tampil, kolom "Tautan join" berisi tautan `/join?t=v1.…`, dan label **TAUTAN TERSALIN** tidak muncul |
 
 ### TC-02-08 — Daftar antrian bisa dibuka dari sidebar/menu
 | | |

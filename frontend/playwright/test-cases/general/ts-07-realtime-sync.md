@@ -37,3 +37,18 @@
 | **Sumber** | 4.5 edge case: "Display screen loses its network connection → reconnecting state rather than stale numbers" |
 | **Steps** | 1. Customer A-002 membuka halaman status 2. Hentikan stream event (simulasi putus) 3. Owner menekan NEXT 4. Pulihkan koneksi |
 | **Expected Result** | Setelah koneksi pulih, halaman menampilkan "Sedang dilayani" A-001 (tidak tertinggal di data lama) |
+
+### TC-07-05 — Event SSE terlewat: status disinkronkan ulang tiap 45 detik
+| | |
+|---|---|
+| **Priority** | P1 |
+| **Steps** | 1. Blokir stream event sejak awal 2. Customer A-002 membuka halaman status 3. Owner menekan NEXT; A-001 belum tampil 4. Majukan jam browser 50 detik |
+| **Expected Result** | Tanpa event SSE, halaman tetap mengambil ulang status dan menampilkan A-001 sebagai nomor yang dilayani |
+
+### TC-07-06 — SSE tidak mengirim apa pun: status tetap diperbarui dalam hitungan detik
+| | |
+|---|---|
+| **Priority** | P1 |
+| **Sumber** | Kasus tunnel atau proxy yang menahan SSE |
+| **Steps** | 1. Blokir stream event 2. Customer A-002 membuka halaman status 3. Owner menekan NEXT |
+| **Expected Result** | Dalam sekitar 12 detik (tanpa memajukan jam) halaman menampilkan A-001 sebagai nomor yang dilayani |

@@ -46,11 +46,15 @@ sukses `{"data": ...}`, gagal `{"error": {"code", "message"}}`.
 | POST | `/api/v1/users/google/link` | `{link_token, password}` → `{data:{token}}`. 400 `INVALID_TOKEN`, 401 `UNAUTHORIZED`, 409 `CONFLICT` |
 | POST | `/api/v1/users/forgot-password` | Selalu 202 untuk email berformat sah (tidak ada enumerasi akun) |
 | POST | `/api/v1/users/reset-password` | `{token, password}`. 400 `INVALID_TOKEN` / `WEAK_PASSWORD` |
-| POST | `/api/v1/users/verify-email` | `{token}`. 400 `INVALID_TOKEN` |
+| POST | `/api/v1/users/verify-email` | `{token}`. 400 `INVALID_TOKEN`. Bila akun baru terverifikasi oleh token ini, email `email-verified` dikirim lewat mail-service (lihat bagian Email konfirmasi verifikasi) |
 | POST | `/api/v1/users/me/verify-email/resend` | Butuh login. 202, atau 429 bila lewat 3 per jam |
 
 Forgot/reset/verify hanya terpasang bila `MAIL_SERVICE_URL` terisi (selain itu 404). Profil, avatar, preferensi, dan tiket
 tetap di backend.
+
+## Email konfirmasi verifikasi
+
+Setelah `verify-email` mengonsumsi token untuk akun yang **belum** terverifikasi sebelumnya, `service/verification_service.go` mengirim templat `email-verified` ke akun itu lewat `mailclient` (mail-service). Pengiriman best effort dan asinkron (goroutine dengan batas waktu sendiri): kegagalan hanya masuk log (tanpa alamat email) dan tidak pernah mengubah respons HTTP `verify-email`. Tidak dikirim bila akun sudah terverifikasi sebelumnya, atau bila `MAIL_SERVICE_URL` kosong (rute verifikasi pun tidak terpasang). `TokenRepository.VerifyEmail` mengembalikan `userID` dan `newlyVerified` (true hanya bila `email_verified_at` baru terisi oleh token ini) untuk keputusan itu.
 
 ## Token
 
@@ -101,21 +105,24 @@ pakai hanya hash SHA-256, tidak pernah token mentah.
 
 ## Struktur
 
+Arsitektur berlapis: `cmd` hanya merangkai (konfigurasi, database, repository, service, handler, router, server).
+
 ```
 cmd/auth-service/    main: main() memanggil run(); konfigurasi → database → repository → service → handler → router, shutdown rapi
 internal/apperror/   galat sentinel yang dipetakan handler ke kode HTTP
 internal/config/     env, kunci privat, validasi produksi, TRUSTED_PROXIES
 internal/database/   koneksi PostgreSQL (Connect)
 internal/dto/        body request dan isi respons JSON
-internal/google/     verifikasi ID token Google (JWKS, iss, aud, exp, email_verified)
-internal/handler/    Gin: 8 handler akun (AuthHandler), respondData/respondError
+internal/google/     klien verifikasi ID token Google (JWKS, iss, aud, exp, email_verified)
+internal/handler/    Gin: AuthHandler (8 handler akun), respondData/respondError
 internal/httpserver/ http.Server dengan batas waktu
 internal/mailclient/ klien HTTP ke mail-service
 internal/middleware/ Auth: pemeriksaan JWT RS256 dan pencabutan sesi
 internal/model/      User dan GoogleIdentity
 internal/repository/ PostgreSQL: UserRepository dan TokenRepository
-internal/router/     AppRouter, NewAppRouter + WithEmail/WithGoogle, SetupRouter, rute per fitur
+internal/router/     AppRouter, NewAppRouter + WithEmail/WithGoogle, SetupRouter, rute per fitur (auth_routes.go)
 internal/service/    Service (register, login, Authenticate, reset, verifikasi, Google) dan TokenIssuer (RS256)
 internal/validator/  aturan no_html_tags
-internal/test/       tes (fake di memori di testutil, sqlmock untuk SQL)
+internal/test/       tes eksternal per lapisan: config_test, google_test, handler_test, service_test,
+                     repository_test (sqlmock untuk SQL); testutil berisi fake di memori
 ```

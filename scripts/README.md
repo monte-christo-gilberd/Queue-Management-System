@@ -9,7 +9,7 @@ Prasyarat umum: `bash`, `docker` dengan `docker compose`. `check-service-isolati
 
 | Skrip | Untuk apa | Stack | Dipanggil oleh |
 |---|---|---|---|
-| [`gen-auth-keys.sh`](#gen-auth-keyssh) | Membuat pasangan kunci RSA untuk token login | dev dan prod | `make up`, `make prod-up` |
+| [`gen-auth-keys.sh`](#gen-auth-keyssh) | Membuat pasangan kunci RSA untuk token login | dev dan prod | `make up`, `make tunnel`, `make prod-up` |
 | [`check-service-isolation.sh`](#check-service-isolationsh) | Menjaga isolasi antar service di compose | dev dan prod | manual |
 | [`check-google-config.sh`](#check-google-configsh) | Memeriksa konfigurasi login Google (server dan frontend sinkron) | dev dan prod | `make up`, `make tunnel`, `make prod-up` |
 | [`check-mail-mode.sh`](#check-mail-modesh) | Memeriksa `MAIL_MODE` dan `SMTP_*` sebelum stack prod naik | prod | `make prod-up` |
@@ -29,12 +29,14 @@ Variabel lingkungan yang dibaca beberapa skrip:
 
 ## gen-auth-keys.sh
 
-Membuat pasangan kunci RSA 2048 bit untuk token login (JWT RS256) di folder `keys/`. Dev: `make up` dan `make tunnel` membuat kunci baru (menghapus `keys/` dulu), `make down` menghapusnya. Prod: idempoten, kunci tidak diganti oleh `make prod-up`.
+Membuat pasangan kunci RSA 2048 bit untuk token login (JWT RS256). Prod memakai folder `keys/`: idempoten, kunci tidak diganti oleh `make prod-up`. Dev memakai folder terpisah `keys-dev/` (`AUTH_KEYS_DIR=keys-dev`): `make up` dan `make tunnel` membuat kunci baru (menghapus `keys-dev/` dulu), `make down` menghapusnya. Kunci prod tidak pernah disentuh target dev.
 
 | Berkas | Isi | Dipasang ke |
 |---|---|---|
-| `keys/auth-private.pem` | Kunci privat | **Hanya** `auth-service` (penerbit token) |
-| `keys/auth-public.pem` | Kunci publik | `backend` (verifikasi lokal), serta `auth-service` |
+| `auth-private.pem` | Kunci privat | **Hanya** `auth-service` (penerbit token) |
+| `auth-public.pem` | Kunci publik | `backend` (verifikasi lokal) dan `auth-service` |
+
+Berkas ada di `keys/` (prod) atau `keys-dev/` (dev).
 
 ```bash
 scripts/gen-auth-keys.sh
@@ -43,8 +45,8 @@ scripts/gen-auth-keys.sh
 - **Idempoten.** Bila kedua kunci sudah ada, tidak ada yang ditimpa dan skrip keluar dengan kode 0. Menimpa kunci
   membuat semua token login yang beredar tidak sah.
 - Bila hanya satu kunci yang ada, skrip berhenti dengan galat (keadaan setengah jadi, tidak ditebak).
-- Dipanggil otomatis oleh `make up` dan `make prod-up`, jadi biasanya tidak perlu dijalankan manual.
-- Folder `keys/` ada di `.gitignore`. Jangan di-commit.
+- Dipanggil otomatis oleh `make up`, `make tunnel`, dan `make prod-up`, jadi biasanya tidak perlu dijalankan manual.
+- Folder `keys/` dan `keys-dev/` ada di `.gitignore`. Jangan di-commit.
 - `AUTH_KEYS_DIR=<folder>` mengganti lokasi (bawaan `keys`).
 
 **Rotasi kunci:** hapus kedua berkas, jalankan skrip lagi, lalu `make restart` (atau restart `backend`,
@@ -168,8 +170,12 @@ QMS_API=http://localhost:8080 QMS_DEMO_FILE=~/akun.txt scripts/create-demo-accou
 ## reset-demo.sh
 
 Mengosongkan data demo di stack **prod**: `notification_outbox`, `push_subscriptions`, `ticket_notes`, `counters`,
-`tickets`, `queue_history`, `queue_settings`, dan `queues`. Akun (`users`, `owners`, `payments`) tetap, dan langganan
-owner diperpanjang 30 hari. Backup dibuat otomatis lebih dulu.
+`tickets`, `queue_history`, `queue_settings`, `queue_displays`, dan `queues`. Akun (`users`, `owners`, `payments`, foto
+profil) tetap, dan langganan owner diperpanjang 30 hari. Backup dibuat otomatis lebih dulu.
+
+Semua tabel yang mereferensikan `queues`, `tickets`, atau `counters` harus ikut di perintah `TRUNCATE`, karena skrip tidak
+memakai `CASCADE`. Tabel yang terlewat membuat Postgres menolak seluruh perintah dan transaksi dibatalkan (itu yang terjadi
+sebelum `queue_displays` ditambahkan).
 
 ```bash
 scripts/reset-demo.sh        # minta konfirmasi (ketik 'ya')
@@ -207,5 +213,5 @@ make prod-backup
 
 Bukan di folder ini, tetapi sering dibutuhkan bersama skrip di atas: `db/scripts/apply_schema.sql` (penyesuaian skema
 idempoten untuk database yang sudah berjalan), `db/scripts/reset_seed_dev.sql` (data seed dev, `make seed`), dan
-`db/scripts/backfill_currently_served.sql`. Role per service dibuat oleh `db/migrations/03..06_*_role.sh`; untuk
+`db/scripts/backfill_currently_served.sql`. Role per service dibuat oleh `db/migrations/03_notify_role.sh`, `04_mail_role.sh`, dan `06_auth_role.sh`; untuk
 database lama yang belum punya role `auth_rw`, jalankan `06_auth_role.sh` seperti dijelaskan di `.env.example`.

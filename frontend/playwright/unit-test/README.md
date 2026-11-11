@@ -1,6 +1,6 @@
 # E2E Queue Management System (Playwright)
 
-Tes ini menguji **behaviour yang diharapkan** dari `Capstone-Project/documentation/docs/product-overview.md`, bukan detail implementasi. Setiap test case punya ID `TC-NN-MM` dan sumber di dokumen test case (`test-cases/queue-management/`).
+Tes ini menguji **behaviour yang diharapkan** dari `Capstone-Project/documentation/docs/product-overview.md`, bukan detail implementasi. Setiap test case punya ID `TC-NN-MM` dan sumber di dokumen test case di `playwright/test-cases/` (`customer/`, `general/`, `owner/`, `selesai/`). Tidak semua spec punya dokumen: dokumen ada untuk TS-01 sampai TS-09 dan TS-35.
 
 ## Prasyarat
 
@@ -9,7 +9,7 @@ Tes ini menguji **behaviour yang diharapkan** dari `Capstone-Project/documentati
    ```bash
    docker compose exec -T db psql -U qms -d qms_db < db/scripts/reset_seed_dev.sql
    ```
-5. Dependensi: `npm install` di `frontend/` (sudah memuat `@playwright/test`). Browser Chromium sudah tersedia di cache; bila belum, `npx playwright install chromium`.
+3. Dependensi: `npm install` di `frontend/` (sudah memuat `@playwright/test`). Browser Chromium sudah tersedia di cache; bila belum, `npx playwright install chromium`.
 
 ## Variabel lingkungan
 
@@ -38,7 +38,6 @@ npm run e2e:report                        # buka laporan HTML
 - **Berurutan (`workers: 1`)**: beberapa tes berbagi satu akun owner. Dashboard menampilkan antrian aktif terbaru, jadi tes tidak boleh berjalan bersamaan.
 - **Setup lewat API**: akun, antrian, dan join disiapkan lewat API (`support/api.ts`), supaya tes yang diuji hanya langkah yang relevan.
 - **Sesi lewat penyimpanan browser**: `signInWithToken` menanamkan token ke `localStorage` (`qms-auth`) untuk setup. Alur login yang sebenarnya diuji di TS-01.
-- **Backlog**: `ts-09` berstatus `fixme`. Ubah ke tes biasa saat fitur selesai.
 - **Real-time**: TC-07-04 memutus stream SSE dengan `page.route` lalu membukanya lagi. TC-07-05 memblokir SSE dan memajukan jam (`page.clock.fastForward`) untuk menguji resinkron.
 - **Join dua kali**: oleh user yang sama mengembalikan 200 dengan tiket yang sama (TC-05-04).
 - **TC-04-03**: memakai `owner3` dari seed (langganan kedaluwarsa, satu antrian aktif).
@@ -67,4 +66,7 @@ QMS_WEB_URL=http://localhost:8080 QMS_API_URL=http://localhost:8080 npx playwrig
 
 ## Status
 
-Run dari seed bersih: 76 lulus, 0 gagal, 16 di-skip (backlog), TC-04-03 ikut berjalan.
+`npx playwright test --list` mendaftar 246 tes di 33 file spec. Beberapa tes di-skip sendiri bila prasyaratnya tidak ada
+(mis. `QMS_OWNER_*` kosong, client ID Google belum dipasang, Mailpit tidak tersedia). Hasil run penuh terakhir tidak dicatat di
+sini: jalankan ulang dari seed bersih untuk angka lulus dan gagal. Tes unit frontend (`npm run test:unit`, folder `tests/unit/`)
+berjumlah 193 tes dan lulus semua pada pengecekan terakhir.

@@ -30,14 +30,14 @@ Isi dokumen:
 
 Verifikasi email: login tetap bisa sebelum diverifikasi, tetapi bergabung ke antrian (nomor baru) dan membuat antrian ditolak (403 `EMAIL_NOT_VERIFIED`) sampai tautan di email dibuka. Di dev email masuk ke Mailpit; di produksi ikut `MAIL_MODE` ([bagian 2](#verifikasi-email)).
 
-Diagram dan detail lengkap ada di [FLOW.md](docs/FLOW.md).
+Diagram dan detail lengkap ada di [FLOW.md](FLOW.md).
 
 ### Asumsi
 
 - Layanan tatap muka: customer hadir langsung dan membawa HP. Owner memanggil nomor satu per satu.
 - Customer wajib login dan memverifikasi email sebelum bergabung. Tidak ada join anonim. Verifikasi hanya membuktikan kepemilikan email lewat tautan; domain email tidak diperiksa (tanpa cek MX atau allowlist).
 - Join hanya lewat token QR atau tautan. Token statis bisa diganti owner, token dinamis kedaluwarsa.
-- Owner butuh langganan aktif untuk membuat antrian. User biasa menjadi owner lewat pembayaran pertama.
+- Owner butuh langganan aktif untuk membuat antrian. User biasa menjadi owner lewat aksi langganan pertama (MOCK 30 hari, tanpa pembayaran).
 - Layar publik hanya menampilkan nomor, tanpa nama customer (privasi).
 - Riwayat dan antrian tidak pernah dihapus permanen (keputusan produk 31 Okt 2026).
 - Backend berjalan satu instance, karena hub SSE ada di memori proses.
@@ -46,13 +46,13 @@ Diagram dan detail lengkap ada di [FLOW.md](docs/FLOW.md).
 
 ### Status
 
-Proyek capstone. Hasil pembacaan seluruh kode: backend, frontend, dan keempat service sudah terhubung ujung ke ujung, tanpa stub dan tanpa TODO di backend maupun service. Satu-satunya fitur yang belum tersambung adalah login Google. Sisanya adalah ketahanan dan operasional (lihat [bagian 4](#4-what-was-deferred-and-why) dan [bagian 7](#7-next-steps)).
+Proyek capstone. Hasil pembacaan seluruh kode: backend, frontend, dan keempat service (auth, qr, notify, mail) sudah terhubung ujung ke ujung, tanpa stub dan tanpa TODO di backend maupun service. Login Google tersambung lewat auth-service dan menyala hanya bila `GOOGLE_CLIENT_IDS` diisi. Sisanya adalah ketahanan dan operasional (lihat [bagian 4](#4-what-was-deferred-and-why) dan [bagian 7](#7-next-steps)).
 
 ### Dokumen lain
 
-- [DESIGN.md](docs/DESIGN.md): arsitektur, keputusan desain, dan batasan.
-- [FLOW.md](docs/FLOW.md): alur pengguna dan diagram urutan.
-- [api-contract.md](docs/api-contract.md): kontrak HTTP dan SSE.
+- [DESIGN.md](DESIGN.md): arsitektur, keputusan desain, dan batasan.
+- [FLOW.md](FLOW.md): alur pengguna dan diagram urutan.
+- [api-contract.md](api-contract.md): kontrak HTTP dan SSE.
 - [deploy/nginx/README.md](deploy/nginx/README.md): pemasangan nginx.
 
 ## 2. Setup and run
@@ -63,7 +63,7 @@ Dua jalur: **lokal** (tiap service dijalankan manual) atau **Docker Compose** (s
 
 #### 1. Database
 
-Buat database, lalu terapkan skema:
+Buat database, lalu terapkan skema (role per service dibuat oleh skrip `db/migrations/*.sh`, otomatis hanya di Docker):
 
 ```bash
 createdb qms_db
@@ -72,22 +72,40 @@ for f in db/migrations/01*.sql db/migrations/02_Indexes.sql; do psql -d qms_db -
 
 Skema dipecah per domain (`01a_accounts.sql` sampai `01h_role_grants.sql`), lalu `02_Indexes.sql`; urutan nama = urutan ketergantungan. Peta file dan aturan menambah atau mengubah skema ada di [db/migrations/README.md](db/migrations/README.md).
 
-#### 2. qr-service
+#### 2. Kunci token login
+
+```bash
+scripts/gen-auth-keys.sh   # membuat keys/auth-private.pem dan keys/auth-public.pem (idempoten, tidak ikut git)
+```
+
+Token login ditandatangani auth-service dengan kunci privat (RS256) dan diverifikasi backend secara lokal dengan kunci publik.
+
+#### 3. auth-service
+
+```bash
+cd auth-service
+# Env: DATABASE_URL (role auth_rw), AUTH_JWT_PRIVATE_KEY_FILE, PUBLIC_APP_URL, MAIL_SERVICE_URL + MAIL_SERVICE_TOKEN (opsional), GOOGLE_CLIENT_IDS (opsional)
+go run ./cmd/auth-service  # http://localhost:8094
+```
+
+Melayani login, registrasi, login Google, reset password, dan verifikasi email. Konfigurasi dibaca dari environment; `../.env` dimuat bila ada.
+
+#### 4. qr-service
 
 ```bash
 cd qr-service
-# Memakai ../.env (akar proyek): bagian [qr-service] di sana, isi JOIN_LINK_SECRET (>=32 byte) + QR_SERVICE_TOKEN
+# Env: JOIN_LINK_SECRET (>=32 byte) + QR_SERVICE_TOKEN
 go run ./cmd/qr-service  # http://localhost:8090
 ```
 
 `JOIN_LINK_SECRET` hanya dipegang qr-service. Backend memanggil endpoint internal
 `/internal/v1/join-token` dan `/internal/v1/join-token/verify` dengan header `X-Service-Token`.
 
-#### 3. Backend
+#### 5. Backend
 
 ```bash
 cd backend
-# Memakai ../.env (akar proyek): bagian [backend] di sana, isi BACKEND_DATABASE_URL, JWT_SECRET, BACKEND_PORT, ALLOWED_ORIGINS + variabel QR
+# Env: DATABASE_URL, JWT_PUBLIC_KEY_FILE, ALLOWED_ORIGINS + variabel QR (../.env dimuat bila ada)
 go run ./cmd/server
 ```
 
@@ -98,19 +116,20 @@ Variabel penting:
 | Variabel | Isi |
 |---|---|
 | `DATABASE_URL` | DSN PostgreSQL, mis. `postgres://user:pass@localhost:5432/qms_db?sslmode=disable` |
-| `JWT_SECRET` | Rahasia penandatanganan token. Ganti untuk produksi |
+| `JWT_PUBLIC_KEY_FILE` | Kunci publik RSA untuk memverifikasi token login (RS256) dari auth-service. Wajib |
+| `JWT_LEGACY_HS256_SECRET` | Hanya masa transisi dari token HS256 lama; kosong = token HS256 ditolak |
 | `PORT` | Port HTTP backend |
 | `ALLOWED_ORIGINS` | Origin frontend yang diizinkan (dipisah koma) |
 | `PUBLIC_APP_URL` | Origin frontend untuk `join_url`, mis. `http://localhost:8080` (lewat nginx) |
 | `QR_SERVICE_URL` | Alamat qr-service, mis. `http://localhost:8090` |
 | `QR_SERVICE_TOKEN` | Sama dengan `QR_SERVICE_TOKEN` milik qr-service |
 | `QR_HTTP_TIMEOUT` | Timeout panggilan internal (detik, default 1) |
-| `EMAIL_VERIFICATION_REQUIRED` | Verifikasi email. Kosong = nyala bila `MAIL_SERVICE_URL` terisi; `false` mematikan (semua akun dianggap terverifikasi); `true` tanpa mail-service ditolak saat start |
+| `EMAIL_VERIFICATION_REQUIRED` | Guard verifikasi email di backend. Kosong = nyala; `false` mematikan (semua akun dianggap terverifikasi). Harus sama dengan nilai di auth-service (di sana kosong = nyala bila `MAIL_SERVICE_URL` terisi, dan `true` tanpa mail-service ditolak saat start) |
 | `SHUTDOWN_TIMEOUT` | Detik menunggu request selesai saat backend berhenti (default 8; compose dev 2). Harus lebih kecil dari `stop_grace_period` |
 
 Catatan: `PUBLIC_APP_URL` harus bisa dibuka dari HP yang memindai QR (jangan `localhost` untuk uji perangkat).
 
-#### 4. Frontend
+#### 6. Frontend
 
 ```bash
 cd frontend
@@ -124,24 +143,27 @@ Alamat API diatur lewat `EXPO_PUBLIC_API_URL`. Kalau kosong, frontend memakai ho
 ### Menjalankan tes
 
 ```bash
-# Unit backend (tanpa database)
+# Unit backend (tanpa database; paket integrasi ikut ter-skip tanpa build tag)
 cd backend
-go test ./internal/test/service_test/ ./internal/test/handler_test/ ./internal/test/router_test/ \
-        ./internal/test/repository_test/ ./internal/dto_test/
+go test ./... -count=1
 
 # Integration backend (butuh DATABASE_URL yang bisa diakses; memakai schema sementara)
 go test -tags integration ./internal/test/integration_test/ -count=1 -v
 
-# qr-service
-cd qr-service
-go test ./...
+# auth-service, qr-service, notify-service, mail-service (masing-masing modul Go sendiri)
+cd auth-service && go test ./...
+cd qr-service && go test ./...
+cd notify-service && go test ./...
+cd mail-service && go test ./...
 
 # Unit frontend
 cd frontend
 npm run test:unit
 ```
 
-End-to-end memakai Playwright di `frontend/playwright/` (`npm run e2e`). Tes ini butuh backend dan frontend yang berjalan.
+Tes tiap modul Go ada di `internal/test/<lapisan>_test/` (di notify-service juga `cmd/notify-service/main_test.go`). Hasil terakhir: backend 457 tes lulus, auth-service 131, qr-service 34, notify-service 43, mail-service 57. Cakupan statement (`go test ./... -coverpkg=./...`): backend 70,0%, auth-service 85,7%, qr-service 72,0%, notify-service 88,1%, mail-service 75,9%. Unit test frontend: 193 lulus.
+
+End-to-end memakai Playwright di `frontend/playwright/` (`npm run e2e`): 246 tes dalam 33 file spec. Tes ini butuh backend dan frontend yang berjalan.
 
 ### Docker Compose
 
@@ -156,6 +178,7 @@ Buka `http://localhost:8080` (atau `QMS_PUBLIC_ORIGIN`). Hanya nginx yang membuk
 | Layanan | Dockerfile | Catatan |
 |---|---|---|
 | db | `db/Dockerfile` | `postgres:16-alpine`, skema dan index dijalankan otomatis saat data directory kosong |
+| auth-service | `auth-service/Dockerfile` | Target `dev`, hanya di jaringan internal (:8094). Login, registrasi, login Google, reset password, verifikasi email. Satu-satunya pemegang kunci privat JWT; role database `auth_rw` |
 | qr-service | `qr-service/Dockerfile` | Target `dev` (`go run`, restart manual), hanya di jaringan internal |
 | notify-service | `notify-service/Dockerfile` | Target `dev`, hanya di jaringan internal. LISTEN ke Postgres (role `notify_ro`), kirim Web Push (VAPID). Tidak bergantung pada email |
 | mail-service | `mail-service/Dockerfile` | Target `dev`, hanya di jaringan internal (:8092). Satu-satunya pengirim email: API `POST /internal/v1/send` (`X-Service-Token`), templat, SMTP, coba ulang |
@@ -164,11 +187,11 @@ Buka `http://localhost:8080` (atau `QMS_PUBLIC_ORIGIN`). Hanya nginx yang membuk
 | frontend | `frontend/Dockerfile` | Target `dev` (Metro, hot reload) di port 80 internal |
 | nginx | `deploy/nginx/Dockerfile` | Reverse proxy, satu-satunya yang membuka port (80) |
 
-Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot reload; Go perlu `docker compose restart backend` (`qr-service`, `notify-service`) setelah ubah kode. Untuk demo/produksi pakai `docker-compose.prod.yml` (lihat bawah).
-Kredensial (`POSTGRES_PASSWORD`, `JWT_SECRET`, `JOIN_LINK_SECRET`, `QR_SERVICE_TOKEN`) tidak dibakar ke image.
+Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot reload; Go perlu `docker compose restart backend` (atau `auth-service`, `qr-service`, `notify-service`, `mail-service`) setelah ubah kode. Untuk demo/produksi pakai `docker-compose.prod.yml` (lihat bawah).
+Kredensial (`POSTGRES_PASSWORD`, `JOIN_LINK_SECRET`, `QR_SERVICE_TOKEN`, dan kata sandi role database) tidak dibakar ke image; kunci privat JWT di-mount dari `keys-dev/` (dev) atau `keys/` (prod).
 Frontend memanggil API di origin halaman (`EXPO_PUBLIC_API_URL=origin`), jadi mengganti `QMS_PUBLIC_ORIGIN` tidak butuh build ulang frontend.
 
-Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) atau `make tunnel` (HTTPS publik, kamera HP jalan); `make down` untuk berhenti. Perintah lain: `make restart` (backend, qr-service, notify-service), `make seed`, `make logs`. Lihat `Makefile` dan `deploy/nginx/README.md`.
+Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) atau `make tunnel` (HTTPS publik, kamera HP jalan); `make down` untuk berhenti. Perintah lain: `make restart` (backend, auth-service, qr-service, notify-service, mail-service), `make seed`, `make logs`. Lihat `Makefile` dan `deploy/nginx/README.md`.
 
 ### Demo/produksi di belakang Cloudflare Tunnel
 
@@ -182,9 +205,9 @@ make prod-backup            # ~/qms-backups/qms-<waktu>.sql.gz; restore: scripts
 make prod-reset             # kosongkan antrian/tiket/push untuk demo ulang; akun dipertahankan, backup otomatis dulu
 ```
 
-Tunnel `qms-ta` adalah service systemd yang **manual**: `sudo systemctl start cloudflared` sebelum demo, `sudo systemctl stop cloudflared` sesudahnya (tidak hidup saat boot, berhenti otomatis saat laptop mati). Akses dibatasi aturan WAF Cloudflare berdasarkan IP WiFi. Semua perintah tanpa `make` dan `scripts/` ada di [docs/setup-perintah-manual.md](docs/setup-perintah-manual.md); panduan untuk mentor di [docs/petunjuk-mentor.md](docs/petunjuk-mentor.md).
+Tunnel `qms-ta` adalah service systemd yang **manual**: `sudo systemctl start cloudflared` sebelum demo, `sudo systemctl stop cloudflared` sesudahnya (tidak hidup saat boot, berhenti otomatis saat laptop mati). Akses dibatasi aturan WAF Cloudflare berdasarkan IP WiFi. Berkas `docs/setup-perintah-manual.md` dan `docs/petunjuk-mentor.md` (perintah tanpa `make` dan panduan mentor) tidak ada di repo ini.
 
-Nginx hanya terikat ke `127.0.0.1:8080`; `cloudflared` di host menunjuk ke `http://localhost:8080`. IP klien dibaca dari `CF-Connecting-IP`. Backend dengan `APP_ENV=production` menolak start bila rahasia lemah atau origin bukan https. Database prod memakai volume sendiri tanpa seed. Backend berjalan satu instance (hub SSE di memori). Lihat `docs/setup-domain.md`, `docs/setup-waf-wifi.md`, dan `docs/plan-live.md`.
+Nginx hanya terikat ke `127.0.0.1:8080`; `cloudflared` di host menunjuk ke `http://localhost:8080`. IP klien dibaca dari `CF-Connecting-IP`. Backend dan auth-service dengan `APP_ENV=production` menolak start bila rahasia lemah atau origin bukan https. Database prod memakai volume sendiri tanpa seed. Backend berjalan satu instance (hub SSE di memori). Catatan domain, WAF, dan rencana live (`docs/setup-domain.md`, `docs/setup-waf-wifi.md`, `docs/plan-live.md`) tidak ada di repo ini.
 
 ### Daftar script
 
@@ -193,16 +216,17 @@ Semua script berada di `scripts/` (dijalankan dari akar `queue-management-system
 | Script | Fungsi | Cara pakai | Dipanggil dari |
 |---|---|---|---|
 | `scripts/backup-prod.sh` | Backup (`pg_dump`, gzip) dan restore database prod. Restore **menimpa** data prod. | `make prod-backup`, atau `QMS_ENV_FILE=.env.prod scripts/backup-prod.sh backup`. Restore: `scripts/backup-prod.sh restore <file.sql.gz>` | `make prod-backup`, `make prod-reset` |
-| `scripts/reset-demo.sh` | Mengosongkan antrian, tiket, catatan, riwayat, dan langganan push di prod. Akun dipertahankan. Backup otomatis dibuat dulu. | `make prod-reset`, atau `scripts/reset-demo.sh -y` untuk melewati konfirmasi | `make prod-reset` |
+| `scripts/reset-demo.sh` | Mengosongkan antrian, tiket, catatan, riwayat, layar publik, email outbox, dan langganan push di prod. Akun dipertahankan. Backup otomatis dibuat dulu. | `make prod-reset`, atau `scripts/reset-demo.sh -y` untuk melewati konfirmasi | `make prod-reset` |
 | `scripts/create-demo-accounts.sh` | Membuat 1 owner (langganan 30 hari) dan 4 customer demo dengan sandi acak. Daftar akun ditulis ke `~/qms-demo-accounts.txt`. Tidak menimpa berkas yang sudah ada. | `scripts/create-demo-accounts.sh` (stack prod harus sudah berjalan) | Manual |
 | `scripts/verify-user.sh` | Menandai satu email sebagai terverifikasi langsung di database. Dipakai bila email verifikasi tidak sampai. | `make verify-user EMAIL=<email> [STACK=prod]`, atau `scripts/verify-user.sh <email> [prod]` | `make verify-user` |
 | `scripts/check-mail-mode.sh` | Memeriksa `MAIL_MODE` dan `SMTP_*` di `.env.prod` sebelum stack prod naik. Menolak konfigurasi yang salah. | Otomatis lewat `make prod-up`, atau `MAIL_MODE=smtp scripts/check-mail-mode.sh .env.prod` | `make prod-up` |
 | `scripts/gen-auth-keys.sh` | Membuat pasangan kunci RSA untuk token login (`keys/`, tidak ikut git). Idempoten; tidak menimpa kunci yang ada. | Otomatis lewat `make up` dan `make prod-up` | `make up`, `make prod-up` |
-| `scripts/check-service-isolation.sh` | Memastikan `notify-service` tidak bergantung pada mail-service, Mailpit, atau SMTP (dev dan prod), ` dan `auth-service` terpisah dari jalur antrian, dan kunci privat JWT hanya di-mount ke `auth-service`. Membutuhkan `docker` dan `python3`. | `scripts/check-service-isolation.sh` (jalankan setelah mengubah `docker-compose*.yml`) | Manual, tidak ada di Makefile |
-| `db/scripts/apply_schema.sql` | Penyesuaian skema yang idempoten untuk database yang sudah berjalan. Tidak menyentuh data. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql`. Prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`. Lalu restart backend dan notify-service. | Manual (lihat [Notifikasi](#notifikasi-notify-service) dan [Email](#email-mailpit-atau-smtp-nyata)) |
+| `scripts/check-google-config.sh` | Memeriksa konfigurasi login Google: `GOOGLE_CLIENT_IDS` (server) dan `EXPO_PUBLIC_GOOGLE_*` (frontend) harus sinkron. Berhenti bila tidak (login pasti gagal). | Otomatis lewat `make up`, `make tunnel`, `make prod-up` | `make up`, `make tunnel`, `make prod-up` |
+| `scripts/check-service-isolation.sh` | Memastikan `notify-service` tidak bergantung pada mail-service, Mailpit, atau SMTP (dev dan prod), `auth-service` terpisah dari jalur antrian, dan kunci privat JWT hanya di-mount ke `auth-service`. Membutuhkan `docker` dan `python3`. | `scripts/check-service-isolation.sh` (jalankan setelah mengubah `docker-compose*.yml`) | Manual, tidak ada di Makefile |
+| `db/scripts/apply_schema.sql` | Penyesuaian skema yang idempoten untuk database yang sudah berjalan. Tidak menyentuh data. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql`. Prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`. Lalu restart backend, notify-service, dan mail-service. | Manual (lihat [Notifikasi](#notifikasi-notify-service) dan [Email](#email-mailpit-atau-smtp-nyata)) |
 | `db/scripts/reset_seed_dev.sql` | Mengembalikan database dev ke data seed. Ditolak di prod setelah `make prod-guard`. | `make seed` | `make seed`, tes Playwright |
 | `db/scripts/backfill_currently_served.sql` | Backfill sekali jalan: tiket `completed` terakhir di antrian aktif menjadi `currently_served`. Berakhir dengan `ROLLBACK`: periksa jumlah baris, lalu ganti ke `COMMIT`. Jalankan setelah backup dan `apply_schema.sql`. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/backfill_currently_served.sql` | Manual |
-| `db/migrations/*.sh` (`03`, `04`, `06`) | Membuat role database `notify_ro`, `mail_rw`, dan `auth_rw`. | **Tidak dijalankan manual.** Docker menjalankannya saat volume database masih kosong (lihat `db/Dockerfile`). | Docker `initdb` |
+| `db/migrations/*.sh` (`03`, `04`, `06`) | Membuat role database `notify_ro`, `mail_rw`, dan `auth_rw` (role `payment_rw` tidak ada lagi). | **Tidak dijalankan manual.** Docker menjalankannya saat volume database masih kosong (lihat `db/Dockerfile`). | Docker `initdb` |
 
 **Script yang sudah dihapus**
 
@@ -237,7 +261,7 @@ Catatan:
 #### Langganan owner (MOCK, tanpa pembayaran)
 
 > **MOCK.** Tidak ada sistem pembayaran. Tombol di layar Subscription langsung menambah **30 hari** langganan owner.
-> Ini pengganti payment-service (Stripe), yang sudah dihapus dari repo.
+> Tidak ada service pembayaran di repo ini; tombol ini hanya menggantikan alur berbayar sampai pembayaran sungguhan dibuat.
 
 **Alur.** Calon owner (belum punya baris `owners`) atau owner yang sudah ada menekan tombol di layar Subscription. Frontend memanggil `POST /api/v1/owners/subscription/extend` (butuh JWT). Backend, dalam satu transaksi:
 
@@ -253,12 +277,14 @@ Respons berisi `subscription_expires_at` yang baru. Kode: `backend/internal/repo
 
 #### Email (Mailpit atau SMTP nyata)
 
-`mail-service` adalah satu-satunya pengirim email (`notify-service` hanya Web Push dan tetap jalan walau email mati; dijaga `scripts/check-service-isolation.sh`). Pemanggil memakai `POST /internal/v1/send` dengan header `X-Service-Token` (`MAIL_SERVICE_TOKEN`). Pengaturan SMTP lewat `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_TLS` (`none`, `starttls`, atau `tls`); divalidasi saat start dan service menolak start bila salah atau tidak lengkap.
+`mail-service` adalah satu-satunya pengirim email (`notify-service` hanya Web Push dan tetap jalan walau email mati; dijaga `scripts/check-service-isolation.sh`). Pemanggil (auth-service untuk reset password, verifikasi, dan konfirmasi terverifikasi) memakai `POST /internal/v1/send` dengan header `X-Service-Token` (`MAIL_SERVICE_TOKEN`). Pengaturan SMTP lewat `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_TLS` (`none`, `starttls`, atau `tls`); divalidasi saat start dan service menolak start bila salah atau tidak lengkap.
 
 ##### Email notifikasi tiket (outbox)
-Empat email ke pemilik tiket (masuk antrian, dibatalkan, nomor dihapus owner, selesai dilayani) dan satu email `queue-closed` ke owner saat ia menutup antriannya sendiri ditulis ke tabel `notification_outbox` oleh trigger dalam transaksi yang sama dengan perubahan tiket atau status antrian, lalu dikirim oleh worker di `mail-service` (role database `mail_rw`, `MAIL_DB_PASSWORD`). Email yang gagal dicoba ulang dengan jeda berlipat; bila mail-service atau SMTP mati, email menunggu di outbox dan terkirim setelah hidup lagi, sementara join, cancel, dan push tidak terpengaruh. Pengguna bisa mematikannya di Profil (`Notifikasi email`).
+Empat email ke pemilik tiket (masuk antrian, dibatalkan, nomor dihapus owner, selesai dilayani) dan satu email `queue-closed` ke owner saat ia menutup antriannya sendiri ditulis ke tabel `notification_outbox` oleh trigger (`tickets_email_outbox`, `queues_email_outbox`) dalam transaksi yang sama dengan perubahan tiket atau status antrian, lalu dikirim oleh worker di `mail-service` (role database `mail_rw`, `MAIL_DB_PASSWORD`). Email yang gagal dicoba ulang dengan jeda berlipat; bila mail-service atau SMTP mati, email menunggu di outbox dan terkirim setelah hidup lagi, sementara join, cancel, dan push tidak terpengaruh. Pengguna bisa mematikannya di Profil (`Notifikasi email`, kolom `users.email_notifications`).
 
-**DB yang sudah berjalan** (skrip init hanya jalan pada data directory kosong): terapkan skema dan buat role:
+Email `queue-closed`: saat owner menutup antrian (status `active` ke `closed`), trigger `queues_email_outbox` menulis satu baris outbox (`kind='queue-closed'`, `ticket_id` kosong, `queue_id` terisi) untuk owner, selama `email_notifications` miliknya menyala. Mail-service mengirimnya dengan tautan `<origin publik>/riwayat`. Di tabel outbox, `ticket_id` boleh NULL, ada kolom `queue_id`, index unik parsial `uq_outbox_kind_queue`, dan CHECK `kind` memuat `queue-closed`.
+
+**DB yang sudah berjalan** (skrip init hanya jalan pada data directory kosong): terapkan skema (wajib untuk perubahan outbox di atas) dan buat role:
 ```
 docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql
 docker compose exec -T -e MAIL_DB_PASSWORD="$(grep ^MAIL_DB_PASSWORD .env | cut -d= -f2)" db sh < db/migrations/04_mail_role.sh
@@ -267,7 +293,9 @@ docker compose up -d mail-service
 (prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod` dan ambil `MAIL_DB_PASSWORD` dari `.env.prod`). Tes: `QMS_DOCKER_EXEC=1 npx playwright test ts-30` (dua tes ketahanan mematikan dan menyalakan container).
 
 ##### Verifikasi email
-Akun baru dikirimi tautan `/verify-email?token=...` (berlaku 24 jam, sekali pakai, maksimal 3 kiriman per jam per akun; yang disimpan hanya hash tokennya di `user_action_tokens`). Pengiriman di latar belakang: bila gagal, registrasi tetap berhasil dan user bisa kirim ulang dari halaman Profil. Akun yang belum terverifikasi tidak bisa bergabung ke antrian (nomor baru) atau membuat antrian (403 `EMAIL_NOT_VERIFIED`); status dibaca dari database, jadi berlaku tanpa login ulang. Menyala bila `EMAIL_VERIFICATION_REQUIRED` kosong atau `true` (bawaan: ikut adanya mail-service).
+Akun baru dikirimi tautan `/verify-email?token=...` (berlaku 24 jam, sekali pakai, maksimal 3 kiriman per jam per akun; yang disimpan hanya hash tokennya di `user_action_tokens`). Pengiriman di latar belakang (auth-service lewat mail-service): bila gagal, registrasi tetap berhasil dan user bisa kirim ulang dari halaman Profil. Akun yang belum terverifikasi tidak bisa bergabung ke antrian (nomor baru) atau membuat antrian (403 `EMAIL_NOT_VERIFIED`); status dibaca dari database, jadi berlaku tanpa login ulang. Menyala bila `EMAIL_VERIFICATION_REQUIRED` kosong atau `true` (di auth-service bawaan ikut adanya mail-service).
+
+Begitu token verifikasi dipakai untuk akun yang sebelumnya belum terverifikasi, auth-service mengirim email `email-verified` (konfirmasi) lewat mail-service. Pengiriman ini best effort dan asinkron: tidak pernah mengubah hasil HTTP verifikasi, dan tidak ada email bila mail-service tidak dikonfigurasi.
 
 | Lingkungan | Email verifikasi | Cara memverifikasi |
 |---|---|---|
@@ -277,7 +305,7 @@ Akun baru dikirimi tautan `/verify-email?token=...` (berlaku 24 jam, sekali paka
 
 - `make verify-user EMAIL=<email> [STACK=prod]` (`scripts/verify-user.sh`) menandai satu akun terverifikasi langsung di database. Idempoten dan aman terhadap karakter aneh di email.
 - `scripts/check-mail-mode.sh` (dijalankan `make prod-up`) memperingatkan bahwa pengguna baru tidak bisa memverifikasi di mode `mailpit`, kecuali `EMAIL_VERIFICATION_REQUIRED=false`.
-- **DB yang sudah berjalan:** `db/scripts/apply_schema.sql` menambah kolom `users.email_verified_at`, memperluas CHECK `purpose`, dan **sekali saja** menandai semua akun yang sudah ada terverifikasi (agar tidak terkunci); menjalankannya ulang tidak memverifikasi akun baru. Lalu restart backend dan mail-service (templat `email-verify` ada di image mail-service). Seed dev dan akun demo dibuat sudah terverifikasi.
+- **DB yang sudah berjalan:** `db/scripts/apply_schema.sql` menambah kolom `users.email_verified_at`, memperluas CHECK `purpose`, dan **sekali saja** menandai semua akun yang sudah ada terverifikasi (agar tidak terkunci); menjalankannya ulang tidak memverifikasi akun baru. Lalu restart backend, auth-service, dan mail-service (templat `email-verify` dan `email-verified` ada di image mail-service). Seed dev dan akun demo dibuat sudah terverifikasi.
 - Tes: `ts-33-email-verification.spec.ts` (butuh Mailpit dan owner berlangganan). Helper `registerAccount` di tes e2e memverifikasi akun lewat Mailpit dan menghapus email verifikasinya; beri `{ verify: false }` untuk akun yang belum terverifikasi.
 
 ##### Link Mailpit
@@ -305,19 +333,20 @@ Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat
 
 | Komponen | Status | Catatan |
 |---|---|---|
-| Backend (Go, Gin) | Lengkap dan terhubung | Semua route punya handler, service, dan repository. Tanpa stub dan tanpa TODO. Sekitar 49 file tes (unit, handler, router, SSE, integrasi). |
-| Frontend (Expo) | Lengkap dan terhubung | Semua layar memakai API nyata. Sekitar 159 unit test dan 217 tes Playwright (32 spec). Satu-satunya layar yang belum tersambung: tombol Google OAuth. |
-| qr-service | Lengkap | Token join HMAC, verifikasi, dan render QR. `/health` dan `/ready`. |
-| notify-service | Lengkap | LISTEN Postgres, Web Push, coba ulang, dan `/health`. Tanpa outbox. |
-| mail-service | Lengkap | Outbox dengan coba ulang dan backoff, enam templat, SMTP. |
-| Database | Lengkap | 16 tabel, trigger notifikasi dan outbox email, role terpisah per service. |
+| Backend (Go, Gin) | Lengkap dan terhubung | Semua route punya handler, service, dan repository. Tanpa stub dan tanpa TODO. 457 tes lulus (`go test ./... -count=1 -v`), cakupan 70,0% (`-coverpkg=./...`). Tes ada di `internal/test/<lapisan>_test/`. |
+| Frontend (Expo) | Lengkap dan terhubung | Semua layar memakai API nyata. 193 unit test dan 246 tes Playwright (33 spec). Login Google tersambung ke auth-service. |
+| auth-service | Lengkap | Login, registrasi, login Google, reset password, verifikasi email, token RS256. 131 tes lulus, cakupan 85,7%. |
+| qr-service | Lengkap | Token join HMAC, verifikasi, dan render QR. `/health` dan `/ready`. 34 tes lulus, cakupan 72,0%. |
+| notify-service | Lengkap | LISTEN Postgres, Web Push, coba ulang, dan `/health`. Tanpa outbox. 43 tes lulus, cakupan 88,1%. |
+| mail-service | Lengkap | Outbox dengan coba ulang dan backoff, sembilan templat (`joined`, `cancelled`, `removed`, `completed`, `queue-closed`, `email-verify`, `email-verified`, `password-reset`, `test`), SMTP. 57 tes lulus, cakupan 75,9%. |
+| Database | Lengkap | 14 tabel, trigger notifikasi dan outbox email, role terpisah per service. |
 | Deployment | Berjalan | Compose dev dan prod, nginx dengan rate limit, tunnel Cloudflare manual, Makefile dan skrip bantu. |
 
 ### Fitur yang ada
 
 | Fitur | Penjelasan singkat |
 |---|---|
-| Akun | Daftar, masuk dengan email atau username, keluar, profil, avatar, dan preferensi. Lupa dan reset password lewat email bila mail-service dipasang. |
+| Akun | Daftar, masuk dengan email atau username, keluar, profil, avatar, dan preferensi. Login Google (opsional, bila `GOOGLE_CLIENT_IDS` diisi). Lupa dan reset password lewat email bila mail-service dipasang. Kolom konfirmasi password menampilkan "Password tidak sama" inline setelah blur atau submit. Mengetuk foto profil membuka popup foto yang diperbesar dengan tombol X. |
 | Verifikasi email | Tautan verifikasi saat registrasi, halaman publik `/verify-email`, banner dan tombol kirim ulang di Profil. Belum terverifikasi: tidak bisa bergabung ke antrian atau membuat antrian. Dev lewat Mailpit, prod lewat `MAIL_MODE`. |
 | Antrian | Owner membuat antrian (butuh langganan aktif), mengubah nama dan deskripsi, dan menutup antrian. |
 | Panggilan nomor | Owner memakai Next, Skip (dengan aturan nomor yang dilewati), dan Panggil ulang. Customer bisa membatalkan tiketnya, dan owner bisa menghapus tiket. |
@@ -327,9 +356,9 @@ Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat
 | Counter | Owner menambah, mengganti nama, dan menghapus counter per antrian lewat UI (`CounterBar`). Layar publik menampilkan satu kartu per counter. |
 | Layar publik | Owner mengaktifkan layar di `/display/<token>` untuk monitor ruang tunggu, tanpa login. Satu kartu per counter, langsung berubah saat Next atau Skip. "GANTI TAUTAN" mematikan tautan lama. |
 | Notifikasi giliran | Web Push dari `notify-service`: "Giliran Anda" saat dipanggil, "Tinggal 1 nomor lagi" untuk nomor berikutnya, dan pemberitahuan untuk nomor yang dilewati. Aktif otomatis saat join bila izin diberikan. Hanya di browser lewat HTTPS (`make tunnel`). |
-| Email | `mail-service` mengirim email dari outbox dan mencoba ulang bila gagal. Pengguna bisa mematikannya di Profil. |
+| Email | `mail-service` mengirim email dari outbox (tiket, dan `queue-closed` ke owner saat antrian ditutup) dan mencoba ulang bila gagal; auth-service mengirim email verifikasi, `email-verified`, dan reset password lewat mail-service. Pengguna bisa mematikan email notifikasi di Profil. |
 | Riwayat dan ekspor | Owner melihat riwayat antrian dan bisa mengekspornya ke CSV atau XLSX. Customer melihat riwayat tiketnya. |
-| Langganan | Owner menambah 30 hari langganan langsung, tanpa pembayaran (MOCK, di backend). |
+| Langganan | Owner menambah 30 hari langganan langsung, tanpa pembayaran (MOCK, di backend; label di layar memuat `[MOCK]`). |
 | Real-time | Pembaruan lewat Server-Sent Events, termasuk `queue_qr_updated`. |
 | Tampilan | Mode terang dan gelap. |
 | Shutdown rapi | Backend menangani SIGINT/SIGTERM: koneksi SSE ditutup, request yang berjalan dituntaskan (paling lama `SHUTDOWN_TIMEOUT`), lalu database ditutup. `ReadHeaderTimeout` 5 dtk, `ReadTimeout` 30 dtk, `IdleTimeout` 120 dtk. |
@@ -340,8 +369,8 @@ Yang belum ada dan alasannya ada di [bagian 4](#4-what-was-deferred-and-why).
 
 ```
 queue-management-system/
-├── backend/                  API Go (Gin, sqlx)
-│   ├── cmd/server/           titik masuk (main.go): merangkai semua komponen
+├── backend/                  API Go (Gin, sqlx): antrian, tiket, counter, riwayat, SSE, langganan MOCK
+│   ├── cmd/server/           titik masuk (main.go): hanya merangkai komponen
 │   └── internal/
 │       ├── apperror/         error bersama (sentinel) untuk repository, service, dan handler
 │       ├── config/           membaca dan memvalidasi env var
@@ -349,23 +378,37 @@ queue-management-system/
 │       ├── dto/              bentuk request dan response JSON
 │       ├── export/           ekspor riwayat antrian ke CSV dan XLSX
 │       ├── handler/          endpoint HTTP
+│       ├── httpserver/       pembuatan dan shutdown server HTTP
 │       ├── imageproc/        validasi, crop, dan perkecil foto profil
-│       ├── mailclient/       klien HTTP ke mail-service
-│       ├── middleware/       autentikasi JWT dan pencabutan sesi
-│       ├── model/            struct data (User, Queue, Ticket, Counter)
+│       ├── middleware/       verifikasi JWT (kunci publik), CORS, pencabutan sesi
+│       ├── model/            struct data
 │       ├── qrclient/         klien HTTP ke qr-service
 │       ├── repository/       akses data ke PostgreSQL
 │       ├── router/           pendaftaran rute HTTP
 │       ├── service/          logika bisnis dan aturan antrian
 │       ├── sse/              hub Server-Sent Events (di memori)
-│       └── validator/        aturan validasi kustom, mis. no_html_tags
-├── frontend/                 aplikasi Expo: src/app (rute), components, hooks, lib, store
-├── qr-service/               microservice token join QR (HMAC), hanya jaringan internal
+│       ├── validator/        aturan validasi kustom, mis. no_html_tags
+│       └── test/             tes per lapisan: <lapisan>_test/ (termasuk integration_test)
+├── auth-service/             login, registrasi, Google, reset password, verifikasi email, :8094
+│   ├── cmd/auth-service/     titik masuk: hanya merangkai komponen
+│   └── internal/             apperror, config, database, dto, handler, httpserver, middleware, model, repository, router, service, validator,
+│                             google (verifikasi ID token Google), mailclient (klien HTTP ke mail-service), test/<lapisan>_test
+├── frontend/                 aplikasi Expo: src/app (rute), components, hooks, lib, store, utils, constants, types
+├── qr-service/               token join QR (HMAC) dan render QR, :8090, hanya jaringan internal
+│   ├── cmd/qr-service/       titik masuk
+│   └── internal/             apperror, config, dto, handler, httpserver, logging, middleware, model, router, service (tanpa repository), test/<lapisan>_test
 ├── notify-service/           Web Push (LISTEN Postgres), /health :8091
+│   ├── cmd/notify-service/   titik masuk (+ main_test.go)
+│   └── internal/             apperror, config, dto, httpserver, model, repository, service,
+│                             listener (LISTEN pg_notify), pusher (kirim Web Push dan coba ulang), runner, test/<lapisan>_test (tanpa handler dan router)
 ├── mail-service/             pengirim email (outbox dan SMTP), :8092
+│   ├── cmd/mail-service/     titik masuk
+│   └── internal/             apperror, config, dto, handler, middleware, model, repository, router, service,
+│                             mailer (SMTP), mailtemplate (templat), test/<lapisan>_test
 ├── db/                       Dockerfile, migrations (skema, indeks, role per service), dan scripts (apply_schema, reset_seed_dev, backfill)
 ├── deploy/nginx/             konfigurasi nginx (reverse proxy, rate limit)
-├── scripts/                  backup-prod, reset-demo, create-demo-accounts, verify-user, check-mail-mode, check-service-isolation (lihat "Daftar script")
+├── scripts/                  backup-prod, reset-demo, create-demo-accounts, verify-user, gen-auth-keys, check-mail-mode, check-google-config, check-service-isolation (lihat "Daftar script")
+├── keys/ dan keys-dev/       pasangan kunci RSA token login (prod dan dev), dibuat gen-auth-keys.sh
 ├── docker-compose.yml        stack development (hot reload)
 ├── docker-compose.prod.yml   stack demo/produksi (nginx hanya di 127.0.0.1)
 ├── Makefile                  perintah umum: make up, make tunnel, make prod-up, dan lainnya
@@ -373,7 +416,7 @@ queue-management-system/
 └── .env.prod.example         template env produksi
 ```
 
-Dokumen desain (DESIGN.md, FLOW.md, api-contract.md, dan lainnya) berada di folder `documentation/docs`, di luar folder ini.
+DESIGN.md, FLOW.md, dan api-contract.md ada di akar folder ini. Dokumen operasional lain yang disebut di bagian 2 (`docs/setup-*.md`, `docs/plan-*.md`, `docs/petunjuk-mentor.md`) tidak ada di repo ini.
 
 ## 4. What was deferred and why
 
@@ -382,13 +425,12 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 | Item | Kondisi sekarang | Pilihan? | Alasan atau catatan |
 |---|---|---|---|
 | Backend lebih dari satu instance | Hub SSE di memori | Ya | Butuh pub/sub bersama (LISTEN/NOTIFY atau Redis). Demo memakai satu instance (`DESIGN.md` §2.7). |
-| Outbox untuk Web Push | Push yang terjadi saat `notify-service` mati hilang | Ya | Email sudah memakai outbox; push dibuat lebih sederhana dulu. Tercatat di `plan-setelah-live.md`. |
-| Migration runner | `db/migrations/01*.sql` hanya jalan pada data directory kosong; DB lama memakai `db/scripts/apply_schema.sql` yang idempoten | Ya | Cukup selama skema jarang berubah. Tercatat di `plan-setelah-live.md`. |
-| HSTS dan Cloudflare Access | Belum aktif; TLS dipegang Cloudflare, nginx hanya HTTP | Ya | Menunggu HTTPS stabil dan Zero Trust siap (`plan-setelah-live.md`). |
-| Plan langganan lain | Hanya perpanjangan 1 bulan, tanpa penagihan berulang | Ya | Disengaja sederhana (bagian Pembayaran). Kolom `plan_type` selain `monthly` belum dipakai. |
+| Outbox untuk Web Push | Push yang terjadi saat `notify-service` mati hilang | Ya | Email sudah memakai outbox; push dibuat lebih sederhana dulu. Rencana di `plan-setelah-live.md` (tidak ada di repo ini). |
+| Migration runner | `db/migrations/01*.sql` hanya jalan pada data directory kosong; DB lama memakai `db/scripts/apply_schema.sql` yang idempoten | Ya | Cukup selama skema jarang berubah. |
+| HSTS dan Cloudflare Access | Belum aktif; TLS dipegang Cloudflare, nginx hanya HTTP | Ya | Menunggu HTTPS stabil dan Zero Trust siap. |
+| Pembayaran sungguhan dan plan langganan lain | Langganan hanya aksi MOCK tambah 30 hari tanpa pembayaran; tidak ada penagihan berulang | Ya | Service pembayaran (Stripe) dihapus; tabel `payments` tetap dipakai sebagai riwayat (amount 0). Kolom `plan_type` selain `monthly` belum dipakai. |
 | Ekspor file dan push di aplikasi native | Hanya jalan di web | Ya | Web Push hanya di browser lewat HTTPS; Expo Go tidak mendukung. |
 | `registration_limit`, batas harian QR, batas riwayat, penghapusan permanen | Kolom skema ada, kode tidak memakainya | Ya | Dihapus dari produk pada 31 Okt 2026. |
-| Login Google | Tombol di layar masuk dan daftar hanya tampilan; kolom `google_id` sudah ada | Ya | Tidak diperlukan; login email/username sudah cukup untuk demo. Bila dikerjakan, butuh Google OAuth di backend (komentar TODO di `LoginScreen.tsx`), Tier 2 di `plan-setelah-live.md`. |
 | Backup otomatis | Hanya manual lewat `make prod-backup`, tanpa jadwal, retensi, atau salinan di luar mesin | Ya | Tidak diperlukan; cukup untuk demo. |
 | Tes render komponen frontend | Tidak ada; hanya unit test logika dan Playwright | Ya | Logika murni diuji unit dan layar diuji Playwright; render test butuh `jest-expo` plus mock Reanimated/router dengan nilai tambah kecil. |
 | Cek MX atau allowlist domain email | Tidak ada; verifikasi hanya lewat tautan | Ya | Kepemilikan email terbukti dengan klik tautan; domain yang tidak ada gagal terkirim dan akunnya tetap belum terverifikasi. |
@@ -399,10 +441,11 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 
 | Bagian | Teknologi |
 |---|---|
-| Backend | Go 1.27, Gin, sqlx + pgx, JWT HS256, bcrypt |
+| Backend | Go 1.27, Gin, sqlx + pgx, verifikasi JWT RS256 (kunci publik) |
+| auth-service | Go 1.27, Gin, sqlx + pgx, penerbit JWT RS256 (kunci privat), bcrypt, verifikasi ID token Google |
 | qr-service | Go 1.27, token join HMAC (internal, tidak dipublikasikan nginx) |
 | notify-service | Go 1.27, LISTEN Postgres, Web Push (VAPID) |
-| mail-service | Go 1.27, SMTP, outbox di Postgres |
+| mail-service | Go 1.27, SMTP, templat HTML dan teks, outbox di Postgres |
 | Database | PostgreSQL |
 | Frontend | Expo SDK 57 (Expo Router, web static), React Native, NativeWind, Zustand |
 | Deploy | Docker Compose, nginx (reverse proxy + rate limit login dan `/join`) |
@@ -414,15 +457,17 @@ Browser (Expo web / native)
    │  HTTP (REST, JSON) + SSE
    ▼
 nginx ── frontend statis (dist)
-   ├─ /api/             ─► backend (Gin) :8080 ─► PostgreSQL (qms_db)
-   │                          ├─► qr-service :8090   (token join, HTTP internal)
-   │                          └─► mail-service :8092 (email reset password, HTTP internal)
+   ├─ /api/v1/users/(login|register|google|forgot-password|reset-password|verify-email|me/verify-email/resend)
+   │                         ─► auth-service :8094 ─► PostgreSQL (role auth_rw)
+   │                                 └─► mail-service :8092 (email verifikasi, terverifikasi, reset password)
+   └─ /api/ (lainnya)        ─► backend (Gin) :8080 ─► PostgreSQL (qms_db)
+                                    └─► qr-service :8090   (token join, HTTP internal)
 
 PostgreSQL ─ pg_notify('queue_events') ─► notify-service :8091 ─► Web Push ke browser
 PostgreSQL ─ notification_outbox       ─► mail-service :8092 ─► SMTP (Mailpit di dev)
 ```
 
-Hanya nginx yang membuka port ke host. `qr-service`, `notify-service`, dan `mail-service` berada di jaringan internal Docker.
+Hanya nginx yang membuka port ke host. `auth-service`, `qr-service`, `notify-service`, dan `mail-service` berada di jaringan internal Docker.
 
 ### Lapisan backend
 
@@ -437,22 +482,24 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 - **service** berisi semua aturan bisnis: kepemilikan, langganan, urutan antrian, join ulang.
 - **repository** berisi SQL dan tidak tahu aturan bisnis.
 - **dto** adalah bentuk JSON ke klien; model database tidak pernah dikirim langsung.
-- Setiap lapisan mendefinisikan interface yang dibutuhkannya sendiri, dan perakitannya manual di `cmd/server/main.go`. Akibatnya service bisa diuji dengan fake repository tanpa database.
+- Setiap lapisan mendefinisikan interface yang dibutuhkannya sendiri, dan perakitannya manual di `cmd/server/main.go`. auth-service, qr-service, notify-service, dan mail-service memakai pola berlapis yang sama (`cmd` hanya merangkai; `internal/` berisi apperror, config, model, dto, repository, service, handler, middleware, router, dan paket khusus per service). Akibatnya service bisa diuji dengan fake repository tanpa database.
 
 ### Real-time dan komunikasi antar-layanan
 
 - **SSE**: tiap antrian punya satu hub di memori. Service memberi tahu hub setelah transaksi selesai (join, next, skip, update, close), lalu hub menyebar event ke klien di antrian itu. Heartbeat tiap 25 detik. Klien memakai `fetch` stream agar header `Authorization` tetap dikirim.
 - **qr-service**: backend memanggil `/internal/v1/join-token` dan `/internal/v1/join-token/verify` dengan header `X-Service-Token`. Rahasia `JOIN_LINK_SECRET` hanya dipegang qr-service.
 - **notify-service**: trigger Postgres memancarkan `pg_notify`; service mendengarkan lalu mengirim Web Push. Tidak ada panggilan langsung dari backend.
-- **mail-service**: trigger menulis ke `notification_outbox` dalam transaksi yang sama dengan perubahan tiket; worker mengirim dan mencoba ulang.
-- **Keamanan akses data**: tiap service memakai role database sendiri dengan hak minimal (`notify_ro`, `mail_rw`, `auth_rw`).
+- **auth-service**: nginx meneruskan rute login, registrasi, Google, reset password, dan verifikasi email ke sini. Backend tidak memanggilnya; ia memverifikasi JWT RS256 secara lokal dengan kunci publik. Bila auth-service mati, user yang sudah login tetap bisa memakai aplikasi (nginx menjawab 503 `AUTH_UNAVAILABLE` untuk rute auth).
+- **mail-service**: trigger menulis ke `notification_outbox` dalam transaksi yang sama dengan perubahan tiket atau penutupan antrian; worker mengirim dan mencoba ulang. Email auth (verifikasi, `email-verified`, reset password) dikirim auth-service lewat `POST /internal/v1/send`.
+- **Langganan**: `POST /api/v1/owners/subscription/extend` di backend (MOCK, tanpa service pembayaran).
+- **Keamanan akses data**: tiap service memakai role database sendiri dengan hak minimal (`notify_ro`, `mail_rw`, `auth_rw`); backend memakai role aplikasi utama.
 
 ## 6. Trade-offs
 
 | Keputusan | Manfaat | Harga yang dibayar |
 |---|---|---|
 | Hub SSE di memori | Sederhana, event langsung tanpa infrastruktur tambahan | Hanya satu instance backend; scale-out butuh pub/sub bersama |
-| Dipecah menjadi service terpisah (qr, notify, mail, payment) | Hak database dibatasi per service, dan kegagalan terisolasi (payment mati, antrian tetap jalan) | Lebih banyak container, token internal, role DB, dan konfigurasi |
+| Dipecah menjadi service terpisah (auth, qr, notify, mail) | Hak database dibatasi per service, dan kegagalan terisolasi (auth mati, user yang sudah login tetap memakai antrian) | Lebih banyak container, token internal, role DB, dan konfigurasi |
 | Push tanpa outbox, email dengan outbox | Push cepat dan sederhana | Push yang terjadi saat service mati hilang; email terjamin tetapi butuh tabel outbox, worker, dan backoff |
 | Join ulang mengembalikan tiket yang ada, bukan error | Scan dua kali atau double-tap aman | Klien tidak lagi mendapat sinyal "sudah bergabung" (`ALREADY_JOINED` tidak dikirim) |
 | `sort_key` dengan gap 65536 | Penyisipan di tengah tanpa menulis ulang baris lain | Nilai maksimum harus dihitung dari semua tiket, bukan hanya `waiting`, karena `UNIQUE (queue_id, sort_key)` (pernah jadi bug) |
@@ -463,18 +510,17 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 | Verifikasi email membatasi aksi (bergabung, membuat antrian), bukan login | User yang salah ketik email tidak terkunci dan masih bisa membuka Profil untuk kirim ulang | Akun belum terverifikasi tetap bisa masuk dan melihat; status dibaca dari database tiap permintaan (bukan JWT), satu query tambahan pada join dan buat antrian |
 | Rate limit login dan `/join` hanya di nginx | Satu tempat untuk membatasi, tanpa kode tambahan di backend | Backend yang dijangkau tanpa nginx tidak membatasi login |
 | Interface didefinisikan di tiap lapisan | Service bisa diuji dengan fake tanpa database | Ada interface ganda yang tidak dipakai (mis. `database.TxRunnerInterface` dan `handler_interface.go`) |
-| Pembayaran satu jenis (perpanjang 1 bulan) | Alur dan idempotensi webhook sederhana | Tidak ada plan lain atau penagihan berulang |
+| Langganan berupa aksi MOCK +30 hari di backend (tanpa pembayaran) | Alur owner bisa didemokan tanpa penyedia pembayaran; tidak ada service tambahan yang bisa mati | Tidak ada pembayaran sungguhan, plan lain, atau penagihan berulang; siapa pun yang login bisa menjadi owner |
+| Service pembayaran (Stripe) dihapus dari repo (keputusan historis) | Lebih sedikit container, rahasia, dan role database | Pembayaran nyata harus dibangun ulang bila dibutuhkan |
 
 ## 7. Next steps
 
-Urutan menurut dampak terhadap keandalan, dari yang paling dekat. Rencana lengkap ada di `docs/plan-setelah-live.md`.
+Urutan menurut dampak terhadap keandalan, dari yang paling dekat.
 
-1. **Perbaiki `scripts/reset-demo.sh`.** `TRUNCATE` di sana tidak menyertakan `queue_displays`, padahal tabel itu mereferensikan `queues` lewat foreign key. Postgres menolak truncate semacam itu, jadi reset demo kemungkinan gagal (belum dijalankan untuk memastikan).
-2. **Login Google**: OAuth di backend, lalu sambungkan tombol yang sudah ada di frontend.
-3. **Pub/sub untuk SSE** agar backend bisa lebih dari satu instance.
-4. **Outbox untuk Web Push** dan worker pool terbatas di notify-service.
-5. **Migration runner**, dan jadikan `03_notify_role.sh` idempoten seperti skrip role lain.
-6. **Keamanan produksi**: HSTS setelah HTTPS stabil, Cloudflare Access, IP WiFi kantor di aturan WAF, dan `VAPID_SUBJECT` dengan email asli.
-7. **Backup otomatis** dengan jadwal, retensi, salinan di luar mesin, dan role database ikut tercakup.
-8. **Kebersihan kode dan tes**: hapus `handler_interface.go` dan `database.TxRunnerInterface` yang tidak dipakai; bersihkan 14 `test.fixme` usang di `ts-09-backlog-features.spec.ts`; tambah tes `note_handler`, `mailclient`, dan `database`; perbarui komentar usang di `docker-compose.yml` dan `deploy/nginx/README.md`.
-9. **Plan langganan tambahan** bila dibutuhkan produk.
+1. **Pub/sub untuk SSE** agar backend bisa lebih dari satu instance.
+2. **Outbox untuk Web Push** dan worker pool terbatas di notify-service.
+3. **Migration runner**, dan jadikan `03_notify_role.sh` idempoten seperti skrip role lain.
+4. **Keamanan produksi**: HSTS setelah HTTPS stabil, Cloudflare Access, IP WiFi kantor di aturan WAF, dan `VAPID_SUBJECT` dengan email asli.
+5. **Backup otomatis** dengan jadwal, retensi, salinan di luar mesin, dan role database ikut tercakup.
+6. **Kebersihan kode dan tes**: hapus `handler_interface.go` dan `database.TxRunnerInterface` yang tidak dipakai; perbarui komentar usang di `docker-compose.yml` dan `deploy/nginx/README.md`.
+7. **Pembayaran sungguhan dan plan langganan tambahan** bila dibutuhkan produk.

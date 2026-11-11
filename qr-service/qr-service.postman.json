@@ -95,13 +95,6 @@
       }
     },
     {
-      "name": "Render Join QR",
-      "request": {
-        "method": "GET",
-        "url": "{{baseUrl}}/qr/join.png?token={{staticToken}}&size=512"
-      }
-    },
-    {
       "name": "Render Generic QR",
       "request": {
         "method": "POST",
@@ -111,7 +104,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\"data\":\"PAY-123\",\"size\":512,\"level\":\"M\"}"
+          "raw": "{\"data\":\"QUEUE-123\",\"size\":512,\"level\":\"M\"}"
         },
         "url": "{{baseUrl}}/internal/v1/qr/render"
       }

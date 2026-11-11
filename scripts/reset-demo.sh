@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Reset cepat data demo di stack prod: menghapus semua antrian, tiket, catatan, riwayat, dan
-# langganan push. Akun (users, owners, payments) TETAP, dan langganan owner diperpanjang 30 hari.
+# Reset cepat data demo di stack prod: menghapus semua antrian, tiket, catatan, riwayat, layar publik,
+# email outbox, dan langganan push. Akun (users, owners, payments, foto profil) TETAP, dan langganan owner
+# diperpanjang 30 hari.
 # Backup otomatis dibuat dulu ke ~/qms-backups/. Tidak menyentuh stack dev.
 #   scripts/reset-demo.sh        # minta konfirmasi
 #   scripts/reset-demo.sh -y     # tanpa konfirmasi
@@ -22,11 +23,13 @@ QMS_ENV_FILE="$ENV_FILE" scripts/backup-prod.sh backup
 
 psql_ -q <<'SQL'
 BEGIN;
-TRUNCATE TABLE notification_outbox, push_subscriptions, ticket_notes, counters, tickets, queue_history, queue_settings, queues RESTART IDENTITY;
+-- Semua tabel yang mereferensi queues, tickets, atau counters wajib ikut di daftar ini (queue_displays punya FK ke
+-- queues). Tanpa CASCADE, tabel yang terlewat membuat TRUNCATE ditolak dan transaksi dibatalkan.
+TRUNCATE TABLE notification_outbox, push_subscriptions, ticket_notes, counters, tickets, queue_history, queue_settings, queue_displays, queues RESTART IDENTITY;
 UPDATE owners SET subscription_expires_at = GREATEST(subscription_expires_at, now()) + interval '30 days'
   WHERE subscription_expires_at < now() + interval '30 days';
 COMMIT;
 SQL
 
-echo "OK: antrian, tiket, dan langganan push dikosongkan."
+echo "OK: antrian, tiket, layar publik, dan langganan push dikosongkan."
 psql_ -tA -c "select 'akun tersisa: ' || (select count(*) from users) || ', owner: ' || (select count(*) from owners)"

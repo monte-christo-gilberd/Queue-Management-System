@@ -3,7 +3,7 @@
 Microservice QR untuk QMS. Tanggung jawabnya:
 
 - membuat dan memverifikasi **token join** bertanda tangan (statis & dinamis),
-- merender **PNG QR** untuk tautan join dan kebutuhan internal lain (mis. QR pembayaran),
+- merender **PNG QR** untuk data apa pun yang diminta service internal lain lewat `/internal/v1/qr/render`,
 - menjadi **satu-satunya pemegang** `JOIN_LINK_SECRET`.
 
 Service ini **stateless**: tidak mengakses database, tidak menyimpan token, dan tidak tahu
@@ -44,6 +44,8 @@ Tidak ada endpoint gambar publik. QR digambar di frontend dari `join_url` yang d
 | POST | `/internal/v1/join-token` | `{queue_id, type, ttl_seconds?}` |
 | POST | `/internal/v1/join-token/verify` | `{token}` |
 | POST | `/internal/v1/qr/render` | `{data, size?, level?, fg?, bg?}` → `image/png` |
+
+Respons sukses endpoint ini berupa JSON polos tanpa pembungkus `{"data": ...}` (mis. `{"token":"...","type":"static","expires_at":null}`), berbeda dari backend dan auth-service. Respons gagal memakai `{"error":{"code","message"}}`. Seluruh respons membawa `Cache-Control: no-store`.
 
 Endpoint internal **tidak** diproksikan nginx dan hanya boleh diakses dari jaringan internal.
 
@@ -90,26 +92,29 @@ Token statis **tidak** punya `exp`. Backend wajib mencocokkannya dengan
 
 ## Struktur kode
 
+Arsitektur berlapis: `cmd` hanya merangkai, logika ada di `service`, HTTP di `handler`. Tidak ada lapisan repository karena service ini stateless.
+
 ```
 cmd/qr-service/   main() -> run(): merangkai config, service, handler, router, server
 internal/
   apperror/       sentinel error (token dan input)
   config/         membaca dan memvalidasi env
-  dto/            body JSON request dan response
-  handler/        handler Gin: health, token, render
+  dto/            body JSON request dan response, bentuk error
+  handler/        handler Gin: HealthHandler, TokenHandler, RenderHandler, respondJSON/respondError
   httpserver/     http.Server dengan timeout
   logging/        logger slog
   middleware/     ServiceToken, BodyLimit, RequestID, Logger, NoStore
   model/          Type, Claims, RenderOptions
-  router/         NewAppRouter, With..., SetupRouter, rute per fitur
-  service/        TokenService dan RenderService (tanpa repository: stateless)
-  test/           tes eksternal per package
+  router/         NewAppRouter, SetupRouter, rute per fitur (token_routes.go, render_routes.go)
+  service/        TokenService (+ penanda tangan HMAC) dan RenderService
+  test/           tes eksternal per lapisan: middleware_test, router_test, service_test
 ```
 
 ## Kode error
 
 | HTTP | Code | Arti |
 |---|---|---|
+| 400 | `BAD_REQUEST` | Body bukan JSON yang sesuai, `queue_id` bukan positif, `ttl_seconds` di luar 30-600, atau data render kosong/terlalu panjang/opsi tidak sah |
 | 400 | `QR_MALFORMED` | Token rusak/format tidak dikenal |
 | 400 | `QR_TYPE_INVALID` | `type` bukan `static`/`dynamic` |
 | 401 | `QR_INVALID` | Tanda tangan salah |

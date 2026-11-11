@@ -1,7 +1,7 @@
 # Migrasi database
 
 Skema PostgreSQL Queue Management System, dipecah per domain. Folder ini hanya untuk **database kosong**.
-Database yang sudah berjalan memakai [`../scripts/apply_schema.sql`](../scripts/apply_schema.sql).
+Database yang sudah berjalan memakai [`../scripts/apply_schema.sql`](../scripts/apply_schema.sql): berkas itu idempoten dan memuat semua perubahan skema belakangan ini (kolom dan constraint tabel, `notification_outbox` dengan `queue_id`, `ticket_id` nullable, `uq_outbox_kind_queue` dan `kind` `queue-closed`, serta fungsi dan trigger `tickets_notify`, `tickets_email_outbox`, `queues_email_outbox`). Jalankan dengan `psql -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql` (perintah lengkap dev dan prod ada di kepala berkasnya), lalu restart `backend` dan `notify-service`. Backup dulu di prod.
 
 ## Urutan dan peta file
 
@@ -14,9 +14,9 @@ Docker menjalankan file di `/docker-entrypoint-initdb.d` menurut urutan nama, ha
 | `01b_queues.sql` | `queues`, `queue_settings`, `counters`, `queue_displays` | 01a |
 | `01c_tickets.sql` | `tickets` (+ dua index unik aturan bisnis), `ticket_notes` | 01a, 01b |
 | `01d_history.sql` | `queue_history` (arsip, tanpa FK ke tabel live) | 01a |
-| `01e_notifications.sql` | `push_subscriptions`, `notification_outbox` | 01a, 01b, 01c |
+| `01e_notifications.sql` | `push_subscriptions`, `notification_outbox` (`ticket_id` boleh NULL, kolom `queue_id`, index unik parsial `uq_outbox_kind_queue`, `kind` termasuk `queue-closed`) | 01a, 01b, 01c |
 | `01f_profile_security.sql` | `user_avatars`, `user_action_tokens` | 01a |
-| `01g_triggers.sql` | fungsi dan trigger `tickets_notify`, `tickets_email_outbox`, `queues_email_outbox` | 01a, 01b, 01c, 01e |
+| `01g_triggers.sql` | fungsi dan trigger `tickets_notify`, `tickets_email_outbox`, `queues_email_outbox` (email ke owner saat antrian berubah dari `active` ke `closed`, mengikuti `users.email_notifications`) | 01a, 01b, 01c, 01e |
 | `01h_role_grants.sql` | blok `GRANT` bersyarat untuk role `mail_rw` | 01a, 01e |
 | `02_Indexes.sql` | semua index non-unik, dikelompokkan per tabel | seluruh `01*` |
 | `03_notify_role.sh` | role `notify_ro` (notify-service) | seluruh `01*` |

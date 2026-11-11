@@ -32,7 +32,8 @@
 # Catatan:
 #   - Kamera di browser butuh HTTPS atau localhost. Scan QR dari HP lewat IP LAN tidak jalan di web;
 #     pakai `make tunnel`. Tunnel butuh cloudflared dan internet.
-#   - URL tunnel acak tiap sesi. Backend dan qr-service membacanya saat start (QMS_PUBLIC_ORIGIN).
+#   - URL tunnel acak tiap sesi. Backend, auth-service, dan mail-service membacanya saat start (QMS_PUBLIC_ORIGIN, untuk
+#     CORS dan tautan di email).
 #   - Login Google (opsional; kosong = tombol tersembunyi). Variabel: GOOGLE_CLIENT_IDS (server) dan
 #     EXPO_PUBLIC_GOOGLE_{WEB,ANDROID,IOS}_CLIENT_ID (frontend) di .env / .env.prod. Setup: documentation/docs/setup-google-login.md
 #       make up / tunnel / prod-up memeriksa konfigurasinya dulu (scripts/check-google-config.sh) dan berhenti bila tidak

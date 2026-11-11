@@ -10,21 +10,21 @@
 
 ---
 
-### TC-05-01 — Tautan join meminta login
+### TC-05-01 — Tautan join di address bar tidak membuat tiket
+| | |
+|---|---|
+| **Priority** | P0 |
+| **Sumber** | 4.2: tiket hanya dibuat lewat pemindaian QR, bukan dengan membuka tautan |
+| **Steps** | 1. Login sebagai customer 2. Buka `/join?t=<token>` langsung di address bar |
+| **Expected Result** | Halaman menampilkan petunjuk "Pindai QR di aplikasi" dan tidak ada tombol **Gabung Antrian**. Customer belum punya tiket (status antrian membalas 404) |
+
+### TC-05-02 — Tautan join tanpa login meminta login
 | | |
 |---|---|
 | **Priority** | P0 |
 | **Sumber** | US-14 AC1: "they are prompted to log in before registering" · 4.2 langkah 4 |
-| **Steps** | 1. Tanpa login, buka `/join?t=<token>` 2. Login dengan akun customer |
-| **Expected Result** | Sebelum login, pengguna diarahkan ke halaman login. Setelah login, pengguna kembali ke `/join?t=<token>` dan melihat tombol **Gabung Antrian** |
-
-### TC-05-02 — Daftar lewat tautan join kembali ke halaman join
-| | |
-|---|---|
-| **Priority** | P0 |
-| **Sumber** | US-14 AC3: pelanggan tanpa akun tidak perlu kehilangan tautan |
-| **Steps** | 1. Buka `/join?t=<token>` tanpa login 2. Klik **Daftar** 3. Isi form dan klik **Daftar** |
-| **Expected Result** | Setelah daftar, pengguna kembali ke `/join?t=<token>` |
+| **Steps** | 1. Tanpa login, buka `/join?t=<token>` |
+| **Expected Result** | Pengguna diarahkan ke halaman login (field "Email atau username" tampil) |
 
 ### TC-05-03 — Bergabung memberi nomor di akhir antrian
 | | |

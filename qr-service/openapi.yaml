@@ -36,61 +36,6 @@ paths:
                   status:
                     type: string
                     example: ready
-  /qr/join.png:
-    get:
-      summary: Render PNG QR untuk tautan join
-      parameters:
-        - name: token
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: size
-          in: query
-          required: false
-          schema:
-            type: integer
-            default: 512
-            minimum: 128
-            maximum: 2048
-        - name: level
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [L, M, Q, H]
-            default: M
-        - name: fg
-          in: query
-          required: false
-          schema:
-            type: string
-            example: '#111827'
-        - name: bg
-          in: query
-          required: false
-          schema:
-            type: string
-            example: '#ffffff'
-      responses:
-        '200':
-          description: PNG QR
-          headers:
-            Cache-Control:
-              schema:
-                type: string
-              description: immutable untuk token statis, no-store untuk token dinamis
-          content:
-            image/png:
-              schema:
-                type: string
-                format: binary
-        '400':
-          $ref: '#/components/responses/BadToken'
-        '401':
-          $ref: '#/components/responses/InvalidToken'
-        '410':
-          $ref: '#/components/responses/ExpiredToken'
   /internal/v1/join-token:
     post:
       summary: Buat token join
@@ -169,7 +114,7 @@ paths:
           $ref: '#/components/responses/ExpiredToken'
   /internal/v1/qr/render:
     post:
-      summary: Render QR generik (mis. QR pembayaran)
+      summary: Render QR generik untuk kebutuhan internal
       security:
         - serviceToken: []
       requestBody:

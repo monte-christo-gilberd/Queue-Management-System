@@ -22,7 +22,7 @@ grep -rn "\[GANTI" deploy/nginx
 |---|---|
 | `nginx.conf` | Konfigurasi **dev** (`docker-compose.yml`): http{}, zona rate limit, format log, `server_name localhost`. Jadi `/etc/nginx/nginx.conf` pada image bawaan. |
 | `nginx.prod.conf` | Konfigurasi **prod/demo** di belakang Cloudflare Tunnel: sama dengan dev, ditambah `set_real_ip_from` dan `real_ip_header CF-Connecting-IP`, serta `server_tokens off`. |
-| `server.conf` | Isi `server{}` bersama (routing, rate limit per rute, header, pembayaran). Di-include oleh kedua konfigurasi di atas. |
+| `server.conf` | Isi `server{}` bersama (routing, rate limit per rute, header). Di-include oleh kedua konfigurasi di atas. |
 | `frontend-upgrade.dev.conf` | Header WebSocket untuk HMR Metro. **Hanya dev.** |
 | `frontend-upgrade.prod.conf` | Sengaja kosong. Jangan dihapus, karena Dockerfile tetap meng-COPY-nya. |
 | `Dockerfile` | Image nginx 1.27 Alpine. Menyalin berkas di atas ke `/etc/nginx/`. |
@@ -45,9 +45,10 @@ Nama host di `server.conf` adalah nama service di docker-compose:
 | Variabel | Upstream | Keterangan |
 |---|---|---|
 | `$qms_backend` | `backend:8080` | API, SSE, health |
+| `$qms_auth` | `auth-service:8094` | Login, registrasi, reset password, verifikasi email |
 | `$qms_frontend` | `frontend:80` | Aplikasi web |
 
-`qr-service` (port 8090) tidak punya rute publik. `/internal/` selalu dibalas 404, dan backend memanggilnya langsung lewat
+`qr-service` (port 8090), `notify-service`, `mail-service`, dan `mailpit` tidak punya rute publik. `/internal/` selalu dibalas 404, dan backend memanggilnya langsung lewat
 jaringan Docker. Upstream memakai variabel dan `resolver 127.0.0.11`, sehingga nginx tetap bisa start walaupun sebuah
 service belum jalan, dan tidak 502 terus setelah service direstart.
 
@@ -58,8 +59,10 @@ Urutan `location` penting: regex diperiksa lebih dulu daripada prefix, dan `loca
 | Path | Tujuan | Batas laju / catatan |
 |---|---|---|
 | `/api/v1/queues/:id/event` | backend | SSE: tanpa buffer, timeout 86400s |
-| `/api/v1/users/login`, `/register` | backend | `auth_zone` 10 r/s, burst 20 |
-| `/api/v1/users/forgot-password`, `/reset-password` | backend | `reset_zone` 1 r/s, burst 5 (batas per akun ada di backend) |
+| `/api/v1/users/login`, `/register` | auth-service | `auth_zone` 10 r/s, burst 20. Bila auth-service mati: JSON 503 `AUTH_UNAVAILABLE` |
+| `/api/v1/users/google`, `/google/link` | auth-service | `auth_zone` 10 r/s, burst 20 |
+| `/api/v1/users/verify-email`, `/me/verify-email/resend` | auth-service | `auth_zone` 10 r/s, burst 20 |
+| `/api/v1/users/forgot-password`, `/reset-password` | auth-service | `reset_zone` 1 r/s, burst 5 (batas per akun ada di auth-service) |
 | `/reset-password` (halaman) | frontend | Token disamarkan di log, `Referrer-Policy no-referrer`, `no-store` |
 | `/api/v1/display/:token/event` | backend | SSE tanpa buffer, `display_zone` 20 r/s, burst 40, token disamarkan di log |
 | `/api/v1/display/:token` | backend | `display_zone`, token disamarkan di log |
@@ -67,7 +70,7 @@ Urutan `location` penting: regex diperiksa lebih dulu daripada prefix, dan `loca
 | `/api/v1/join`, `/api/v1/join/preview` | backend | `join_zone` 10 r/s, burst 20 |
 | `/api/v1/users/me/avatar` | backend | Body sampai 6 MB (hanya rute ini), `avatar_zone` 5 r/s, burst 10 |
 | `/health` | backend | Log akses dimatikan |
-| `/api/` | backend | Timeout 60s |
+| `/api/` | backend | Timeout 60s. Termasuk `POST /api/v1/owners/subscription/extend` (langganan MOCK, tambah 30 hari tanpa pembayaran), yang tidak punya aturan khusus |
 | `/internal/` | - | Selalu 404 |
 | `/` | frontend | Aplikasi web (fallback) |
 
@@ -88,7 +91,7 @@ memakai `access_log ... qms_masked`.
 
 | Yang berubah | Ubah di |
 |---|---|
-| Domain publik (browser dan HP) | `QMS_PUBLIC_ORIGIN` di `.env`. Harus sama dengan alamat yang dibuka. Backend dan qr-service memakai nilai ini untuk CORS dan `join_url`. |
+| Domain publik (browser dan HP) | `QMS_PUBLIC_ORIGIN` di `.env`. Harus sama dengan alamat yang dibuka. Backend memakainya untuk CORS dan tautan join (`PUBLIC_APP_URL`), auth-service dan mail-service untuk tautan di email. |
 | Domain di produksi | Konfigurasi tunnel Cloudflare, dan `server_name _` di `nginx.prod.conf` bila ingin menolak Host lain. |
 | Nama atau port service | `set $qms_*` di `server.conf`, dan service di `docker-compose*.yml`. |
 | Subnet jaringan | `set_real_ip_from` di `nginx.prod.conf`, `TRUSTED_PROXIES` backend di `docker-compose*.yml` (dev `172.28.0.0/16`, prod `172.29.0.0/16`), dan blok `ipam` di compose. Ketiganya harus sama. |
@@ -102,8 +105,9 @@ cp .env.example .env        # isi secret dan QMS_PUBLIC_ORIGIN
 docker compose up --build   # nginx terbuka di ${QMS_HTTP_PORT:-8080}
 ```
 
-Hanya ada satu `docker-compose.yml` (mode development, hot reload). Hanya nginx yang membuka port; `db`, `backend`,
-`qr-service` dan `frontend` hanya terjangkau lewat jaringan Docker. Psql:
+Hanya ada satu `docker-compose.yml` (mode development, hot reload). Hanya nginx yang membuka port ke host (selain Mailpit,
+yang hanya diikat ke `127.0.0.1`); `db`, `backend`, `auth-service`, `qr-service`, `notify-service`, `mail-service` dan
+`frontend` hanya terjangkau lewat jaringan Docker. Psql:
 `docker compose exec db psql -U qms -d qms_db`.
 
 `QMS_PUBLIC_ORIGIN` harus sama dengan alamat yang dibuka browser dan HP. Frontend memanggil API di origin halaman,
@@ -136,8 +140,8 @@ make down     # hentikan
 make mailpit  # tampilkan link Mailpit (dev) tanpa menjalankan apa pun
 ```
 
-- URL acak dan berganti tiap sesi. Skrip memberikannya sebagai `QMS_PUBLIC_ORIGIN` ke backend dan qr-service, yang
-  membacanya saat start.
+- URL acak dan berganti tiap sesi. Skrip memberikannya sebagai `QMS_PUBLIC_ORIGIN` ke backend, auth-service,
+  mail-service, dan service lain yang membutuhkannya, yang membacanya saat start.
 - Butuh internet. Jangan dipakai untuk data nyata, karena siapa pun yang tahu URL-nya bisa mengakses aplikasi.
 - Jaringan yang memblokir QUIC ditangani dengan `--protocol http2`.
 
