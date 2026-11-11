@@ -46,7 +46,6 @@ Nama host di `server.conf` adalah nama service di docker-compose:
 |---|---|---|
 | `$qms_backend` | `backend:8080` | API, SSE, health |
 | `$qms_frontend` | `frontend:80` | Aplikasi web |
-| `$qms_payment` | `payment-service:8093` | Pembayaran (terpisah dari antrian) |
 
 `qr-service` (port 8090) tidak punya rute publik. `/internal/` selalu dibalas 404, dan backend memanggilnya langsung lewat
 jaringan Docker. Upstream memakai variabel dan `resolver 127.0.0.11`, sehingga nginx tetap bisa start walaupun sebuah
@@ -67,14 +66,11 @@ Urutan `location` penting: regex diperiksa lebih dulu daripada prefix, dan `loca
 | `/display/:token` (halaman) | frontend | Sama seperti `/reset-password` |
 | `/api/v1/join`, `/api/v1/join/preview` | backend | `join_zone` 10 r/s, burst 20 |
 | `/api/v1/users/me/avatar` | backend | Body sampai 6 MB (hanya rute ini), `avatar_zone` 5 r/s, burst 10 |
-| `/api/v1/payments/webhooks/stripe` | payment-service | Tanpa batas laju (tanda tangan diverifikasi di service) |
-| `/api/v1/payments/` | payment-service | `payment_zone` 2 r/s, burst 5 |
 | `/health` | backend | Log akses dimatikan |
 | `/api/` | backend | Timeout 60s |
 | `/internal/` | - | Selalu 404 |
 | `/` | frontend | Aplikasi web (fallback) |
 
-Bila `payment-service` mati, `/api/v1/payments/` dan webhook dibalas JSON `PAYMENT_UNAVAILABLE` dengan status 503 dan
 `Retry-After: 30`. Jalur antrian, login, dan SSE tidak terpengaruh.
 
 Batas ukuran body default `client_max_body_size 1m` berlaku untuk semua rute, kecuali avatar.
@@ -107,7 +103,7 @@ docker compose up --build   # nginx terbuka di ${QMS_HTTP_PORT:-8080}
 ```
 
 Hanya ada satu `docker-compose.yml` (mode development, hot reload). Hanya nginx yang membuka port; `db`, `backend`,
-`qr-service`, `payment-service`, dan `frontend` hanya terjangkau lewat jaringan Docker. Psql:
+`qr-service` dan `frontend` hanya terjangkau lewat jaringan Docker. Psql:
 `docker compose exec db psql -U qms -d qms_db`.
 
 `QMS_PUBLIC_ORIGIN` harus sama dengan alamat yang dibuka browser dan HP. Frontend memanggil API di origin halaman,
@@ -157,6 +153,5 @@ make mailpit  # tampilkan link Mailpit (dev) tanpa menjalankan apa pun
 - `/` menampilkan halaman login, dan `/dashboard` tidak 404.
 - `/api/v1/queues` tanpa token membalas 401 (502 berarti backend mati).
 - `/internal/v1/join-token` membalas 404.
-- `/api/v1/payments/checkout` tanpa token membalas 401 dari payment-service (503 `PAYMENT_UNAVAILABLE` bila payment-service mati).
 - Banyak request cepat ke `/api/v1/users/login` akhirnya dibalas 429.
 - Owner menekan Next dan layar customer berubah tanpa refresh (SSE tidak tertahan buffer).

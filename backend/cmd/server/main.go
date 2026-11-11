@@ -316,6 +316,22 @@ func run() error {
 	appRouter.
 		WithDisplay(displayHandler)
 
+	// inisialisasi layer repository langganan: tambah 30 hari tanpa pembayaran (pengganti payment-service)
+	subscriptionRepo := repository.
+		NewSubscriptionRepository(db)
+
+	// inisialisasi layer service langganan
+	subscriptionService := service.
+		NewSubscriptionService(subscriptionRepo)
+
+	// inisialisasi layer handler langganan
+	subscriptionHandler := handler.
+		NewSubscriptionHandler(subscriptionService)
+
+	// memasang endpoint langganan ke appRouter: POST /api/v1/owners/subscription/extend
+	appRouter.
+		WithSubscription(subscriptionHandler)
+
 	// inisialisasi layer repository riwayat
 	historyRepo := repository.
 		NewHistoryRepository(db)

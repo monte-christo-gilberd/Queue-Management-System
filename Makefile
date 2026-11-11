@@ -11,7 +11,7 @@
 #   make up IP=192.168.1.5          sama, tetapi memakai IP LAN yang ditentukan
 #   make tunnel                     HTTPS publik lewat Cloudflare quick tunnel (kamera HP jalan)
 #   make down                       hentikan stack dan tunnel
-#   make restart                    restart backend, qr-service, notify-service, mail-service, payment-service
+#   make restart                    restart backend, auth-service, qr-service, notify-service, mail-service
 #                                   (dipakai setelah mengubah kode Go)
 #   make seed                       reset database dev ke data seed
 #   make logs                       ikuti log semua service (50 baris terakhir)
@@ -188,7 +188,7 @@ down:
 
 # Restart service yang perlu dimuat ulang setelah kode Go berubah.
 restart:
-	docker compose restart backend auth-service qr-service notify-service mail-service payment-service
+	docker compose restart backend auth-service qr-service notify-service mail-service
 
 # Reset database dev ke data seed (db/scripts/reset_seed_dev.sql).
 seed:

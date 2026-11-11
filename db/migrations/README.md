@@ -21,7 +21,6 @@ Docker menjalankan file di `/docker-entrypoint-initdb.d` menurut urutan nama, ha
 | `02_Indexes.sql` | semua index non-unik, dikelompokkan per tabel | seluruh `01*` |
 | `03_notify_role.sh` | role `notify_ro` (notify-service) | seluruh `01*` |
 | `04_mail_role.sh` | role `mail_rw` (mail-service) | seluruh `01*` |
-| `05_payment_role.sh` | role `payment_rw` (payment-service) | seluruh `01*` |
 | `06_auth_role.sh` | role `auth_rw` (auth-service): `users` dan `user_action_tokens` saja | seluruh `01*` |
 
 Menjalankan manual di database kosong (tanpa Docker):

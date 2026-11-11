@@ -94,6 +94,12 @@ type PushHandler interface {
 	Unsubscribe(c *gin.Context)
 }
 
+// SubscriptionHandler adalah handler untuk penambahan masa langganan owner (30 hari, tanpa pembayaran).
+type SubscriptionHandler interface {
+	// Extend menambah 30 hari ke langganan user yang login.
+	Extend(c *gin.Context)
+}
+
 // SSEHandler adalah handler untuk koneksi Server-Sent Events antrian.
 type SSEHandler interface {
 	// ServeSSE membuka koneksi SSE untuk antrian di path.
@@ -145,6 +151,8 @@ type AppRouter struct {
 	displayHandler DisplayHandler
 	// pushHandler menangani Web Push (opsional).
 	pushHandler PushHandler
+	// subscriptionHandler menangani penambahan masa langganan owner (opsional).
+	subscriptionHandler SubscriptionHandler
 	// ticketHandler menangani tiket dan join antrian.
 	ticketHandler TicketHandler
 	// userHandler menangani akun user.

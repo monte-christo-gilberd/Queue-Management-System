@@ -159,7 +159,6 @@ Buka `http://localhost:8080` (atau `QMS_PUBLIC_ORIGIN`). Hanya nginx yang membuk
 | qr-service | `qr-service/Dockerfile` | Target `dev` (`go run`, restart manual), hanya di jaringan internal |
 | notify-service | `notify-service/Dockerfile` | Target `dev`, hanya di jaringan internal. LISTEN ke Postgres (role `notify_ro`), kirim Web Push (VAPID). Tidak bergantung pada email |
 | mail-service | `mail-service/Dockerfile` | Target `dev`, hanya di jaringan internal (:8092). Satu-satunya pengirim email: API `POST /internal/v1/send` (`X-Service-Token`), templat, SMTP, coba ulang |
-| payment-service | `payment-service/Dockerfile` | Target `dev`, jaringan internal (:8093), diteruskan nginx hanya di `/api/v1/payments/`. Perpanjang langganan owner 1 bulan setelah pembayaran Stripe (role DB `payment_rw`). Terpisah dari antrian: lihat bagian Pembayaran |
 | mailpit | `axllent/mailpit:v1.31.6` | Hanya dev. Server SMTP palsu: menangkap semua email dari mail-service. SMTP dan UI hanya diikat ke 127.0.0.1 (`:1025` dan `:8025`), tidak lewat nginx; mail-service memakai `mailpit:1025` lewat jaringan internal |
 | backend | `backend/Dockerfile` | Target `dev` (`go run`, restart manual), healthcheck `/health`, hanya di jaringan internal |
 | frontend | `frontend/Dockerfile` | Target `dev` (Metro, hot reload) di port 80 internal |
@@ -199,11 +198,11 @@ Semua script berada di `scripts/` (dijalankan dari akar `queue-management-system
 | `scripts/verify-user.sh` | Menandai satu email sebagai terverifikasi langsung di database. Dipakai bila email verifikasi tidak sampai. | `make verify-user EMAIL=<email> [STACK=prod]`, atau `scripts/verify-user.sh <email> [prod]` | `make verify-user` |
 | `scripts/check-mail-mode.sh` | Memeriksa `MAIL_MODE` dan `SMTP_*` di `.env.prod` sebelum stack prod naik. Menolak konfigurasi yang salah. | Otomatis lewat `make prod-up`, atau `MAIL_MODE=smtp scripts/check-mail-mode.sh .env.prod` | `make prod-up` |
 | `scripts/gen-auth-keys.sh` | Membuat pasangan kunci RSA untuk token login (`keys/`, tidak ikut git). Idempoten; tidak menimpa kunci yang ada. | Otomatis lewat `make up` dan `make prod-up` | `make up`, `make prod-up` |
-| `scripts/check-service-isolation.sh` | Memastikan `notify-service` tidak bergantung pada mail-service, Mailpit, atau SMTP (dev dan prod), `payment-service` dan `auth-service` terpisah dari jalur antrian, dan kunci privat JWT hanya di-mount ke `auth-service`. Membutuhkan `docker` dan `python3`. | `scripts/check-service-isolation.sh` (jalankan setelah mengubah `docker-compose*.yml`) | Manual, tidak ada di Makefile |
+| `scripts/check-service-isolation.sh` | Memastikan `notify-service` tidak bergantung pada mail-service, Mailpit, atau SMTP (dev dan prod), ` dan `auth-service` terpisah dari jalur antrian, dan kunci privat JWT hanya di-mount ke `auth-service`. Membutuhkan `docker` dan `python3`. | `scripts/check-service-isolation.sh` (jalankan setelah mengubah `docker-compose*.yml`) | Manual, tidak ada di Makefile |
 | `db/scripts/apply_schema.sql` | Penyesuaian skema yang idempoten untuk database yang sudah berjalan. Tidak menyentuh data. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql`. Prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`. Lalu restart backend dan notify-service. | Manual (lihat [Notifikasi](#notifikasi-notify-service) dan [Email](#email-mailpit-atau-smtp-nyata)) |
 | `db/scripts/reset_seed_dev.sql` | Mengembalikan database dev ke data seed. Ditolak di prod setelah `make prod-guard`. | `make seed` | `make seed`, tes Playwright |
 | `db/scripts/backfill_currently_served.sql` | Backfill sekali jalan: tiket `completed` terakhir di antrian aktif menjadi `currently_served`. Berakhir dengan `ROLLBACK`: periksa jumlah baris, lalu ganti ke `COMMIT`. Jalankan setelah backup dan `apply_schema.sql`. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/backfill_currently_served.sql` | Manual |
-| `db/migrations/*.sh` (`03`, `04`, `05`) | Membuat role database `notify_ro`, `mail_rw`, dan `payment_rw`. | **Tidak dijalankan manual.** Docker menjalankannya saat volume database masih kosong (lihat `db/Dockerfile`). | Docker `initdb` |
+| `db/migrations/*.sh` (`03`, `04`, `06`) | Membuat role database `notify_ro`, `mail_rw`, dan `auth_rw`. | **Tidak dijalankan manual.** Docker menjalankannya saat volume database masih kosong (lihat `db/Dockerfile`). | Docker `initdb` |
 
 **Script yang sudah dihapus**
 
@@ -220,7 +219,7 @@ Hasilnya ada di `frontend/dist/`. Salin ke folder yang dibaca nginx, lalu ikuti 
 
 ### Konfigurasi layanan pendukung
 
-Detail konfigurasi dan operasi untuk notify-service, payment-service, dan mail-service.
+Detail konfigurasi dan operasi untuk notify-service dan mail-service.
 
 #### Notifikasi (notify-service)
 
@@ -235,26 +234,22 @@ Catatan:
 - Awalan nomor tiket: DB lama butuh `ALTER TABLE queues ADD COLUMN ticket_prefix VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (ticket_prefix ~ '^[A-Z0-9]{1,3}$');`, lalu restart backend dan notify-service (notify membaca kolom ini).
 - Tes unit: `cd notify-service && go test ./...`.
 
-#### Pembayaran langganan (payment-service)
+#### Langganan owner (MOCK, tanpa pembayaran)
 
-Satu kemampuan saja: **memperpanjang langganan 1 bulan** setelah Stripe mengonfirmasi pembayaran (tidak ada plan lain, tidak ada penagihan berulang). **Pembayaran pertama user biasa sekaligus menjadikannya owner**: itu satu-satunya jalan menjadi owner dari aplikasi (Profil → kartu "Jadi Owner" → Subscription → bayar). Ada di stack dev dan prod (`docker-compose.prod.yml`) sebagai bawaan.
+> **MOCK.** Tidak ada sistem pembayaran. Tombol di layar Subscription langsung menambah **30 hari** langganan owner.
+> Ini pengganti payment-service (Stripe), yang sudah dihapus dari repo.
 
-**Alur.** User menekan "Bayar & Jadi Owner" (atau "Perpanjang 1 Bulan" bila sudah owner) di layar Subscription, frontend memanggil `POST /api/v1/payments/checkout` (JWT yang sama dengan backend), payment-service membuka sesi Stripe Checkout dan mengembalikan `checkout_url`. Setelah bayar, **webhook** Stripe `POST /api/v1/payments/webhooks/stripe` (tanda tangan diverifikasi) memperpanjang dalam satu transaksi (upsert): `owners.subscription_expires_at = GREATEST(now(), subscription_expires_at) + 1 bulan` (dari tanggal berakhir bila masih aktif, dari sekarang bila sudah lewat; user yang belum owner mendapat baris `owners` baru dengan `now() + 1 bulan`) dan satu baris `payments` (`plan_type='monthly'`). Idempoten per event **dan** per sesi Checkout, jadi kiriman ulang Stripe tidak memperpanjang dua kali. Redirect browser hanya UX; sumber kebenaran adalah webhook.
+**Alur.** Calon owner (belum punya baris `owners`) atau owner yang sudah ada menekan tombol di layar Subscription. Frontend memanggil `POST /api/v1/owners/subscription/extend` (butuh JWT). Backend, dalam satu transaksi:
 
-**Terisolasi dari antrian.** Backend hanya *membaca* `owners.subscription_expires_at` (402 `SUBSCRIPTION_INACTIVE` bila lewat) dan tidak pernah memanggil payment-service; tidak ada `depends_on` dari/ke backend maupun nginx. Role database `payment_rw` hanya boleh membuat baris `owners` (hanya kolom `user_id` dan `subscription_expires_at`), mengubah kolom langganan itu, membaca `users.email`, menambah `payments`, dan memakai dua tabel miliknya (`payment_webhook_events`, `payment_session_credits`); tidak ada akses ke antrian, tiket, atau `password_hash`. Bila service mati: login, antrian, tiket, SSE tetap jalan; checkout/webhook dijawab nginx dengan JSON 503 `PAYMENT_UNAVAILABLE` dan Stripe mengirim ulang webhook, sehingga perpanjangan terkejar setelah service hidup. nginx memakai upstream lewat variabel + resolver, jadi tetap bisa start tanpa payment-service. Tanpa kunci Stripe service tetap hidup dan checkout menjawab 503; `make prod-up` tidak gagal karenanya. Dijaga `scripts/check-service-isolation.sh`.
+- `owners.subscription_expires_at = GREATEST(now(), subscription_expires_at) + 30 hari` (dari tanggal berakhir bila masih aktif, dari sekarang bila sudah lewat). Calon owner mendapat baris `owners` baru dengan `now() + 30 hari`.
+- Satu baris `payments` dicatat (`plan_type='monthly'`, `amount=0`, `status='success'`) sebagai riwayat.
 
-**Simulasi di dev (tanpa Stripe).** `DEV_PAYMENT_SIMULATOR=true` di `.env` membuat tombol bayar langsung berhasil: payment-service memanggil jalur perpanjangan yang sama dengan webhook asli (owner dibuat bila belum ada, +1 bulan, baris `payments` tercatat), tanpa jaringan dan tanpa uang. Aman karena: tidak diteruskan oleh `docker-compose.prod.yml` (dijaga `scripts/check-service-isolation.sh`), service menolak start bila menyala bersama `APP_ENV=production`, dan menolak start bila kunci Stripe juga terisi (pilih salah satu). Setiap klik adalah pembayaran baru, jadi klik ulang memperpanjang 1 bulan lagi.
+Respons berisi `subscription_expires_at` yang baru. Kode: `backend/internal/repository/subscription_repo.go`, `backend/internal/service/subscription_service.go`, `backend/internal/handler/subscription_handler.go`.
 
-**Konfigurasi** (`.env` / `.env.prod`, contoh di `.env.example` dan `.env.prod.example`): `PAYMENT_DB_PASSWORD`, `STRIPE_API_KEY` (`sk_live_...` produksi, `sk_test_...` uji tanpa uang sungguhan), `STRIPE_WEBHOOK_SECRET` (`whsec_...`), opsional `STRIPE_PRICE_ID`, `SUBSCRIPTION_PRICE_AMOUNT` (satuan utama, bawaan 50000) dan `SUBSCRIPTION_CURRENCY` (bawaan `idr`), `STRIPE_API_BASE_URL` (kosong = api.stripe.com; isi hanya untuk emulator). Daftarkan endpoint webhook `https://<domain>/api/v1/payments/webhooks/stripe` di dashboard Stripe dengan event `checkout.session.completed` dan `checkout.session.async_payment_succeeded`. Dev tanpa dashboard: `stripe listen --forward-to localhost:8080/api/v1/payments/webhooks/stripe`.
+**Terisolasi dari antrian.** Backend hanya *membaca* `owners.subscription_expires_at` (402 `SUBSCRIPTION_INACTIVE` bila lewat). Penambahan 30 hari sekarang dikerjakan di backend itu sendiri, jadi tidak ada service terpisah yang bisa mati.
 
-**DB yang sudah berjalan** (skrip init hanya jalan pada data directory kosong): buat tabel dan role (idempoten; jalankan ulang bila role sudah pernah dibuat dari versi lama, karena hak `INSERT` pada `owners` baru ditambahkan), lalu bangun ulang nginx (konfigurasinya masuk ke image) dan jalankan service:
-```
-docker compose exec -T -e PAYMENT_DB_PASSWORD="$(grep ^PAYMENT_DB_PASSWORD .env | cut -d= -f2)" db sh < db/migrations/05_payment_role.sh
-docker compose up -d --build payment-service nginx
-```
-(prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod` dan ambil `PAYMENT_DB_PASSWORD` dari `.env.prod`).
+**Tes.** Unit: `cd backend && go test ./internal/test/handler_test/ -run TestSubscription`.
 
-**Tes.** Unit: `cd payment-service && go test ./...`. Integrasi database (membuktikan perpanjangan, idempotensi, dan bahwa `payment_rw` tidak bisa menyentuh data antrian) butuh Postgres dengan skema dan skrip 05 yang sudah diterapkan: `PAYMENT_TEST_ADMIN_URL=<superuser> PAYMENT_TEST_DATABASE_URL=<payment_rw> go test ./...` (dilewati bila env kosong). Isolasi: `scripts/check-service-isolation.sh`.
 
 #### Email (Mailpit atau SMTP nyata)
 
@@ -315,7 +310,6 @@ Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat
 | qr-service | Lengkap | Token join HMAC, verifikasi, dan render QR. `/health` dan `/ready`. |
 | notify-service | Lengkap | LISTEN Postgres, Web Push, coba ulang, dan `/health`. Tanpa outbox. |
 | mail-service | Lengkap | Outbox dengan coba ulang dan backoff, enam templat, SMTP. |
-| payment-service | Lengkap | Stripe Checkout, webhook idempoten, dan simulator untuk dev. |
 | Database | Lengkap | 16 tabel, trigger notifikasi dan outbox email, role terpisah per service. |
 | Deployment | Berjalan | Compose dev dan prod, nginx dengan rate limit, tunnel Cloudflare manual, Makefile dan skrip bantu. |
 
@@ -335,7 +329,7 @@ Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat
 | Notifikasi giliran | Web Push dari `notify-service`: "Giliran Anda" saat dipanggil, "Tinggal 1 nomor lagi" untuk nomor berikutnya, dan pemberitahuan untuk nomor yang dilewati. Aktif otomatis saat join bila izin diberikan. Hanya di browser lewat HTTPS (`make tunnel`). |
 | Email | `mail-service` mengirim email dari outbox dan mencoba ulang bila gagal. Pengguna bisa mematikannya di Profil. |
 | Riwayat dan ekspor | Owner melihat riwayat antrian dan bisa mengekspornya ke CSV atau XLSX. Customer melihat riwayat tiketnya. |
-| Langganan | Owner memperpanjang langganan 1 bulan lewat Stripe (`payment-service`). |
+| Langganan | Owner menambah 30 hari langganan langsung, tanpa pembayaran (MOCK, di backend). |
 | Real-time | Pembaruan lewat Server-Sent Events, termasuk `queue_qr_updated`. |
 | Tampilan | Mode terang dan gelap. |
 | Shutdown rapi | Backend menangani SIGINT/SIGTERM: koneksi SSE ditutup, request yang berjalan dituntaskan (paling lama `SHUTDOWN_TIMEOUT`), lalu database ditutup. `ReadHeaderTimeout` 5 dtk, `ReadTimeout` 30 dtk, `IdleTimeout` 120 dtk. |
@@ -369,7 +363,6 @@ queue-management-system/
 ├── qr-service/               microservice token join QR (HMAC), hanya jaringan internal
 ├── notify-service/           Web Push (LISTEN Postgres), /health :8091
 ├── mail-service/             pengirim email (outbox dan SMTP), :8092
-├── payment-service/          perpanjang langganan lewat Stripe, :8093
 ├── db/                       Dockerfile, migrations (skema, indeks, role per service), dan scripts (apply_schema, reset_seed_dev, backfill)
 ├── deploy/nginx/             konfigurasi nginx (reverse proxy, rate limit)
 ├── scripts/                  backup-prod, reset-demo, create-demo-accounts, verify-user, check-mail-mode, check-service-isolation (lihat "Daftar script")
@@ -410,7 +403,6 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 | qr-service | Go 1.27, token join HMAC (internal, tidak dipublikasikan nginx) |
 | notify-service | Go 1.27, LISTEN Postgres, Web Push (VAPID) |
 | mail-service | Go 1.27, SMTP, outbox di Postgres |
-| payment-service | Go 1.27, Stripe Checkout (perpanjangan langganan 1 bulan) |
 | Database | PostgreSQL |
 | Frontend | Expo SDK 57 (Expo Router, web static), React Native, NativeWind, Zustand |
 | Deploy | Docker Compose, nginx (reverse proxy + rate limit login dan `/join`) |
@@ -425,13 +417,12 @@ nginx ── frontend statis (dist)
    ├─ /api/             ─► backend (Gin) :8080 ─► PostgreSQL (qms_db)
    │                          ├─► qr-service :8090   (token join, HTTP internal)
    │                          └─► mail-service :8092 (email reset password, HTTP internal)
-   └─ /api/v1/payments/ ─► payment-service :8093 ─► PostgreSQL (role payment_rw) + Stripe
 
 PostgreSQL ─ pg_notify('queue_events') ─► notify-service :8091 ─► Web Push ke browser
 PostgreSQL ─ notification_outbox       ─► mail-service :8092 ─► SMTP (Mailpit di dev)
 ```
 
-Hanya nginx yang membuka port ke host. `qr-service`, `notify-service`, `mail-service`, dan `payment-service` berada di jaringan internal Docker.
+Hanya nginx yang membuka port ke host. `qr-service`, `notify-service`, dan `mail-service` berada di jaringan internal Docker.
 
 ### Lapisan backend
 
@@ -454,8 +445,7 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 - **qr-service**: backend memanggil `/internal/v1/join-token` dan `/internal/v1/join-token/verify` dengan header `X-Service-Token`. Rahasia `JOIN_LINK_SECRET` hanya dipegang qr-service.
 - **notify-service**: trigger Postgres memancarkan `pg_notify`; service mendengarkan lalu mengirim Web Push. Tidak ada panggilan langsung dari backend.
 - **mail-service**: trigger menulis ke `notification_outbox` dalam transaksi yang sama dengan perubahan tiket; worker mengirim dan mencoba ulang.
-- **payment-service**: terisolasi dari antrian. Backend hanya membaca `owners.subscription_expires_at` dan tidak pernah memanggil payment-service.
-- **Keamanan akses data**: tiap service memakai role database sendiri dengan hak minimal (`notify_ro`, `mail_rw`, `payment_rw`).
+- **Keamanan akses data**: tiap service memakai role database sendiri dengan hak minimal (`notify_ro`, `mail_rw`, `auth_rw`).
 
 ## 6. Trade-offs
 

@@ -14,7 +14,6 @@
 #   - Hanya nginx yang membuka port, dan hanya ke 127.0.0.1. cloudflared di host yang menjangkaunya.
 #   - Database memakai volume sendiri (db_data_prod) dan TIDAK berisi seed.
 #   - SMTP nyata (MAIL_MODE=smtp) atau Mailpit untuk demo (MAIL_MODE=mailpit, profile `mailpit`).
-#   - payment-service dengan APP_ENV=production: simulator dev tidak diteruskan.
 #   - Subnet internal berbeda (172.29.0.0/16) agar tidak bentrok dengan dev (172.28.0.0/16).
 #
 # Service (port internal kontainer; hanya nginx yang dipetakan ke host):
@@ -24,7 +23,6 @@
 #   qr-service     :8090  token join QR, hanya jaringan internal
 #   notify-service :8091  Web Push
 #   mail-service   :8092  pengirim email (SMTP nyata atau Mailpit), hanya jaringan internal
-#   payment-service:8093  perpanjangan langganan Stripe, hanya jaringan internal
 #   auth-service   :8094  login, registrasi, reset password, verifikasi email (penerbit JWT RS256), hanya internal
 #   db             :5432  PostgreSQL 16, tidak dipetakan ke host
 #   mailpit        :8025  UI, hanya 127.0.0.1 (profile mailpit saja)
@@ -45,13 +43,12 @@
 #             upstream di deploy/nginx/nginx.prod.conf.
 #   [SINKRON] MAIL_MODE (dibaca make prod-up dan scripts/check-mail-mode.sh) menentukan
 #             profile mailpit dan nilai SMTP_* (diatur Makefile lewat export).
-#   [PENTING] Jangan tambahkan depends_on dari backend ke payment-service, mail-service, atau auth-service. Backend
+#   [PENTING] Jangan tambahkan depends_on dari backend ke mail-service atau auth-service. Backend
 #             memverifikasi JWT secara lokal dengan kunci publik (keys/auth-public.pem), jadi user yang sudah login
 #             tetap bisa memakai aplikasi saat auth-service mati. Kunci dibuat scripts/gen-auth-keys.sh (otomatis
 #             oleh `make prod-up`); kunci privat hanya di-mount ke auth-service.
 #             Isolasi ini dijaga scripts/check-service-isolation.sh.
 #   [PENTING] Ganti nama volume (db_data_prod, mailpit_data_prod) berarti data prod tidak terpakai.
-#   [PENTING] Jangan pernah mengaktifkan DEV_PAYMENT_SIMULATOR di file ini (tidak ada, sengaja).
 # =============================================================================
 
 name: qms-prod
@@ -68,8 +65,6 @@ services:
       # Password role per service. Dibaca oleh skrip init (db/migrations/03..05_*.sh).
       NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?set NOTIFY_DB_PASSWORD in .env}
       MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}
-      # Kosong = role payment_rw tidak dibuat (db/migrations/05_payment_role.sh); database dan antrian tetap start.
-      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-}
       # Wajib diisi agar role auth_rw (db/migrations/06_auth_role.sh) selalu dibuat; tanpanya tidak ada yang bisa login.
       AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
     volumes:
@@ -155,41 +150,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    networks:
-      - internal
-    restart: unless-stopped
-
-  # payment-service: memperpanjang langganan owner 1 bulan setelah pembayaran Stripe. TERPISAH dari antrian:
-  # backend hanya membaca owners.subscription_expires_at dan tidak memanggil service ini, jadi tidak ada depends_on
-  # dari/ke backend (dijaga scripts/check-service-isolation.sh). Bila ini mati atau Stripe belum dikonfigurasi,
-  # antrian tetap jalan; hanya perpanjangan yang tertunda (Stripe mengirim ulang webhook). Variabel Stripe sengaja
-  # TIDAK diwajibkan agar kekurangan di sini tidak menggagalkan `up` seluruh stack.
-  payment-service:
-    build:
-      context: ./payment-service
-      target: prod
-    environment:
-      PORT: "8093"
-      # production: service menolak start bila DEV_PAYMENT_SIMULATOR menyala (tidak diteruskan di file ini).
-      APP_ENV: production
-      DATABASE_URL: postgresql://payment_rw:${PAYMENT_DB_PASSWORD:-unset}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
-      # Kunci publik penanda token login; verifikasi lokal. Secret lama hanya masa transisi.
-      JWT_PUBLIC_KEY_FILE: /run/keys/auth-public.pem
-      JWT_LEGACY_HS256_SECRET: ${JWT_LEGACY_HS256_SECRET:-}
-      QMS_PUBLIC_ORIGIN: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
-      # Kunci Stripe: opsional di sini. Kosong = checkout menjawab 503 (lihat README bagian Pembayaran).
-      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      STRIPE_API_BASE_URL: ${STRIPE_API_BASE_URL:-}
-      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
-      SUBSCRIPTION_PRICE_AMOUNT: ${SUBSCRIPTION_PRICE_AMOUNT:-50000}
-      SUBSCRIPTION_CURRENCY: ${SUBSCRIPTION_CURRENCY:-idr}
-    volumes:
-      - ./keys/auth-public.pem:/run/keys/auth-public.pem:ro
-    # Hanya menunggu db. Tidak ada depends_on dari backend ke service ini (lihat komentar di atas).
-    depends_on:
-      db:
-        condition: service_healthy
     networks:
       - internal
     restart: unless-stopped

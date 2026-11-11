@@ -46,8 +46,6 @@ TRUNCATE TABLE
     queue_history,
     queue_settings,
     queues,
-    payment_session_credits,
-    payment_webhook_events,
     payments,
     owners,
     users

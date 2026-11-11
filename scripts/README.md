@@ -34,7 +34,7 @@ Membuat pasangan kunci RSA 2048 bit untuk token login (JWT RS256) di folder `key
 | Berkas | Isi | Dipasang ke |
 |---|---|---|
 | `keys/auth-private.pem` | Kunci privat | **Hanya** `auth-service` (penerbit token) |
-| `keys/auth-public.pem` | Kunci publik | `backend` dan `payment-service` (verifikasi lokal), serta `auth-service` |
+| `keys/auth-public.pem` | Kunci publik | `backend` (verifikasi lokal), serta `auth-service` |
 
 ```bash
 scripts/gen-auth-keys.sh
@@ -48,7 +48,7 @@ scripts/gen-auth-keys.sh
 - `AUTH_KEYS_DIR=<folder>` mengganti lokasi (bawaan `keys`).
 
 **Rotasi kunci:** hapus kedua berkas, jalankan skrip lagi, lalu `make restart` (atau restart `backend`,
-`auth-service`, `payment-service`). Semua user harus login ulang.
+`auth-service`). Semua user harus login ulang.
 
 ---
 
@@ -60,10 +60,9 @@ Keluar dengan kode 1 dan pesan `GAGAL [...]` bila ada yang dilanggar.
 | Pemeriksaan | Jaminan |
 |---|---|
 | `notify-service` | Tidak bergantung pada `mail-service`, Mailpit, atau SMTP. Email mati tidak boleh menghentikan push |
-| `payment-service` | Terpisah dari jalur antrian. Hanya bergantung pada `db`. Simulator pembayaran palsu tidak ada di prod |
 | `auth-service` | Tidak ada service lain yang punya `depends_on` ke sana, ia hanya bergantung pada `db`, dan **kunci privat JWT hanya di-mount ke `auth-service`**. Karena itu user yang sudah login tetap bisa memakai aplikasi saat ia mati |
-| Kode | `notify-service` tidak menyebut smtp atau mailer. `backend` tidak menyebut payment-service atau Stripe, dan tidak memanggil `auth-service` |
-| nginx | Upstream `payment-service` dan `auth-service` lewat variabel + resolver, supaya nginx tetap start bila salah satunya mati |
+| Kode | `notify-service` tidak menyebut smtp atau mailer. `backend` tidak memanggil `auth-service` |
+| nginx | Upstream `auth-service` lewat variabel + resolver, supaya nginx tetap start bila salah satunya mati |
 
 ```bash
 scripts/check-service-isolation.sh

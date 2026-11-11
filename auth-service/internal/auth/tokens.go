@@ -55,7 +55,7 @@ func (t *TokenIssuer) Issue(userID int64) (string, error) {
 
 // IssueLink membuat link token: JWT RS256 pendek (5 menit) yang mengikat user id dan google id untuk layar
 // konfirmasi password. Memuat klaim `purpose`, sehingga TIDAK diterima sebagai token login oleh Verify di sini,
-// middleware backend, maupun payment-service (kunci penandatangannya sama dengan token login).
+// middleware backend, (kunci penandatangannya sama dengan token login).
 func (t *TokenIssuer) IssueLink(userID int64, googleID string) (string, error) {
 	// jti acak: tiap link token unik. Tanpa ini, token untuk akun dan Google ID yang sama dalam detik yang sama
 	// identik, sehingga token baru ikut "terbakar" bersama token lama (penghitung percobaan salah password).

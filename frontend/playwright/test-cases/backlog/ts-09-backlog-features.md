@@ -10,7 +10,7 @@
 
 | TC | Fitur | Sumber | Status di kode | Diuji di |
 |---|---|---|---|---|
-| TC-09-15 | Paket dan pembayaran langganan | 4.18, US-21 | **Sebagian**: pemblokiran owner yang langganannya habis dan pembayaran Stripe untuk perpanjang 1 bulan sudah ada. Pilihan paket (bulanan, tahunan, sekali bayar) belum ada | `ts-04-subscription.spec.ts` |
+| TC-09-15 | Paket dan pembayaran langganan | 4.18, US-21 | **Sebagian**: pemblokiran owner yang langganannya habis dan tambah 30 hari (MOCK, tanpa pembayaran) sudah ada. Pilihan paket (bulanan, tahunan, sekali bayar) belum ada | `ts-04-subscription.spec.ts` |
 
 Nomor TC-09-14 tidak ada di daftar ini. Nomornya tidak diganti, supaya ID yang sudah dipakai tidak bergeser.
 
@@ -22,7 +22,7 @@ Nomor TC-09-14 tidak ada di daftar ini. Nomornya tidak diganti, supaya ID yang s
 | | |
 |---|---|
 | **Expected Result** | Owner tanpa langganan melihat opsi paket (bulanan, tahunan, sekali bayar). Setelah pembayaran sukses, akses diperpanjang |
-| **Sisa** | Pilihan paket. Halaman langganan saat ini hanya menawarkan "Perpanjang 1 Bulan" lewat Stripe. Test ini sama dengan TC-04-04 di `ts-04-subscription.spec.ts` |
+| **Sisa** | Pilihan paket. Halaman langganan saat ini hanya menawarkan "Tambah 30 Hari" (MOCK, tanpa pembayaran). Test ini sama dengan TC-04-04 di `ts-04-subscription.spec.ts` |
 
 ---
 

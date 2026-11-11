@@ -14,7 +14,6 @@
 #   qr-service     :8090  token join QR (HMAC), hanya jaringan internal
 #   notify-service :8091  Web Push (LISTEN Postgres)
 #   mail-service   :8092  pengirim email (outbox + SMTP), hanya jaringan internal
-#   payment-service:8093  perpanjangan langganan lewat Stripe / simulator dev
 #   auth-service   :8094  login, registrasi, reset password, verifikasi email (penerbit JWT RS256)
 #   db             :5432  PostgreSQL 16, tidak dipetakan ke host
 #   mailpit        :1025 (SMTP), :8025 (UI), hanya di 127.0.0.1 host
@@ -68,9 +67,7 @@ services:
       # Password role per service. Dibaca oleh skrip init (db/migrations/03..05_*.sh).
       NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?set NOTIFY_DB_PASSWORD in .env}
       MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}
-      # Kosong = role payment_rw tidak dibuat (db/migrations/05_payment_role.sh): hanya payment-service yang belum bisa
       # terhubung, database dan antrian tetap start.
-      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-}
       # Kosong = role auth_rw tidak dibuat (db/migrations/06_auth_role.sh): auth-service tidak bisa terhubung, login baru gagal.
       # Wajib diisi agar kelalaian ini ketahuan sejak `up`, bukan saat user tidak bisa login.
       AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
@@ -178,54 +175,6 @@ services:
       retries: 40
     # Hanya menunggu db agar worker bisa menyambung. Mailpit tidak disyaratkan: bila SMTP mati, email menunggu
     # di outbox dan dicoba ulang, tidak hilang.
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - internal
-    restart: unless-stopped
-
-  # payment-service: memperpanjang langganan owner 1 bulan setelah pembayaran Stripe. TERPISAH dari antrian:
-  # backend hanya membaca owners.subscription_expires_at dan tidak memanggil service ini, jadi tidak ada depends_on
-  # dari/ke backend. Bila ini mati, antrian tetap jalan; hanya perpanjangan yang tertunda (Stripe mengirim ulang
-  # webhook). Role payment_rw hanya menyentuh kolom langganan dan tabel pembayaran. Tanpa kunci Stripe, service tetap
-  # hidup dan checkout menjawab 503. Dev: DEV_PAYMENT_SIMULATOR=true (pembayaran palsu, tanpa kunci), atau kunci mode
-  # uji Stripe (sk_test_..., tanpa uang sungguhan).
-  payment-service:
-    build:
-      context: ./payment-service
-      target: dev
-    environment:
-      PORT: "8093"
-      DATABASE_URL: postgresql://payment_rw:${PAYMENT_DB_PASSWORD:-unset}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
-      # Kunci publik penanda token login (diterbitkan auth-service). Verifikasi lokal, tanpa jaringan.
-      JWT_PUBLIC_KEY_FILE: /run/keys/auth-public.pem
-      # Hanya masa transisi: secret HS256 lama agar token yang sudah terbit tetap sah sampai kedaluwarsa (24 jam).
-      JWT_LEGACY_HS256_SECRET: ${JWT_LEGACY_HS256_SECRET:-}
-      # APP_ENV kosong di dev. Bila diisi `production`, service menolak start bersama DEV_PAYMENT_SIMULATOR.
-      APP_ENV: ${APP_ENV:-}
-      # Origin publik aplikasi; dipakai untuk URL kembali dari checkout Stripe.
-      QMS_PUBLIC_ORIGIN: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
-      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      STRIPE_API_BASE_URL: ${STRIPE_API_BASE_URL:-}
-      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
-      SUBSCRIPTION_PRICE_AMOUNT: ${SUBSCRIPTION_PRICE_AMOUNT:-50000}
-      SUBSCRIPTION_CURRENCY: ${SUBSCRIPTION_CURRENCY:-idr}
-      # HANYA DEV: pembayaran palsu tanpa Stripe (tombol bayar langsung berhasil). Tidak ada di docker-compose.prod.yml,
-      # dan service menolak start bila ini menyala bersama APP_ENV=production atau kunci Stripe.
-      DEV_PAYMENT_SIMULATOR: ${DEV_PAYMENT_SIMULATOR:-}
-    volumes:
-      - ./payment-service:/src
-      - go_build_cache:/root/.cache/go-build
-      - go_mod_cache:/go/pkg/mod
-      - ./keys-dev/auth-public.pem:/run/keys/auth-public.pem:ro
-    stop_grace_period: 3s
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8093/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 40
     depends_on:
       db:
         condition: service_healthy
@@ -403,7 +352,7 @@ volumes:
   # Data PostgreSQL (dev).
   db_data:
   # Cache build Go (go-build) dan modul Go (/go/pkg/mod) untuk backend, qr-service, notify-service, mail-service,
-  # payment-service. Mempercepat `go run` setelah restart.
+  # Mempercepat `go run` setelah restart.
   go_build_cache:
   go_mod_cache:
   # Cache Metro untuk frontend.

@@ -8,7 +8,7 @@ Microservice login untuk QMS. Tanggung jawabnya:
 - **login dengan Google** (menukar ID token Google dengan token QMS, dan menautkan akun lewat konfirmasi password),
 - menjadi **satu-satunya pemegang kunci privat** penanda token (`AUTH_JWT_PRIVATE_KEY_FILE`).
 
-Backend dan payment-service **tidak memanggil** service ini. Mereka memverifikasi token secara lokal dengan kunci publik
+Backend **tidak memanggil** service ini. Mereka memverifikasi token secara lokal dengan kunci publik
 (`keys/auth-public.pem`) dan membaca pencabutan sesi serta status verifikasi langsung dari database. Bila auth-service
 mati, user yang sudah login tetap bisa memakai aplikasi; yang gagal hanya login baru, registrasi, reset password, dan
 verifikasi email (nginx menjawab 503 `AUTH_UNAVAILABLE`).
@@ -63,8 +63,8 @@ payload: {"sub":"<user id>","iat":<detik>,"exp":<iat + 24 jam>}
 RS256 (HS256 dan `alg=none` ditolak).
 
 **Link token** (penautan akun Google): JWT RS256 5 menit dengan `purpose: "google_link"`, `gid`, dan `jti` acak. Ditandatangani
-kunci yang sama dengan token login, tetapi **bukan token login**: `purpose` membuatnya ditolak oleh `auth-service`, backend,
-dan payment-service. Sekali pakai, dan hangus setelah 5 kali salah password (penghitung di memori; satu instance).
+kunci yang sama dengan token login, tetapi **bukan token login**: `purpose` membuatnya ditolak oleh `auth-service` dan backend.
+Sekali pakai, dan hangus setelah 5 kali salah password (penghitung di memori; satu instance).
 
 ## Login Google
 

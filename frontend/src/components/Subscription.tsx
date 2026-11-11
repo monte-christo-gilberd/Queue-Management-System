@@ -4,7 +4,7 @@
  * Dipakai oleh : app/(owner)/subscription.tsx
  * Bergantung   : layout/ResponsiveScreenLayout, ui/AppButton, ui/Icon, ui/Toast, constants/app-theme, utils/cn
  * Peran        : owner
- * Catatan      : pembayaran lewat Stripe Checkout; route memuat ulang profil setelah kembali dari Stripe, komponen ini hanya menampilkan hasilnya.
+ * Catatan      : MOCK. Tidak ada pembayaran; tombol langsung menambah 30 hari lewat backend (lihat lib/subscription.ts).
  */
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
@@ -33,11 +33,11 @@ export type SubscriptionProps = {
   subtitle: string;
   /** Username akun owner, hanya ditampilkan sebagai informasi di kartu pembayaran. */
   username: string;
-  /** Buka pembayaran Stripe untuk 1 bulan (perpanjangan, atau pembayaran pertama = jadi owner). */
+  /** Tambah 30 hari langsung (MOCK, tanpa pembayaran). Untuk calon owner, 30 hari pertama menjadikannya owner. */
   onPay?: () => void;
   /** Judul kartu pembayaran. Opsional; default "Perpanjang 1 Bulan". */
   payTitle?: string;
-  /** Penjelasan singkat di bawah judul kartu pembayaran. Opsional; default menyebut Stripe dan penambahan 1 bulan. */
+  /** Penjelasan singkat di bawah judul kartu pembayaran. Opsional; default menyebut penambahan 30 hari. */
   payHint?: string;
   /** Teks tombol bayar. Opsional; default "PERPANJANG 1 BULAN". */
   payLabel?: string;
@@ -62,9 +62,9 @@ export default function Subscription({
   subtitle,
   username,
   onPay,
-  payTitle = 'Perpanjang 1 Bulan',
-  payHint = 'Pembayaran lewat Stripe. Setelah berhasil, masa langganan bertambah 1 bulan.',
-  payLabel = 'PERPANJANG 1 BULAN',
+  payTitle = 'Tambah 30 Hari',
+  payHint = '[MOCK] Tanpa pembayaran. Masa langganan langsung bertambah 30 hari.',
+  payLabel = 'TAMBAH 30 HARI',
   paying = false,
   message,
   errorMessage,

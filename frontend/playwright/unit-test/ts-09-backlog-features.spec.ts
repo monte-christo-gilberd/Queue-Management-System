@@ -9,7 +9,7 @@ import { test } from '@playwright/test';
  * barisnya dari dokumen backlog ke dokumen selesai.
  */
 const OPEN: Array<[title: string, source: string, sisa: string]> = [
-  ['TC-09-15 Paket dan pembayaran langganan: pilihan paket', '4.18, US-21', 'hanya perpanjang 1 bulan lewat Stripe, pilihan paket belum ada'],
+  ['TC-09-15 Paket dan pembayaran langganan: pilihan paket', '4.18, US-21', 'hanya tambah 30 hari (MOCK, tanpa pembayaran), pilihan paket belum ada'],
 ];
 
 test.describe('TS-09 Fitur yang belum selesai', () => {

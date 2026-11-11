@@ -36,4 +36,13 @@ chmod 644 "$pub"
 # di dalam folder yang hanya bisa dimasuki pemilik host.
 chmod 644 "$priv"
 chmod 700 "$dir"
+# chmod 700 saja memblokir UID 10001 (user app di kontainer) sehingga auth-service crash-loop dengan "permission denied".
+# Beri ACL khusus untuk UID 10001: traverse folder (x) dan baca kunci privat (r). Pemilik host tetap bisa mengakses.
+# Pemilik berkas boleh mengatur ACL miliknya sendiri tanpa root.
+if command -v setfacl >/dev/null; then
+  setfacl -m u:10001:x "$dir"
+  setfacl -m u:10001:r "$priv"
+else
+  echo "PERINGATAN: setfacl tidak ada; auth-service (UID 10001) tidak bisa membaca $priv. Pasang paket acl." >&2
+fi
 echo "Kunci auth dibuat di $dir/. Jangan commit folder ini (sudah ada di .gitignore)."
