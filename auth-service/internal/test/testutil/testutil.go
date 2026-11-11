@@ -286,18 +286,21 @@ func (s *FakeStore) ResetPassword(_ context.Context, hash, passwordHash string) 
 	return nil
 }
 
-// VerifyEmail memakai token verifikasi dan mengisi email_verified_at bila belum terisi.
-func (s *FakeStore) VerifyEmail(_ context.Context, hash string) error {
+// VerifyEmail memakai token verifikasi dan mengisi email_verified_at bila belum terisi. Mengembalikan id pemilik
+// token dan true bila akun baru terverifikasi oleh token ini.
+func (s *FakeStore) VerifyEmail(_ context.Context, hash string) (int64, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t, err := s.consume(hash, service.PurposeEmailVerify)
 	if err != nil {
-		return err
+		return 0, false, err
 	}
-	if u := &s.Users[t.UserID-1]; !u.EmailVerifiedAt.Valid {
-		u.EmailVerifiedAt = sql.NullTime{Time: time.Now(), Valid: true}
+	u := &s.Users[t.UserID-1]
+	if u.EmailVerifiedAt.Valid {
+		return t.UserID, false, nil
 	}
-	return nil
+	u.EmailVerifiedAt = sql.NullTime{Time: time.Now(), Valid: true}
+	return t.UserID, true, nil
 }
 
 // ExpireTokens membuat semua token kedaluwarsa (mensimulasikan waktu berlalu).

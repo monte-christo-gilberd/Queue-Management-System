@@ -4,7 +4,7 @@ Microservice login untuk QMS. Tanggung jawabnya:
 
 - **registrasi dan login** (email atau username, bcrypt) dan menerbitkan **JWT RS256**,
 - **lupa dan reset password** lewat tautan sekali pakai,
-- **verifikasi email** (kirim, kirim ulang, dan verifikasi lewat tautan),
+- **verifikasi email** (kirim, kirim ulang, dan verifikasi lewat tautan; setelah berhasil dikirim email konfirmasi `email-verified` di latar belakang),
 - **login dengan Google** (menukar ID token Google dengan token QMS, dan menautkan akun lewat konfirmasi password),
 - menjadi **satu-satunya pemegang kunci privat** penanda token (`AUTH_JWT_PRIVATE_KEY_FILE`).
 

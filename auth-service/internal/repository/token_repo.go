@@ -126,22 +126,21 @@ func (r *TokenRepository) ResetPassword(
 }
 
 // VerifyEmail memakai token verifikasi: token ditandai terpakai, email_verified_at diisi, token lain dicabut (atomik).
-// Token tidak sah, sudah dipakai, atau kedaluwarsa: ErrInvalidResetToken.
+// Token tidak sah, sudah dipakai, atau kedaluwarsa: ErrInvalidResetToken. Mengembalikan id pemilik token dan
+// newlyVerified (true bila email_verified_at baru terisi oleh token ini).
 func (r *TokenRepository) VerifyEmail(
 	ctx context.Context,
 	tokenHash string,
-) error {
+) (userID int64, newlyVerified bool, err error) {
 	// Mulai transaksi agar penandaan token dan pengisian email_verified_at atomik.
 	tx, err := r.db.BeginTxx(ctx, nil)
 	// Transaksi gagal dimulai.
 	if err != nil {
-		return fmt.Errorf("begin: %w", err)
+		return 0, false, fmt.Errorf("begin: %w", err)
 	}
 	// Batalkan semua perubahan bila fungsi keluar sebelum Commit.
 	defer tx.Rollback()
 
-	// Menampung user_id dari token yang dipakai.
-	var userID int64
 	// Query ini menandai token verifikasi yang masih berlaku sebagai terpakai dan mengembalikan pemiliknya.
 	err = tx.GetContext(ctx, &userID, `
 		UPDATE user_action_tokens SET used_at = now()
@@ -150,24 +149,35 @@ func (r *TokenRepository) VerifyEmail(
 	// token salah, sudah dipakai, atau kedaluwarsa
 	if errors.Is(err, sql.ErrNoRows) {
 		// Dipetakan ke ErrInvalidResetToken.
-		return apperror.ErrInvalidResetToken
+		return 0, false, apperror.ErrInvalidResetToken
 	}
 	// Galat database lain dibungkus dengan konteks.
 	if err != nil {
-		return fmt.Errorf("consume token: %w", err)
+		return 0, false, fmt.Errorf("consume token: %w", err)
 	}
 	// COALESCE: akun yang sudah terverifikasi tidak dimajukan waktunya.
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()) WHERE id = $1`, userID); err != nil {
-		// Gagal mengisi email_verified_at: penandaan token ikut dibatalkan.
-		return fmt.Errorf("set email verified: %w", err)
+	res, err := tx.ExecContext(ctx,
+		`UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()) WHERE id = $1 AND email_verified_at IS NULL`, userID)
+	// Gagal mengisi email_verified_at: penandaan token ikut dibatalkan.
+	if err != nil {
+		return 0, false, fmt.Errorf("set email verified: %w", err)
+	}
+	// baris terubah berarti akun baru terverifikasi sekarang; nol berarti sudah terverifikasi sebelumnya
+	changed, err := res.RowsAffected()
+	// Jumlah baris terubah tidak terbaca.
+	if err != nil {
+		return 0, false, fmt.Errorf("rows affected: %w", err)
 	}
 	// cabut token verifikasi lain milik user
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE user_action_tokens SET used_at = now() WHERE user_id = $1 AND purpose = 'email_verify' AND used_at IS NULL`,
 		userID); err != nil {
-		return fmt.Errorf("revoke other tokens: %w", err)
+		return 0, false, fmt.Errorf("revoke other tokens: %w", err)
 	}
 	// Commit menyimpan semua perubahan sekaligus.
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, false, err
+	}
+	// Token terpakai: kembalikan pemilik dan status verifikasi baru.
+	return userID, changed > 0, nil
 }

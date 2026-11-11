@@ -239,13 +239,35 @@ func TestTokenStore_VerifyEmail_MarksVerifiedWithCoalesceAndRevokesOthers(t *tes
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE user_action_tokens SET used_at = now\(\)\s+WHERE token_hash = \$1 AND purpose = 'email_verify' AND used_at IS NULL AND expires_at > now\(\)\s+RETURNING user_id`).
 		WithArgs("tokhash").WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(7))
-	mock.ExpectExec(`UPDATE users SET email_verified_at = COALESCE\(email_verified_at, now\(\)\) WHERE id = \$1`).
+	mock.ExpectExec(`UPDATE users SET email_verified_at = COALESCE\(email_verified_at, now\(\)\) WHERE id = \$1 AND email_verified_at IS NULL`).
 		WithArgs(7).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`UPDATE user_action_tokens SET used_at = now\(\) WHERE user_id = \$1 AND purpose = 'email_verify' AND used_at IS NULL`).
 		WithArgs(7).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	assert.NoError(t, repository.NewTokenRepository(db).VerifyEmail(ctx, "tokhash"))
+	id, newly, err := repository.NewTokenRepository(db).VerifyEmail(ctx, "tokhash")
+
+	assert.NoError(t, err)
+	assert.Equal(t, int64(7), id)
+	assert.True(t, newly)
+}
+
+func TestTokenStore_VerifyEmail_AlreadyVerifiedAccountIsNotNewlyVerified(t *testing.T) {
+	db, mock := newMock(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery(`UPDATE user_action_tokens`).
+		WithArgs("tokhash").WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(7))
+	mock.ExpectExec(`UPDATE users SET email_verified_at = COALESCE\(email_verified_at, now\(\)\) WHERE id = \$1 AND email_verified_at IS NULL`).
+		WithArgs(7).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`UPDATE user_action_tokens SET used_at = now\(\) WHERE user_id = \$1`).
+		WithArgs(7).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectCommit()
+
+	id, newly, err := repository.NewTokenRepository(db).VerifyEmail(ctx, "tokhash")
+
+	assert.NoError(t, err)
+	assert.Equal(t, int64(7), id)
+	assert.False(t, newly)
 }
 
 func TestTokenStore_VerifyEmail_InvalidTokenChangesNothing(t *testing.T) {
@@ -254,7 +276,9 @@ func TestTokenStore_VerifyEmail_InvalidTokenChangesNothing(t *testing.T) {
 	mock.ExpectQuery(`UPDATE user_action_tokens`).WithArgs("salah").WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 
-	assert.ErrorIs(t, repository.NewTokenRepository(db).VerifyEmail(ctx, "salah"), apperror.ErrInvalidResetToken)
+	_, _, err := repository.NewTokenRepository(db).VerifyEmail(ctx, "salah")
+
+	assert.ErrorIs(t, err, apperror.ErrInvalidResetToken)
 }
 
 // --- Login Google ---

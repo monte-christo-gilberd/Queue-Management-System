@@ -243,6 +243,7 @@ func TestVerifyEmail_Outcomes(t *testing.T) {
 	require.NoError(t, env.Svc.SendVerification(t.Context(), id, ""))
 	raw := strings.TrimPrefix(env.Mailer.Sent()[0].Data["Link"].(string), "https://app.example/verify-email?token=")
 
+	env.Mailer.Notify = make(chan struct{}, 2)
 	bad := do(e, http.MethodPost, "/api/v1/users/verify-email", `{"token":"salah"}`, "")
 	assert.Equal(t, http.StatusBadRequest, bad.Code)
 	assert.Equal(t, "INVALID_TOKEN", errCode(t, bad))
@@ -251,6 +252,14 @@ func TestVerifyEmail_Outcomes(t *testing.T) {
 	assert.Equal(t, http.StatusOK, ok.Code)
 	assert.Equal(t, "no-store", ok.Header().Get("Cache-Control"))
 	assert.True(t, env.Store.User(id).EmailVerifiedAt.Valid)
+	assert.JSONEq(t, `{"data":{"status":"ok"}}`, ok.Body.String())
+	select {
+	case <-env.Mailer.Notify:
+	case <-time.After(2 * time.Second):
+		t.Fatal("email konfirmasi tidak terkirim")
+	}
+	require.Len(t, env.Mailer.Sent(), 2)
+	assert.Equal(t, "email-verified", env.Mailer.Sent()[1].Template)
 
 	assert.Equal(t, http.StatusBadRequest, do(e, http.MethodPost, "/api/v1/users/verify-email", `{}`, "").Code)
 }

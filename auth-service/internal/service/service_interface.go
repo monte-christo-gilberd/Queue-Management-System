@@ -96,11 +96,12 @@ type TokenRepository interface {
 		tokenHash,
 		passwordHash string,
 	) error
-	// VerifyEmail memakai token dan mengisi email_verified_at; ErrInvalidResetToken bila tidak sah.
+	// VerifyEmail memakai token dan mengisi email_verified_at; ErrInvalidResetToken bila tidak sah. Mengembalikan id
+	// pemilik token dan newlyVerified (true bila akun baru terverifikasi oleh token ini).
 	VerifyEmail(
 		ctx context.Context,
 		tokenHash string,
-	) error
+	) (userID int64, newlyVerified bool, err error)
 }
 
 // Mailer mengirim email lewat mail-service (mailclient.Client).

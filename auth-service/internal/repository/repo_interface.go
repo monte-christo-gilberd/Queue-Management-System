@@ -91,11 +91,12 @@ type TokenRepositoryInterface interface {
 		tokenHash,
 		passwordHash string,
 	) error
-	// VerifyEmail memakai token verifikasi dan mengisi email_verified_at secara atomik.
+	// VerifyEmail memakai token verifikasi dan mengisi email_verified_at secara atomik. Mengembalikan id pemilik
+	// token dan newlyVerified (true bila akun baru terverifikasi oleh token ini, bukan sebelumnya).
 	VerifyEmail(
 		ctx context.Context,
 		tokenHash string,
-	) error
+	) (userID int64, newlyVerified bool, err error)
 }
 
 // Pastikan implementasi nyata memenuhi interface di atas (diperiksa saat kompilasi).

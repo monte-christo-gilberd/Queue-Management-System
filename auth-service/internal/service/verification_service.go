@@ -109,5 +109,43 @@ func (s *Service) VerifyEmail(
 		return apperror.ErrInvalidResetToken
 	}
 	// cocokkan hash token di database, tandai email terverifikasi dan token terpakai
-	return s.tokens.VerifyEmail(ctx, hashActionToken(token))
+	userID, newlyVerified, err := s.tokens.VerifyEmail(ctx, hashActionToken(token))
+	// Token tidak sah atau galat database: kembalikan apa adanya.
+	if err != nil {
+		return err
+	}
+	// hanya verifikasi baru yang diberi konfirmasi; akun yang sudah terverifikasi sebelumnya tidak
+	if newlyVerified {
+		s.sendVerifiedInBackground(userID)
+	}
+	return nil
+}
+
+// sendVerifiedInBackground mengirim email konfirmasi verifikasi tanpa menahan respons dan tanpa memengaruhi hasil.
+func (s *Service) sendVerifiedInBackground(userID int64) {
+	// tanpa pengirim email, tidak ada yang dikirim
+	if s.mailer == nil {
+		return
+	}
+	// jalankan di goroutine agar respons verifikasi tidak menunggu SMTP yang lambat
+	go func() {
+		// context sendiri dengan batas waktu, tidak mengikuti request yang sudah selesai
+		ctx, cancel := context.WithTimeout(context.Background(), verificationSendTimeout)
+		defer cancel()
+		// ambil username dan email penerima
+		user, err := s.users.FindByID(ctx, userID)
+		// gagal membaca user: cukup dicatat, verifikasi sudah berhasil
+		if err != nil {
+			s.log.Warn("verified email: find user failed", "user_id", userID, "err", err)
+			return
+		}
+		// kirim konfirmasi dengan tautan ke aplikasi
+		if err := s.mailer.Send(ctx, user.Email, "email-verified", map[string]any{
+			"Name": user.Username,
+			"Link": s.publicURL + "/",
+		}); err != nil {
+			// gagal kirim hanya dicatat (tanpa alamat email)
+			s.log.Warn("send email-verified mail failed", "user_id", userID, "err", err)
+		}
+	}()
 }
