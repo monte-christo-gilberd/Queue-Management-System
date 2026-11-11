@@ -54,6 +54,17 @@ dibuka lewat `http://localhost:8080` (bukan alamat IP; WebCrypto hanya ada di se
 QMS_WEB_URL=http://localhost:8080 QMS_API_URL=http://localhost:8080 npx playwright test ts-34
 ```
 
+## Pesan konfirmasi password (TS-35)
+
+`ts-35-confirm-password.spec.ts` menguji kapan pesan "Password tidak sama" tampil di halaman Daftar dan Reset Password: sebagai
+teks di bawah field konfirmasi (bukan toast), tidak saat pengguna masih mengetik, baru setelah field ditinggalkan atau tombol
+kirim ditekan, dan hilang saat isinya sudah sama. Tes tidak butuh Mailpit dan tidak membuat akun. `TC-01-08` memeriksa sisi yang sama
+dari alur Daftar.
+
+```bash
+QMS_WEB_URL=http://localhost:8080 QMS_API_URL=http://localhost:8080 npx playwright test ts-35
+```
+
 ## Status
 
 Run dari seed bersih: 76 lulus, 0 gagal, 16 di-skip (backlog), TC-04-03 ikut berjalan.
