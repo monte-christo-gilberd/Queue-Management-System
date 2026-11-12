@@ -21,6 +21,7 @@ import (
 	"qms/auth-service/internal/httpserver"
 	"qms/auth-service/internal/logging"
 	"qms/auth-service/internal/mailclient"
+	"qms/auth-service/internal/metrics"
 	"qms/auth-service/internal/middleware"
 	"qms/auth-service/internal/repository"
 	"qms/auth-service/internal/router"
@@ -104,6 +105,9 @@ func run() error {
 		middleware.Auth(svc),
 		cfg.TrustedProxies,
 	)
+	// metrik Prometheus: middleware HTTP dipasang di router, listener /metrics dijalankan setelah ctx dibuat
+	appMetrics := metrics.NewAuth()
+	app.WithMetrics(appMetrics.Middleware())
 	// reset password dan verifikasi email hanya dipasang bila mail-service terpasang
 	if mailer != nil {
 		// Pasang rute lupa password dan verifikasi email.
@@ -121,6 +125,8 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	// Lepas pendaftaran sinyal saat run selesai.
 	defer stop()
+	// listener metrik di port terpisah (METRICS_ADDR, bawaan :9100); tidak memblokir dan tidak menggagalkan service
+	appMetrics.Serve(ctx)
 	// jalankan server di goroutine agar run bisa menunggu sinyal berhenti
 	serverErr := make(chan error, 1)
 	// Server berjalan di goroutine terpisah.

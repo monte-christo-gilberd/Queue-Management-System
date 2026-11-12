@@ -177,3 +177,19 @@ func truncate(s string) string {
 	// Teks sudah cukup pendek.
 	return s
 }
+
+// pendingSQL: hitung baris outbox yang belum terkirim dan belum gagal permanen (termasuk yang menunggu percobaan ulang).
+const pendingSQL = `SELECT count(*) FROM notification_outbox WHERE sent_at IS NULL AND failed_at IS NULL`
+
+// Pending mengembalikan jumlah baris outbox yang masih menunggu dikirim. Dipakai metrik mail_outbox_pending.
+func (s *OutboxRepository) Pending(
+	ctx context.Context,
+) (int64, error) {
+	// satu angka hasil count(*)
+	var n int64
+	// jalankan query hitung; galat dikembalikan ke pemanggil (metrik melewati sampel)
+	if err := s.db.GetContext(ctx, &n, pendingSQL); err != nil {
+		return 0, fmt.Errorf("count pending outbox: %w", err)
+	}
+	return n, nil
+}

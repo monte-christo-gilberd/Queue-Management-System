@@ -39,6 +39,13 @@ func (a *AppRouter) WithLogger(l *slog.Logger) *AppRouter {
 	return a
 }
 
+// WithMetrics memasang middleware metrik HTTP (opsional; tanpa ini tidak ada metrik request).
+func (a *AppRouter) WithMetrics(m gin.HandlerFunc) *AppRouter {
+	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
+	a.metricsMiddleware = m
+	return a
+}
+
 // WithCounters memasang endpoint CRUD counter (opsional; tanpa ini rute /counters tidak ada).
 func (a *AppRouter) WithCounters(h CounterHandler) *AppRouter {
 	// simpan handler counter, lalu kembalikan router yang sama agar bisa dirangkai
@@ -99,6 +106,10 @@ func SetupRouter(
 	engine := gin.New()
 	// RequestID paling awal agar semua log request memuat request_id
 	engine.Use(middleware.RequestID())
+	// metrik sebelum Logger dan Recovery: request yang panic tetap terhitung sebagai 500
+	if router.metricsMiddleware != nil {
+		engine.Use(router.metricsMiddleware)
+	}
 	// Logger sebelum Recovery: request yang panic tetap tercatat sebagai baris akses berstatus 500
 	engine.Use(middleware.Logger(logger))
 	// Recovery mengubah panic menjadi 500 dan mencatatnya lewat slog

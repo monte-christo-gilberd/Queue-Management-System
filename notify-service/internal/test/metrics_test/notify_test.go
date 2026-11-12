@@ -1,0 +1,45 @@
+package metrics_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"qms/notify-service/internal/apperror"
+	"qms/notify-service/internal/dto"
+	"qms/notify-service/internal/metrics"
+	"qms/notify-service/internal/model"
+	"qms/notify-service/internal/service"
+)
+
+// fakeSender memenuhi service.PushSender dengan hasil tetap.
+type fakeSender struct{ err error }
+
+func (f fakeSender) Send(context.Context, model.Subscription, dto.Message) error { return f.err }
+
+// Hasil kirim push dihitung: berhasil, langganan hilang (gone), dan galat lain; galat diteruskan apa adanya.
+func TestMeteredPushSender(t *testing.T) {
+	m := metrics.NewNotify()
+	ctx := context.Background()
+	other := errors.New("boom")
+
+	for _, tc := range []struct {
+		err  error
+		want error
+	}{{nil, nil}, {apperror.ErrSubscriptionGone, apperror.ErrSubscriptionGone}, {other, other}, {other, other}} {
+		got := service.NewMeteredPushSender(fakeSender{err: tc.err}, m).Send(ctx, model.Subscription{}, dto.Message{})
+		if !errors.Is(got, tc.want) && got != tc.want {
+			t.Fatalf("galat diubah: dapat %v, diharapkan %v", got, tc.want)
+		}
+	}
+
+	if got := counter(t, m.Registry, "push_sent_total", nil); got != 1 {
+		t.Errorf("push_sent_total = %v, diharapkan 1", got)
+	}
+	if got := counter(t, m.Registry, "push_failed_total", map[string]string{"reason": "gone"}); got != 1 {
+		t.Errorf("failed{gone} = %v, diharapkan 1", got)
+	}
+	if got := counter(t, m.Registry, "push_failed_total", map[string]string{"reason": "error"}); got != 2 {
+		t.Errorf("failed{error} = %v, diharapkan 2", got)
+	}
+}

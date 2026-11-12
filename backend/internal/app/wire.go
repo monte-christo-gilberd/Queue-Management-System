@@ -11,6 +11,7 @@ import (
 	"qms/internal/config"
 	"qms/internal/database"
 	"qms/internal/handler"
+	"qms/internal/metrics"
 	"qms/internal/middleware"
 	"qms/internal/qrclient"
 	"qms/internal/repository"
@@ -25,6 +26,8 @@ type App struct {
 	Router *router.AppRouter
 	// Hub: pengelola koneksi SSE. Hub.Run sudah berjalan di goroutine; panggil Hub.Shutdown saat server berhenti.
 	Hub *sse.Hub
+	// Metrics: metrik Prometheus; panggil Metrics.Serve(ctx) untuk menyalakan listener /metrics terpisah.
+	Metrics *metrics.Backend
 }
 
 // Wire merangkai semua komponen dari bawah ke atas: hub SSE → repository → service → handler → router.
@@ -322,8 +325,13 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 			WithPush(pushHandler)
 	}
 
+	// metrik Prometheus: middleware HTTP dipasang di router, dan gauge SSE membaca hub saat di-scrape
+	appMetrics := metrics.NewBackend(hub)
+	appRouter.WithMetrics(appMetrics.Middleware())
+
 	return &App{
-		Router: appRouter,
-		Hub:    hub,
+		Router:  appRouter,
+		Hub:     hub,
+		Metrics: appMetrics,
 	}
 }

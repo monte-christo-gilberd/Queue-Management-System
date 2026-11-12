@@ -49,4 +49,6 @@ type AppRouter struct {
 	trustedProxies []string
 	// logger mencatat log akses dan panic (opsional; nil berarti slog.Default()).
 	logger *slog.Logger
+	// metricsMiddleware mencatat metrik HTTP (opsional; nil berarti tanpa metrik).
+	metricsMiddleware gin.HandlerFunc
 }

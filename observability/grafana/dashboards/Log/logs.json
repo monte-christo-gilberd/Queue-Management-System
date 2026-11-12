@@ -1,7 +1,7 @@
 {
   "uid": "qms-logs",
   "title": "QMS: Log",
-  "description": "Ikhtisar log semua service QMS (Loki). Fase 2 observability.",
+  "description": "Ikhtisar log semua service QMS (Loki). Metrik (latensi, laju request) ada di dashboard QMS: Metrik.",
   "tags": [
     "qms",
     "logs"
@@ -668,7 +668,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
         "y": 12
       },
@@ -815,68 +815,6 @@
     },
     {
       "id": 8,
-      "type": "timeseries",
-      "title": "Latensi backend p95 per route (ms)",
-      "description": "Persentil ke-95 latency_ms dari log akses backend, per templat route. Satu garis per route.",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 12
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "editorMode": "code",
-          "expr": "quantile_over_time(0.95, {service=\"backend\"} | route!=\"\" | unwrap latency_ms [$__auto]) by (route)",
-          "legendFormat": "{{route}}",
-          "queryType": "range",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "lineWidth": 2,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "showPoints": "never",
-            "axisBorderShow": false,
-            "gradientMode": "none"
-          },
-          "color": {
-            "mode": "palette-classic"
-          },
-          "noValue": "0"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "id": 9,
       "type": "table",
       "title": "Route dengan respons 4xx/5xx",
       "datasource": {
@@ -951,7 +889,7 @@
       }
     },
     {
-      "id": 10,
+      "id": 9,
       "type": "logs",
       "title": "Log ERROR dan WARN",
       "description": "Hanya level ERROR dan WARN dari service yang dipilih. Isi log berformat JSON utuh; klik baris untuk melihat field (request_id, route, status, ...).",
@@ -991,7 +929,7 @@
       }
     },
     {
-      "id": 11,
+      "id": 10,
       "type": "logs",
       "title": "Semua log",
       "description": "Filter: service, level, teks bebas, dan request_id (isi request_id dari baris log atau header X-Request-Id untuk mengikuti satu request dari nginx sampai service).",

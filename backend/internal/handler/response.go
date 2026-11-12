@@ -26,6 +26,8 @@ func respondError(
 	status int,
 	code, message string,
 ) {
+	// simpan kode galat di context agar middleware metrik bisa membacanya setelah handler selesai
+	c.Set("error_code", code)
 	// bungkus kode dan pesan dalam field "error" lalu kirim sebagai JSON
 	c.JSON(
 		status,

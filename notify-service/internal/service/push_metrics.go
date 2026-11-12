@@ -1,0 +1,59 @@
+package service
+
+import (
+	"context"
+	"errors"
+
+	"qms/notify-service/internal/apperror"
+	"qms/notify-service/internal/dto"
+	"qms/notify-service/internal/model"
+)
+
+// PushCounters menerima hasil kirim push untuk metrik. Dipenuhi metrics.Notify.
+type PushCounters interface {
+	// IncSent dipanggil untuk push yang berhasil dikirim.
+	IncSent()
+	// IncFailed dipanggil untuk push yang gagal; reason adalah "gone" atau "error".
+	IncFailed(reason string)
+}
+
+// meteredSender membungkus PushSender dan menghitung hasilnya, tanpa mengubah perilaku pengiriman.
+type meteredSender struct {
+	PushSender
+	counters PushCounters
+}
+
+// NewMeteredPushSender membungkus pengirim push dengan penghitung metrik. Hasil dihitung per perangkat, setelah
+// retry di dalam pengirim selesai.
+func NewMeteredPushSender(
+	sender PushSender,
+	counters PushCounters,
+) PushSender {
+	// tanpa penghitung, kembalikan pengirim apa adanya
+	if counters == nil {
+		return sender
+	}
+	return &meteredSender{PushSender: sender, counters: counters}
+}
+
+// Send mengirim satu push lalu menghitung hasilnya.
+func (m *meteredSender) Send(
+	ctx context.Context,
+	sub model.Subscription,
+	msg dto.Message,
+) error {
+	// teruskan ke pengirim asli
+	err := m.PushSender.Send(ctx, sub, msg)
+	switch {
+	// berhasil
+	case err == nil:
+		m.counters.IncSent()
+	// langganan sudah tidak berlaku (404/410): dibedakan dari galat lain karena wajar terjadi
+	case errors.Is(err, apperror.ErrSubscriptionGone):
+		m.counters.IncFailed("gone")
+	// galat lain
+	default:
+		m.counters.IncFailed("error")
+	}
+	return err
+}

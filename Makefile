@@ -34,9 +34,10 @@
 # diterima. Tanpa itu, stack berjalan seperti biasa tanpa observability. Butuh GRAFANA_ADMIN_PASSWORD di env file.
 #
 # Perintah OBSERVABILITY (opsional, overlay docker-compose.observability.yml; OBS_TARGET=dev|prod, bawaan dev):
-#   make obs-up [OBS_TARGET=prod]           jalankan collector, Loki, Grafana, dan pasang pengumpulan log di service
-#                                           aplikasi (service aplikasi dibuat ulang sekali). Butuh GRAFANA_ADMIN_PASSWORD
-#                                           di .env (dev) atau $(PROD_ENV) (prod).
+#   make obs-up [OBS_TARGET=prod]           jalankan collector, Loki, Prometheus, exporter, Grafana, dan pasang pengumpulan log di service
+#                                           aplikasi (service aplikasi dibuat ulang sekali). Butuh GRAFANA_ADMIN_PASSWORD dan
+#                                           METRICS_DB_PASSWORD di .env (dev) atau $(PROD_ENV) (prod). Role database
+#                                           metrics_ro dibuat/diperbarui otomatis.
 #   make obs-down [OBS_TARGET=prod]         hentikan dan hapus container observability; aplikasi tetap jalan.
 #                                           Volume data (log, Grafana) dipertahankan.
 #   make obs-url [OBS_TARGET=prod]          tampilkan alamat Grafana dan cara akses jauh (SSH tunnel)
@@ -83,11 +84,11 @@ endif
 # obs=1 menambahkan overlay observability ke perintah compose DEV (up, tunnel). Kosong bila obs tidak diisi 1.
 # OBS_SERVICES: service overlay yang ikut dinaikkan pada `make tunnel` (daftar service di sana eksplisit).
 OBS_DEV_FILES := $(if $(filter 1,$(obs)),-f docker-compose.yml -f docker-compose.observability.yml)
-OBS_SERVICES := $(if $(filter 1,$(obs)),collector loki grafana)
+OBS_SERVICES := $(if $(filter 1,$(obs)),collector loki grafana prometheus cadvisor node-exporter postgres-exporter nginx-exporter)
 
 # Dengan obs=1: menolak jalan bila GRAFANA_ADMIN_PASSWORD kosong di env file $(1), sebelum ada container yang dibuat ulang.
 define obs_require_password
-$(if $(filter 1,$(obs)),grep -qE '^GRAFANA_ADMIN_PASSWORD=.+' $(1) || { echo "obs=1: GRAFANA_ADMIN_PASSWORD kosong di $(1): isi dulu (tanpa nilai bawaan)" >&2; exit 1; })
+$(if $(filter 1,$(obs)),for v in GRAFANA_ADMIN_PASSWORD METRICS_DB_PASSWORD; do grep -qE "^$$v=.+" $(1) || { echo "obs: $$v kosong di $(1): isi dulu (tanpa nilai bawaan)" >&2; exit 1; }; done)
 endef
 
 # Kunci JWT dev di keys-dev/ dibuat ulang setiap `make up` / `make tunnel` dan dihapus `make down`.
@@ -174,6 +175,7 @@ up:
 	[ -n "$$ip" ] || { echo "IP LAN tidak terdeteksi; beri manual: make up IP=<ip>" >&2; exit 1; }
 	export QMS_PUBLIC_ORIGIN="http://$$ip:$$port"
 	docker compose $(OBS_DEV_FILES) up -d --build --force-recreate --renew-anon-volumes
+	$(if $(filter 1,$(obs)),$(call obs_db_role_run,docker compose $(OBS_DEV_FILES),.env))
 	$(warm_metro)
 	echo "Link (satu Wi-Fi): $$QMS_PUBLIC_ORIGIN"
 	$(google_hint_dev)
@@ -199,6 +201,7 @@ tunnel:
 	done
 	[ -n "$$url" ] || { echo "URL tunnel tidak muncul, lihat $(LOG)" >&2; $(stop_tunnel); exit 1; }
 	QMS_PUBLIC_ORIGIN="$$url" docker compose $(OBS_DEV_FILES) up -d --build --force-recreate --renew-anon-volumes backend auth-service qr-service notify-service mail-service mailpit nginx frontend db $(OBS_SERVICES)
+	$(if $(filter 1,$(obs)),$(call obs_db_role_run,docker compose $(OBS_DEV_FILES),.env))
 	$(warm_metro)
 	echo "Link: $$url"
 	if grep -qE '^EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=.+' .env 2>/dev/null; then
@@ -275,6 +278,7 @@ prod-up:
 	scripts/check-google-config.sh $(PROD_ENV)
 	$(call obs_require_password,$(PROD_ENV))
 	$(PROD) up -d --build
+	$(if $(filter 1,$(obs)),$(call obs_db_role_run,$(PROD),$(PROD_ENV)))
 	$(if $(PROD_PROFILE),,docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) --profile mailpit rm -sf mailpit >/dev/null 2>&1 || true)
 	pmp=$$(grep -E '^MAILPIT_UI_PORT=' $(PROD_ENV) 2>/dev/null | tail -1 | cut -d= -f2 || true); pmp=$${pmp:-8025}
 	if [ "$(MAIL_MODE)" = mailpit ]; then
@@ -333,6 +337,19 @@ export OBS_PROJECT := qms
 OBS_COMPOSE = docker compose -f docker-compose.yml -f docker-compose.observability.yml
 endif
 
+# Membuat atau memperbarui role database metrics_ro (postgres_exporter) lewat db/migrations/07_metrics_role.sh, yang
+# idempoten. Dipanggil dengan $(call obs_db_role_run,<perintah compose>,<env file>). Mencoba sampai 30 detik karena
+# database mungkin baru dinyalakan. Gagal hanya memberi peringatan: aplikasi tidak bergantung pada role ini.
+define obs_db_role_run
+pw=$$(grep -E '^METRICS_DB_PASSWORD=' $(2) | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+ok=
+for _ in $$(seq 1 30); do
+  if $(1) exec -T -e METRICS_DB_PASSWORD="$$pw" db sh < db/migrations/07_metrics_role.sh >/dev/null 2>&1; then ok=1; break; fi
+  sleep 1
+done
+if [ -n "$$ok" ]; then echo "Role database metrics_ro siap."; else echo "Peringatan: role metrics_ro belum dibuat (database belum siap?). Jalankan make obs-up lagi." >&2; fi
+endef
+
 # Dev: `make up` menentukan QMS_PUBLIC_ORIGIN dari IP LAN atau URL tunnel. Membuat ulang service dengan nilai bawaan
 # (localhost) akan mengubah CORS dan tautan email, jadi nilai backend yang sedang jalan dipakai ulang bila ada.
 define obs_keep_origin
@@ -363,16 +380,17 @@ obs:
 # (volume dan database tetap). Menolak jalan bila GRAFANA_ADMIN_PASSWORD kosong.
 obs-up:
 	[ -f $(OBS_ENV_FILE) ] || { echo "$(OBS_ENV_FILE) belum ada" >&2; exit 1; }
-	grep -qE '^GRAFANA_ADMIN_PASSWORD=.+' $(OBS_ENV_FILE) || { echo "GRAFANA_ADMIN_PASSWORD kosong di $(OBS_ENV_FILE): isi dulu (tanpa nilai bawaan)" >&2; exit 1; }
+	for v in GRAFANA_ADMIN_PASSWORD METRICS_DB_PASSWORD; do grep -qE "^$$v=.+" $(OBS_ENV_FILE) || { echo "$$v kosong di $(OBS_ENV_FILE): isi dulu (tanpa nilai bawaan)" >&2; exit 1; }; done
 	$(obs_keep_origin)
 	$(OBS_COMPOSE) up -d
+	$(call obs_db_role_run,$(OBS_COMPOSE),$(OBS_ENV_FILE))
 	$(call obs_url,$(OBS_ENV_FILE),$(OBS_TARGET))
 
 # Hentikan dan hapus container observability saja. Service aplikasi tidak disentuh (isolasi). Nilai palsu di bawah hanya
 # supaya compose bisa menguraikan file; tidak memengaruhi penghapusan.
 obs-down:
 	GRAFANA_ADMIN_PASSWORD=$${GRAFANA_ADMIN_PASSWORD:-x} SMTP_HOST=$${SMTP_HOST:-x} SMTP_PORT=$${SMTP_PORT:-1} SMTP_FROM=$${SMTP_FROM:-x@x.y} MAIL_SERVICE_TOKEN=$${MAIL_SERVICE_TOKEN:-x} \
-	$(OBS_COMPOSE) rm -sf collector loki grafana
+	$(OBS_COMPOSE) rm -sf collector loki grafana prometheus cadvisor node-exporter postgres-exporter nginx-exporter
 	echo "Observability dihentikan. Data (log, Grafana) tersimpan di volume obs_*; hapus dengan: docker volume rm <project>_obs_loki_data ..."
 
 # Tampilkan alamat Grafana tanpa menjalankan apa pun.

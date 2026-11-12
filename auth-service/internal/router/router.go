@@ -47,6 +47,13 @@ func (a *AppRouter) WithLogger(l *slog.Logger) *AppRouter {
 	return a
 }
 
+// WithMetrics memasang middleware metrik HTTP (opsional; tanpa ini tidak ada metrik request).
+func (a *AppRouter) WithMetrics(m gin.HandlerFunc) *AppRouter {
+	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
+	a.metricsMiddleware = m
+	return a
+}
+
 // SetupRouter membuat gin.Engine dan mendaftarkan semua rute sesuai handler yang sudah dipasang di router.
 func SetupRouter(
 	router *AppRouter,
@@ -63,6 +70,10 @@ func SetupRouter(
 	engine := gin.New()
 	// RequestID paling awal agar semua log request memuat request_id (nilainya dari X-Request-Id yang diisi nginx)
 	engine.Use(middleware.RequestID())
+	// metrik sebelum Logger dan Recovery: request yang panic tetap terhitung sebagai 500
+	if router.metricsMiddleware != nil {
+		engine.Use(router.metricsMiddleware)
+	}
 	// Logger sebelum Recovery: request yang panic tetap tercatat sebagai baris akses berstatus 500
 	engine.Use(middleware.Logger(logger))
 	// Recovery mengubah panic di handler menjadi 500 (bukan proses mati) dan mencatatnya lewat slog

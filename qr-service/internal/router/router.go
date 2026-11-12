@@ -38,6 +38,13 @@ func (a *AppRouter) WithRender(h RenderHandler) *AppRouter {
 	return a
 }
 
+// WithMetrics memasang middleware metrik HTTP (opsional; tanpa ini tidak ada metrik request).
+func (a *AppRouter) WithMetrics(m gin.HandlerFunc) *AppRouter {
+	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
+	a.metricsMiddleware = m
+	return a
+}
+
 // SetupRouter membuat gin.Engine dan mendaftarkan semua rute sesuai handler yang sudah dipasang di router.
 //
 // Publik: /health, /ready
@@ -58,6 +65,10 @@ func SetupRouter(
 	// pasang middleware global: beri request ID, catat request, tangkap panic, dan larang cache
 	// RequestID dipasang paling awal agar semua log memuat request_id
 	engine.Use(middleware.RequestID())
+	// metrik sebelum Logger dan Recovery: request yang panic tetap terhitung sebagai 500
+	if router.metricsMiddleware != nil {
+		engine.Use(router.metricsMiddleware)
+	}
 	// Logger sebelum Recovery: request yang panic tetap tercatat sebagai baris akses berstatus 500
 	engine.Use(middleware.Logger(logger))
 	// Recovery mengubah panic menjadi 500 dan mencatatnya lewat slog (JSON), bukan teks bawaan Gin

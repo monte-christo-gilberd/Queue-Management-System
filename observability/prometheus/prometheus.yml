@@ -1,0 +1,68 @@
+# =============================================================================
+# prometheus.yml: konfigurasi Prometheus untuk QMS (Fase 3: metrik).
+# -----------------------------------------------------------------------------
+# Dipakai : docker-compose.observability.yml (service `prometheus`). Hanya di jaringan internal, tanpa port ke host.
+# Retensi : diatur lewat flag di compose (OBS_METRICS_RETENTION, bawaan 7d, dan batas ukuran 1GB), bukan di berkas ini.
+# Target  : semua lewat nama service Docker. Listener /metrics service Go (:9100) TIDAK dipublikasikan ke host dan
+#           TIDAK diteruskan nginx; hanya Prometheus di jaringan `internal` yang menjangkaunya.
+# Label   : tiap target memberi label `service` yang sama dengan label di metrik aplikasi (honor_labels: true), jadi
+#           `up{service="backend"}` dan `http_requests_total{service="backend"}` memakai nama yang sama.
+# =============================================================================
+global:
+  # Interval ambil data 15 detik, dan batas waktu 10 detik per target.
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Service Go QMS: listener metrik terpisah di :9100 (lihat internal/metrics di tiap service).
+  - job_name: qms-services
+    # Bila label di target dan di metrik sama, pakai milik metrik (nilainya identik).
+    honor_labels: true
+    static_configs:
+      - targets: ["backend:9100"]
+        labels: {service: backend}
+      - targets: ["auth-service:9100"]
+        labels: {service: auth-service}
+      - targets: ["qr-service:9100"]
+        labels: {service: qr-service}
+      - targets: ["mail-service:9100"]
+        labels: {service: mail-service}
+      - targets: ["notify-service:9100"]
+        labels: {service: notify-service}
+
+  # Metrik container (CPU, memori, jaringan, restart) dari cAdvisor.
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    # cAdvisor tanpa docker.sock mengeluarkan SEMUA cgroup host (ratusan unit systemd). Simpan hanya cgroup container
+    # Docker (/system.slice/docker-<id>.scope atau /docker/<id>) dan root, supaya jumlah series tetap kecil.
+    metric_relabel_configs:
+      - source_labels: [id]
+        regex: "/|/system.slice/docker-[0-9a-f]+\\.scope|/docker/[0-9a-f]+"
+        action: keep
+      # Tambah label `container_id` (12 karakter pertama, sama dengan `docker ps`) untuk dibaca di dashboard.
+      - source_labels: [id]
+        regex: ".*docker[-/]([0-9a-f]{12})[0-9a-f]*(\\.scope)?"
+        target_label: container_id
+        replacement: "$1"
+
+  # Metrik host (CPU, memori, disk) dari node_exporter.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # Metrik PostgreSQL (koneksi, transaksi, ukuran database) dari postgres_exporter, memakai role metrics_ro.
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  # Metrik nginx (koneksi aktif, request) dari nginx-prometheus-exporter yang membaca stub_status internal.
+  - job_name: nginx
+    static_configs:
+      - targets: ["nginx-exporter:9113"]
+
+  # Prometheus memantau dirinya sendiri.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

@@ -19,6 +19,7 @@ import (
 	"qms/mail-service/internal/logging"
 	"qms/mail-service/internal/mailer"
 	"qms/mail-service/internal/mailtemplate"
+	"qms/mail-service/internal/metrics"
 	"qms/mail-service/internal/middleware"
 	"qms/mail-service/internal/repository"
 	"qms/mail-service/internal/router"
@@ -72,11 +73,13 @@ func run() error {
 		renderer,
 		slog.Default(),
 	)
+	// Metrik Prometheus: middleware HTTP dipasang di router, metrik outbox diisi worker, listener dijalankan nanti.
+	appMetrics := metrics.NewMail()
 	// Router mendaftarkan rute kirim yang dilindungi token, lalu rute health dan 404.
 	appRouter := router.NewAppRouter(
 		handler.NewMailHandler(mailSvc),
 		middleware.ServiceToken(cfg.ServiceToken),
-	).WithSystem(handler.NewSystemHandler())
+	).WithSystem(handler.NewSystemHandler()).WithMetrics(appMetrics.Middleware())
 	// Server HTTP dengan batas waktu baca, tulis (60 detik karena kirim sinkron bisa lama), dan koneksi diam.
 	srv := &http.Server{
 		// Alamat dan port dari konfigurasi.
@@ -101,10 +104,12 @@ func run() error {
 	)
 	// Lepas pendaftaran sinyal saat run selesai.
 	defer stop()
+	// Listener metrik di port terpisah (METRICS_ADDR, bawaan :9100); tidak memblokir dan tidak menggagalkan service.
+	appMetrics.Serve(ctx)
 	// Outbox aktif bila DATABASE_URL diisi: jalankan worker di goroutine terpisah.
 	if cfg.Outbox.Enabled() {
 		// Worker outbox jalan terpisah agar tidak memblokir API.
-		go runOutbox(ctx, cfg, renderer)
+		go runOutbox(ctx, cfg, renderer, appMetrics)
 	} else {
 		// Tanpa database, worker outbox tidak jalan; layanan hanya melayani API kirim langsung.
 		slog.Warn("DATABASE_URL not set: outbox worker disabled, only POST /internal/v1/send is served")
@@ -178,6 +183,7 @@ func runOutbox(
 	ctx context.Context,
 	cfg config.Config,
 	renderer service.TemplateRenderer,
+	appMetrics *metrics.Mail,
 ) {
 	// Sambung ke database outbox, diulang sampai berhasil. Nil bila konteks batal lebih dulu.
 	db := repository.ConnectWithRetry(
@@ -190,9 +196,13 @@ func runOutbox(
 	}
 	// Tutup koneksi saat worker berhenti.
 	defer db.Close()
-	// Rangkai worker: repository PostgreSQL, pengirim SMTP, pengisi templat, dan konfigurasi outbox.
+	// Repository outbox dipakai worker dan gauge mail_outbox_pending (dihitung tiap scrape).
+	outboxRepo := repository.NewOutboxRepository(db)
+	appMetrics.SetPending(outboxRepo.Pending)
+	// Rangkai worker: repository PostgreSQL (dibungkus penghitung hasil kirim), pengirim SMTP, pengisi templat, dan
+	// konfigurasi outbox.
 	w := service.NewOutboxService(
-		repository.NewOutboxRepository(db),
+		service.NewMeteredOutboxStore(outboxRepo, appMetrics),
 		mailer.New(cfg.SMTP),
 		renderer,
 		service.OutboxConfig{

@@ -99,6 +99,10 @@ func run() error {
 	)
 	defer stop()
 
+	// listener metrik Prometheus di port terpisah (METRICS_ADDR, bawaan :9100). Tidak memblokir, dan kegagalannya
+	// tidak menghentikan API.
+	application.Metrics.Serve(ctx)
+
 	// menjalankan server HTTP dengan timeout dasar; Hub.Shutdown menutup koneksi SSE saat server berhenti,
 	// agar graceful shutdown tidak menunggu koneksi yang berumur panjang
 	srv := httpserver.New(port, engine)

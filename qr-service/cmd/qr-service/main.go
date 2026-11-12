@@ -19,6 +19,7 @@ import (
 	"qms/qr-service/internal/handler"
 	"qms/qr-service/internal/httpserver"
 	"qms/qr-service/internal/logging"
+	"qms/qr-service/internal/metrics"
 	"qms/qr-service/internal/router"
 	"qms/qr-service/internal/service"
 )
@@ -75,6 +76,9 @@ func run() error {
 		cfg.ServiceToken,
 		logger,
 	).WithRender(renderHandler)
+	// metrik Prometheus: middleware HTTP dipasang di router, listener /metrics dijalankan setelah ctx dibuat
+	appMetrics := metrics.NewQR()
+	appRouter.WithMetrics(appMetrics.Middleware())
 	// bangun gin.Engine dengan semua rute dan middleware terpasang
 	engine := router.SetupRouter(appRouter)
 
@@ -85,6 +89,8 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	// stop melepas penangkap sinyal saat run selesai
 	defer stop()
+	// listener metrik di port terpisah (METRICS_ADDR, bawaan :9100); tidak memblokir dan tidak menggagalkan service
+	appMetrics.Serve(ctx)
 
 	// jalankan server di goroutine terpisah agar run bisa menunggu sinyal berhenti
 	go func() {
