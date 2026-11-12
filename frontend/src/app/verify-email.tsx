@@ -11,7 +11,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import VerifyEmailScreen, { type VerifyEmailScreenProps } from '@/components/VerifyEmailScreen';
-import { describeVerifyError, isInvalidVerifyToken, verifyEmail } from '@/lib/email-verification';
+import { announceEmailVerified, describeVerifyError, isInvalidVerifyToken, verifyEmail } from '@/lib/email-verification';
 import { useAuthStore } from '@/store/authStore';
 
 /**
@@ -35,6 +35,8 @@ export default function VerifyEmailRoute() {
     try {
       await verifyEmail(rawToken);
       setMode('done');
+      // Profil di tab lain (bila terbuka) ikut berubah tanpa dimuat ulang.
+      announceEmailVerified();
     } catch (e) {
       if (isInvalidVerifyToken(e)) {
         setMode('invalid');

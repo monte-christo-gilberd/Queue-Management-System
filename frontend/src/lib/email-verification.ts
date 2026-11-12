@@ -54,3 +54,32 @@ export function isInvalidVerifyToken(error: unknown): boolean {
 export function resendSuccessMessage(email: string): string {
   return `Tautan verifikasi sudah dikirim ke ${email}`;
 }
+
+const VERIFIED_CHANNEL = 'qms-email-verified';
+
+/**
+ * announceEmailVerified: memberi tahu tab lain di browser yang sama bahwa email baru saja terverifikasi, agar halaman
+ * Profil yang terbuka langsung berubah. Hanya berjalan di web; di tempat lain tidak melakukan apa-apa.
+ */
+export function announceEmailVerified(): void {
+  try {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel(VERIFIED_CHANNEL);
+    channel.postMessage('verified');
+    channel.close();
+  } catch {
+    // BroadcastChannel tidak tersedia: Profil tetap menyegarkan diri saat tab difokuskan kembali.
+  }
+}
+
+/** onEmailVerified: mendengarkan pengumuman dari announceEmailVerified. Mengembalikan fungsi untuk berhenti. */
+export function onEmailVerified(callback: () => void): () => void {
+  try {
+    if (typeof BroadcastChannel === 'undefined') return () => {};
+    const channel = new BroadcastChannel(VERIFIED_CHANNEL);
+    channel.onmessage = () => callback();
+    return () => channel.close();
+  } catch {
+    return () => {};
+  }
+}

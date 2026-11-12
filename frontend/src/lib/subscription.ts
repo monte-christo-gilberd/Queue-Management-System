@@ -27,6 +27,7 @@ export function describeSubscriptionError(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Terjadi kesalahan, coba lagi';
   // 429/502/503/504 bisa datang dari nginx tanpa body JSON, jadi dicek lewat status.
   if (error.status === 429) return 'Terlalu banyak permintaan, tunggu sebentar lalu coba lagi';
+  if (error.code === 'EMAIL_NOT_VERIFIED') return 'Verifikasi email Anda dulu di halaman Profil sebelum berlangganan.';
   if (error.code === 'UNKNOWN_USER') return 'Akun tidak ditemukan, silakan login ulang';
   if (error.code === 'NETWORK_ERROR' || error.status === 502 || error.status === 503 || error.status === 504) {
     return 'Layanan langganan sementara tidak tersedia, coba lagi nanti. Antrian Anda tetap berjalan.';

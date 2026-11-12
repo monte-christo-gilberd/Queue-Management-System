@@ -47,11 +47,8 @@ export default function VerifyEmailScreen({ mode, errorMessage, onRetry, loggedI
     return (
       <AuthLayout title="Email Terverifikasi" subtitle="Akun Anda siap dipakai">
         <Text accessibilityRole="alert" className="text-center text-[13px] leading-5 text-white">
-          Email berhasil diverifikasi. Sekarang Anda bisa bergabung ke antrian dan membuat antrian.
+          Email berhasil diverifikasi. Silakan kembali ke tab sebelumnya.
         </Text>
-        <View className="mt-2.5">
-          <PrimaryAuthButton label={loggedIn ? 'Ke Profil' : 'Ke Halaman Login'} onPress={goNext} loading={false} />
-        </View>
       </AuthLayout>
     );
   }

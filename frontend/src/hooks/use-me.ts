@@ -26,6 +26,22 @@ function fetchMeShared(): Promise<Me> {
   return inflightMe;
 }
 
+/** Pemanggil useMe yang sedang terpasang; semuanya diberi profil baru saat refreshMe dipanggil. */
+const listeners = new Set<(me: Me) => void>();
+
+/**
+ * refreshMe: ambil ulang profil lalu perbarui semua useMe yang terpasang (mis. menu owner di panel kanan berubah
+ * langsung setelah user berhasil menjadi owner). Galat diabaikan; data lama tetap dipakai.
+ */
+export async function refreshMe(): Promise<void> {
+  try {
+    const data = await getMe();
+    listeners.forEach((fn) => fn(data));
+  } catch {
+    // data lama tetap dipakai
+  }
+}
+
 /**
  * Profil user yang login. `loaded` false selama request berjalan; selama itu jangan tampilkan fitur owner.
  *
@@ -52,8 +68,13 @@ export function useMe() {
         if (active) setLoaded(true);
       },
     );
+    const listener = (data: Me) => {
+      if (active) setMe(data);
+    };
+    listeners.add(listener);
     return () => {
       active = false;
+      listeners.delete(listener);
     };
   }, []);
 

@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import Subscription from '@/components/Subscription';
 import { describeSubscriptionError, extendSubscription } from '@/lib/subscription';
+import { refreshMe } from '@/hooks/use-me';
 import { getMe, type Me } from '@/lib/users';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 import { useAuthStore } from '@/store/authStore';
@@ -62,6 +63,8 @@ export default function SubscriptionRoute() {
       await extendSubscription();
       // Muat ulang profil agar tanggal berakhir yang tampil sudah yang baru.
       await reload();
+      // Perbarui status owner di layout (menu panel kanan) tanpa refresh.
+      await refreshMe();
       if (alive.current) setDoneMessage(MSG_DONE);
     } catch (e) {
       if (alive.current) setErrorMessage(describeSubscriptionError(e));

@@ -9,11 +9,11 @@
  */
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import Profile from '@/components/Profile';
 import { useAvatarSource } from '@/hooks/use-avatar-source';
-import { describeResendError, resendSuccessMessage, resendVerification } from '@/lib/email-verification';
+import { describeResendError, onEmailVerified, resendSuccessMessage, resendVerification } from '@/lib/email-verification';
 import { describeForgotError, requestPasswordReset } from '@/lib/password-reset';
 import { deleteAvatar, getMe, setEmailNotifications, updateMe, uploadAvatar, type Me } from '@/lib/users';
 import { shrinkToJpeg } from '@/utils/avatar-image';
@@ -60,6 +60,34 @@ export default function ProfileRoute() {
     );
     return () => {
       active = false;
+    };
+  }, []);
+
+  // Muat ulang status saat email baru diverifikasi di tab lain, atau saat tab ini kembali aktif, agar banner dan
+  // tombol Jadi Owner langsung berubah tanpa refresh manual.
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      getMe().then(
+        (data) => {
+          if (active) setMe((prev) => (prev && prev.email_verified === data.email_verified && prev.is_owner === data.is_owner ? prev : data));
+        },
+        () => {},
+      );
+    };
+    const stopBroadcast = onEmailVerified(refresh);
+    const appSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    if (Platform.OS === 'web') document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      active = false;
+      stopBroadcast();
+      appSub.remove();
+      if (Platform.OS === 'web') document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
 

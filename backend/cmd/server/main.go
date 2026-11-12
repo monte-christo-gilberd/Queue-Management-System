@@ -324,6 +324,11 @@ func run() error {
 	subscriptionService := service.
 		NewSubscriptionService(subscriptionRepo)
 
+	// subscribe (menjadi owner) butuh email terverifikasi
+	if verification != nil {
+		subscriptionService.WithVerificationGuard(verification)
+	}
+
 	// inisialisasi layer handler langganan
 	subscriptionHandler := handler.
 		NewSubscriptionHandler(subscriptionService)

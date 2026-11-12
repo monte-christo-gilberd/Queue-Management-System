@@ -2,8 +2,11 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
+
+	"qms/internal/apperror"
 
 	"github.com/gin-gonic/gin"
 )
@@ -35,6 +38,11 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 	// tambah 30 hari untuk user yang login; error database diterjemahkan jadi 500 generik
 	expiresAt, err := h.service.Extend(c.Request.Context(), c.GetInt64("user_id"))
 	if err != nil {
+		// email belum diverifikasi: 403
+		if errors.Is(err, apperror.ErrEmailNotVerified) {
+			respondError(c, http.StatusForbidden, "EMAIL_NOT_VERIFIED", "verify your email before subscribing")
+			return
+		}
 		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		return
 	}
