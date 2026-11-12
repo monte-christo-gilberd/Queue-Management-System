@@ -1,0 +1,70 @@
+# =============================================================================
+# loki-config.yaml: Loki satu node untuk QMS (filesystem, tanpa auth, hanya jaringan internal).
+# -----------------------------------------------------------------------------
+# Dipakai : docker-compose.observability.yml (service `loki`, dijalankan dengan -config.expand-env=true).
+# Env     : OBS_LOG_RETENTION  lama simpan log, bawaan 168h (7 hari). Dibaca lewat ${OBS_LOG_RETENTION:-168h}.
+# Label   : HANYA `service` dan `level` (lihat otlp_config). Field lain (request_id, route, status, ...) menjadi
+#           structured metadata: bisa difilter, tapi tidak menambah jumlah stream (kardinalitas).
+# =============================================================================
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# Compactor menjalankan penghapusan log yang melewati retensi.
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+limits_config:
+  # Wajib untuk OTLP: atribut non-label disimpan sebagai structured metadata.
+  allow_structured_metadata: true
+  # Retensi log (bawaan 7 hari).
+  retention_period: ${OBS_LOG_RETENTION:-168h}
+  # Batas ingest: cukup longgar untuk 6 service, cukup ketat agar lonjakan log tidak menghabiskan RAM dan disk.
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 8
+  per_stream_rate_limit: 3MB
+  per_stream_rate_limit_burst: 6MB
+  max_line_size: 64KB
+  # Tolak log yang lebih tua dari 1 jam (mis. berkas lama terbaca ulang) supaya tidak membuat stream/chunk liar.
+  reject_old_samples: true
+  reject_old_samples_max_age: 1h
+  # Pemetaan atribut OTLP -> label Loki.
+  otlp_config:
+    resource_attributes:
+      # Abaikan label bawaan Loki (service_name, k8s_*, ...): hanya yang tertulis di bawah yang menjadi label.
+      ignore_defaults: true
+      attributes_config:
+        - action: index_label
+          attributes:
+            - service
+    log_attributes:
+      - action: index_label
+        attributes:
+          - level

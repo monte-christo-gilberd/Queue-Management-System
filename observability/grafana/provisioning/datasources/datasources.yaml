@@ -1,0 +1,56 @@
+# =============================================================================
+# datasources.yaml: sumber data Grafana sebagai kode (Loki, Prometheus, Tempo).
+# -----------------------------------------------------------------------------
+# Loki aktif sejak Fase 2. Prometheus (Fase 3) dan Tempo (Fase 4) sudah didaftarkan agar tidak perlu mengubah
+# berkas ini lagi; sebelum service-nya ada, tes koneksi keduanya gagal dan itu wajar.
+# uid dipakai tetap karena dashboard dan korelasi trace-log merujuknya.
+# =============================================================================
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    isDefault: true
+    jsonData:
+      # Batas baris hasil query agar browser tidak berat.
+      maxLines: 1000
+      # Fase 4: tautan trace_id di log ke Tempo. Baris tanpa trace_id tidak terpengaruh.
+      derivedFields:
+        - name: trace_id
+          matcherRegex: '"trace_id":"([a-fA-F0-9]+)"'
+          url: '$${__value.raw}'
+          datasourceUid: tempo
+
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    editable: false
+    jsonData:
+      httpMethod: POST
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      # Fase 4: dari trace lompat ke log service terkait pada rentang waktu span.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-1m'
+        spanEndTimeShift: '1m'
+        filterByTraceID: false
+        filterBySpanID: false
+        customQuery: true
+        query: '{service="$${__span.tags["service.name"]}"} | json | trace_id="$${__trace.traceId}"'
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true

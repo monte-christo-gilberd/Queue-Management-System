@@ -333,6 +333,17 @@ Semua service Go (backend, auth, qr, mail, notify) menulis **satu baris JSON per
 - **Request ID:** nginx membuat `X-Request-Id` untuk tiap request (nilai dari klien ditimpa) dan meneruskannya ke backend dan auth-service. Backend meneruskannya lagi ke qr-service. ID dari luar yang kosong, lebih dari 128 karakter, atau berisi karakter selain huruf, angka, `-`, `_`, `.` diganti ID baru. Cari satu request di semua service dengan `docker compose logs | grep <request_id>`.
 - **Kebijakan isi log.** Tidak boleh masuk log (termasuk log nginx dan, nanti, atribut span): JWT dan header `Authorization`, password, token layar publik, token reset password, token verifikasi email, token join/QR, token Web Push, isi body request, query string, dan alamat email penuh. Catat id angka (`user_id`, `ticket_id`, `queue_id`) atau templat route, bukan nilainya. Saat menambah log baru, jangan memasukkan error mentah dari pustaka yang bisa memuat URL atau kredensial tanpa memeriksanya.
 
+#### Observability: log (opsional)
+Overlay `docker-compose.observability.yml` menambah OpenTelemetry Collector, Loki, dan Grafana. Aplikasi tidak bergantung padanya: tidak ada `depends_on` ke arah sana, dan bila overlay mati antrian, login, SSE, dan langganan tetap jalan.
+
+1. Isi `GRAFANA_ADMIN_PASSWORD` di `.env` (dev) atau `.env.prod` (prod). Wajib, tanpa nilai bawaan. `GRAFANA_PORT` dan `OBS_LOG_RETENTION` opsional.
+2. `make obs-up` (dev) atau `make obs-up OBS_TARGET=prod`. Pertama kali, service aplikasi dibuat ulang sekali karena blok `logging:` berubah (volume dan database tetap). Di dev, nilai `QMS_PUBLIC_ORIGIN` backend yang sedang jalan dipakai ulang.
+3. `make obs-url` menampilkan alamat Grafana: `http://localhost:3000`, **hanya di 127.0.0.1**. Dari perangkat lain pakai `ssh -L 3000:127.0.0.1:3000 <user>@<server>`. Login `admin` dan password tadi.
+4. Dashboard **QMS: Log** (folder Grafana "Log", di-provision dari `observability/grafana/dashboards/Log/logs.json`; folder dibuat per jenis: Log, Metrik, Trace): jumlah log, ERROR, WARN, nginx 5xx, volume per service dan level, request nginx per kelas status, p95 latensi backend per route, route dengan 4xx/5xx, serta panel log dengan filter service, level, teks, dan `request_id`. Dashboard hanya diubah lewat berkas JSON di repo. Untuk query bebas: Grafana > Explore > Loki, contoh `{service="backend"} | json` atau `{service="nginx", level="ERROR"}`. Label Loki hanya `service` dan `level`; `request_id`, `route`, `status`, dan lainnya adalah structured metadata (`{service="backend"} | request_id="..."`). Satu `request_id` bisa dicari dari nginx sampai backend dan qr-service.
+5. `make obs-down` menghapus container observability saja; log dan data Grafana tersimpan di volume `obs_*`. `make down` dan `make prod-down` ikut membersihkannya (`--remove-orphans`).
+
+Rincian: log Docker (`json-file`, maks 3 x 10 MB per container) dibaca collector dari `/var/lib/docker/containers` (read-only, tanpa `docker.sock`), disamarkan lagi (Bearer, JWT, `token=`, `password=`) sebagai lapis kedua, lalu dikirim ke Loki (retensi 7 hari). Prometheus dan Tempo sudah didaftarkan sebagai datasource, tetapi service-nya baru ada di fase berikutnya. Menjalankan `make up` atau `make prod-up` tanpa overlay membuat ulang service aplikasi tanpa blok `logging:`, sehingga log-nya berhenti terkumpul sampai `make obs-up` dijalankan lagi.
+
 ## 3. What was built
 
 ### Progres per komponen

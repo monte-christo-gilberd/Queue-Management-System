@@ -29,6 +29,18 @@
 #   make prod-backup                        backup DB prod ke ~/qms-backups/
 #   make prod-reset                         kosongkan antrian dan tiket demo (akun dipertahankan, backup dulu)
 #
+# Kata `obs` (opsional): make up obs, make tunnel obs, make prod-up obs ikut menyalakan observability (collector, Loki,
+# Grafana) dan memasang pengumpulan log di service aplikasi, tanpa menjalankan make obs-up terpisah. Bentuk obs=1 juga
+# diterima. Tanpa itu, stack berjalan seperti biasa tanpa observability. Butuh GRAFANA_ADMIN_PASSWORD di env file.
+#
+# Perintah OBSERVABILITY (opsional, overlay docker-compose.observability.yml; OBS_TARGET=dev|prod, bawaan dev):
+#   make obs-up [OBS_TARGET=prod]           jalankan collector, Loki, Grafana, dan pasang pengumpulan log di service
+#                                           aplikasi (service aplikasi dibuat ulang sekali). Butuh GRAFANA_ADMIN_PASSWORD
+#                                           di .env (dev) atau $(PROD_ENV) (prod).
+#   make obs-down [OBS_TARGET=prod]         hentikan dan hapus container observability; aplikasi tetap jalan.
+#                                           Volume data (log, Grafana) dipertahankan.
+#   make obs-url [OBS_TARGET=prod]          tampilkan alamat Grafana dan cara akses jauh (SSH tunnel)
+#
 # Catatan:
 #   - Kamera di browser butuh HTTPS atau localhost. Scan QR dari HP lewat IP LAN tidak jalan di web;
 #     pakai `make tunnel`. Tunnel butuh cloudflared dan internet.
@@ -51,8 +63,9 @@ SHELL := bash
 .ONESHELL:
 # Perintah tidak ditampilkan sebelum dijalankan. Pesan yang memang dicetak (echo) tetap tampil.
 .SILENT:
-.PHONY: up tunnel down restart seed logs ps mailpit verify-user \
-        prod-up prod-up-mailpit prod-up-smtp prod-down prod-guard prod-backup prod-reset
+.PHONY: obs up tunnel down restart seed logs ps mailpit verify-user \
+        prod-up prod-up-mailpit prod-up-smtp prod-down prod-guard prod-backup prod-reset \
+        obs-up obs-down obs-url
 
 # -----------------------------------------------------------------------------
 # Variabel dan potongan bersama
@@ -60,6 +73,22 @@ SHELL := bash
 
 # Penanda nilai EXPO_PUBLIC_GOOGLE_* terakhir yang dibangun ke cache Metro (tidak ikut git). Lihat google_metro_cache.
 GOOGLE_STAMP := .metro-google.stamp
+
+# Menulis kata `obs` di baris perintah (make up obs) sama dengan obs=1: kata itu masuk daftar target (MAKECMDGOALS)
+# dan target `obs` di bawah sengaja kosong. Karena itu jangan memakai `obs` sebagai nama file atau target lain.
+ifneq ($(filter obs,$(MAKECMDGOALS)),)
+obs := 1
+endif
+
+# obs=1 menambahkan overlay observability ke perintah compose DEV (up, tunnel). Kosong bila obs tidak diisi 1.
+# OBS_SERVICES: service overlay yang ikut dinaikkan pada `make tunnel` (daftar service di sana eksplisit).
+OBS_DEV_FILES := $(if $(filter 1,$(obs)),-f docker-compose.yml -f docker-compose.observability.yml)
+OBS_SERVICES := $(if $(filter 1,$(obs)),collector loki grafana)
+
+# Dengan obs=1: menolak jalan bila GRAFANA_ADMIN_PASSWORD kosong di env file $(1), sebelum ada container yang dibuat ulang.
+define obs_require_password
+$(if $(filter 1,$(obs)),grep -qE '^GRAFANA_ADMIN_PASSWORD=.+' $(1) || { echo "obs=1: GRAFANA_ADMIN_PASSWORD kosong di $(1): isi dulu (tanpa nilai bawaan)" >&2; exit 1; })
+endef
 
 # Kunci JWT dev di keys-dev/ dibuat ulang setiap `make up` / `make tunnel` dan dihapus `make down`.
 # Kunci prod di keys/ tidak pernah disentuh target dev. rm -rf (bukan rm -f) juga membersihkan direktori salah-buat oleh Docker.
@@ -136,6 +165,7 @@ endef
 # Build dan jalankan stack dev. IP LAN dibaca otomatis dari rute default, atau dari IP=... bila diberikan.
 up:
 	$(need_env)
+	$(call obs_require_password,.env)
 	$(fresh_auth_keys)
 	scripts/check-google-config.sh .env
 	$(google_metro_cache)
@@ -143,17 +173,19 @@ up:
 	[ -n "$$ip" ] || ip=$$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' || true)
 	[ -n "$$ip" ] || { echo "IP LAN tidak terdeteksi; beri manual: make up IP=<ip>" >&2; exit 1; }
 	export QMS_PUBLIC_ORIGIN="http://$$ip:$$port"
-	docker compose up -d --build --force-recreate --renew-anon-volumes
+	docker compose $(OBS_DEV_FILES) up -d --build --force-recreate --renew-anon-volumes
 	$(warm_metro)
 	echo "Link (satu Wi-Fi): $$QMS_PUBLIC_ORIGIN"
 	$(google_hint_dev)
 	$(mailpit_dev)
+	$(if $(filter 1,$(obs)),$(call obs_url,.env,dev))
 
 # Stack dev dengan HTTPS publik lewat Cloudflare quick tunnel. URL diambil dari log cloudflared.
 # Service yang di-recreate membawa QMS_PUBLIC_ORIGIN = URL tunnel (daftar service ada di perintah compose).
 tunnel:
 	command -v cloudflared >/dev/null || { echo "cloudflared belum terpasang" >&2; exit 1; }
 	$(need_env)
+	$(call obs_require_password,.env)
 	$(fresh_auth_keys)
 	scripts/check-google-config.sh .env
 	$(google_metro_cache)
@@ -166,7 +198,7 @@ tunnel:
 	  [ -n "$$url" ] && break; sleep 1
 	done
 	[ -n "$$url" ] || { echo "URL tunnel tidak muncul, lihat $(LOG)" >&2; $(stop_tunnel); exit 1; }
-	QMS_PUBLIC_ORIGIN="$$url" docker compose up -d --build --force-recreate --renew-anon-volumes backend auth-service qr-service notify-service mail-service mailpit nginx frontend db
+	QMS_PUBLIC_ORIGIN="$$url" docker compose $(OBS_DEV_FILES) up -d --build --force-recreate --renew-anon-volumes backend auth-service qr-service notify-service mail-service mailpit nginx frontend db $(OBS_SERVICES)
 	$(warm_metro)
 	echo "Link: $$url"
 	if grep -qE '^EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=.+' .env 2>/dev/null; then
@@ -179,11 +211,13 @@ tunnel:
 	echo "Hentikan: make down"
 	$(mailpit_dev)
 	echo "  (Mailpit tidak ikut lewat tunnel Cloudflare; email dari aplikasi tetap tertangkap di sini)"
+	$(if $(filter 1,$(obs)),$(call obs_url,.env,dev))
 
 # Hentikan tunnel (bila ada) dan semua container dev.
 down:
 	$(stop_tunnel)
-	docker compose down
+	# --remove-orphans: ikut membersihkan container observability (collector, loki, grafana) bila overlay pernah dinyalakan.
+	docker compose down --remove-orphans
 	rm -f $(GOOGLE_STAMP)
 	rm -rf keys-dev
 
@@ -230,7 +264,8 @@ PROD_PROFILE := --profile mailpit
 endif
 
 # Perintah compose prod lengkap (file, env, dan profile).
-PROD := docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) $(PROD_PROFILE)
+# obs=1 menambahkan overlay observability; OBS_PROJECT memberi tahu collector project mana yang dibaca.
+PROD := $(if $(filter 1,$(obs)),OBS_PROJECT=qms-prod )docker compose -f docker-compose.prod.yml $(if $(filter 1,$(obs)),-f docker-compose.observability.yml )--env-file $(PROD_ENV) $(PROD_PROFILE)
 
 # Jalankan stack prod. Memeriksa MAIL_MODE dulu (scripts/check-mail-mode.sh) dan menolak konfigurasi salah.
 # Bila berpindah dari mailpit ke smtp, sisa container Mailpit dihentikan supaya tidak membingungkan.
@@ -238,6 +273,7 @@ prod-up:
 	scripts/gen-auth-keys.sh
 	MAIL_MODE=$(MAIL_MODE) QMS_ENV_FILE=$(PROD_ENV) scripts/check-mail-mode.sh
 	scripts/check-google-config.sh $(PROD_ENV)
+	$(call obs_require_password,$(PROD_ENV))
 	$(PROD) up -d --build
 	$(if $(PROD_PROFILE),,docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) --profile mailpit rm -sf mailpit >/dev/null 2>&1 || true)
 	pmp=$$(grep -E '^MAILPIT_UI_PORT=' $(PROD_ENV) 2>/dev/null | tail -1 | cut -d= -f2 || true); pmp=$${pmp:-8025}
@@ -247,6 +283,7 @@ prod-up:
 	else
 	  echo "Email prod: SMTP nyata (MAIL_MODE=smtp), tanpa Mailpit. Lihat hasil kirim di inbox penerima atau dashboard penyedia SMTP."
 	fi
+	$(if $(filter 1,$(obs)),$(call obs_url,$(PROD_ENV),prod))
 	if grep -qE '^EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=.+' $(PROD_ENV) 2>/dev/null; then
 	  origin=$$(grep -E '^QMS_PUBLIC_ORIGIN=' $(PROD_ENV) | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 	  echo "Login Google prod: pastikan $$origin dan $$origin/ terdaftar di Authorized JavaScript origins dan redirect URIs (client Web)."
@@ -265,7 +302,7 @@ prod-up-smtp:
 # Nilai SMTP palsu hanya supaya compose bisa menguraikan file; tidak memengaruhi `down`.
 prod-down:
 	SMTP_HOST=$${SMTP_HOST:-x} SMTP_PORT=$${SMTP_PORT:-1} SMTP_FROM=$${SMTP_FROM:-x@x.y} MAIL_SERVICE_TOKEN=$${MAIL_SERVICE_TOKEN:-x} \
-	docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) --profile mailpit down
+	docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) --profile mailpit down --remove-orphans
 
 # Tandai DB prod agar seed/reset ditolak. Jalankan sekali setelah akun demo dibuat.
 prod-guard:
@@ -278,6 +315,69 @@ prod-backup:
 # Reset data demo: hapus antrian, tiket, dan push. Akun dipertahankan. Backup otomatis dibuat dulu (scripts/reset-demo.sh).
 prod-reset:
 	QMS_ENV_FILE=$(PROD_ENV) scripts/reset-demo.sh
+
+# -----------------------------------------------------------------------------
+# OBSERVABILITY (overlay docker-compose.observability.yml, lihat berkas itu dan docs/plan-observability-tracing.md)
+# -----------------------------------------------------------------------------
+
+# Target overlay: dev (bawaan) atau prod. Menentukan berkas compose, env file, dan nama project yang dibaca collector.
+OBS_TARGET ?= dev
+ifeq ($(OBS_TARGET),prod)
+OBS_ENV_FILE := $(PROD_ENV)
+export OBS_PROJECT := qms-prod
+# `=` (bukan :=) agar PROD_PROFILE yang ditentukan di atas ikut terbaca.
+OBS_COMPOSE = docker compose -f docker-compose.prod.yml -f docker-compose.observability.yml --env-file $(PROD_ENV) $(PROD_PROFILE)
+else
+OBS_ENV_FILE := .env
+export OBS_PROJECT := qms
+OBS_COMPOSE = docker compose -f docker-compose.yml -f docker-compose.observability.yml
+endif
+
+# Dev: `make up` menentukan QMS_PUBLIC_ORIGIN dari IP LAN atau URL tunnel. Membuat ulang service dengan nilai bawaan
+# (localhost) akan mengubah CORS dan tautan email, jadi nilai backend yang sedang jalan dipakai ulang bila ada.
+define obs_keep_origin
+if [ "$(OBS_TARGET)" = dev ] && [ -z "$${QMS_PUBLIC_ORIGIN:-}" ]; then
+  cid=$$(docker compose ps -q backend 2>/dev/null | head -1 || true)
+  if [ -n "$$cid" ]; then
+    o=$$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$$cid" | grep '^PUBLIC_APP_URL=' | cut -d= -f2- || true)
+    [ -z "$$o" ] || export QMS_PUBLIC_ORIGIN="$$o"
+  fi
+fi
+endef
+
+# Mencetak alamat Grafana. Dipanggil dengan $(call obs_url,<env file>,<dev|prod>). Hanya diikat ke 127.0.0.1 mesin ini;
+# perangkat lain memakai SSH tunnel. Berupa potongan resep (bukan `$(MAKE) obs-url`) supaya `make -n` tidak
+# menjalankan resep pemanggilnya sungguhan.
+define obs_url
+gp=$$(grep -E '^GRAFANA_PORT=' $(1) 2>/dev/null | tail -1 | cut -d= -f2 || true); gp=$${gp:-3000}
+echo "Grafana ($(2), hanya dari mesin ini): http://localhost:$$gp  (user admin, password = GRAFANA_ADMIN_PASSWORD di $(1))"
+echo "  dari perangkat lain: ssh -L $$gp:127.0.0.1:$$gp <user>@<IP mesin ini>, lalu buka http://localhost:$$gp"
+echo "  log: Explore > Loki, contoh {service=\"backend\"} | json"
+endef
+
+# Penanda untuk `make up obs` dkk. Tidak melakukan apa pun sendiri; efeknya ada di variabel obs di atas.
+obs:
+	:
+
+# Jalankan collector, Loki, Grafana. Service aplikasi dibuat ulang bila blok logging overlay belum terpasang di sana
+# (volume dan database tetap). Menolak jalan bila GRAFANA_ADMIN_PASSWORD kosong.
+obs-up:
+	[ -f $(OBS_ENV_FILE) ] || { echo "$(OBS_ENV_FILE) belum ada" >&2; exit 1; }
+	grep -qE '^GRAFANA_ADMIN_PASSWORD=.+' $(OBS_ENV_FILE) || { echo "GRAFANA_ADMIN_PASSWORD kosong di $(OBS_ENV_FILE): isi dulu (tanpa nilai bawaan)" >&2; exit 1; }
+	$(obs_keep_origin)
+	$(OBS_COMPOSE) up -d
+	$(call obs_url,$(OBS_ENV_FILE),$(OBS_TARGET))
+
+# Hentikan dan hapus container observability saja. Service aplikasi tidak disentuh (isolasi). Nilai palsu di bawah hanya
+# supaya compose bisa menguraikan file; tidak memengaruhi penghapusan.
+obs-down:
+	GRAFANA_ADMIN_PASSWORD=$${GRAFANA_ADMIN_PASSWORD:-x} SMTP_HOST=$${SMTP_HOST:-x} SMTP_PORT=$${SMTP_PORT:-1} SMTP_FROM=$${SMTP_FROM:-x@x.y} MAIL_SERVICE_TOKEN=$${MAIL_SERVICE_TOKEN:-x} \
+	$(OBS_COMPOSE) rm -sf collector loki grafana
+	echo "Observability dihentikan. Data (log, Grafana) tersimpan di volume obs_*; hapus dengan: docker volume rm <project>_obs_loki_data ..."
+
+# Tampilkan alamat Grafana tanpa menjalankan apa pun.
+obs-url:
+	$(call obs_url,$(OBS_ENV_FILE),$(OBS_TARGET))
 
 # -----------------------------------------------------------------------------
 # Ringkasan link Mailpit lintas mode. Tidak menjalankan apa pun.

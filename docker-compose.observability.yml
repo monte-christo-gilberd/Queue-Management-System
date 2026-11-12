@@ -1,0 +1,121 @@
+# =============================================================================
+# docker-compose.observability.yml: overlay OPSIONAL observability (log) untuk dev dan prod.
+# -----------------------------------------------------------------------------
+# Dipakai oleh : make obs-up / obs-down / obs-url (OBS_TARGET=dev|prod). Digabung dengan compose dasar:
+#   dev : docker compose -f docker-compose.yml      -f docker-compose.observability.yml ...
+#   prod: docker compose -f docker-compose.prod.yml -f docker-compose.observability.yml --env-file .env.prod ...
+# Isi (Fase 2): collector (OTel), loki, grafana, dan blok `logging:` untuk service aplikasi.
+# Fase 3 menambah prometheus dan exporter, Fase 4 menambah tempo (lihat docs/plan-observability-tracing.md).
+#
+# [PENTING] ISOLASI: TIDAK ADA depends_on dari service aplikasi ke komponen observability, dan service aplikasi
+#           tidak memakai variabel observability. Observability mati (atau overlay tidak dipakai) tidak boleh
+#           mengganggu antrian. Jangan menambah depends_on di sini ke arah itu.
+# [PENTING] Hanya Grafana yang membuka port ke host, dan hanya di 127.0.0.1 (akses jauh lewat SSH tunnel):
+#           ssh -L 3000:127.0.0.1:3000 <user>@<server>, lalu buka http://localhost:3000.
+# [SINKRON] Service yang diberi blok logging harus ada di docker-compose.yml DAN docker-compose.prod.yml.
+# [PENTING] Pertama kali overlay dinyalakan, service aplikasi dibuat ulang (blok logging berubah). Volume dan data
+#           database tetap. Menjalankan `make up` / `make prod-up` tanpa overlay membuat ulang service itu tanpa
+#           blok logging, sehingga log-nya berhenti terkumpul sampai `make obs-up` dijalankan lagi.
+# Variabel (di .env atau .env.prod):
+#   GRAFANA_ADMIN_PASSWORD  WAJIB, tanpa nilai bawaan.
+#   GRAFANA_PORT            port Grafana di 127.0.0.1 host, bawaan 3000.
+#   OBS_LOG_RETENTION       lama simpan log di Loki, bawaan 168h (7 hari).
+#   OBS_PROJECT             nama project compose; diisi otomatis oleh Makefile (qms atau qms-prod).
+# =============================================================================
+
+# Pengaturan log Docker untuk service aplikasi: putar berkas (maks 3 x 10 MB per container) dan sertakan label
+# compose di setiap baris log, yang dipakai collector untuk mengenali project dan nama service.
+x-app-logging: &app-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+    labels-regex: "^com\\.docker\\.compose\\.(project|service)$"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Service aplikasi: hanya menambah blok logging (tidak ada perubahan lain).
+  # ---------------------------------------------------------------------------
+  backend:
+    logging: *app-logging
+  auth-service:
+    logging: *app-logging
+  qr-service:
+    logging: *app-logging
+  mail-service:
+    logging: *app-logging
+  notify-service:
+    logging: *app-logging
+  nginx:
+    logging: *app-logging
+
+  # ---------------------------------------------------------------------------
+  # collector: membaca log Docker, menyamarkan rahasia, mengirim ke Loki.
+  # Berjalan sebagai root karena /var/lib/docker/containers hanya bisa dibaca root; mount read-only, tanpa docker.sock.
+  # ---------------------------------------------------------------------------
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.156.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    user: "0:0"
+    environment:
+      OBS_PROJECT: ${OBS_PROJECT:-qms}
+      # Batas memori Go sedikit di bawah mem_limit agar GC bekerja lebih agresif sebelum kontainer di-OOM.
+      GOMEMLIMIT: 200MiB
+    volumes:
+      - ./observability/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - obs_collector_data:/var/lib/otelcol
+    mem_limit: 256m
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # loki: penyimpanan log (filesystem, satu node). Tanpa port ke host.
+  # ---------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.7.3
+    command: ["-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true"]
+    environment:
+      OBS_LOG_RETENTION: ${OBS_LOG_RETENTION:-168h}
+    volumes:
+      - ./observability/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - obs_loki_data:/loki
+    mem_limit: 512m
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # grafana: UI. Satu-satunya yang membuka port, hanya ke 127.0.0.1. Login wajib, tanpa pendaftaran dan tanpa
+  # akses anonim. Sumber data di-provision dari observability/grafana/provisioning.
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:13.1.0
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env (tanpa nilai bawaan)}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      # Dashboard sebagai kode (dibaca provider di provisioning/dashboards).
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - obs_grafana_data:/var/lib/grafana
+    # Terukur sekitar 200 MiB saat idle; 384m memberi ruang untuk query dan dashboard.
+    mem_limit: 384m
+    networks:
+      - internal
+    restart: unless-stopped
+
+volumes:
+  # Posisi baca berkas log milik collector.
+  obs_collector_data:
+  # Data log Loki (chunk dan index).
+  obs_loki_data:
+  # Database Grafana (pengguna, preferensi).
+  obs_grafana_data:

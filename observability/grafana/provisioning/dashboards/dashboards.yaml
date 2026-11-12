@@ -1,0 +1,26 @@
+# =============================================================================
+# dashboards.yaml: provider dashboard Grafana sebagai kode.
+# -----------------------------------------------------------------------------
+# Membaca semua *.json di /var/lib/grafana/dashboards (di-mount dari observability/grafana/dashboards).
+# Folder Grafana mengikuti subfolder di repo (foldersFromFilesStructure): satu folder per JENIS dashboard.
+#   dashboards/Log/     -> folder "Log"     (Fase 2: logs.json)
+#   dashboards/Metrik/  -> folder "Metrik"  (Fase 3 dan 5)
+#   dashboards/Trace/   -> folder "Trace"   (Fase 4)
+# Nama subfolder = judul folder di Grafana. Menambah dashboard = menaruh berkas .json di subfolder jenisnya
+# (subfolder baru dibuat bila belum ada). Berkas di akar dashboards/ masuk folder General; hindari.
+# Dashboard hanya diubah lewat berkas JSON di repo (allowUiUpdates false): perubahan di UI tidak disimpan.
+# =============================================================================
+apiVersion: 1
+
+providers:
+  - name: qms
+    orgId: 1
+    # Kosong: judul folder diambil dari nama subfolder (foldersFromFilesStructure tidak boleh bersama `folder`).
+    folder: ''
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true
