@@ -7,7 +7,7 @@
  * Bergantung   : components/auth/EyeToggle, constants/app-theme, utils/cn
  * Catatan      : Mode password (showPasswordToggle) hanya mengendalikan secureTextEntry; state-nya lokal.
  */
-import { useState } from 'react';
+import { useState, type Ref } from 'react';
 import { Platform, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
@@ -20,10 +20,12 @@ type AuthInputProps = TextInputProps & {
   icon: React.ReactNode;
   /** Tampilkan tombol mata di ujung kanan untuk membuka/menutup isi password. Default false. */
   showPasswordToggle?: boolean;
+  /** Ref ke TextInput (dipakai untuk memindahkan fokus). */
+  ref?: Ref<TextInput>;
 };
 
 /** Input outline tipis tanpa latar solid dengan ikon di kiri (gaya halaman auth). */
-export function AuthInput({ icon, className, showPasswordToggle = false, ...inputProps }: AuthInputProps) {
+export function AuthInput({ icon, className, showPasswordToggle = false, ref, ...inputProps }: AuthInputProps) {
   // State tampilan murni: password sedang terlihat atau tidak.
   const [passwordVisible, setPasswordVisible] = useState(false);
 
@@ -37,6 +39,7 @@ export function AuthInput({ icon, className, showPasswordToggle = false, ...inpu
       />
       <View className="w-5 items-center">{icon}</View>
       <TextInput
+        ref={ref}
         placeholderTextColor={AppColors.placeholder}
         selectionColor={AppColors.white}
         {...inputProps}

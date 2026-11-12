@@ -12,8 +12,8 @@
  *                /link-google (konfirmasi password), membawa `next`.
  */
 import { router, type Href } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Platform, Text } from 'react-native';
+import { useCallback, useState, type Ref } from 'react';
+import { Platform, Text, type View } from 'react-native';
 
 import { GoogleButton, OrDivider } from '@/components/auth/AuthButtons';
 import { useToast } from '@/components/ui/Toast';
@@ -29,6 +29,8 @@ export type GoogleSignInSectionProps = {
   label?: string;
   /** Tujuan setelah berhasil; sudah disanitasi oleh route (sanitizeNext). Kosong = /dashboard. */
   next?: string;
+  /** Ref ke tombol Google (untuk navigasi fokus dengan keyboard). */
+  buttonRef?: Ref<View>;
 };
 
 /** Pemisah "atau" dan tombol Google; tidak tampil bila Google belum dikonfigurasi untuk platform ini. */
@@ -50,7 +52,7 @@ export function GoogleSignInSection(props: GoogleSignInSectionProps) {
 }
 
 /** Bagian dalam: memanggil hook Google. Hanya dirender bila client ID platform ada. */
-function GoogleSignInEnabled({ label, next }: GoogleSignInSectionProps) {
+function GoogleSignInEnabled({ label, next, buttonRef }: GoogleSignInSectionProps) {
   // Aksi login Google dari store dan fungsi toast untuk pesan galat.
   const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
   const { show } = useToast();
@@ -97,7 +99,7 @@ function GoogleSignInEnabled({ label, next }: GoogleSignInSectionProps) {
   return (
     <>
       <OrDivider />
-      <GoogleButton label={label} onPress={() => void handlePress()} disabled={!ready || loading} />
+      <GoogleButton buttonRef={buttonRef} label={label} onPress={() => void handlePress()} disabled={!ready || loading} />
     </>
   );
 }

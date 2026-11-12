@@ -10,7 +10,8 @@
  */
 import { useErrorToast } from '@/components/ui/Toast';
 import { router, type Href } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { useRef } from 'react';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
 import { AuthLayout } from '@/components/auth/AuthLayout';
@@ -18,6 +19,7 @@ import { AuthInput } from '@/components/auth/AuthInput';
 import { PrimaryAuthButton } from '@/components/auth/AuthButtons';
 import { GoogleSignInSection } from '@/components/auth/GoogleSignInSection';
 import { LockIcon, PersonIcon } from '@/components/ui/Icon';
+import { useAuthKeyboardNav } from '@/hooks/use-auth-keyboard-nav';
 
 /** Props layar login. */
 export type LoginScreenProps = {
@@ -58,28 +60,42 @@ export default function LoginScreen({
 }: LoginScreenProps) {
   // Tampilkan galat dari route sebagai toast tiap pesan berubah.
   useErrorToast(errorMessage);
+
+  // Urutan fokus dari atas ke bawah: email/username, password, Login, Google.
+  const identifierRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const loginRef = useRef<View>(null);
+  const googleRef = useRef<View>(null);
+  useAuthKeyboardNav([identifierRef, passwordRef, loginRef, googleRef]);
+
   return (
     <AuthLayout title="Queue Management System" subtitle="Kelola antrian Anda dari mana saja">
       <AuthInput
+        ref={identifierRef}
         icon={<PersonIcon size={16} color={AppColors.white} />}
         placeholder="EMAIL ATAU USERNAME"
         value={identifier}
         onChangeText={onChangeIdentifier}
         autoCapitalize="none"
         autoCorrect={false}
+        returnKeyType="go"
+        onSubmitEditing={onSubmit}
       />
       <AuthInput
+        ref={passwordRef}
         icon={<LockIcon size={16} color={AppColors.white} />}
         placeholder="PASSWORD"
         value={password}
         onChangeText={onChangePassword}
         secureTextEntry
         showPasswordToggle
+        returnKeyType="go"
+        onSubmitEditing={onSubmit}
       />
 
       {/* Jarak ekstra di atas tombol utama supaya terpisah dari field. */}
       <View className="mt-2.5">
-        <PrimaryAuthButton label="Login" onPress={onSubmit} loading={loading} />
+        <PrimaryAuthButton buttonRef={loginRef} label="Login" onPress={onSubmit} loading={loading} />
       </View>
 
       {/* push (bukan replace): pengguna bisa kembali ke login dari halaman lupa password. */}
@@ -88,7 +104,7 @@ export default function LoginScreen({
       </Pressable>
 
       {/* Bagian ini tidak merender apa pun bila Google belum dikonfigurasi. */}
-      <GoogleSignInSection next={next} />
+      <GoogleSignInSection next={next} buttonRef={googleRef} />
 
       <Pressable onPress={() => router.push(registerHref as Href)} className="mt-2 items-center">
         <Text className="text-[12px] text-placeholder">

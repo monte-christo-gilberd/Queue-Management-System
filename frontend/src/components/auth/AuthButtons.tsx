@@ -8,6 +8,7 @@
  * Catatan      : Logo G dimuat lewat require (SVG sebagai modul).
  */
 import { Image } from 'expo-image';
+import type { Ref } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
@@ -24,15 +25,19 @@ type PrimaryAuthButtonProps = {
   onPress?: () => void;
   /** Bila true, tombol terkunci dan menampilkan spinner. Default false. */
   loading?: boolean;
+  /** Ref ke elemen tombol (untuk navigasi fokus dengan keyboard). */
+  buttonRef?: Ref<View>;
 };
 
 /** Tombol utama: persegi membulat SOLID PUTIH, teks tebal warna aksen biru. */
-export function PrimaryAuthButton({ label, onPress, loading = false }: PrimaryAuthButtonProps) {
+export function PrimaryAuthButton({ label, onPress, loading = false, buttonRef }: PrimaryAuthButtonProps) {
   // disabled saat loading mencegah submit ganda; spinner menggantikan teks supaya lebar tombol tetap.
   return (
     <Pressable
+      ref={buttonRef}
       onPress={onPress}
       disabled={loading}
+      accessibilityState={{ disabled: loading }}
       className="h-12 items-center justify-center rounded-[6px] bg-white active:opacity-[0.85]">
       {loading ? (
         <ActivityIndicator color={AppColors.primary} />
@@ -64,16 +69,19 @@ type GoogleButtonProps = {
   onPress?: () => void;
   /** Bila true, tombol terkunci dan diredupkan (mis. permintaan belum siap atau login sedang berjalan). */
   disabled?: boolean;
+  /** Ref ke elemen tombol (untuk navigasi fokus dengan keyboard). */
+  buttonRef?: Ref<View>;
 };
 
 /**
  * Tombol Google: sengaja TIDAK mengikuti tema aplikasi (latar putih, border abu tipis,
  * logo "G" resmi, teks abu gelap) sesuai pedoman branding Google Sign-In.
  */
-export function GoogleButton({ label = 'Login with Google', onPress, disabled = false }: GoogleButtonProps) {
+export function GoogleButton({ label = 'Login with Google', onPress, disabled = false, buttonRef }: GoogleButtonProps) {
   // accessibilityState memberi tahu pembaca layar bahwa tombol terkunci; opacity hanya penanda visual.
   return (
     <Pressable
+      ref={buttonRef}
       onPress={onPress}
       disabled={disabled}
       accessibilityState={{ disabled }}
