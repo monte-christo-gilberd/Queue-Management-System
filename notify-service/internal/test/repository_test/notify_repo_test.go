@@ -8,7 +8,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgproto3"
-	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
 
 	"qms/notify-service/internal/repository"
 )
@@ -137,14 +138,14 @@ const (
 	qDeleteSubs = "DELETE FROM push_subscriptions"
 )
 
-func newStore(t *testing.T, replies map[string]reply) (*repository.NotifyRepository, *pgxpool.Pool) {
+func newStore(t *testing.T, replies map[string]reply) (*repository.NotifyRepository, *sqlx.DB) {
 	t.Helper()
-	pool, err := pgxpool.New(context.Background(), startFakePG(t, replies))
+	db, err := sqlx.Open("pgx", startFakePG(t, replies))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(pool.Close)
-	return repository.NewNotifyRepository(pool), pool
+	t.Cleanup(func() { _ = db.Close() })
+	return repository.NewNotifyRepository(db), db
 }
 
 func TestTicketReadsCounterName(t *testing.T) {

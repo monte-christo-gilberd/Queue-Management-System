@@ -5,45 +5,44 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	// import kosong: mendaftarkan driver "pgx" ke database/sql, sehingga sqlx.Open("pgx", ...) dikenali
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
 )
 
 // connectRetryWait: jeda antar percobaan menyambung ke database outbox.
 const connectRetryWait = 5 * time.Second
 
-// ConnectWithRetry membuka pool koneksi ke database outbox dan memastikannya terjangkau (ping). Bila gagal, ia
+// ConnectWithRetry membuka koneksi ke database outbox dan memastikannya terjangkau (ping). Bila gagal, ia
 // mencoba lagi setiap 5 detik sampai berhasil. Mengembalikan nil bila ctx batal sebelum berhasil tersambung.
 func ConnectWithRetry(
 	ctx context.Context,
 	databaseURL string,
-) *pgxpool.Pool {
+) *sqlx.DB {
 	// Ulangi sambungan selama konteks belum batal.
 	for ctx.Err() == nil {
-		// Buat pool, lalu ping untuk memastikan database benar-benar bisa dijangkau.
-		p, err := pgxpool.New(ctx, databaseURL)
-		// Pool dibuat malas, jadi Ping yang membuktikan database terjangkau.
+		// Buka koneksi dan ping sekaligus agar database benar-benar terbukti terjangkau. Pada kegagalan ping,
+		// sqlx menutup koneksi yang sudah dibuat.
+		db, err := sqlx.ConnectContext(
+			ctx,
+			"pgx",
+			databaseURL,
+		)
+		
+		// Berhasil tersambung: kembalikan koneksi.
 		if err == nil {
-			err = p.Ping(ctx)
-			// Ping gagal: tutup pool yang sudah dibuat supaya tidak bocor.
-			if err != nil {
-				p.Close()
-			}
-		}
-		// Berhasil tersambung: kembalikan pool.
-		if err == nil {
-			// Pool siap dipakai.
-			return p
+			return db
 		}
 		// Gagal tersambung: catat, tunggu 5 detik, lalu coba lagi (kecuali shutdown dimulai).
 		slog.Error("outbox database not reachable, retrying", "err", err)
 		// Jeda antar percobaan berhenti lebih awal bila shutdown dimulai.
 		select {
 		case <-ctx.Done():
-			// Shutdown: tidak ada pool.
+			// Shutdown: tidak ada koneksi.
 			return nil
 		case <-time.After(connectRetryWait):
 		}
 	}
-	// Konteks batal sebelum berhasil tersambung: tidak ada pool.
+	// Konteks batal sebelum berhasil tersambung: tidak ada koneksi.
 	return nil
 }

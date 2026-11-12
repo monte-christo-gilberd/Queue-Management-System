@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jmoiron/sqlx v1.4.0
 )
 
 require (

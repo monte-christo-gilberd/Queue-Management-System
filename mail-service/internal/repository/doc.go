@@ -9,7 +9,7 @@
 //
 // Isinya:
 //   - outbox_repo.go: OutboxRepository (NewOutboxRepository, Claim, MarkSent, MarkRetry, MarkFailed) dan claimSQL.
-//   - outbox_listener.go: Listen dan listenOnce, yaitu LISTEN mail_outbox yang membangunkan worker.
-//   - database.go: ConnectWithRetry, yaitu membuka pool koneksi dan mengulang sampai database terjangkau.
+//   - outbox_listener.go: Listen dan listenOnce, yaitu LISTEN mail_outbox yang membangunkan worker (koneksi pgx khusus, karena database/sql tidak punya WaitForNotification).
+//   - database.go: ConnectWithRetry, yaitu membuka pool koneksi (sqlx dengan driver pgx) dan mengulang sampai database terjangkau.
 //   - repo_interface.go: OutboxRepositoryInterface, kontrak yang dipakai terutama oleh tes.
 package repository

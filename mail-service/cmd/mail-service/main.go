@@ -118,7 +118,10 @@ func run() error {
 	// Mulai shutdown: beri email yang sedang dikirim waktu sampai 30 detik untuk selesai.
 	slog.Info("shutting down, waiting for in-flight emails")
 	// Server berhenti menerima koneksi baru, tetapi permintaan yang berjalan diberi waktu selesai.
-	shCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shCtx, cancel := context.WithTimeout(
+		context.Background(),
+		30*time.Second,
+	)
 	// Lepas timer saat run selesai.
 	defer cancel()
 	// Hentikan server. Galatnya diabaikan karena proses akan berakhir.
@@ -159,16 +162,16 @@ func runOutbox(
 	renderer service.TemplateRenderer,
 ) {
 	// Sambung ke database outbox, diulang sampai berhasil. Nil bila konteks batal lebih dulu.
-	pool := repository.ConnectWithRetry(ctx, cfg.Outbox.DatabaseURL)
-	if pool == nil {
+	db := repository.ConnectWithRetry(ctx, cfg.Outbox.DatabaseURL)
+	if db == nil {
 		// Shutdown dimulai sebelum database tersambung: tidak ada yang dijalankan.
 		return
 	}
-	// Tutup pool saat worker berhenti.
-	defer pool.Close()
+	// Tutup koneksi saat worker berhenti.
+	defer db.Close()
 	// Rangkai worker: repository PostgreSQL, pengirim SMTP, pengisi templat, dan konfigurasi outbox.
 	w := service.NewOutboxService(
-		repository.NewOutboxRepository(pool),
+		repository.NewOutboxRepository(db),
 		mailer.New(cfg.SMTP),
 		renderer,
 		service.OutboxConfig{
@@ -179,7 +182,7 @@ func runOutbox(
 		slog.Default(),
 	)
 	// Dengarkan NOTIFY mail_outbox di goroutine terpisah untuk membangunkan worker saat ada baris baru.
-	go repository.Listen(ctx, pool, w.Wake, slog.Default())
+	go repository.Listen(ctx, cfg.Outbox.DatabaseURL, w.Wake, slog.Default())
 	// Catat laju dan batas percobaan yang aktif.
 	slog.Info("outbox worker started", "rate_per_sec", cfg.Outbox.Rate, "max_attempts", cfg.Outbox.MaxAttempts)
 	// Jalankan worker sampai konteks batal.

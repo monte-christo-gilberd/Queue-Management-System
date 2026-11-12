@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+
 	"qms/mail-service/internal/apperror"
 	"qms/mail-service/internal/dto"
 )
@@ -40,14 +42,17 @@ func NewMailHandler(
 
 // Send menangani POST /internal/v1/send: membaca body, memanggil service, lalu menjawab setelah email terkirim.
 func (h *MailHandler) Send(
-	w http.ResponseWriter,
-	r *http.Request,
+	c *gin.Context,
 ) {
 	// Batasi ukuran body agar pembacaan berhenti di 64 KB.
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	c.Request.Body = http.MaxBytesReader(
+		c.Writer,
+		c.Request.Body,
+		maxBodyBytes,
+	)
 	// Siapkan struct permintaan dan decoder JSON yang menolak field yang tidak dikenal.
 	var req dto.SendRequest
-	dec := json.NewDecoder(r.Body)
+	dec := json.NewDecoder(c.Request.Body)
 	// Field tak dikenal ditolak agar salah ketik (mis. "tmplate") ketahuan, bukan diam-diam diabaikan.
 	dec.DisallowUnknownFields()
 	// Body tidak bisa didecode: bila karena melewati batas ukuran, balas 413; selain itu balas 400.
@@ -56,38 +61,88 @@ func (h *MailHandler) Send(
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			// Body terlalu besar: 413, bukan 400, agar pemanggil tahu penyebabnya.
-			respondError(w, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body too large")
+			respondError(
+				c, http.StatusRequestEntityTooLarge,
+				"PAYLOAD_TOO_LARGE",
+				"request body too large",
+			)
 			return
 		}
 		// JSON rusak atau field salah: 400 tanpa membocorkan detail decoder.
-		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+		respondError(
+			c,
+			http.StatusBadRequest,
+			"BAD_REQUEST",
+			"invalid request body",
+		)
 		return
 	}
-	// Kirim lewat service, lalu petakan galatnya ke kode HTTP yang sesuai.
-	err := h.svc.Send(r.Context(), req.To, req.Template, req.Data)
-	// Petakan galat service ke kode HTTP dengan errors.Is karena galat bisa dibungkus.
+	// Kirim lewat service, lalu petakan errornya ke kode HTTP yang sesuai.
+	err := h.svc.Send(
+		c.Request.Context(),
+		req.To,
+		req.Template,
+		req.Data,
+	)
+	// Petakan error service ke kode HTTP dengan errors.Is karena error bisa dibungkus.
 	switch {
 	// Berhasil terkirim: balas 200.
 	case err == nil:
-		respondData(w, http.StatusOK, dto.SendResponse{Status: "sent"})
+		respondData(
+			c,
+			http.StatusOK,
+			dto.SendResponse{
+				Status: "sent",
+			},
+		)
 	// Alamat penerima kosong atau tidak sah: 400.
 	case errors.Is(err, apperror.ErrInvalidRecipient):
-		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid recipient")
+		respondError(
+			c,
+			http.StatusBadRequest,
+			"BAD_REQUEST",
+			"invalid recipient",
+		)
 	// Nama templat tidak dikenal: 400.
 	case errors.Is(err, apperror.ErrUnknownTemplate):
-		respondError(w, http.StatusBadRequest, "UNKNOWN_TEMPLATE", "unknown email template")
+		respondError(
+			c,
+			http.StatusBadRequest,
+			"UNKNOWN_TEMPLATE",
+			"unknown email template",
+		)
 	// Data tidak melengkapi templat: 400.
 	case errors.Is(err, apperror.ErrBadData):
-		respondError(w, http.StatusBadRequest, "BAD_REQUEST", "template data is incomplete")
+		respondError(
+			c,
+			http.StatusBadRequest,
+			"BAD_REQUEST",
+			"template data is incomplete",
+		)
 	// Terlalu banyak pengiriman bersamaan: 503 agar pemanggil mencoba lagi nanti.
 	case errors.Is(err, apperror.ErrBusy):
-		respondError(w, http.StatusServiceUnavailable, "BUSY", "too many emails in flight, retry later")
-	// Galat kirim: 502 tanpa membocorkan detail SMTP.
+		respondError(
+			c,
+			http.StatusServiceUnavailable,
+			"BUSY",
+			"too many emails in flight, retry later",
+		)
+	// error kirim: 502 tanpa membocorkan detail SMTP.
 	case errors.Is(err, apperror.ErrSendFailed):
 		// Pesan sengaja generik: detail SMTP hanya masuk log server.
-		respondError(w, http.StatusBadGateway, "SMTP_FAILED", "email could not be sent")
-	// Galat tidak dikenal (mis. render gagal) adalah kesalahan server: 500 tanpa detail.
+		respondError(
+			c,
+			http.StatusBadGateway,
+			"SMTP_FAILED",
+			"email could not be sent",
+		)
+	// error tidak dikenal (mis. render gagal) adalah kesalahan server: 500 tanpa detail.
 	default:
-		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		respondError(
+			c,
+			http.StatusInternalServerError,
+			"INTERNAL_ERROR",
+			"internal server error",
+		)
 	}
 }

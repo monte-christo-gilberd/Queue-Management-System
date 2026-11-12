@@ -8,21 +8,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jmoiron/sqlx"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"qms/mail-service/internal/repository"
 )
 
-// unreachablePool membuat pool ke alamat yang pasti menolak koneksi. pgxpool tidak menyambung saat dibuat,
+// unreachableDSN: alamat yang pasti menolak koneksi.
+const unreachableDSN = "postgres://u:p@127.0.0.1:1/none?connect_timeout=1&sslmode=disable"
+
+// unreachablePool membuat pool ke alamat yang pasti menolak koneksi. sqlx.Open tidak menyambung saat dibuat,
 // jadi setiap query gagal dengan galat jaringan: cukup untuk menguji jalur galat PG tanpa database.
-func unreachablePool(t *testing.T) *pgxpool.Pool {
+func unreachablePool(t *testing.T) *sqlx.DB {
 	t.Helper()
-	pool, err := pgxpool.New(context.Background(), "postgres://u:p@127.0.0.1:1/none?connect_timeout=1&sslmode=disable")
+	db, err := sqlx.Open("pgx", unreachableDSN)
 	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
+		t.Fatalf("sqlx.Open: %v", err)
 	}
-	t.Cleanup(pool.Close)
-	return pool
+	t.Cleanup(func() { _ = db.Close() })
+	return db
 }
 
 func TestPG_QueriesReturnErrorWhenDatabaseUnreachable(t *testing.T) {
@@ -49,12 +54,11 @@ func TestPG_QueriesReturnErrorWhenDatabaseUnreachable(t *testing.T) {
 }
 
 func TestPG_ListenReturnsWhenContextEnds(t *testing.T) {
-	pool := unreachablePool(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		repository.Listen(ctx, pool, func() { t.Error("wake tidak boleh dipanggil tanpa koneksi") },
+		repository.Listen(ctx, unreachableDSN, func() { t.Error("wake tidak boleh dipanggil tanpa koneksi") },
 			slog.New(slog.NewTextHandler(io.Discard, nil)))
 		close(done)
 	}()
@@ -66,8 +70,7 @@ func TestPG_ListenReturnsWhenContextEnds(t *testing.T) {
 }
 
 func TestPG_ListenStopsImmediatelyWhenAlreadyCancelled(t *testing.T) {
-	pool := unreachablePool(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	repository.Listen(ctx, pool, func() {}, nil)
+	repository.Listen(ctx, unreachableDSN, func() {}, nil)
 }

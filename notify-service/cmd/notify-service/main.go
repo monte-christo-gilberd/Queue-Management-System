@@ -20,18 +20,26 @@ import (
 	"qms/notify-service/internal/runner"
 	"qms/notify-service/internal/service"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
 )
 
 // healthAddr: alamat server health check.
 const healthAddr = ":8091"
 
-// main memanggil run, lalu keluar dengan kode 1 bila gagal. Galat sudah dicatat di run.
+// main memanggil run, lalu keluar dengan kode 1 bila gagal. Error sudah dicatat di run.
 func main() {
 	// Atur logger default ke JSON di stdout untuk seluruh proses.
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	slog.SetDefault(
+		slog.New(
+			slog.NewJSONHandler(
+				os.Stdout,
+				nil,
+			),
+		),
+	)
 
-	// Jalankan service. Galat berarti service gagal start, jadi hentikan proses dengan status gagal.
+	// Jalankan service. Error berarti service gagal start, jadi hentikan proses dengan status gagal.
 	if err := run(); err != nil {
 		os.Exit(1)
 	}
@@ -41,25 +49,32 @@ func main() {
 func run() error {
 	// Baca dan validasi konfigurasi dari environment.
 	cfg, err := config.Load()
-	// Galat berarti ada variabel wajib yang belum diisi, jadi service tidak boleh start.
+	// Error berarti ada variabel wajib yang belum diisi, jadi service tidak boleh start.
 	if err != nil {
 		slog.Error("config", "err", err)
 		return err
 	}
 
 	// Buat konteks yang batal saat SIGINT atau SIGTERM diterima.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	)
+
 	defer stop()
 
-	// Buat pool koneksi ke PostgreSQL untuk query baca dan hapus langganan.
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
-	// Galat berarti URL salah, jadi hentikan start.
+	// Buat pool koneksi ke PostgreSQL (sqlx dengan driver pgx) untuk query baca dan hapus langganan. sqlx.Open
+	// tidak menyambung saat dibuat, jadi database yang belum siap tidak menggagalkan start; listener LISTEN
+	// menyambung ulang sendiri dan /health melaporkan statusnya.
+	db, err := sqlx.Open("pgx", cfg.DatabaseURL)
+	// Error berarti URL salah, jadi hentikan start.
 	if err != nil {
 		slog.Error("db pool", "err", err)
 		return err
 	}
 	// Tutup pool saat run selesai.
-	defer pool.Close()
+	defer db.Close()
 
 	// /health: 200 hanya bila LISTEN queue_events sedang tersambung.
 	health := &httpserver.Health{}
@@ -67,7 +82,7 @@ func run() error {
 	srv := httpserver.New(healthAddr, health)
 	// Jalankan server health di goroutine terpisah agar listener utama bisa jalan.
 	go func() {
-		// Galat selain penutupan normal dicatat sebagai error.
+		// Error selain penutupan normal dicatat sebagai error.
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("health server", "err", err)
 		}
@@ -75,8 +90,11 @@ func run() error {
 
 	// Rangkai service: repository membaca database, dan pusher mengirim ke browser dengan kunci VAPID.
 	svc := service.NewNotifyService(
-		repository.NewNotifyRepository(pool),
-		pusher.New(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject),
+		repository.NewNotifyRepository(db),
+		pusher.New(
+			cfg.VAPIDPublicKey,
+			cfg.VAPIDPrivateKey,
+			cfg.VAPIDSubject),
 	)
 
 	// Rangkai runner: listener LISTEN dengan DSN dari konfigurasi, dan health diperbarui lewat callback.
@@ -88,7 +106,12 @@ func run() error {
 			onState func(bool),
 		) error {
 			// Jalankan listener dengan DSN dari konfigurasi.
-			return listener.Listen(ctx, cfg.DatabaseURL, handle, onState)
+			return listener.Listen(
+				ctx,
+				cfg.DatabaseURL,
+				handle,
+				onState,
+			)
 		},
 		health.SetListening,
 	)
@@ -96,10 +119,14 @@ func run() error {
 	r.Run(ctx)
 
 	// Beri server health waktu 3 detik untuk berhenti dengan rapi.
-	shCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	shCtx, cancel := context.WithTimeout(
+		context.Background(),
+		3*time.Second,
+	)
+
 	defer cancel()
-	// Hentikan server health. Galatnya diabaikan karena proses akan berakhir.
+	// Hentikan server health. Errornya diabaikan karena proses akan berakhir.
 	_ = srv.Shutdown(shCtx)
-	// Selesai tanpa galat.
+	// Selesai tanpa Error.
 	return nil
 }

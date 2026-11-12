@@ -3,6 +3,8 @@ package handler
 import (
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+
 	"qms/mail-service/internal/dto"
 )
 
@@ -17,18 +19,27 @@ func NewSystemHandler() *SystemHandler {
 
 // Health menangani GET /health: selalu 200 selama proses hidup, tanpa menyentuh SMTP atau database.
 func (h *SystemHandler) Health(
-	w http.ResponseWriter,
-	_ *http.Request,
+	c *gin.Context,
 ) {
 	// balas status ok tanpa pembungkus "data"
-	respondJSON(w, http.StatusOK, dto.HealthResponse{Status: "ok"})
+	respondJSON(
+		c,
+		http.StatusOK,
+		dto.HealthResponse{
+			Status: "ok",
+		},
+	)
 }
 
 // NotFound menjawab rute yang tidak dikenal dengan 404 dalam format error yang seragam.
 func (h *SystemHandler) NotFound(
-	w http.ResponseWriter,
-	_ *http.Request,
+	c *gin.Context,
 ) {
 	// balas 404 dengan format error standar
-	respondError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
+	respondError(
+		c,
+		http.StatusNotFound,
+		"NOT_FOUND",
+		"route not found",
+	)
 }

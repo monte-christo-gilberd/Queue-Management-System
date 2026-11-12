@@ -1,13 +1,13 @@
 package router
 
-import "net/http"
+import "github.com/gin-gonic/gin"
 
 // AppRouter menyimpan handler dan middleware yang akan didaftarkan oleh SetupRouter.
 type AppRouter struct {
 	// mailHandler: handler kirim email.
 	mailHandler MailHandler
 	// authMiddleware: pemeriksaan X-Service-Token untuk rute yang dilindungi.
-	authMiddleware ServiceTokenMiddleware
+	authMiddleware gin.HandlerFunc
 	// systemHandler: handler health check dan 404 (opsional).
 	systemHandler SystemHandler
 }
@@ -16,7 +16,7 @@ type AppRouter struct {
 // Fitur opsional dipasang setelahnya lewat metode With...
 func NewAppRouter(
 	mailHandler MailHandler,
-	authMiddleware ServiceTokenMiddleware,
+	authMiddleware gin.HandlerFunc,
 ) *AppRouter {
 	// isi AppRouter dengan handler dan middleware wajib
 	app := &AppRouter{
@@ -37,30 +37,31 @@ func (a *AppRouter) WithSystem(
 	return a
 }
 
-// SetupRouter membuat http.ServeMux dan mendaftarkan semua rute sesuai handler yang sudah dipasang di router.
+// SetupRouter membuat gin.Engine dan mendaftarkan semua rute sesuai handler yang sudah dipasang di router.
 func SetupRouter(
 	router *AppRouter,
-) http.Handler {
-	// router standar Go dengan pola metode dan path
-	mux := http.NewServeMux()
+) *gin.Engine {
+	// mode release menonaktifkan log debug bawaan Gin, lalu buat engine kosong dengan penangkap panic
+	gin.SetMode(gin.ReleaseMode)
+	engine := gin.New()
+	engine.Use(gin.Recovery())
+	// Service ini hanya dipanggil lewat jaringan internal; header X-Forwarded-For tidak dipakai.
+	_ = engine.SetTrustedProxies(nil)
 	// rute sistem hanya didaftarkan bila dipasang
 	if router.systemHandler != nil {
 		// Health check: selalu 200 selama proses hidup.
-		mux.HandleFunc("GET /health", router.systemHandler.Health)
+		engine.GET("/health", router.systemHandler.Health)
+		// rute lain (termasuk metode yang salah): balas 404 dengan format error yang seragam
+		engine.NoRoute(router.systemHandler.NotFound)
 	}
 	// rute kirim email hanya didaftarkan bila handler ada
 	if router.mailHandler != nil {
 		registerMailRoutes(
-			mux,
+			engine,
 			router.mailHandler,
 			router.authMiddleware,
 		)
 	}
-	// rute lain: balas 404 dengan format error yang seragam
-	if router.systemHandler != nil {
-		// Pola "/" menangkap semua rute yang tidak cocok dengan rute lain.
-		mux.HandleFunc("/", router.systemHandler.NotFound)
-	}
-	// semua rute sudah terdaftar; kembalikan handler untuk dijalankan server
-	return mux
+	// semua rute sudah terdaftar; kembalikan engine untuk dijalankan server
+	return engine
 }

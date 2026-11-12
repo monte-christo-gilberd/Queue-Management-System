@@ -1,13 +1,13 @@
 package router
 
-import "net/http"
+import "github.com/gin-gonic/gin"
 
 // registerMailRoutes mendaftarkan endpoint kirim email. Satu-satunya rute yang dilindungi X-Service-Token.
 func registerMailRoutes(
-	mux *http.ServeMux,
+	engine *gin.Engine,
 	h MailHandler,
-	auth ServiceTokenMiddleware,
+	auth gin.HandlerFunc,
 ) {
-	// Endpoint kirim: dibungkus middleware token sehingga token diperiksa dulu.
-	mux.HandleFunc("POST /internal/v1/send", auth(h.Send))
+	// Endpoint kirim: token diperiksa dulu oleh middleware sebelum handler.
+	engine.POST("/internal/v1/send", auth, h.Send)
 }

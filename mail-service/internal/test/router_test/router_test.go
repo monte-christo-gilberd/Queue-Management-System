@@ -197,7 +197,8 @@ func TestResponseShapesAndHeaders(t *testing.T) {
 	if strings.TrimSpace(w.Body.String()) != `{"data":{"status":"sent"}}` {
 		t.Errorf("send body = %s", w.Body)
 	}
-	if w.Header().Get("Content-Type") != "application/json" || w.Header().Get("Cache-Control") != "no-store" {
+	// gin menambah "; charset=utf-8" pada Content-Type; klien tetap membaca JSON yang sama.
+	if !strings.HasPrefix(w.Header().Get("Content-Type"), "application/json") || w.Header().Get("Cache-Control") != "no-store" {
 		t.Errorf("headers = %v", w.Header())
 	}
 	w = do(t, h, "GET", "/nope", token, "")

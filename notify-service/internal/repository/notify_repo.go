@@ -2,39 +2,61 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"qms/notify-service/internal/model"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	// import kosong: mendaftarkan driver "pgx" ke database/sql, sehingga sqlx.Open("pgx", ...) dikenali
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
 )
 
-// NotifyRepository: implementasi NotifyRepositoryInterface di atas PostgreSQL. Memakai pool koneksi yang dibuat di main.
+// NotifyRepository: implementasi NotifyRepositoryInterface di atas PostgreSQL (sqlx dengan driver pgx). Memakai pool koneksi yang dibuat di main.
 type NotifyRepository struct {
-	// pool: pool koneksi ke PostgreSQL.
-	pool *pgxpool.Pool
+	// db: pool koneksi ke PostgreSQL.
+	db *sqlx.DB
 }
 
 // NewNotifyRepository membuat NotifyRepository dari pool koneksi yang sudah dibuka.
-func NewNotifyRepository(pool *pgxpool.Pool) *NotifyRepository {
+func NewNotifyRepository(db *sqlx.DB) *NotifyRepository {
 	// Bungkus pool ke NotifyRepository.
-	return &NotifyRepository{pool: pool}
+	return &NotifyRepository{db: db}
 }
 
 // Ticket mengambil data tiket, antrian, dan nama counter yang memanggilnya.
-func (s *NotifyRepository) Ticket(ctx context.Context, ticketID int64) (model.Ticket, error) {
-	// Siapkan struct tujuan dan variabel untuk nama counter yang boleh null.
-	var t model.Ticket
-	var counter *string
-	// Nama counter hanya diisi bila antrian punya lebih dari satu counter (D1).
-	err := s.pool.QueryRow(ctx, `
+func (s *NotifyRepository) Ticket(
+	ctx context.Context,
+	ticketID int64,
+) (model.Ticket, error) {
+
+	const query = `
 		SELECT t.id, t.queue_id, t.ticket_number, t.user_id, t.status, q.queue_name, q.ticket_prefix,
 		       CASE WHEN (SELECT count(*) FROM counters c0 WHERE c0.queue_id = t.queue_id) > 1 THEN cc.name END
 		FROM tickets t
 		JOIN queues q ON q.id = t.queue_id
 		LEFT JOIN counters cc ON cc.id = t.called_counter_id
-		WHERE t.id = $1`, ticketID).Scan(&t.ID, &t.QueueID, &t.Number, &t.UserID, &t.Status, &t.QueueName, &t.Prefix, &counter)
+		WHERE t.id = $1
+	`
+	// Siapkan struct tujuan dan variabel untuk nama counter yang boleh null.
+	var t model.Ticket
+	var counter *string
+	// Nama counter hanya diisi bila antrian punya lebih dari satu counter (D1).
+	err := s.db.QueryRowContext(
+		ctx,
+		query,
+		ticketID,
+	).Scan(
+		&t.ID,
+		&t.QueueID,
+		&t.Number,
+		&t.UserID,
+		&t.Status,
+		&t.QueueName,
+		&t.Prefix,
+		&counter,
+	)
+
 	// Nama counter ada (tidak null): salin ke struct tiket.
 	if counter != nil {
 		t.CounterName = *counter
@@ -44,30 +66,64 @@ func (s *NotifyRepository) Ticket(ctx context.Context, ticketID int64) (model.Ti
 }
 
 // PositionOf: posisi tiket di urutan tunggu (1 = terdepan). Dihitung dari sort_key, sama dengan backend.
-func (s *NotifyRepository) PositionOf(ctx context.Context, ticketID int64) (int, error) {
+func (s *NotifyRepository) PositionOf(
+	ctx context.Context,
+	ticketID int64,
+) (int, error) {
+
+	const query = `
+		SELECT 1 + count(*) 
+		FROM tickets o
+		JOIN tickets t ON t.id = $1
+		WHERE o.queue_id = t.queue_id 
+		AND o.status = 'waiting' 
+		AND o.sort_key < t.sort_key
+	`
 	// Siapkan variabel untuk menampung posisi.
 	var pos int
 	// Hitung tiket waiting yang sort_key-nya lebih kecil dari tiket ini, lalu tambah 1.
-	err := s.pool.QueryRow(ctx, `
-		SELECT 1 + count(*) FROM tickets o
-		JOIN tickets t ON t.id = $1
-		WHERE o.queue_id = t.queue_id AND o.status = 'waiting' AND o.sort_key < t.sort_key`, ticketID).Scan(&pos)
+	err := s.db.QueryRowContext(
+		ctx,
+		query,
+		ticketID,
+	).Scan(&pos)
+
 	// Kembalikan posisi beserta galat query.
 	return pos, err
 }
 
 // FirstWaiting mengambil tiket waiting terdepan di antrian. Kembalikan nil (tanpa galat) bila tidak ada.
-func (s *NotifyRepository) FirstWaiting(ctx context.Context, queueID int64) (*model.Ticket, error) {
-	// Siapkan struct tujuan untuk tiket.
-	var t model.Ticket
-	// Ambil satu tiket waiting dengan sort_key terkecil di antrian ini.
-	err := s.pool.QueryRow(ctx, `
+func (s *NotifyRepository) FirstWaiting(
+	ctx context.Context,
+	queueID int64,
+) (*model.Ticket, error) {
+
+	const query = `
 		SELECT t.id, t.queue_id, t.ticket_number, t.user_id, t.status, q.queue_name, q.ticket_prefix
 		FROM tickets t JOIN queues q ON q.id = t.queue_id
 		WHERE t.queue_id = $1 AND t.status = 'waiting'
-		ORDER BY t.sort_key ASC LIMIT 1`, queueID).Scan(&t.ID, &t.QueueID, &t.Number, &t.UserID, &t.Status, &t.QueueName, &t.Prefix)
+		ORDER BY t.sort_key ASC LIMIT 1
+	`
+
+	// Siapkan struct tujuan untuk tiket.
+	var t model.Ticket
+	// Ambil satu tiket waiting dengan sort_key terkecil di antrian ini.
+	err := s.db.QueryRowContext(
+		ctx,
+		query,
+		queueID,
+	).Scan(
+		&t.ID,
+		&t.QueueID,
+		&t.Number,
+		&t.UserID,
+		&t.Status,
+		&t.QueueName,
+		&t.Prefix,
+	)
+
 	// Tidak ada tiket waiting: bukan galat, kembalikan nil.
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	// Galat lain dari query: kembalikan galat.
@@ -79,10 +135,24 @@ func (s *NotifyRepository) FirstWaiting(ctx context.Context, queueID int64) (*mo
 }
 
 // Subscriptions mengambil semua langganan push milik user.
-func (s *NotifyRepository) Subscriptions(ctx context.Context, userID int64) ([]model.Subscription, error) {
+func (s *NotifyRepository) Subscriptions(
+	ctx context.Context,
+	userID int64,
+) ([]model.Subscription, error) {
+
+	const query = `
+		SELECT endpoint, p256dh, auth 
+		FROM push_subscriptions 
+		WHERE user_id = $1
+	`
 	// Jalankan query langganan milik user.
-	rows, err := s.pool.Query(ctx, `SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1`, userID)
-	// Query gagal: kembalikan galat.
+	rows, err := s.db.QueryContext(
+		ctx,
+		query,
+		userID,
+	)
+
+	// Query gagal: kembalikan error.
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +165,11 @@ func (s *NotifyRepository) Subscriptions(ctx context.Context, userID int64) ([]m
 		// Siapkan struct langganan untuk baris ini.
 		var sub model.Subscription
 		// Salin kolom ke struct. Galat pemindaian menghentikan pembacaan.
-		if err := rows.Scan(&sub.Endpoint, &sub.P256dh, &sub.Auth); err != nil {
+		if err := rows.Scan(
+			&sub.Endpoint,
+			&sub.P256dh,
+			&sub.Auth,
+		); err != nil {
 			return nil, err
 		}
 		// Tambahkan langganan ke hasil.
@@ -106,9 +180,22 @@ func (s *NotifyRepository) Subscriptions(ctx context.Context, userID int64) ([]m
 }
 
 // DeleteSubscription menghapus langganan dengan endpoint tertentu. Satu-satunya penulisan di package ini.
-func (s *NotifyRepository) DeleteSubscription(ctx context.Context, endpoint string) error {
+func (s *NotifyRepository) DeleteSubscription(
+	ctx context.Context,
+	endpoint string,
+) error {
+
+	const query = `
+		DELETE FROM push_subscriptions 
+		WHERE endpoint = $1
+	`
 	// Hapus baris langganan yang endpoint-nya cocok.
-	_, err := s.pool.Exec(ctx, `DELETE FROM push_subscriptions WHERE endpoint = $1`, endpoint)
+	_, err := s.db.ExecContext(
+		ctx,
+		query,
+		endpoint,
+	)
+
 	// Kembalikan galat eksekusi, bila ada.
 	return err
 }

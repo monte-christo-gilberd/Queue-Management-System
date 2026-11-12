@@ -1,4 +1,4 @@
-// Package handler berisi handler HTTP (net/http) yang menerima request, memeriksa input, memanggil service,
+// Package handler berisi handler HTTP (gin) yang menerima request, memeriksa input, memanggil service,
 // lalu menerjemahkan hasilnya menjadi respons JSON.
 //
 // Pola yang dipakai di semua handler:
@@ -12,7 +12,7 @@
 //     respondError. Health check adalah pengecualian: bodynya {"status":"ok"} tanpa pembungkus.
 //
 // Isinya:
-//   - response.go: respondJSON, respondData, dan respondError, pembantu untuk bentuk respons JSON.
+//   - response.go: respondJSON, respondData, dan respondError (menerima *gin.Context), pembantu untuk bentuk respons JSON.
 //   - handler_interface.go: interface handler yang dipakai router.
 //   - mail_handler.go: MailHandler (Send) dan interface MailService yang dibutuhkannya.
 //   - system_handler.go: SystemHandler (Health dan NotFound).

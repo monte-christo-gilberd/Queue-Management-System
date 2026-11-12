@@ -7,21 +7,21 @@ import (
 
 	"qms/mail-service/internal/model"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jmoiron/sqlx"
 )
 
-// OutboxRepository: akses tabel notification_outbox di atas Postgres, memakai role mail_rw (baca outbox, ubah status kirim, baca email pengguna).
+// OutboxRepository: akses tabel notification_outbox di atas Postgres (sqlx dengan driver pgx), memakai role mail_rw (baca outbox, ubah status kirim, baca email pengguna).
 type OutboxRepository struct {
-	// pool: pool koneksi ke PostgreSQL.
-	pool *pgxpool.Pool
+	// db: pool koneksi ke PostgreSQL.
+	db *sqlx.DB
 }
 
 // NewOutboxRepository membuat OutboxRepository dari pool koneksi yang sudah dibuka.
 func NewOutboxRepository(
-	pool *pgxpool.Pool,
+	db *sqlx.DB,
 ) *OutboxRepository {
 	// simpan pool koneksi untuk dipakai semua query
-	return &OutboxRepository{pool: pool}
+	return &OutboxRepository{db: db}
 }
 
 // claimSQL: klaim baris yang jatuh tempo. FOR UPDATE SKIP LOCKED membuat worker lain melewati baris yang sedang
@@ -51,8 +51,14 @@ func (s *OutboxRepository) Claim(
 	lease time.Duration,
 ) ([]model.OutboxItem, error) {
 	// Jalankan query klaim dengan batas jumlah baris dan lama sewa dalam detik.
-	rows, err := s.pool.Query(ctx, claimSQL, limit, lease.Seconds())
-	// Query gagal: bungkus galatnya.
+	rows, err := s.db.QueryContext(
+		ctx,
+		claimSQL,
+		limit,
+		lease.Seconds(),
+	)
+
+	// Query gagal: bungkus errornya.
 	if err != nil {
 		// Tidak ada baris yang diklaim bila query gagal.
 		return nil, fmt.Errorf("claim outbox: %w", err)
@@ -65,39 +71,74 @@ func (s *OutboxRepository) Claim(
 	for rows.Next() {
 		// Siapkan item untuk baris ini.
 		var it model.OutboxItem
-		// Salin kolom ke item. Galat pemindaian dibungkus dan menghentikan pembacaan.
-		if err := rows.Scan(&it.ID, &it.Kind, &it.Email, &it.Attempts, &it.Payload); err != nil {
+		// Payload (jsonb) dibaca ke []byte dulu, lalu dijadikan json.RawMessage.
+		var payload []byte
+		// Salin kolom ke item. error pemindaian dibungkus dan menghentikan pembacaan.
+		if err := rows.Scan(
+			&it.ID,
+			&it.Kind,
+			&it.Email,
+			&it.Attempts,
+			&payload,
+		); err != nil {
 			// Hentikan pembacaan bila salah satu baris tidak bisa dipindai.
 			return nil, fmt.Errorf("scan outbox: %w", err)
 		}
+		it.Payload = payload
 		// Tambahkan item ke hasil.
 		out = append(out, it)
 	}
-	// Kembalikan hasil beserta galat yang terjadi saat membaca baris.
+	// Kembalikan hasil beserta error yang terjadi saat membaca baris.
 	return out, rows.Err()
 }
 
-// MarkSent menandai baris terkirim, dan menghapus galat lama.
+// MarkSent menandai baris terkirim, dan menghapus error lama.
 func (s *OutboxRepository) MarkSent(
 	ctx context.Context,
 	id int64,
 ) error {
+
+	const query = `
+		UPDATE notification_outbox 
+		SET 
+			sent_at = now(), 
+			last_error = NULL 
+		WHERE id = $1
+	`
 	// Isi sent_at dengan waktu sekarang dan kosongkan last_error.
-	_, err := s.pool.Exec(ctx, `UPDATE notification_outbox SET sent_at = now(), last_error = NULL WHERE id = $1`, id)
+	_, err := s.db.ExecContext(
+		ctx,
+		query,
+		id,
+	)
+
 	return err
 }
 
-// MarkRetry menyimpan galat terakhir dan menjadwalkan percobaan berikutnya setelah delay.
+// MarkRetry menyimpan error terakhir dan menjadwalkan percobaan berikutnya setelah delay.
 func (s *OutboxRepository) MarkRetry(
 	ctx context.Context,
 	id int64,
 	cause string,
 	delay time.Duration,
 ) error {
+
+	const query = `
+		UPDATE notification_outbox 
+		SET 
+			last_error = $2, 
+			next_attempt_at = now() + make_interval(secs => $3) 
+		WHERE id = $1
+	`
 	// Simpan penyebab (dipotong ke 500 byte) dan geser jadwal percobaan sebesar delay.
-	_, err := s.pool.Exec(ctx,
-		`UPDATE notification_outbox SET last_error = $2, next_attempt_at = now() + make_interval(secs => $3) WHERE id = $1`,
-		id, truncate(cause), delay.Seconds())
+	_, err := s.db.ExecContext(
+		ctx,
+		query,
+		id,
+		truncate(cause),
+		delay.Seconds(),
+	)
+
 	return err
 }
 
@@ -107,12 +148,26 @@ func (s *OutboxRepository) MarkFailed(
 	id int64,
 	cause string,
 ) error {
+
+	const query = `
+		UPDATE notification_outbox 
+		SET 
+			failed_at = now(), 
+			last_error = $2 
+		WHERE id = $1
+	`
 	// Isi failed_at dengan waktu sekarang dan simpan penyebab.
-	_, err := s.pool.Exec(ctx, `UPDATE notification_outbox SET failed_at = now(), last_error = $2 WHERE id = $1`, id, truncate(cause))
+	_, err := s.db.ExecContext(
+		ctx,
+		query,
+		id,
+		truncate(cause),
+	)
+
 	return err
 }
 
-// truncate memotong teks ke 500 byte agar kolom last_error tidak membengkak. Galat SMTP bisa panjang dan
+// truncate memotong teks ke 500 byte agar kolom last_error tidak membengkak. error SMTP bisa panjang dan
 // tidak ada gunanya menyimpan seluruhnya.
 func truncate(s string) string {
 	// Teks lebih dari 500 byte: potong. Bisa memotong di tengah karakter UTF-8, tetapi last_error hanya untuk dibaca operator.

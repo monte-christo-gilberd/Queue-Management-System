@@ -1,19 +1,19 @@
 package handler
 
-import "net/http"
+import "github.com/gin-gonic/gin"
 
 // MailHandlerInterface adalah kontrak handler kirim email yang dipakai oleh router.
 type MailHandlerInterface interface {
 	// Send mengirim satu email lewat body JSON {to, template, data}.
-	Send(w http.ResponseWriter, r *http.Request)
+	Send(c *gin.Context)
 }
 
 // SystemHandlerInterface adalah kontrak handler health check dan 404 yang dipakai oleh router.
 type SystemHandlerInterface interface {
 	// Health menjawab liveness untuk healthcheck kontainer.
-	Health(w http.ResponseWriter, r *http.Request)
+	Health(c *gin.Context)
 	// NotFound menjawab rute yang tidak dikenal.
-	NotFound(w http.ResponseWriter, r *http.Request)
+	NotFound(c *gin.Context)
 }
 
 // Pastikan implementasi memenuhi kontrak.

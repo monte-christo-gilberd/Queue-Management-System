@@ -442,9 +442,9 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 |---|---|
 | Backend | Go 1.27, Gin, sqlx + pgx, verifikasi JWT RS256 (kunci publik) |
 | auth-service | Go 1.27, Gin, sqlx + pgx, penerbit JWT RS256 (kunci privat), bcrypt, verifikasi ID token Google |
-| qr-service | Go 1.27, token join HMAC (internal, tidak dipublikasikan nginx) |
-| notify-service | Go 1.27, LISTEN Postgres, Web Push (VAPID) |
-| mail-service | Go 1.27, SMTP, templat HTML dan teks, outbox di Postgres |
+| qr-service | Go 1.27, Gin (tanpa database), token join HMAC (internal, tidak dipublikasikan nginx) |
+| notify-service | Go 1.27, sqlx + pgx, LISTEN Postgres (pgx langsung), Web Push (VAPID); `/health` memakai `net/http` |
+| mail-service | Go 1.27, Gin, sqlx + pgx, LISTEN Postgres (pgx langsung), SMTP, templat HTML dan teks, outbox di Postgres |
 | Database | PostgreSQL |
 | Frontend | Expo SDK 57 (Expo Router, web static), React Native, NativeWind, Zustand |
 | Deploy | Docker Compose, nginx (reverse proxy + rate limit login dan `/join`) |

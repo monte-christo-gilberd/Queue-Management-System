@@ -4,7 +4,7 @@
 //
 // Aturan yang dipakai:
 //   - Repository hanya membaca dan menulis data. Keputusan siapa yang diberi tahu ada di package service.
-//   - Query memakai pgx dengan parameter posisi ($1, $2, ...). Nilai dari luar tidak pernah disambung ke SQL.
+//   - Query memakai sqlx (driver pgx) dengan parameter posisi ($1, $2, ...). Nilai dari luar tidak pernah disambung ke SQL.
 //   - Satu-satunya penulisan adalah DeleteSubscription. FirstWaiting mengembalikan nil tanpa galat bila
 //     tidak ada tiket waiting.
 //
