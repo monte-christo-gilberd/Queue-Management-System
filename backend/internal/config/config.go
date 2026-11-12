@@ -22,7 +22,7 @@ import (
 // microservice (qrclient dan mailclient), dan router. Load() juga memvalidasi isinya.
 //
 // Wajib diisi: DATABASE_URL, JWT_PUBLIC_KEY_FILE, ALLOWED_ORIGINS, PUBLIC_APP_URL, QR_SERVICE_URL, QR_SERVICE_TOKEN.
-// Opsional: JWT_LEGACY_HS256_SECRET (hanya masa transisi), VAPID_PUBLIC_KEY, APP_ENV, TRUSTED_PROXIES, dan PORT (bawaan 8080).
+// Opsional: VAPID_PUBLIC_KEY, APP_ENV, TRUSTED_PROXIES, dan PORT (bawaan 8080).
 // Opsional dengan nilai bawaan dalam detik: QR_HTTP_TIMEOUT (1) dan SHUTDOWN_TIMEOUT (8).
 // EMAIL_VERIFICATION_REQUIRED: bawaan true. Harus sama dengan nilai di auth-service.
 type Config struct {
@@ -33,9 +33,6 @@ type Config struct {
 	// JWTPublicKey: kunci publik RSA untuk memverifikasi token login RS256 (JWT_PUBLIC_KEY_FILE). Token diterbitkan
 	// auth-service dengan kunci privat; backend hanya memverifikasi, secara lokal, tanpa menghubungi auth-service.
 	JWTPublicKey *rsa.PublicKey
-	// JWTLegacySecret: secret HS256 lama (JWT_LEGACY_HS256_SECRET). Hanya selama masa transisi (24 jam setelah
-	// deploy) agar token yang sudah terbit tetap sah. Kosong = token HS256 ditolak.
-	JWTLegacySecret string
 	// port HTTP tempat server listen (PORT). Bila kosong, default 8080.
 	Port string
 	// origin yang boleh memanggil API dari browser.
@@ -95,12 +92,11 @@ func Load() (Config, error) {
 	// mengisi Config dari environment variable. ALLOWED_ORIGINS dan TRUSTED_PROXIES memakai parser daftar koma yang sama.
 	// URL publik dan URL qr-service dibuang '/' di akhirnya agar tidak menghasilkan '//' saat digabung dengan path.
 	cfg := Config{
-		Env:             strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV"))),
-		DatabaseURL:     firstEnv("BACKEND_DATABASE_URL", "DATABASE_URL"),
-		JWTLegacySecret: os.Getenv("JWT_LEGACY_HS256_SECRET"),
-		Port:            firstEnv("BACKEND_PORT", "PORT"),
-		AllowedOrigins:  (parseOrigins(os.Getenv("ALLOWED_ORIGINS"))),
-		TrustedProxies:  parseOrigins(os.Getenv("TRUSTED_PROXIES")),
+		Env:            strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV"))),
+		DatabaseURL:    firstEnv("BACKEND_DATABASE_URL", "DATABASE_URL"),
+		Port:           firstEnv("BACKEND_PORT", "PORT"),
+		AllowedOrigins: (parseOrigins(os.Getenv("ALLOWED_ORIGINS"))),
+		TrustedProxies: parseOrigins(os.Getenv("TRUSTED_PROXIES")),
 
 		PublicAppURL:   strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/"),
 		QRServiceURL:   strings.TrimRight(os.Getenv("QR_SERVICE_URL"), "/"),
@@ -212,10 +208,6 @@ var weakSecrets = map[string]bool{
 // validateProduction menolak konfigurasi yang tidak aman saat APP_ENV=production.
 func (c Config) validateProduction() error {
 
-	// secret HS256 lama (hanya transisi) tetap harus kuat bila diisi
-	if c.JWTLegacySecret != "" && (len(c.JWTLegacySecret) < 32 || weakSecrets[c.JWTLegacySecret]) {
-		return fmt.Errorf("production: JWT_LEGACY_HS256_SECRET must be at least 32 chars and not a default value")
-	}
 	// pengecekan apakah c.QRServiceToken lebih pendek dari 32 atau ada di weakSecrets
 	if len(c.QRServiceToken) < 32 || weakSecrets[c.QRServiceToken] {
 		return fmt.Errorf("production: QR_SERVICE_TOKEN must be at least 32 chars and not a default value")

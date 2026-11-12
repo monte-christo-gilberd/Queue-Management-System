@@ -117,7 +117,6 @@ Variabel penting:
 |---|---|
 | `DATABASE_URL` | DSN PostgreSQL, mis. `postgres://user:pass@localhost:5432/qms_db?sslmode=disable` |
 | `JWT_PUBLIC_KEY_FILE` | Kunci publik RSA untuk memverifikasi token login (RS256) dari auth-service. Wajib |
-| `JWT_LEGACY_HS256_SECRET` | Hanya masa transisi dari token HS256 lama; kosong = token HS256 ditolak |
 | `PORT` | Port HTTP backend |
 | `ALLOWED_ORIGINS` | Origin frontend yang diizinkan (dipisah koma) |
 | `PUBLIC_APP_URL` | Origin frontend untuk `join_url`, mis. `http://localhost:8080` (lewat nginx) |

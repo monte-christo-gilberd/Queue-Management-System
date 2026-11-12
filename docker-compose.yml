@@ -264,8 +264,6 @@ services:
       APP_ENV: ${APP_ENV:-}
       # Kunci publik penanda token login (diterbitkan auth-service). Verifikasi lokal, tanpa jaringan.
       JWT_PUBLIC_KEY_FILE: /run/keys/auth-public.pem
-      # Hanya masa transisi: secret HS256 lama agar token yang sudah terbit tetap sah sampai kedaluwarsa (24 jam).
-      JWT_LEGACY_HS256_SECRET: ${JWT_LEGACY_HS256_SECRET:-}
       # Origin yang boleh memanggil API (CORS) dan dipakai untuk membuat tautan di email.
       ALLOWED_ORIGINS: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}
       PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:-http://localhost:8080}

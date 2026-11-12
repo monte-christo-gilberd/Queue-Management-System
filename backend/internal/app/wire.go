@@ -176,9 +176,9 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 	sessionRepo := repository.
 		NewSessionRepository(db)
 
-	// pemeriksa token lokal: RS256 dengan kunci publik, plus HS256 lama hanya selama masa transisi (JWT_LEGACY_HS256_SECRET)
+	// pemeriksa token lokal: hanya RS256, diverifikasi dengan kunci publik
 	tokenVerifier := middleware.
-		NewTokenVerifier(cfg.JWTPublicKey, cfg.JWTLegacySecret)
+		NewTokenVerifier(cfg.JWTPublicKey)
 
 	// inisialisasi router
 	appRouter := router.NewAppRouter(

@@ -235,9 +235,6 @@ services:
       PORT: "8080"
       # Kunci publik penanda token login (diterbitkan auth-service). Verifikasi lokal, tanpa jaringan.
       JWT_PUBLIC_KEY_FILE: /run/keys/auth-public.pem
-      # Hanya masa transisi: secret HS256 lama agar token yang sudah terbit tetap sah sampai kedaluwarsa (24 jam).
-      # Isi dengan JWT_SECRET lama saat deploy pertama, hapus setelah 24 jam.
-      JWT_LEGACY_HS256_SECRET: ${JWT_LEGACY_HS256_SECRET:-}
       ALLOWED_ORIGINS: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
       PUBLIC_APP_URL: ${QMS_PUBLIC_ORIGIN:?set QMS_PUBLIC_ORIGIN (https) in .env}
       # Hanya nginx (jaringan internal) yang boleh menentukan IP klien.

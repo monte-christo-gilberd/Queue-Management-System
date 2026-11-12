@@ -24,7 +24,7 @@ func authProbe(t *testing.T, header string) (*httptest.ResponseRecorder, bool, i
 	reached := false
 	var gotID int64
 	e := gin.New()
-	e.GET("/api/v1/queues", middleware.RequireAuth(testVerifier("")), func(c *gin.Context) {
+	e.GET("/api/v1/queues", middleware.RequireAuth(testVerifier()), func(c *gin.Context) {
 		reached = true
 		gotID = c.GetInt64("user_id")
 		c.Status(http.StatusOK)
@@ -113,8 +113,8 @@ func TestSpec_Auth_ValidTokenPassesWithUserID(t *testing.T) {
 	assert.Equal(t, int64(42), gotID)
 }
 
-func TestAuth_HS256IsRejectedWithoutLegacySecret(t *testing.T) {
-	// Setelah masa transisi (JWT_LEGACY_HS256_SECRET kosong), token HS256 lama tidak diterima lagi.
+func TestAuth_HS256IsRejected(t *testing.T) {
+	// Hanya RS256 yang diterima: token HS256 (mis. terbitan backend lama) ditolak.
 	claims := jwt.MapClaims{"sub": "5", "exp": time.Now().Add(time.Hour).Unix()}
 
 	w, reached, _ := authProbe(t, "Bearer "+signedToken(t, "secret-lama", claims))
@@ -123,31 +123,16 @@ func TestAuth_HS256IsRejectedWithoutLegacySecret(t *testing.T) {
 	assert.False(t, reached)
 }
 
-func TestAuth_HS256IsAcceptedOnlyWithMatchingLegacySecret(t *testing.T) {
-	// Selama transisi, token HS256 terbitan backend lama (secret yang sama) tetap sah sampai kedaluwarsa.
-	claims := jwt.MapClaims{"sub": "5", "exp": time.Now().Add(time.Hour).Unix()}
-	v := testVerifier("secret-lama")
-
-	_, err := v.Verify(signedToken(t, "secret-lama", claims))
-	assert.NoError(t, err)
-
-	_, err = v.Verify(signedToken(t, "secret-lain", claims))
-	assert.Error(t, err)
-}
-
 func TestAuth_AlgorithmConfusionIsRejected(t *testing.T) {
 	// Serangan klasik: penyerang menandatangani HS256 memakai KUNCI PUBLIK sebagai secret. Verifier harus menolak,
-	// karena RS256 hanya boleh diverifikasi dengan kunci publik, dan HS256 hanya dengan secret lama.
+	// karena hanya RS256 dengan kunci publik yang diterima.
 	pubDER, err := x509MarshalPublic(&testKey.PublicKey)
 	assert.NoError(t, err)
 	claims := jwt.MapClaims{"sub": "5", "exp": time.Now().Add(time.Hour).Unix()}
 
 	forged := signedToken(t, string(pubDER), claims)
 
-	_, verr := testVerifier("").Verify(forged)
-	assert.Error(t, verr)
-	// walau secret lama terisi, secret itu bukan kunci publik, jadi tetap ditolak
-	_, verr = testVerifier("secret-lama").Verify(forged)
+	_, verr := testVerifier().Verify(forged)
 	assert.Error(t, verr)
 }
 
@@ -157,14 +142,14 @@ func TestAuth_NoneAlgorithmIsRejected(t *testing.T) {
 	none, err := jwt.NewWithClaims(jwt.SigningMethodNone, claims).SignedString(jwt.UnsafeAllowNoneSignatureType)
 	assert.NoError(t, err)
 
-	_, verr := testVerifier("secret-lama").Verify(none)
+	_, verr := testVerifier().Verify(none)
 
 	assert.Error(t, verr)
 }
 
-func TestAuth_EmptyLegacySecretNeverAcceptsForgedHS256(t *testing.T) {
-	// Setelah masa transisi JWT_LEGACY_HS256_SECRET kosong. Token HS256 yang ditandatangani dengan secret KOSONG
-	// tidak boleh lolos (HMAC dengan kunci kosong sah secara teknis, jadi verifier harus menolak HS256 sama sekali).
+func TestAuth_EmptySecretHS256IsRejected(t *testing.T) {
+	// Token HS256 yang ditandatangani dengan secret KOSONG tidak boleh lolos (HMAC dengan kunci kosong sah secara
+	// teknis, jadi verifier harus menolak HS256 sama sekali).
 	claims := jwt.MapClaims{"sub": "5", "exp": time.Now().Add(time.Hour).Unix()}
 	forged := signedToken(t, "", claims)
 
@@ -172,7 +157,7 @@ func TestAuth_EmptyLegacySecretNeverAcceptsForgedHS256(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	assert.False(t, reached)
-	_, err := testVerifier("").Verify(forged)
+	_, err := testVerifier().Verify(forged)
 	assert.Error(t, err)
 }
 
@@ -186,10 +171,10 @@ func TestAuth_PurposeTokenIsNotASession(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	assert.False(t, reached, "handler tidak boleh dijalankan")
-	_, err := testVerifier("").Verify(link)
+	_, err := testVerifier().Verify(link)
 	assert.Error(t, err)
 
 	// token login yang sama tanpa purpose tetap sah
-	_, err = testVerifier("").Verify(signRS256(t, jwt.MapClaims{"sub": "5", "exp": time.Now().Add(time.Hour).Unix()}))
+	_, err = testVerifier().Verify(signRS256(t, jwt.MapClaims{"sub": "5", "exp": time.Now().Add(time.Hour).Unix()}))
 	assert.NoError(t, err)
 }

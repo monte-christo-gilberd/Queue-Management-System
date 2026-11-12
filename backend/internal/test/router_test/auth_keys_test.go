@@ -25,9 +25,9 @@ func mustKey() *rsa.PrivateKey {
 	return k
 }
 
-// testVerifier membuat TokenVerifier dengan kunci publik tes. legacy kosong = token HS256 ditolak.
-func testVerifier(legacy string) *middleware.TokenVerifier {
-	return middleware.NewTokenVerifier(&testKey.PublicKey, legacy)
+// testVerifier membuat TokenVerifier dengan kunci publik tes (hanya RS256 yang diterima).
+func testVerifier() *middleware.TokenVerifier {
+	return middleware.NewTokenVerifier(&testKey.PublicKey)
 }
 
 // signRS256 menandatangani klaim dengan kunci privat tes, seperti auth-service menerbitkan token login.

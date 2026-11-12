@@ -24,34 +24,22 @@ type SessionRevocationChecker interface {
 // diterbitkan auth-service dengan RS256; backend hanya memegang kunci publik, jadi bila auth-service mati token
 // yang sudah terbit tetap bisa diverifikasi.
 type TokenVerifier struct {
-	pub    *rsa.PublicKey
-	legacy []byte
+	pub *rsa.PublicKey
 }
 
-// NewTokenVerifier membuat TokenVerifier. legacyHS256Secret boleh kosong; bila diisi, token HS256 lama (terbitan
-// sebelum auth-service dipisah) tetap diterima sampai kedaluwarsa. Hapus setelah 24 jam.
-func NewTokenVerifier(pub *rsa.PublicKey, legacyHS256Secret string) *TokenVerifier {
-	v := &TokenVerifier{pub: pub}
-	if legacyHS256Secret != "" {
-		v.legacy = []byte(legacyHS256Secret)
-	}
-	return v
+// NewTokenVerifier membuat TokenVerifier yang memverifikasi token RS256 dengan kunci publik pub.
+func NewTokenVerifier(pub *rsa.PublicKey) *TokenVerifier {
+	return &TokenVerifier{pub: pub}
 }
 
-// Verify mengembalikan klaim token yang sah. Algoritma ditegakkan per kunci: RS256 hanya dengan kunci publik,
-// HS256 hanya dengan secret lama. Ini mencegah algorithm confusion (HS256 yang ditandatangani memakai kunci publik
-// sebagai secret) dan menolak algoritma `none`.
+// Verify mengembalikan klaim token yang sah. Hanya RS256 yang diterima, dan hanya dengan kunci publik. Ini mencegah
+// algorithm confusion (HS256 yang ditandatangani memakai kunci publik sebagai secret) dan menolak algoritma `none`.
 func (v *TokenVerifier) Verify(raw string) (jwt.MapClaims, error) {
 	parsed, err := jwt.Parse(raw, func(t *jwt.Token) (interface{}, error) {
-		switch t.Method {
-		case jwt.SigningMethodRS256:
-			return v.pub, nil
-		case jwt.SigningMethodHS256:
-			if len(v.legacy) > 0 {
-				return v.legacy, nil
-			}
+		if t.Method != jwt.SigningMethodRS256 {
+			return nil, errors.New("unexpected signing method")
 		}
-		return nil, errors.New("unexpected signing method")
+		return v.pub, nil
 	})
 	if err != nil || !parsed.Valid {
 		return nil, errors.New("invalid token")

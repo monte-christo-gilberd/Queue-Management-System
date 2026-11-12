@@ -46,9 +46,9 @@ func setEnv(t *testing.T, kv map[string]string) {
 	t.Helper()
 	base := map[string]string{
 		"APP_ENV": "production", "DATABASE_URL": "postgres://u:p@db/x",
-		"JWT_PUBLIC_KEY_FILE": publicKeyFile(t), "JWT_LEGACY_HS256_SECRET": "",
-		"QR_SERVICE_TOKEN": strong,
-		"ALLOWED_ORIGINS":  "https://qms.example", "PUBLIC_APP_URL": "https://qms.example",
+		"JWT_PUBLIC_KEY_FILE": publicKeyFile(t),
+		"QR_SERVICE_TOKEN":    strong,
+		"ALLOWED_ORIGINS":     "https://qms.example", "PUBLIC_APP_URL": "https://qms.example",
 		"QR_SERVICE_URL": "http://qr:8090",
 	}
 	for k, v := range kv {
@@ -68,12 +68,10 @@ func TestProductionValid(t *testing.T) {
 
 func TestProductionRejects(t *testing.T) {
 	cases := map[string]map[string]string{
-		"default legacy secret": {"JWT_LEGACY_HS256_SECRET": "change-me-jwt-secret"},
-		"short legacy secret":   {"JWT_LEGACY_HS256_SECRET": "short"},
-		"default token":         {"QR_SERVICE_TOKEN": "change-me-service-token-at-least-32-bytes"},
-		"wildcard origin":       {"ALLOWED_ORIGINS": "*"},
-		"http origin":           {"ALLOWED_ORIGINS": "http://qms.example"},
-		"http public url":       {"PUBLIC_APP_URL": "http://qms.example"},
+		"default token":   {"QR_SERVICE_TOKEN": "change-me-service-token-at-least-32-bytes"},
+		"wildcard origin": {"ALLOWED_ORIGINS": "*"},
+		"http origin":     {"ALLOWED_ORIGINS": "http://qms.example"},
+		"http public url": {"PUBLIC_APP_URL": "http://qms.example"},
 	}
 	for name, kv := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -88,7 +86,7 @@ func TestProductionRejects(t *testing.T) {
 
 func TestDevAllowsDefaults(t *testing.T) {
 	setEnv(t, map[string]string{
-		"APP_ENV": "", "JWT_LEGACY_HS256_SECRET": "change-me-jwt-secret",
+		"APP_ENV":         "",
 		"ALLOWED_ORIGINS": "http://localhost:8080", "PUBLIC_APP_URL": "http://localhost:8080",
 	})
 	if _, err := config.Load(); err != nil {
@@ -170,27 +168,6 @@ func TestJWTPublicKey(t *testing.T) {
 				t.Fatal("JWTPublicKey is nil")
 			}
 		})
-	}
-}
-
-func TestLegacySecretIsOptional(t *testing.T) {
-	// Kosong = token HS256 ditolak; diisi = diteruskan ke verifier (hanya masa transisi).
-	setEnv(t, nil)
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.JWTLegacySecret != "" {
-		t.Fatalf("JWTLegacySecret = %q, want empty", cfg.JWTLegacySecret)
-	}
-
-	setEnv(t, map[string]string{"JWT_LEGACY_HS256_SECRET": strong})
-	cfg, err = config.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.JWTLegacySecret != strong {
-		t.Fatal("JWTLegacySecret was not read")
 	}
 }
 
