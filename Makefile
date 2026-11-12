@@ -41,6 +41,9 @@
 #   make obs-down [OBS_TARGET=prod]         hentikan dan hapus container observability; aplikasi tetap jalan.
 #                                           Volume data (log, Grafana) dipertahankan.
 #   make obs-url [OBS_TARGET=prod]          tampilkan alamat Grafana dan cara akses jauh (SSH tunnel)
+#   make obs-check [OBS_TARGET=prod]        verifikasi: isolasi statis overlay (check-service-isolation.sh) dan tes
+#                                           kebocoran rahasia ke log, trace, metrik (check-observability-leaks.sh;
+#                                           butuh stack jalan dengan overlay, ~1,5 menit)
 #
 # Catatan:
 #   - Kamera di browser butuh HTTPS atau localhost. Scan QR dari HP lewat IP LAN tidak jalan di web;
@@ -66,7 +69,7 @@ SHELL := bash
 .SILENT:
 .PHONY: obs up tunnel down restart seed logs ps mailpit verify-user \
         prod-up prod-up-mailpit prod-up-smtp prod-down prod-guard prod-backup prod-reset \
-        obs-up obs-down obs-url
+        obs-up obs-down obs-url obs-check
 
 # -----------------------------------------------------------------------------
 # Variabel dan potongan bersama
@@ -404,6 +407,12 @@ obs-down:
 	GRAFANA_ADMIN_PASSWORD=$${GRAFANA_ADMIN_PASSWORD:-x} SMTP_HOST=$${SMTP_HOST:-x} SMTP_PORT=$${SMTP_PORT:-1} SMTP_FROM=$${SMTP_FROM:-x@x.y} MAIL_SERVICE_TOKEN=$${MAIL_SERVICE_TOKEN:-x} \
 	$(OBS_COMPOSE) rm -sf collector loki grafana prometheus cadvisor node-exporter postgres-exporter nginx-exporter tempo
 	echo "Observability dihentikan. Data (log, Grafana) tersimpan di volume obs_*; hapus dengan: docker volume rm <project>_obs_loki_data ..."
+
+# Verifikasi observability: (1) isolasi statis compose dan nginx, (2) tes kebocoran rahasia ke Loki, Tempo, Prometheus.
+# Tes kedua mengirim request ditolak berisi rahasia palsu ke stack yang sedang jalan; tidak membuat data apa pun.
+obs-check:
+	scripts/check-service-isolation.sh
+	QMS_ENV_FILE=$(OBS_ENV_FILE) scripts/check-observability-leaks.sh
 
 # Tampilkan alamat Grafana tanpa menjalankan apa pun.
 obs-url:

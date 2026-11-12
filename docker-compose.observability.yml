@@ -139,13 +139,17 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Batas memori Go sedikit di bawah mem_limit agar GC bekerja sebelum kontainer menyentuh batasnya (tanpa ini
+      # Grafana terukur mepet 100% dari batas dan berisiko di-OOM-kill).
+      GOMEMLIMIT: 520MiB
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       # Dashboard sebagai kode (dibaca provider di provisioning/dashboards).
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - obs_grafana_data:/var/lib/grafana
-    # Terukur sekitar 200 MiB saat idle; 384m memberi ruang untuk query dan dashboard.
-    mem_limit: 384m
+    # Terukur sekitar 200 MiB saat hanya dua dashboard, tetapi sekitar 390 MiB (mepet batas 384m lama) setelah sembilan
+    # dashboard dan 11 aturan alert; 640m memberi ruang untuk query dan evaluasi alert.
+    mem_limit: 640m
     networks:
       - internal
     restart: unless-stopped

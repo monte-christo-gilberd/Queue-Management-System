@@ -82,3 +82,142 @@ if grep -hE 'upstream[[:space:]]+auth|proxy_pass[[:space:]]+http://auth-service'
   echo "GAGAL [nginx] upstream auth-service harus lewat variabel (set \$qms_auth) agar nginx tetap start bila mati"; exit 1
 fi
 echo "OK [nginx] upstream auth-service lewat variabel + resolver"
+
+
+# =============================================================================
+# Observability (Fase 6): overlay docker-compose.observability.yml tidak boleh mengganggu aplikasi.
+# Pemeriksaan di bawah menjaga tujuan 5 di plan: observability mati tidak boleh mengganggu antrian.
+# =============================================================================
+
+# Nama service milik overlay observability. Semua service lain dianggap service aplikasi.
+OBS_SERVICES='collector loki tempo prometheus grafana cadvisor node-exporter postgres-exporter nginx-exporter'
+# Overlay butuh dua variabel wajib; nilai palsu cukup untuk menguraikan compose.
+export GRAFANA_ADMIN_PASSWORD=x METRICS_DB_PASSWORD=x OBS_SERVICES
+
+# Berkas sementara untuk JSON hasil `docker compose config` (dihapus saat skrip selesai).
+OBS_TMP="$(mktemp)"
+trap 'rm -f "$OBS_TMP"' EXIT
+
+# Pemeriksa overlay (Python, dibaca dari berkas sementara supaya aman dari tanda kutip shell).
+OBS_PY="$(mktemp)"
+trap 'rm -f "$OBS_TMP" "$OBS_PY"' EXIT
+cat > "$OBS_PY" <<'PY'
+import json, os, sys
+
+label, path = sys.argv[1], sys.argv[2]
+obs = set(os.environ["OBS_SERVICES"].split())
+svcs = json.load(open(path))["services"]
+problems = []
+
+# 1. Tidak ada depends_on dari service aplikasi ke komponen observability (aplikasi tidak boleh menunggu observability).
+for name, svc in svcs.items():
+    if name in obs:
+        continue
+    bad = sorted(set((svc.get("depends_on") or {}).keys()) & obs)
+    if bad:
+        problems.append(f"{name} depends_on {bad}")
+
+# 2. Hanya Grafana yang membuka port ke host, dan hanya di 127.0.0.1. Port internal observability (metrik 9100,
+#    status nginx 8081, OTLP 4317, Prometheus 9090, Loki 3100, Tempo 3200) tidak boleh dipublikasikan service mana pun.
+internal_ports = {"9100", "8081", "4317", "9090", "3100", "3200"}
+for name, svc in svcs.items():
+    for p in svc.get("ports") or []:
+        if name == "grafana":
+            if p.get("host_ip") != "127.0.0.1":
+                problems.append("grafana membuka port ke " + str(p.get("host_ip") or "semua antarmuka"))
+        elif name in obs:
+            problems.append(f"{name} membuka port ke host ({p.get('published')})")
+        elif str(p.get("target")) in internal_ports:
+            problems.append(f"{name} mempublikasikan port internal observability {p.get('target')}")
+
+# 3. Tidak ada docker.sock di service mana pun (akses penuh ke Docker host).
+for name, svc in svcs.items():
+    for v in svc.get("volumes") or []:
+        if "docker.sock" in str(v.get("source", "")):
+            problems.append(f"{name} me-mount docker.sock")
+
+# 4. Mount direktori host oleh service observability harus read-only.
+for name in obs:
+    for v in (svcs.get(name) or {}).get("volumes") or []:
+        src = str(v.get("source", ""))
+        if v.get("type") == "bind" and src.startswith("/") and not v.get("read_only"):
+            problems.append(f"{name} me-mount {src} tanpa read-only")
+
+# 5. Setiap komponen observability punya batas memori (RAM host terbatas).
+for name in obs:
+    if name in svcs and not svcs[name].get("mem_limit"):
+        problems.append(f"{name} tanpa mem_limit")
+
+# 6. Pengiriman trace (OTEL_*) hanya untuk service yang dipasangi SDK, dan hanya ke collector.
+sdk = {"backend", "auth-service", "qr-service", "mail-service"}
+for name, svc in svcs.items():
+    ep = (svc.get("environment") or {}).get("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if ep is not None and name not in sdk:
+        problems.append(f"{name} memakai OTEL_EXPORTER_OTLP_ENDPOINT tanpa SDK")
+    if ep and ep != "http://collector:4317":
+        problems.append(f"{name} mengirim trace ke {ep}, bukan ke collector")
+
+if problems:
+    print(f"GAGAL [{label}] overlay observability mengganggu isolasi: " + "; ".join(problems))
+    sys.exit(1)
+print(f"OK [{label}] overlay observability: tanpa depends_on dari aplikasi, hanya Grafana (127.0.0.1) yang membuka port, "
+      "tanpa docker.sock, mount host read-only, semua komponen ber-mem_limit, trace hanya ke collector")
+PY
+
+# Pemeriksa compose dasar (tanpa overlay): tidak boleh membawa jejak observability.
+BASE_PY="$(mktemp)"
+trap 'rm -f "$OBS_TMP" "$OBS_PY" "$BASE_PY"' EXIT
+cat > "$BASE_PY" <<'PY'
+import json, os, sys
+
+label, path = sys.argv[1], sys.argv[2]
+obs = set(os.environ["OBS_SERVICES"].split())
+svcs = json.load(open(path))["services"]
+problems = []
+for name, svc in svcs.items():
+    if name in obs:
+        problems.append(f"{name} ada di compose dasar")
+    for k in (svc.get("environment") or {}):
+        if k.startswith("OTEL_"):
+            problems.append(f"{name} membawa {k} tanpa overlay")
+if problems:
+    print(f"GAGAL [{label}] compose dasar membawa jejak observability: " + "; ".join(problems))
+    sys.exit(1)
+print(f"OK [{label}] compose dasar bersih dari observability (tanpa service observability dan tanpa OTEL_*)")
+PY
+
+# Jalankan pemeriksaan overlay untuk dev dan prod, dan pemeriksaan kebersihan untuk compose dasar keduanya.
+docker compose -f docker-compose.yml -f docker-compose.observability.yml config --format json > "$OBS_TMP"
+python3 "$OBS_PY" dev "$OBS_TMP"
+docker compose -f docker-compose.prod.yml -f docker-compose.observability.yml --env-file "${QMS_ENV_FILE:-.env}" config --format json > "$OBS_TMP"
+python3 "$OBS_PY" prod "$OBS_TMP"
+docker compose config --format json > "$OBS_TMP"
+python3 "$BASE_PY" dev "$OBS_TMP"
+docker compose -f docker-compose.prod.yml --env-file "${QMS_ENV_FILE:-.env}" config --format json > "$OBS_TMP"
+python3 "$BASE_PY" prod "$OBS_TMP"
+
+# nginx tidak boleh meneruskan /metrics atau port metrik (9100); metrik tidak boleh sampai ke internet lewat nginx.
+if grep -hE 'proxy_pass[^;]*:9100|location[^{]*/metrics' deploy/nginx/server.conf | grep -vE '^[[:space:]]*#' | grep -q .; then
+  echo "GAGAL [nginx] server.conf meneruskan /metrics atau port 9100"; exit 1
+fi
+echo "OK [nginx] nginx tidak meneruskan /metrics atau :9100"
+
+# Listener stub_status nginx (:8081) harus punya `deny all` (hanya IP privat yang diizinkan) di dev dan prod.
+for f in deploy/nginx/nginx.conf deploy/nginx/nginx.prod.conf; do
+  # awk: mulai dari baris `listen 8081;` sampai penutup blok server, cari `deny all;`
+  if ! awk '/listen 8081;/{f=1} f&&/deny all;/{ok=1} f&&/^    }/{exit} END{exit !ok}' "$f"; then
+    echo "GAGAL [nginx] listener stub_status :8081 di $f tanpa 'deny all'"; exit 1
+  fi
+done
+echo "OK [nginx] listener stub_status :8081 membatasi akses (deny all) di dev dan prod"
+
+# Kode aplikasi tidak boleh bergantung pada observability: tidak ada nama host collector/tempo/prometheus/loki/grafana
+# yang ditulis keras di kode Go (alamat hanya datang dari OTEL_EXPORTER_OTLP_ENDPOINT yang diisi overlay).
+HARD='"(http://)?(collector|tempo|prometheus|loki|grafana)(:[0-9]+)?"'
+# baris komentar (diawali //) dikecualikan: komentar boleh menyebut nama host sebagai contoh
+HITS="$(grep -rnE "$HARD" backend auth-service qr-service mail-service notify-service --include=*.go | grep -v _test.go | grep -vE '^[^:]*:[0-9]+:[[:space:]]*//' || true)"
+if [ -n "$HITS" ]; then
+  echo "GAGAL [kode] kode Go menulis alamat komponen observability secara keras:"
+  echo "$HITS"; exit 1
+fi
+echo "OK [kode] kode Go tidak menulis alamat komponen observability secara keras"

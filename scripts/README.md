@@ -10,7 +10,8 @@ Prasyarat umum: `bash`, `docker` dengan `docker compose`. `check-service-isolati
 | Skrip | Untuk apa | Stack | Dipanggil oleh |
 |---|---|---|---|
 | [`gen-auth-keys.sh`](#gen-auth-keyssh) | Membuat pasangan kunci RSA untuk token login | dev dan prod | `make up`, `make tunnel`, `make prod-up` |
-| [`check-service-isolation.sh`](#check-service-isolationsh) | Menjaga isolasi antar service di compose | dev dan prod | manual |
+| [`check-service-isolation.sh`](#check-service-isolationsh) | Menjaga isolasi antar service di compose (termasuk overlay observability) | dev dan prod | `make obs-check`, manual |
+| [`check-observability-leaks.sh`](#check-observability-leakssh) | Tes kebocoran rahasia ke log, trace, dan metrik | dev dan prod (overlay observability) | `make obs-check` |
 | [`check-google-config.sh`](#check-google-configsh) | Memeriksa konfigurasi login Google (server dan frontend sinkron) | dev dan prod | `make up`, `make tunnel`, `make prod-up` |
 | [`check-mail-mode.sh`](#check-mail-modesh) | Memeriksa `MAIL_MODE` dan `SMTP_*` sebelum stack prod naik | prod | `make prod-up` |
 | [`verify-user.sh`](#verify-usersh) | Menandai email satu akun terverifikasi langsung di database | dev atau prod | `make verify-user` |
@@ -65,15 +66,47 @@ Keluar dengan kode 1 dan pesan `GAGAL [...]` bila ada yang dilanggar.
 | `auth-service` | Tidak ada service lain yang punya `depends_on` ke sana, ia hanya bergantung pada `db`, dan **kunci privat JWT hanya di-mount ke `auth-service`**. Karena itu user yang sudah login tetap bisa memakai aplikasi saat ia mati |
 | Kode | `notify-service` tidak menyebut smtp atau mailer. `backend` tidak memanggil `auth-service` |
 | nginx | Upstream `auth-service` lewat variabel + resolver, supaya nginx tetap start bila salah satunya mati |
+| Observability: overlay | Dengan `docker-compose.observability.yml` (dev dan prod): tanpa `depends_on` dari service aplikasi ke komponen observability, hanya Grafana yang membuka port ke host (dan hanya di `127.0.0.1`), port internal (9100, 8081, 4317, 9090, 3100, 3200) tidak dipublikasikan, tanpa `docker.sock`, mount direktori host read-only, semua komponen punya `mem_limit`, `OTEL_EXPORTER_OTLP_ENDPOINT` hanya untuk backend, auth, qr, mail dan hanya ke collector |
+| Observability: compose dasar | Tanpa overlay, compose dasar tidak punya service observability dan tidak membawa variabel `OTEL_*`, jadi aplikasi start apa adanya |
+| Observability: nginx dan kode | nginx tidak meneruskan `/metrics` atau `:9100`, listener `stub_status` `:8081` punya `deny all`, dan kode Go tidak menulis alamat komponen observability secara keras |
 
 ```bash
 scripts/check-service-isolation.sh
 QMS_ENV_FILE=.env.prod scripts/check-service-isolation.sh
 ```
 
-Jalankan setiap kali mengubah `docker-compose*.yml` atau `deploy/nginx/*.conf`. Skrip ini tidak ada di Makefile.
+Jalankan setiap kali mengubah `docker-compose*.yml` atau `deploy/nginx/*.conf`. Juga dijalankan oleh `make obs-check`.
 Compose prod butuh variabel wajib terisi; skrip memakai `${QMS_ENV_FILE:-.env}` dan mengisi nilai SMTP palsu untuk
 keperluan parsing saja.
+
+---
+
+## check-observability-leaks.sh
+
+Tes kebocoran rahasia ke observability (tujuan 6 di `documentation/docs/plan-observability-tracing.md`). Mengirim request
+yang ditolak (404/401/400) lewat nginx dengan **rahasia palsu yang unik per eksekusi**: token layar publik (path dan query),
+password dan email penuh di body login, token verifikasi email, token reset password, dan JWT palsu di header
+`Authorization`. Setelah pipeline sempat memproses (sekitar 45 detik), skrip mencari rahasia itu di:
+
+| Tempat | Cara |
+|---|---|
+| Log (Loki) | Pencarian teks bebas di semua service |
+| Trace (Tempo) | Mengambil trace terbaru lalu memindai seluruh isi span (atribut, event, status) |
+| Metrik (Prometheus) | Memindai semua label metrik `http_*`, `auth_*`, `nginx_*` |
+
+Kode keluar: `0` bersih, `1` ada kebocoran (rahasia dan tempatnya dicetak), `2` stack observability tidak terjangkau,
+`3` tidak ada log nginx baru di Loki (pemeriksaan tidak berarti). Skrip tidak membuat data; hanya menambah beberapa angka
+di metrik login gagal dan 404.
+
+```bash
+scripts/check-observability-leaks.sh
+QMS_ENV_FILE=.env.prod scripts/check-observability-leaks.sh
+LEAK_ROUNDS=80 scripts/check-observability-leaks.sh                 # lebih pasti ada trace yang terekam di sampling 10%
+LEAK_EXTRA_CANARY="teks-uji" scripts/check-observability-leaks.sh   # kontrol positif: harus GAGAL bila "teks-uji" ada di log
+```
+
+Prasyarat: stack jalan dengan overlay (`make up obs`), `curl`, `openssl`, `python3`. Membaca `GRAFANA_ADMIN_PASSWORD`,
+`GRAFANA_PORT`, dan `QMS_HTTP_PORT` dari `.env` (atau `QMS_ENV_FILE`). Dijalankan juga oleh `make obs-check`.
 
 ---
 
