@@ -119,7 +119,19 @@
   "annotations": {
     "list": []
   },
-  "links": [],
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "qms"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true,
+      "title": "Dashboard QMS",
+      "icon": "external link"
+    }
+  ],
   "panels": [
     {
       "id": 1,

@@ -30,6 +30,8 @@
 #   OBS_METRICS_RETENTION   lama simpan metrik di Prometheus, bawaan 7d (batas ukuran tetap 1GB).
 #   OBS_TRACE_RETENTION     lama simpan trace di Tempo, bawaan 72h (3 hari).
 #   OTEL_TRACES_SAMPLER_ARG rasio trace yang direkam (head sampling), bawaan 0.1 (10%). 1 = semua, 0 = tidak ada.
+#                           Makefile (up/tunnel/obs-up di dev) memakai 1 bila nilai ini kosong, supaya trace langsung
+#                           terlihat; prod tetap 0.1.
 #   OBS_PROJECT             nama project compose; diisi otomatis oleh Makefile (qms atau qms-prod).
 # =============================================================================
 

@@ -18,7 +18,8 @@ providers:
     # Kosong: judul folder diambil dari nama subfolder (foldersFromFilesStructure tidak boleh bersama `folder`).
     folder: ''
     type: file
-    disableDeletion: true
+    # false: dashboard yang berkasnya dihapus dari repo ikut hilang di Grafana (mis. dashboard lama yang dipecah).
+    disableDeletion: false
     allowUiUpdates: false
     updateIntervalSeconds: 30
     options:

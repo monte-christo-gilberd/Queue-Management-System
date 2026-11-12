@@ -174,6 +174,7 @@ up:
 	[ -n "$$ip" ] || ip=$$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' || true)
 	[ -n "$$ip" ] || { echo "IP LAN tidak terdeteksi; beri manual: make up IP=<ip>" >&2; exit 1; }
 	export QMS_PUBLIC_ORIGIN="http://$$ip:$$port"
+	$(if $(filter 1,$(obs)),$(obs_dev_sampling))
 	docker compose $(OBS_DEV_FILES) up -d --build --force-recreate --renew-anon-volumes
 	$(if $(filter 1,$(obs)),$(call obs_db_role_run,docker compose $(OBS_DEV_FILES),.env))
 	$(warm_metro)
@@ -200,6 +201,7 @@ tunnel:
 	  [ -n "$$url" ] && break; sleep 1
 	done
 	[ -n "$$url" ] || { echo "URL tunnel tidak muncul, lihat $(LOG)" >&2; $(stop_tunnel); exit 1; }
+	$(if $(filter 1,$(obs)),$(obs_dev_sampling))
 	QMS_PUBLIC_ORIGIN="$$url" docker compose $(OBS_DEV_FILES) up -d --build --force-recreate --renew-anon-volumes backend auth-service qr-service notify-service mail-service mailpit nginx frontend db $(OBS_SERVICES)
 	$(if $(filter 1,$(obs)),$(call obs_db_role_run,docker compose $(OBS_DEV_FILES),.env))
 	$(warm_metro)
@@ -350,6 +352,15 @@ done
 if [ -n "$$ok" ]; then echo "Role database metrics_ro siap."; else echo "Peringatan: role metrics_ro belum dibuat (database belum siap?). Jalankan make obs-up lagi." >&2; fi
 endef
 
+# Tracing di DEV: overlay mengirim trace dengan sampling bawaan 10% (cocok untuk prod). Di dev trafik kecil, jadi 10%
+# membuat dashboard Trace tampak kosong; makro ini memakai 100% (semua trace) bila OTEL_TRACES_SAMPLER_ARG tidak
+# diisi di .env maupun di shell. Nilai yang diisi eksplisit tetap dihormati. Prod tidak memakai makro ini (tetap 10%).
+define obs_dev_sampling
+r=$$(grep -E '^OTEL_TRACES_SAMPLER_ARG=.+' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+export OTEL_TRACES_SAMPLER_ARG="$${OTEL_TRACES_SAMPLER_ARG:-$${r:-1}}"
+echo "Tracing aktif (dev): sampling $$OTEL_TRACES_SAMPLER_ARG (1 = semua trace; ubah lewat OTEL_TRACES_SAMPLER_ARG di .env)"
+endef
+
 # Dev: `make up` menentukan QMS_PUBLIC_ORIGIN dari IP LAN atau URL tunnel. Membuat ulang service dengan nilai bawaan
 # (localhost) akan mengubah CORS dan tautan email, jadi nilai backend yang sedang jalan dipakai ulang bila ada.
 define obs_keep_origin
@@ -382,6 +393,7 @@ obs-up:
 	[ -f $(OBS_ENV_FILE) ] || { echo "$(OBS_ENV_FILE) belum ada" >&2; exit 1; }
 	for v in GRAFANA_ADMIN_PASSWORD METRICS_DB_PASSWORD; do grep -qE "^$$v=.+" $(OBS_ENV_FILE) || { echo "$$v kosong di $(OBS_ENV_FILE): isi dulu (tanpa nilai bawaan)" >&2; exit 1; }; done
 	$(obs_keep_origin)
+	$(if $(filter dev,$(OBS_TARGET)),$(obs_dev_sampling))
 	$(OBS_COMPOSE) up -d
 	$(call obs_db_role_run,$(OBS_COMPOSE),$(OBS_ENV_FILE))
 	$(call obs_url,$(OBS_ENV_FILE),$(OBS_TARGET))
