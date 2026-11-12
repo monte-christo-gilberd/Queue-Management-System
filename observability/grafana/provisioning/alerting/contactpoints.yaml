@@ -1,0 +1,20 @@
+# =============================================================================
+# contactpoints.yaml: contact point Grafana sebagai kode (Fase 5).
+# -----------------------------------------------------------------------------
+# Grafana mewajibkan minimal satu integrasi per contact point (contact point kosong ditolak), dan contact point bawaan
+# belum ada saat provisioning berjalan. Maka dibuat satu webhook ke alamat yang tidak pernah dipakai:
+# semua notifikasi ditahan jadwal senyap (mutetimings.yaml, policies.yaml), jadi webhook ini TIDAK pernah dipanggil.
+# Saat pengiriman ditambahkan: buat contact point baru (email, Slack) di sini, lalu arahkan policy ke sana.
+# =============================================================================
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: tanpa-pengiriman
+    receivers:
+      - uid: qms-tanpa-pengiriman
+        type: webhook
+        # alamat tidak dipakai (port 9 = discard); tidak pernah dipanggil selama senyap
+        settings:
+          url: http://127.0.0.1:9/tidak-dipakai
+        disableResolveMessage: true

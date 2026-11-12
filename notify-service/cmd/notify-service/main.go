@@ -14,6 +14,8 @@ import (
 	"qms/notify-service/internal/config"
 	"qms/notify-service/internal/httpserver"
 	"qms/notify-service/internal/listener"
+	"qms/notify-service/internal/logging"
+	"qms/notify-service/internal/metrics"
 	"qms/notify-service/internal/model"
 	"qms/notify-service/internal/pusher"
 	"qms/notify-service/internal/repository"
@@ -29,15 +31,9 @@ const healthAddr = ":8091"
 
 // main memanggil run, lalu keluar dengan kode 1 bila gagal. Error sudah dicatat di run.
 func main() {
-	// Atur logger default ke JSON di stdout untuk seluruh proses.
-	slog.SetDefault(
-		slog.New(
-			slog.NewJSONHandler(
-				os.Stdout,
-				nil,
-			),
-		),
-	)
+	// Atur logger default ke JSON di stdout untuk seluruh proses, dengan atribut service=notify-service
+	// dan level dari LOG_LEVEL (bawaan info).
+	slog.SetDefault(logging.NewLogger("notify-service", os.Getenv("LOG_LEVEL")))
 
 	// Jalankan service. Error berarti service gagal start, jadi hentikan proses dengan status gagal.
 	if err := run(); err != nil {
@@ -88,13 +84,22 @@ func run() error {
 		}
 	}()
 
-	// Rangkai service: repository membaca database, dan pusher mengirim ke browser dengan kunci VAPID.
+	// Metrik Prometheus (push terkirim dan gagal). Listener /metrics di port terpisah (METRICS_ADDR, bawaan :9100);
+	// tidak memblokir dan tidak menggagalkan service.
+	appMetrics := metrics.NewNotify()
+	appMetrics.Serve(ctx)
+
+	// Rangkai service: repository membaca database, dan pusher mengirim ke browser dengan kunci VAPID. Pengirim
+	// dibungkus penghitung metrik tanpa mengubah perilakunya.
 	svc := service.NewNotifyService(
 		repository.NewNotifyRepository(db),
-		pusher.New(
-			cfg.VAPIDPublicKey,
-			cfg.VAPIDPrivateKey,
-			cfg.VAPIDSubject),
+		service.NewMeteredPushSender(
+			pusher.New(
+				cfg.VAPIDPublicKey,
+				cfg.VAPIDPrivateKey,
+				cfg.VAPIDSubject),
+			appMetrics,
+		),
 	)
 
 	// Rangkai runner: listener LISTEN dengan DSN dari konfigurasi, dan health diperbarui lewat callback.

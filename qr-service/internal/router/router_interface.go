@@ -41,4 +41,8 @@ type AppRouter struct {
 	serviceToken string
 	// logger mencatat request. Nil berarti slog default.
 	logger *slog.Logger
+	// metricsMiddleware mencatat metrik HTTP (opsional; nil berarti tanpa metrik).
+	metricsMiddleware gin.HandlerFunc
+	// tracingMiddleware membuat span server per request (opsional; nil berarti tanpa tracing).
+	tracingMiddleware gin.HandlerFunc
 }

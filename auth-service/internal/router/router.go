@@ -1,9 +1,12 @@
 package router
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"qms/auth-service/internal/middleware"
 )
 
 // NewAppRouter membuat AppRouter dengan handler wajib: registrasi, login, dan middleware login.
@@ -37,14 +40,56 @@ func (a *AppRouter) WithGoogle(h GoogleHandler) *AppRouter {
 	return a
 }
 
+// WithLogger memasang logger untuk log akses dan Recovery (opsional; tanpa ini dipakai slog.Default()).
+func (a *AppRouter) WithLogger(l *slog.Logger) *AppRouter {
+	// simpan logger, lalu kembalikan router yang sama agar bisa dirangkai
+	a.logger = l
+	return a
+}
+
+// WithTracing memasang middleware tracing (opsional; tanpa ini tidak ada span request).
+func (a *AppRouter) WithTracing(m gin.HandlerFunc) *AppRouter {
+	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
+	a.tracingMiddleware = m
+	return a
+}
+
+// WithMetrics memasang middleware metrik HTTP (opsional; tanpa ini tidak ada metrik request).
+func (a *AppRouter) WithMetrics(m gin.HandlerFunc) *AppRouter {
+	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
+	a.metricsMiddleware = m
+	return a
+}
+
 // SetupRouter membuat gin.Engine dan mendaftarkan semua rute sesuai handler yang sudah dipasang di router.
 func SetupRouter(
 	router *AppRouter,
 ) *gin.Engine {
-	// gin.New tanpa logger bawaan: log akses dicatat nginx; Recovery mengubah panic menjadi 500
+	// pakai logger dari AppRouter; bila tidak dipasang, pakai logger default slog (diatur di main)
+	logger := router.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	// mode release mematikan baris "[GIN-debug]" berformat teks agar semua keluaran stdout berupa JSON
+	gin.SetMode(gin.ReleaseMode)
+	// gin.New tanpa logger bawaan Gin (teks, memuat nilai parameter route); log akses dicatat middleware slog di bawah
 	engine := gin.New()
-	// pasang Recovery agar panic di handler menjadi 500, bukan proses mati
-	engine.Use(gin.Recovery())
+	// RequestID paling awal agar semua log request memuat request_id (nilainya dari X-Request-Id yang diisi nginx)
+	// tracing paling awal: span server mencakup semua middleware di bawahnya, dan span aktif sudah ada saat
+	// RequestID, Logger, dan Recovery berjalan (atribut request_id dan trace_id di log)
+	if router.tracingMiddleware != nil {
+		engine.Use(router.tracingMiddleware)
+	}
+	engine.Use(middleware.RequestID())
+	// metrik sebelum Logger dan Recovery: request yang panic tetap terhitung sebagai 500
+	if router.metricsMiddleware != nil {
+		engine.Use(router.metricsMiddleware)
+	}
+	// Logger sebelum Recovery: request yang panic tetap tercatat sebagai baris akses berstatus 500
+	engine.Use(middleware.Logger(logger))
+	// Recovery mengubah panic di handler menjadi 500 (bukan proses mati) dan mencatatnya lewat slog
+	engine.Use(middleware.Recovery(logger))
 	// hanya proxy ini yang boleh menentukan IP klien lewat X-Forwarded-For (dipakai pembatas per akun)
 	_ = engine.SetTrustedProxies(router.trustedProxies)
 

@@ -1,0 +1,179 @@
+# =============================================================================
+# config.yaml: OpenTelemetry Collector untuk QMS (Fase 2: LOG, Fase 4: TRACE).
+# -----------------------------------------------------------------------------
+# Log    : log Docker (json-file) service QMS -> filelog -> penyamaran -> Loki (OTLP/HTTP).
+# Trace  : service Go -> OTLP gRPC (:4317, hanya jaringan internal) -> penyamaran -> Tempo (OTLP gRPC).
+# Dipakai: docker-compose.observability.yml (service `collector`, image otel/opentelemetry-collector-contrib).
+# Variabel env (diisi compose):
+#   OBS_PROJECT  nama project compose yang dibaca (qms untuk dev, qms-prod untuk prod). Container project lain
+#                (mis. stack dev dan prod jalan bersamaan) dibuang.
+# Tanpa docker.sock: collector hanya membaca berkas log di /var/lib/docker/containers (read-only).
+# =============================================================================
+
+extensions:
+  # Menyimpan posisi baca tiap berkas log di disk, supaya setelah collector restart log tidak terbaca dua kali
+  # dan log yang tertulis saat collector mati tetap diambil.
+  file_storage:
+    directory: /var/lib/otelcol/storage
+    # Buat direktori bila belum ada (volume baru kosong).
+    create_directory: true
+  # Endpoint health internal (tidak dipublikasikan ke host).
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  # Trace dari service Go. Port 4317 hanya terbuka di jaringan `internal` (tidak dipetakan ke host). Aplikasi hanya
+  # mengirim bila OTEL_EXPORTER_OTLP_ENDPOINT terisi (diatur overlay), dan tidak pernah menunggu collector.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+  filelog:
+    # Semua berkas log container di host. Container di luar project QMS dibuang oleh operator `filter` di bawah.
+    include:
+      - /var/lib/docker/containers/*/*-json.log
+    # Hanya baca baris BARU saat pertama kali melihat berkas; posisi selanjutnya diingat lewat file_storage.
+    start_at: end
+    storage: file_storage
+    operators:
+      # 1. Bungkus Docker: {"log": "<baris app>\n", "stream": "stdout", "attrs": {...}, "time": "..."}.
+      #    Hasilnya masuk ke attributes.log, attributes.stream, attributes.attrs, attributes.time.
+      - type: json_parser
+        id: parse_docker_json
+        # Waktu kejadian diambil dari pembungkus Docker (RFC3339 dengan nanodetik).
+        timestamp:
+          parse_from: attributes.time
+          layout_type: gotime
+          layout: "2006-01-02T15:04:05.999999999Z07:00"
+
+      # 2. Buang container yang bukan bagian project ini. attrs hanya ada bila blok `logging:` overlay terpasang
+      #    (labels-regex), jadi container observability sendiri dan container lain otomatis terbuang
+      #    (mencegah log collector masuk lagi ke collector).
+      - type: filter
+        id: drop_other_containers
+        expr: 'attributes.attrs == nil || attributes.attrs["com.docker.compose.project"] != "${env:OBS_PROJECT}"'
+
+      # 3. Nama service dari label compose: dipakai sebagai resource service.name (standar OTel) dan `service`
+      #    (satu-satunya label Loki selain level; lihat observability/loki/loki-config.yaml).
+      - type: copy
+        id: set_service_name
+        from: attributes.attrs["com.docker.compose.service"]
+        to: resource["service.name"]
+      - type: move
+        id: set_service_label
+        from: attributes.attrs["com.docker.compose.service"]
+        to: resource["service"]
+      # Sisa label compose tidak diperlukan lagi.
+      - type: remove
+        id: drop_attrs
+        field: attributes.attrs
+
+      # 4. Baris yang berbentuk JSON (log slog dan nginx) di-parse ke attributes (level, msg, request_id, route,
+      #    status, ...). Baris teks biasa dibiarkan apa adanya (on_error: send).
+      - type: json_parser
+        id: parse_app_json
+        parse_from: attributes.log
+        if: 'attributes.log matches "^\\s*\\{"'
+        on_error: send
+
+      # 5. Atribut `service` dari JSON aplikasi sama dengan nama service compose, dan sudah menjadi resource
+      #    `service`; hapus supaya tidak dobel.
+      - type: remove
+        id: drop_dup_service
+        field: attributes.service
+        if: 'attributes.service != nil'
+
+      # 6. Severity standar OTel dari field `level` slog (DEBUG, INFO, WARN, ERROR). Field `level` asli
+      #    tetap ada sebagai atribut karena dipakai sebagai label Loki.
+      - type: severity_parser
+        id: map_severity
+        parse_from: attributes.level
+        if: 'attributes.level != nil'
+        on_error: send
+
+      # 7. nginx tidak punya level: turunkan dari status HTTP (5xx ERROR, 4xx WARN, selain itu INFO).
+      - type: add
+        id: nginx_level
+        field: attributes.level
+        value: 'EXPR(attributes.status startsWith "5" ? "ERROR" : (attributes.status startsWith "4" ? "WARN" : "INFO"))'
+        if: 'resource["service"] == "nginx" && attributes.status != nil'
+
+      # 8. Body = baris log asli tanpa pembungkus Docker dan tanpa newline akhir. Tetap berupa JSON utuh, jadi
+      #    `{service="backend"} | json` di Grafana Explore memunculkan semua field.
+      - type: add
+        id: set_body
+        field: body
+        value: 'EXPR(trim(attributes.log, "\n"))'
+      - type: remove
+        id: drop_raw_log
+        field: attributes.log
+
+processors:
+  # Pagar memori: collector menolak data baru (bukan crash) bila mendekati batas RAM kontainer.
+  memory_limiter:
+    check_interval: 2s
+    limit_mib: 160
+    spike_limit_mib: 40
+
+  # Lapis kedua penyamaran rahasia (lapis pertama: aplikasi tidak mencatatnya; lihat kebijakan isi log di README).
+  # `$$` diperlukan karena `$` biasa ditafsirkan collector sebagai variabel env.
+  transform/redact:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          # Header Authorization: Bearer <token> pada body dan atribut.
+          - replace_pattern(body, "(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer ***")
+          - replace_all_patterns(attributes, "value", "(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer ***")
+          # JWT (tiga bagian base64url dipisah titik, diawali eyJ).
+          - replace_pattern(body, "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]*", "***jwt***")
+          - replace_all_patterns(attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]*", "***jwt***")
+          # token=..., password=..., secret=... (query string atau teks bebas); nama dipertahankan, nilai diganti.
+          - replace_pattern(body, "(?i)(token|password|secret)=[^&\\s\"]+", "$$1=***")
+          - replace_all_patterns(attributes, "value", "(?i)(token|password|secret)=[^&\\s\"]+", "$$1=***")
+          # Bentuk JSON: "token":"...", "password":"...", "secret":"...".
+          - replace_pattern(body, "(?i)\"(token|password|secret)\"\\s*:\\s*\"[^\"]*\"", "\"$$1\":\"***\"")
+
+  # Lapis kedua penyamaran untuk span (lapis pertama ada di aplikasi: path mentah, query, header, dan alamat klien
+  # dibuang saat ekspor). Atribut string yang masih memuat bentuk rahasia diganti penanda.
+  transform/redact_traces:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - replace_all_patterns(attributes, "value", "(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer ***")
+          - replace_all_patterns(attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]*", "***jwt***")
+          - replace_all_patterns(attributes, "value", "(?i)(token|password|secret)=[^&\\s\"]+", "$$1=***")
+
+  batch:
+    timeout: 2s
+    send_batch_size: 512
+
+exporters:
+  # Tempo menerima OTLP gRPC di :4317 (jaringan internal, tanpa TLS). Antrean dan retry bawaan menahan span sementara
+  # bila Tempo mati; bila antrean penuh, span dibuang.
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  # Loki menerima OTLP/HTTP di /otlp. Antrean dan retry bawaan menahan log sementara bila Loki mati; bila antrean
+  # penuh data dibuang. Log tidak dikirim aplikasi (dibaca dari berkas log Docker), jadi collector mati tidak
+  # mengganggu aplikasi sama sekali.
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
+service:
+  extensions: [file_storage, health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/redact_traces, batch]
+      exporters: [otlp/tempo]
+    logs:
+      receivers: [filelog]
+      processors: [memory_limiter, transform/redact, batch]
+      exporters: [otlphttp/loki]
+  telemetry:
+    # Log collector sendiri cukup warn ke atas; tidak dikumpulkan ke Loki (tanpa label compose).
+    logs:
+      level: warn

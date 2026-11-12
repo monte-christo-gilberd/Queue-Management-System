@@ -11,6 +11,11 @@ import (
 
 	"qms/internal/apperror"
 	"qms/internal/qrclient"
+	"qms/internal/requestid"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -237,4 +242,51 @@ func TestNew_TrimsTrailingSlash(t *testing.T) {
 	require.NoError(t, err)
 	// Tanpa trim, path menjadi "//internal/v1/join-token".
 	assert.Equal(t, "/internal/v1/join-token", gotPath)
+}
+
+// Request ID di context diteruskan ke qr-service lewat header X-Request-Id; tanpa ID di context, header tidak dikirim.
+func TestClient_ForwardsRequestID(t *testing.T) {
+	// header yang diterima server palsu qr-service
+	var gotID string
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotID = r.Header.Get("X-Request-Id")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"token":"v1.abc.sig","type":"dynamic","expires_at":null}`))
+	})
+
+	// dengan ID di context: header X-Request-Id harus sampai ke qr-service
+	_, err := client.IssueJoinToken(requestid.With(context.Background(), "req-xyz"), 1, "dynamic", 0)
+	require.NoError(t, err)
+	assert.Equal(t, "req-xyz", gotID)
+
+	// tanpa ID di context: header tidak dikirim sama sekali
+	_, err = client.IssueJoinToken(context.Background(), 1, "dynamic", 0)
+	require.NoError(t, err)
+	assert.Empty(t, gotID)
+}
+
+// Header traceparent diteruskan ke qr-service bila ada span aktif, sehingga trace backend dan qr-service menyatu.
+func TestClient_PropagatesTraceparent(t *testing.T) {
+	// propagator W3C dan provider sungguhan, seperti yang dipasang telemetry.Setup di produksi
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	otel.SetTracerProvider(tp)
+	defer func() { _ = tp.Shutdown(context.Background()) }()
+
+	// header traceparent yang diterima server palsu qr-service
+	var gotParent string
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotParent = r.Header.Get("traceparent")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"token":"v1.abc.sig","type":"dynamic","expires_at":null}`))
+	})
+
+	// span induk meniru span server backend; context-nya dipakai untuk memanggil qr-service
+	ctx, span := tp.Tracer("t").Start(context.Background(), "request")
+	_, err := client.IssueJoinToken(ctx, 1, "dynamic", 0)
+	span.End()
+	require.NoError(t, err)
+	// header ada dan memuat trace ID induk, sehingga qr-service ikut dalam trace yang sama
+	require.NotEmpty(t, gotParent, "traceparent harus dikirim ke qr-service")
+	assert.Contains(t, gotParent, span.SpanContext().TraceID().String())
 }

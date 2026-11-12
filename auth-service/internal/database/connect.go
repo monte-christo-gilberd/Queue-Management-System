@@ -7,19 +7,23 @@ import (
 	// import kosong: mendaftarkan driver "pgx" ke database/sql, sehingga sqlx.Connect("pgx", ...) dikenali
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
+
+	"qms/auth-service/internal/telemetry"
 )
 
 // Connect membuka koneksi dan memastikan database terjangkau (Ping, 5 detik).
 func Connect(
 	dsn string,
 ) (*sqlx.DB, error) {
-	// buka koneksi dengan driver pgx (didaftarkan oleh import kosong stdlib di atas)
-	db, err := sqlx.Connect("pgx", dsn)
-	// Gagal terhubung: kembalikan galat ke pemanggil.
+	// buka koneksi dengan driver pgx (didaftarkan oleh import kosong stdlib di atas); bila tracing aktif, query
+	// dibungkus agar menjadi span anak dari request (hanya templat query, tanpa nilai parameter)
+	sqlDB, err := telemetry.OpenSQL("pgx", dsn)
+	// Gagal membuka: kembalikan galat ke pemanggil.
 	if err != nil {
-		// Gagal terhubung: tidak ada koneksi untuk dikembalikan.
 		return nil, err
 	}
+	// sqlx di atas database/sql yang sama
+	db := sqlx.NewDb(sqlDB, "pgx")
 	// batas 5 detik untuk ping; melepas timer saat fungsi selesai (bukan menutup koneksi)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	// Lepas timer saat fungsi selesai (bukan menutup koneksi).

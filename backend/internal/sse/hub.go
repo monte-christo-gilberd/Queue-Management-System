@@ -214,3 +214,21 @@ func (h *Hub) RoomSize(queueID int64) int {
 	// jumlah klien di room; room yang tidak ada menghasilkan 0
 	return len(h.rooms[queueID])
 }
+
+// ClientCounts mengembalikan jumlah koneksi aktif: queue untuk room antrian (kunci positif) dan display untuk
+// layar publik (kunci negatif, lihat DisplayRoom). Aman dipanggil dari goroutine mana pun; dipakai metrik.
+func (h *Hub) ClientCounts() (queue int, display int) {
+	// kunci baca agar map tidak berubah saat dihitung
+	h.mu.RLock()
+	// buka kunci saat fungsi selesai
+	defer h.mu.RUnlock()
+	// jumlahkan klien per room sesuai jenis kuncinya
+	for key, room := range h.rooms {
+		if key < 0 {
+			display += len(room)
+		} else {
+			queue += len(room)
+		}
+	}
+	return queue, display
+}

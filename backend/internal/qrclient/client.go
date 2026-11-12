@@ -9,7 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"qms/internal/apperror"
+	"qms/internal/requestid"
 )
 
 // defaultTimeout: batas waktu satu panggilan ke qr-service bila timeout yang diberikan tidak valid (nol atau negatif).
@@ -55,7 +58,9 @@ func New(baseURL string, serviceToken string, timeout time.Duration) *Client {
 	return &Client{
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		serviceToken: serviceToken,
-		httpClient:   &http.Client{Timeout: timeout},
+		// otelhttp.NewTransport membuat span klien dan menyisipkan header traceparent, sehingga qr-service ikut
+		// dalam trace yang sama. Tanpa tracing aktif, transport ini tidak melakukan apa-apa.
+		httpClient: &http.Client{Timeout: timeout, Transport: otelhttp.NewTransport(http.DefaultTransport)},
 	}
 }
 
@@ -159,6 +164,10 @@ func (c *Client) do(
 	req.Header.Set("Content-Type", "application/json")
 	// kirim token service agar qr-service menerima request ini
 	req.Header.Set("X-Service-Token", c.serviceToken)
+	// teruskan request ID dari request pengguna agar satu request bisa diikuti di log backend dan qr-service
+	if id := requestid.From(ctx); id != "" {
+		req.Header.Set("X-Request-Id", id)
+	}
 	// kirim request; error berarti tidak terhubung, timeout, atau koneksi putus
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

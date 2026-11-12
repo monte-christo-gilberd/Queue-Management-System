@@ -1,6 +1,7 @@
 package router
 
 import (
+	"log/slog"
 	"net/http"
 
 	"qms/internal/middleware"
@@ -29,6 +30,27 @@ func NewAppRouter(
 	}
 	// kembalikan router yang siap dipasang fitur opsional
 	return app
+}
+
+// WithLogger memasang logger untuk log akses dan Recovery (opsional; tanpa ini dipakai slog.Default()).
+func (a *AppRouter) WithLogger(l *slog.Logger) *AppRouter {
+	// simpan logger, lalu kembalikan router yang sama agar bisa dirangkai
+	a.logger = l
+	return a
+}
+
+// WithMetrics memasang middleware metrik HTTP (opsional; tanpa ini tidak ada metrik request).
+func (a *AppRouter) WithMetrics(m gin.HandlerFunc) *AppRouter {
+	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
+	a.metricsMiddleware = m
+	return a
+}
+
+// WithTracing memasang middleware tracing (opsional; tanpa ini tidak ada span request).
+func (a *AppRouter) WithTracing(m gin.HandlerFunc) *AppRouter {
+	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
+	a.tracingMiddleware = m
+	return a
 }
 
 // WithCounters memasang endpoint CRUD counter (opsional; tanpa ini rute /counters tidak ada).
@@ -78,8 +100,32 @@ func (a *AppRouter) WithPush(h PushHandler) *AppRouter {
 func SetupRouter(
 	router *AppRouter,
 ) *gin.Engine {
-	// buat engine Gin dengan logger dan recovery bawaan
-	engine := gin.Default()
+	// pakai logger dari AppRouter; bila tidak dipasang, pakai logger default slog (diatur di main)
+	logger := router.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	// mode release mematikan baris "[GIN-debug]" berformat teks agar semua keluaran stdout berupa JSON
+	gin.SetMode(gin.ReleaseMode)
+	// engine kosong tanpa middleware bawaan: gin.Default() mencatat log teks yang memuat nilai parameter route
+	// (termasuk token layar publik), jadi diganti middleware slog di bawah
+	engine := gin.New()
+	// tracing paling awal: span server mencakup semua middleware di bawahnya, dan span aktif sudah ada saat
+	// RequestID, Logger, dan Recovery berjalan (atribut request_id dan trace_id di log)
+	if router.tracingMiddleware != nil {
+		engine.Use(router.tracingMiddleware)
+	}
+	// RequestID paling awal agar semua log request memuat request_id
+	engine.Use(middleware.RequestID())
+	// metrik sebelum Logger dan Recovery: request yang panic tetap terhitung sebagai 500
+	if router.metricsMiddleware != nil {
+		engine.Use(router.metricsMiddleware)
+	}
+	// Logger sebelum Recovery: request yang panic tetap tercatat sebagai baris akses berstatus 500
+	engine.Use(middleware.Logger(logger))
+	// Recovery mengubah panic menjadi 500 dan mencatatnya lewat slog
+	engine.Use(middleware.Recovery(logger))
 	// pasang CORS untuk semua rute, sesuai daftar origin yang diizinkan
 	engine.Use(middleware.CORS(router.allowedOrigins))
 

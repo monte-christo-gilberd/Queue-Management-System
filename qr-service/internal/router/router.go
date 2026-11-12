@@ -38,6 +38,20 @@ func (a *AppRouter) WithRender(h RenderHandler) *AppRouter {
 	return a
 }
 
+// WithTracing memasang middleware tracing (opsional; tanpa ini tidak ada span request).
+func (a *AppRouter) WithTracing(m gin.HandlerFunc) *AppRouter {
+	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
+	a.tracingMiddleware = m
+	return a
+}
+
+// WithMetrics memasang middleware metrik HTTP (opsional; tanpa ini tidak ada metrik request).
+func (a *AppRouter) WithMetrics(m gin.HandlerFunc) *AppRouter {
+	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
+	a.metricsMiddleware = m
+	return a
+}
+
 // SetupRouter membuat gin.Engine dan mendaftarkan semua rute sesuai handler yang sudah dipasang di router.
 //
 // Publik: /health, /ready
@@ -55,11 +69,22 @@ func SetupRouter(
 	// mode release menonaktifkan log debug bawaan Gin, lalu buat engine kosong tanpa middleware
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
-	// pasang middleware global: tangkap panic, beri request ID, catat request, dan larang cache
-	engine.Use(gin.Recovery())
-	// RequestID dipasang sebelum Logger agar log memuat request_id
+	// pasang middleware global: beri request ID, catat request, tangkap panic, dan larang cache
+	// RequestID dipasang paling awal agar semua log memuat request_id
+	// tracing paling awal: span server mencakup semua middleware di bawahnya, dan span aktif sudah ada saat
+	// RequestID, Logger, dan Recovery berjalan (atribut request_id dan trace_id di log)
+	if router.tracingMiddleware != nil {
+		engine.Use(router.tracingMiddleware)
+	}
 	engine.Use(middleware.RequestID())
+	// metrik sebelum Logger dan Recovery: request yang panic tetap terhitung sebagai 500
+	if router.metricsMiddleware != nil {
+		engine.Use(router.metricsMiddleware)
+	}
+	// Logger sebelum Recovery: request yang panic tetap tercatat sebagai baris akses berstatus 500
 	engine.Use(middleware.Logger(logger))
+	// Recovery mengubah panic menjadi 500 dan mencatatnya lewat slog (JSON), bukan teks bawaan Gin
+	engine.Use(middleware.Recovery(logger))
 	// respons bisa berisi token, jadi tidak boleh disimpan cache
 	engine.Use(middleware.NoStore())
 

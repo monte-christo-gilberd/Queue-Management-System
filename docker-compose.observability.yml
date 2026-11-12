@@ -1,0 +1,251 @@
+# =============================================================================
+# docker-compose.observability.yml: overlay OPSIONAL observability (log) untuk dev dan prod.
+# -----------------------------------------------------------------------------
+# Dipakai oleh : make obs-up / obs-down / obs-url (OBS_TARGET=dev|prod). Digabung dengan compose dasar:
+#   dev : docker compose -f docker-compose.yml      -f docker-compose.observability.yml ...
+#   prod: docker compose -f docker-compose.prod.yml -f docker-compose.observability.yml --env-file .env.prod ...
+# Isi: collector (OTel), loki, grafana, dan blok `logging:` untuk service aplikasi (Fase 2); prometheus, cadvisor,
+# node-exporter, postgres-exporter, nginx-exporter (Fase 3); tempo dan pengiriman trace dari backend, auth, qr, mail
+# (Fase 4). Lihat docs/plan-observability-tracing.md.
+#
+# [PENTING] ISOLASI: TIDAK ADA depends_on dari service aplikasi ke komponen observability, dan service aplikasi
+#           tidak memakai variabel observability. Observability mati (atau overlay tidak dipakai) tidak boleh
+#           mengganggu antrian. Jangan menambah depends_on di sini ke arah itu.
+# [PENTING] Tracing hanya aktif di service yang mendapat OTEL_EXPORTER_OTLP_ENDPOINT dari overlay ini (backend, auth,
+#           qr, mail). Tanpa overlay variabel itu kosong, jadi tracing no-op dan aplikasi start seperti biasa. Pengiriman
+#           span asinkron dan terbatas: collector atau Tempo mati tidak pernah menahan request.
+# [PENTING] Listener metrik service Go (:9100) dan exporter TIDAK dipublikasikan ke host dan tidak melewati nginx.
+# [PENTING] Hanya Grafana yang membuka port ke host, dan hanya di 127.0.0.1 (akses jauh lewat SSH tunnel):
+#           ssh -L 3000:127.0.0.1:3000 <user>@<server>, lalu buka http://localhost:3000.
+# [SINKRON] Service yang diberi blok logging harus ada di docker-compose.yml DAN docker-compose.prod.yml.
+# [PENTING] Pertama kali overlay dinyalakan, service aplikasi dibuat ulang (blok logging berubah). Volume dan data
+#           database tetap. Menjalankan `make up` / `make prod-up` tanpa overlay membuat ulang service itu tanpa
+#           blok logging, sehingga log-nya berhenti terkumpul sampai `make obs-up` dijalankan lagi.
+# Variabel (di .env atau .env.prod):
+#   GRAFANA_ADMIN_PASSWORD  WAJIB, tanpa nilai bawaan.
+#   GRAFANA_PORT            port Grafana di 127.0.0.1 host, bawaan 3000.
+#   METRICS_DB_PASSWORD     WAJIB, password role database metrics_ro (postgres_exporter). Role dibuat/diperbarui
+#                           `make obs-up` lewat db/migrations/07_metrics_role.sh.
+#   OBS_LOG_RETENTION       lama simpan log di Loki, bawaan 168h (7 hari).
+#   OBS_METRICS_RETENTION   lama simpan metrik di Prometheus, bawaan 7d (batas ukuran tetap 1GB).
+#   OBS_TRACE_RETENTION     lama simpan trace di Tempo, bawaan 72h (3 hari).
+#   OTEL_TRACES_SAMPLER_ARG rasio trace yang direkam (head sampling), bawaan 0.1 (10%). 1 = semua, 0 = tidak ada.
+#                           Makefile (up/tunnel/obs-up di dev) memakai 1 bila nilai ini kosong, supaya trace langsung
+#                           terlihat; prod tetap 0.1.
+#   OBS_PROJECT             nama project compose; diisi otomatis oleh Makefile (qms atau qms-prod).
+# =============================================================================
+
+# Pengaturan log Docker untuk service aplikasi: putar berkas (maks 3 x 10 MB per container) dan sertakan label
+# compose di setiap baris log, yang dipakai collector untuk mengenali project dan nama service.
+x-app-logging: &app-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+    labels-regex: "^com\\.docker\\.compose\\.(project|service)$"
+
+# Pengiriman trace dari service Go ke collector (OTLP gRPC, jaringan internal). Hanya service yang dipasangi SDK
+# (backend, auth, qr, mail). Nilai kosong/hilang = tracing mati. Tidak ada depends_on ke collector.
+x-otel-env: &otel-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4317
+  OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
+
+services:
+  # ---------------------------------------------------------------------------
+  # Service aplikasi: hanya menambah blok logging dan (backend, auth, qr, mail) pengiriman trace.
+  # ---------------------------------------------------------------------------
+  backend:
+    logging: *app-logging
+    environment: *otel-env
+  auth-service:
+    logging: *app-logging
+    environment: *otel-env
+  qr-service:
+    logging: *app-logging
+    environment: *otel-env
+  mail-service:
+    logging: *app-logging
+    environment: *otel-env
+  notify-service:
+    logging: *app-logging
+  nginx:
+    logging: *app-logging
+
+  # ---------------------------------------------------------------------------
+  # collector: membaca log Docker, menyamarkan rahasia, mengirim ke Loki.
+  # Berjalan sebagai root karena /var/lib/docker/containers hanya bisa dibaca root; mount read-only, tanpa docker.sock.
+  # ---------------------------------------------------------------------------
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.156.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    user: "0:0"
+    environment:
+      OBS_PROJECT: ${OBS_PROJECT:-qms}
+      # Batas memori Go sedikit di bawah mem_limit agar GC bekerja lebih agresif sebelum kontainer di-OOM.
+      GOMEMLIMIT: 200MiB
+    volumes:
+      - ./observability/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - obs_collector_data:/var/lib/otelcol
+    mem_limit: 256m
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # tempo: penyimpanan trace (filesystem, satu node). Menerima OTLP dari collector saja. Tanpa port ke host.
+  # ---------------------------------------------------------------------------
+  tempo:
+    image: grafana/tempo:3.0.2
+    command: ["-config.file=/etc/tempo/tempo-config.yaml", "-config.expand-env=true"]
+    environment:
+      OBS_TRACE_RETENTION: ${OBS_TRACE_RETENTION:-72h}
+    volumes:
+      - ./observability/tempo/tempo-config.yaml:/etc/tempo/tempo-config.yaml:ro
+      - obs_tempo_data:/var/tempo
+    mem_limit: 384m
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # loki: penyimpanan log (filesystem, satu node). Tanpa port ke host.
+  # ---------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.7.3
+    command: ["-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true"]
+    environment:
+      OBS_LOG_RETENTION: ${OBS_LOG_RETENTION:-168h}
+    volumes:
+      - ./observability/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - obs_loki_data:/loki
+    mem_limit: 512m
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # grafana: UI. Satu-satunya yang membuka port, hanya ke 127.0.0.1. Login wajib, tanpa pendaftaran dan tanpa
+  # akses anonim. Sumber data di-provision dari observability/grafana/provisioning.
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:13.1.0
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env (tanpa nilai bawaan)}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Batas memori Go sedikit di bawah mem_limit agar GC bekerja sebelum kontainer menyentuh batasnya (tanpa ini
+      # Grafana terukur mepet 100% dari batas dan berisiko di-OOM-kill).
+      GOMEMLIMIT: 520MiB
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      # Dashboard sebagai kode (dibaca provider di provisioning/dashboards).
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - obs_grafana_data:/var/lib/grafana
+    # Terukur sekitar 200 MiB saat hanya dua dashboard, tetapi sekitar 390 MiB (mepet batas 384m lama) setelah sembilan
+    # dashboard dan 11 aturan alert; 640m memberi ruang untuk query dan evaluasi alert.
+    mem_limit: 640m
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # prometheus: penyimpanan metrik (pull). Retensi dan batas ukuran lewat flag. Tanpa port ke host.
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v3.13.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${OBS_METRICS_RETENTION:-7d}
+      # Batas ukuran: data terlama dibuang lebih dulu bila disk tidak cukup.
+      - --storage.tsdb.retention.size=1GB
+      # Menerima remote write dari metrics-generator Tempo (peta service dan metrik span).
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - obs_prometheus_data:/prometheus
+    mem_limit: 384m
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # cadvisor: metrik per container (CPU, memori, jaringan, restart). Mount host read-only sesuai plan
+  # (/, /sys, /var/lib/docker); TANPA docker.sock. Akibatnya cAdvisor tidak bisa menanyakan nama container ke Docker:
+  # container dikenali dari id cgroup-nya (label `id`, 12 karakter pertama sama dengan `docker ps`), bukan nama
+  # service. Prometheus hanya menyimpan cgroup container (lihat metric_relabel_configs di prometheus.yml).
+  # ---------------------------------------------------------------------------
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    command:
+      - --housekeeping_interval=15s
+      - --store_container_labels=false
+      # Metrik yang tidak dipakai dashboard/alert dimatikan untuk menghemat RAM dan jumlah series.
+      - --disable_metrics=percpu,sched,tcp,udp,advtcp,process,hugetlb,referenced_memory,cpu_topology,resctrl
+    volumes:
+      - /:/rootfs:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    mem_limit: 256m
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # node-exporter: metrik host (CPU, memori, disk). Sistem berkas host dibaca lewat /host (read-only).
+  # Catatan: statistik jaringan yang terlihat adalah milik container, bukan host.
+  # ---------------------------------------------------------------------------
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.9.1
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|run/.+)($$|/)
+    volumes:
+      - /:/host:ro,rslave
+    mem_limit: 64m
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # postgres-exporter: metrik PostgreSQL lewat role metrics_ro (hanya pg_monitor, tanpa akses ke data aplikasi).
+  # ---------------------------------------------------------------------------
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_NAME: postgresql://metrics_ro:${METRICS_DB_PASSWORD:?set METRICS_DB_PASSWORD in .env (tanpa nilai bawaan)}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+    mem_limit: 64m
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # nginx-exporter: metrik nginx dari listener stub_status INTERNAL (port 8081 di container nginx, tidak dipetakan
+  # ke host, tidak ada di server{} publik; lihat deploy/nginx/nginx*.conf).
+  # ---------------------------------------------------------------------------
+  nginx-exporter:
+    image: ghcr.io/nginx/nginx-prometheus-exporter:1.4.2
+    command:
+      - --nginx.scrape-uri=http://nginx:8081/stub_status
+    mem_limit: 32m
+    networks:
+      - internal
+    restart: unless-stopped
+
+volumes:
+  # Data trace Tempo.
+  obs_tempo_data:
+  # Data deret waktu Prometheus.
+  obs_prometheus_data:
+  # Posisi baca berkas log milik collector.
+  obs_collector_data:
+  # Data log Loki (chunk dan index).
+  obs_loki_data:
+  # Database Grafana (pengguna, preferensi).
+  obs_grafana_data:

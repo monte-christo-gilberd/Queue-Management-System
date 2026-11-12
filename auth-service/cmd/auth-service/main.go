@@ -13,23 +13,35 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"qms/auth-service/internal/config"
 	"qms/auth-service/internal/database"
 	"qms/auth-service/internal/google"
 	"qms/auth-service/internal/handler"
 	"qms/auth-service/internal/httpserver"
+	"qms/auth-service/internal/logging"
 	"qms/auth-service/internal/mailclient"
+	"qms/auth-service/internal/metrics"
 	"qms/auth-service/internal/middleware"
 	"qms/auth-service/internal/repository"
 	"qms/auth-service/internal/router"
 	"qms/auth-service/internal/service"
+	"qms/auth-service/internal/telemetry"
 	"qms/auth-service/internal/validator"
 )
 
 // main hanya memanggil run dan mencatat error-nya. Pekerjaan sebenarnya ada di run agar defer di dalamnya
 // (termasuk db.Close) sudah berjalan sebelum proses berhenti dengan kode 1.
 func main() {
+	// logger JSON dengan atribut service=auth-service dan level dari LOG_LEVEL (bawaan info)
+	logger := logging.NewLogger(
+		"auth-service",
+		os.Getenv("LOG_LEVEL"),
+	)
+	// jadikan default: slog.* di seluruh paket (service, handler, middleware) ikut berformat JSON
+	slog.SetDefault(logger)
+
 	// jalankan service; galat berarti server gagal start atau berhenti tidak wajar
 	if err := run(); err != nil {
 		// Catat penyebab berhenti sebagai log terstruktur.
@@ -48,6 +60,15 @@ func run() error {
 		// Bungkus dengan asal galat agar log jelas.
 		return fmt.Errorf("config: %w", err)
 	}
+	// tracing: aktif hanya bila OTEL_EXPORTER_OTLP_ENDPOINT terisi; kosong berarti no-op. Sisa span dikirim saat
+	// berhenti (maks 5 detik). Pengiriman asinkron dan terbatas, jadi collector mati tidak pernah menahan request.
+	shutdownTracing := telemetry.Setup(context.Background(), "auth-service")
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(sctx)
+	}()
+
 	// buka koneksi database dengan role auth_rw dan pastikan terjangkau
 	db, err := database.Connect(cfg.DatabaseURL)
 	if err != nil {
@@ -95,6 +116,13 @@ func run() error {
 		middleware.Auth(svc),
 		cfg.TrustedProxies,
 	)
+	// metrik Prometheus: middleware HTTP dipasang di router, listener /metrics dijalankan setelah ctx dibuat
+	appMetrics := metrics.NewAuth()
+	app.WithMetrics(appMetrics.Middleware())
+	// tracing hanya dipasang bila aktif; tanpa itu tidak ada middleware tambahan
+	if telemetry.Enabled() {
+		app.WithTracing(telemetry.Middleware("auth-service"))
+	}
 	// reset password dan verifikasi email hanya dipasang bila mail-service terpasang
 	if mailer != nil {
 		// Pasang rute lupa password dan verifikasi email.
@@ -112,6 +140,8 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	// Lepas pendaftaran sinyal saat run selesai.
 	defer stop()
+	// listener metrik di port terpisah (METRICS_ADDR, bawaan :9100); tidak memblokir dan tidak menggagalkan service
+	appMetrics.Serve(ctx)
 	// jalankan server di goroutine agar run bisa menunggu sinyal berhenti
 	serverErr := make(chan error, 1)
 	// Server berjalan di goroutine terpisah.

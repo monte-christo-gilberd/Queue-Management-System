@@ -1,0 +1,28 @@
+# =============================================================================
+# policies.yaml: notification policy Grafana sebagai kode (Fase 5).
+# -----------------------------------------------------------------------------
+# Semua alert QMS (label system=qms, dipasang di rules.yaml) masuk ke route anak yang memakai jadwal senyap
+# "selalu-senyap" (mutetimings.yaml): notifikasi ditahan seluruhnya, jadi alert terlihat di UI tetapi tidak dikirim.
+# Grafana melarang jadwal senyap di route akar, karena itu dipasang di route anak.
+# Saat pengiriman ditambahkan: buat contact point baru, ganti `receiver` di route anak (atau tambah route per severity:
+# critical ke saluran mendesak, warning ke saluran biasa), lalu hapus `mute_time_intervals`.
+# =============================================================================
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    # route akar: contact point "tanpa-pengiriman" (contactpoints.yaml): webhook yang tidak pernah dipanggil karena semua notifikasi senyap
+    receiver: tanpa-pengiriman
+    # pengelompokan notifikasi: satu per aturan dan service
+    group_by: [alertname, service]
+    # jeda sebelum notifikasi grup pertama dikirim, antar pembaruan grup, dan pengulangan
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      # semua alert QMS: ditahan oleh jadwal senyap
+      - receiver: tanpa-pengiriman
+        object_matchers:
+          - ["system", "=", "qms"]
+        mute_time_intervals:
+          - selalu-senyap

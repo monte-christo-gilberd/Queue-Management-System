@@ -1,0 +1,18 @@
+# =============================================================================
+# mutetimings.yaml: jadwal senyap Grafana sebagai kode (Fase 5).
+# -----------------------------------------------------------------------------
+# "selalu-senyap" mencakup 24 jam setiap hari, sehingga SEMUA notifikasi ditahan: alert tetap dievaluasi dan statusnya
+# (Normal, Pending, Firing) terlihat di Grafana (Alerting > Alert rules), tetapi tidak dikirim ke mana pun. Ini cara
+# resmi Grafana untuk "terlihat di UI, belum dikirim", tanpa galat pengiriman di log.
+# Saat pengiriman (email, Slack) ditambahkan: hapus `mute_time_intervals` di policies.yaml (atau hapus berkas ini).
+# =============================================================================
+apiVersion: 1
+
+muteTimes:
+  - orgId: 1
+    name: selalu-senyap
+    time_intervals:
+      # satu interval yang mencakup seluruh hari
+      - times:
+          - start_time: "00:00"
+            end_time: "24:00"

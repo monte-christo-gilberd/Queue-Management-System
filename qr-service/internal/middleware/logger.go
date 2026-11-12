@@ -7,8 +7,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Logger mencatat satu baris JSON per request. Query string sengaja tidak dicatat
-// karena berisi token join; hanya path yang dicatat.
+// Logger mencatat satu baris JSON per request setelah request selesai. Yang dicatat: request_id, method, route,
+// status, latency_ms, bytes, dan client_ip.
+//
+// route adalah TEMPLAT rute (mis. /api/v1/display/:token), bukan path mentah, dan query string tidak pernah dicatat.
+// Dengan begitu token layar publik, token join, dan token reset tidak masuk log, dan jumlah nilai route tetap kecil.
 func Logger(
 	logger *slog.Logger,
 ) gin.HandlerFunc {
@@ -18,26 +21,42 @@ func Logger(
 		start := time.Now()
 		c.Next()
 
-		// kumpulkan atribut log setelah request selesai, termasuk status dan durasi
+		// context request: membawa span aktif, sehingga log akses memuat trace_id dan span_id
+		ctx := c.Request.Context()
+		// templat rute yang cocok; kosong berarti tidak ada rute (404), jadi pakai penanda tetap, bukan path mentah
+		route := c.FullPath()
+		if route == "" {
+			route = "unmatched"
+		}
+		// ukuran body respons; Gin memberi -1 bila belum ada yang ditulis
+		bytes := max(c.Writer.Size(), 0)
+		// status akhir respons (setelah handler dan Recovery selesai)
+		status := c.Writer.Status()
+
+		// kumpulkan atribut log setelah request selesai
 		attrs := []any{
-			"method", c.Request.Method,
-			"path", c.Request.URL.Path,
-			"status", c.Writer.Status(),
-			"duration_ms", time.Since(start).Milliseconds(),
 			"request_id", c.GetString("request_id"),
-			"ip", c.ClientIP(),
+			"method", c.Request.Method,
+			"route", route,
+			"status", status,
+			"latency_ms", time.Since(start).Milliseconds(),
+			"bytes", bytes,
+			"client_ip", c.ClientIP(),
 		}
 		// pilih level log sesuai status: 5xx galat, 4xx peringatan, selain itu info
 		switch {
 		// status 5xx: kesalahan server, catat sebagai error
-		case c.Writer.Status() >= 500:
-			logger.Error("request", attrs...)
+		case status >= 500:
+			logger.ErrorContext(ctx, "request", attrs...)
 		// status 4xx: kesalahan dari klien, catat sebagai warning
-		case c.Writer.Status() >= 400:
-			logger.Warn("request", attrs...)
+		case status >= 400:
+			logger.WarnContext(ctx, "request", attrs...)
+		// probe liveness dipanggil terus-menerus oleh Docker; turunkan ke debug agar log tidak penuh
+		case route == "/health" || route == "/ready":
+			logger.DebugContext(ctx, "request", attrs...)
 		// status lain: catat sebagai info
 		default:
-			logger.Info("request", attrs...)
+			logger.InfoContext(ctx, "request", attrs...)
 		}
 	}
 }

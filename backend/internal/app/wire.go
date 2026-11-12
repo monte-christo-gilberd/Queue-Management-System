@@ -3,7 +3,7 @@
 package app
 
 import (
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -11,12 +11,14 @@ import (
 	"qms/internal/config"
 	"qms/internal/database"
 	"qms/internal/handler"
+	"qms/internal/metrics"
 	"qms/internal/middleware"
 	"qms/internal/qrclient"
 	"qms/internal/repository"
 	"qms/internal/router"
 	"qms/internal/service"
 	"qms/internal/sse"
+	"qms/internal/telemetry"
 )
 
 // App adalah hasil Wire: router yang sudah lengkap dan hub SSE yang harus dihentikan saat server berhenti.
@@ -25,6 +27,8 @@ type App struct {
 	Router *router.AppRouter
 	// Hub: pengelola koneksi SSE. Hub.Run sudah berjalan di goroutine; panggil Hub.Shutdown saat server berhenti.
 	Hub *sse.Hub
+	// Metrics: metrik Prometheus; panggil Metrics.Serve(ctx) untuk menyalakan listener /metrics terpisah.
+	Metrics *metrics.Backend
 }
 
 // Wire merangkai semua komponen dari bawah ke atas: hub SSE → repository → service → handler → router.
@@ -59,7 +63,7 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 	if cfg.EmailVerificationRequired {
 		verification = service.NewEmailVerificationGuard(repository.NewVerificationRepository(db))
 	} else {
-		log.Println("verifikasi email mati: akun baru tidak perlu verifikasi")
+		slog.Info("email verification disabled: new accounts do not need to verify")
 	}
 
 	// inisialisasi transaksi sqlx
@@ -322,8 +326,17 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 			WithPush(pushHandler)
 	}
 
+	// metrik Prometheus: middleware HTTP dipasang di router, dan gauge SSE membaca hub saat di-scrape
+	appMetrics := metrics.NewBackend(hub)
+	appRouter.WithMetrics(appMetrics.Middleware())
+	// tracing hanya dipasang bila aktif (OTEL_EXPORTER_OTLP_ENDPOINT terisi); tanpa itu tidak ada middleware tambahan
+	if telemetry.Enabled() {
+		appRouter.WithTracing(telemetry.Middleware("backend"))
+	}
+
 	return &App{
-		Router: appRouter,
-		Hub:    hub,
+		Router:  appRouter,
+		Hub:     hub,
+		Metrics: appMetrics,
 	}
 }

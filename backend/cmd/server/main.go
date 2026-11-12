@@ -14,22 +14,36 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"qms/internal/app"
 	"qms/internal/config"
 	"qms/internal/database"
 	"qms/internal/httpserver"
+	"qms/internal/logging"
+	"qms/internal/telemetry"
 )
 
-// main hanya memanggil run dan mencatat error-nya. Pekerjaan sebenarnya ada di run agar defer di dalamnya
-// (termasuk db.Close) sudah berjalan sebelum log.Fatal mengakhiri proses.
+// main memasang logger JSON, lalu memanggil run dan mencatat error-nya. Pekerjaan sebenarnya ada di run agar defer
+// di dalamnya (termasuk db.Close) sudah berjalan sebelum proses berhenti dengan kode 1.
 func main() {
+	// logger JSON dengan atribut service=backend dan level dari LOG_LEVEL (bawaan info)
+	logger := logging.NewLogger(
+		"backend",
+		os.Getenv("LOG_LEVEL"),
+	)
+	// jadikan default: semua slog.* di proses ini, dan paket log bawaan Go milik pustaka, ikut berformat JSON
+	slog.SetDefault(logger)
+
+	// jalankan service; galat berarti gagal start atau berhenti tidak wajar
 	if err := run(); err != nil {
-		log.Fatal(err)
+		// catat penyebab sebagai log terstruktur, lalu keluar dengan kode 1 agar Docker tahu service gagal
+		slog.Error("backend stopped", "err", err)
+		os.Exit(1)
 	}
 }
 
@@ -45,6 +59,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	// tracing: aktif hanya bila OTEL_EXPORTER_OTLP_ENDPOINT terisi; kosong berarti no-op. Dipasang sebelum database
+	// dibuka karena pembungkus query memeriksa telemetry.Enabled(). Sisa span dikirim saat berhenti (maks 5 detik).
+	shutdownTracing := telemetry.Setup(context.Background(), "backend")
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(sctx)
+	}()
 
 	// membuka koneksi ke database dan cek koneksi (Ping)
 	db, err := database.Connect(
@@ -87,10 +110,14 @@ func run() error {
 	)
 	defer stop()
 
+	// listener metrik Prometheus di port terpisah (METRICS_ADDR, bawaan :9100). Tidak memblokir, dan kegagalannya
+	// tidak menghentikan API.
+	application.Metrics.Serve(ctx)
+
 	// menjalankan server HTTP dengan timeout dasar; Hub.Shutdown menutup koneksi SSE saat server berhenti,
 	// agar graceful shutdown tidak menunggu koneksi yang berumur panjang
 	srv := httpserver.New(port, engine)
-	log.Printf("server listen di %s", port)
+	slog.Info("server listening", "addr", port)
 
 	err = httpserver.Run(
 		ctx,
@@ -98,9 +125,9 @@ func run() error {
 		cfg.ShutdownTimeout,
 		application.Hub.Shutdown,
 	)
-	
+
 	if err == nil {
-		log.Println("server berhenti dengan rapi")
+		slog.Info("server stopped gracefully")
 	}
 	return err
 }
