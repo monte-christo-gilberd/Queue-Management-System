@@ -29,7 +29,7 @@ func NewMeteredPushSender(
 	sender PushSender,
 	counters PushCounters,
 ) PushSender {
-	// tanpa penghitung, kembalikan pengirim apa adanya
+	// tanpa penghitung, kembalikan pengirim apa adanya (tidak ada lapisan tambahan)
 	if counters == nil {
 		return sender
 	}
@@ -42,8 +42,9 @@ func (m *meteredSender) Send(
 	sub model.Subscription,
 	msg dto.Message,
 ) error {
-	// teruskan ke pengirim asli
+	// teruskan ke pengirim asli; hasil dan galatnya dikembalikan apa adanya di akhir
 	err := m.PushSender.Send(ctx, sub, msg)
+	// klasifikasikan hasil untuk metrik
 	switch {
 	// berhasil
 	case err == nil:

@@ -14,16 +14,19 @@ import (
 // internal/metrics/backend.go.
 func TestMetricsBusinessRoutesStillRegistered(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	// router dengan handler kosong (embedding antarmuka nil cukup untuk mendaftarkan rute, tidak dipanggil)
 	app := router.NewAppRouter(struct{ router.TicketHandler }{}, struct{ router.UserHandler }{}, struct{ router.QueueHandler }{},
 		func(c *gin.Context) { c.AbortWithStatus(http.StatusUnauthorized) },
 		stubSSE{}, nil).
 		WithSubscription(struct{ router.SubscriptionHandler }{})
 	engine := router.SetupRouter(app)
 
+	// kumpulkan semua rute terdaftar sebagai "METHOD /path"
 	registered := map[string]bool{}
 	for _, r := range engine.Routes() {
 		registered[r.Method+" "+r.Path] = true
 	}
+	// setiap templat yang dibaca hook metrik harus ada
 	for _, want := range []string{
 		"POST /api/v1/join",
 		"POST /api/v1/queues",

@@ -1,9 +1,9 @@
 # =============================================================================
-# config.yaml: OpenTelemetry Collector untuk QMS (Fase 2: hanya LOG).
+# config.yaml: OpenTelemetry Collector untuk QMS (Fase 2: LOG, Fase 4: TRACE).
 # -----------------------------------------------------------------------------
-# Jalur  : log Docker (json-file) service QMS -> filelog -> penyamaran -> Loki (OTLP/HTTP).
+# Log    : log Docker (json-file) service QMS -> filelog -> penyamaran -> Loki (OTLP/HTTP).
+# Trace  : service Go -> OTLP gRPC (:4317, hanya jaringan internal) -> penyamaran -> Tempo (OTLP gRPC).
 # Dipakai: docker-compose.observability.yml (service `collector`, image otel/opentelemetry-collector-contrib).
-# Fase 4 menambah receiver OTLP (:4317) dan exporter otlp/tempo untuk trace di berkas ini.
 # Variabel env (diisi compose):
 #   OBS_PROJECT  nama project compose yang dibaca (qms untuk dev, qms-prod untuk prod). Container project lain
 #                (mis. stack dev dan prod jalan bersamaan) dibuang.
@@ -22,6 +22,12 @@ extensions:
     endpoint: 0.0.0.0:13133
 
 receivers:
+  # Trace dari service Go. Port 4317 hanya terbuka di jaringan `internal` (tidak dipetakan ke host). Aplikasi hanya
+  # mengirim bila OTEL_EXPORTER_OTLP_ENDPOINT terisi (diatur overlay), dan tidak pernah menunggu collector.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
   filelog:
     # Semua berkas log container di host. Container di luar project QMS dibuang oleh operator `filter` di bawah.
     include:
@@ -128,19 +134,41 @@ processors:
           # Bentuk JSON: "token":"...", "password":"...", "secret":"...".
           - replace_pattern(body, "(?i)\"(token|password|secret)\"\\s*:\\s*\"[^\"]*\"", "\"$$1\":\"***\"")
 
+  # Lapis kedua penyamaran untuk span (lapis pertama ada di aplikasi: path mentah, query, header, dan alamat klien
+  # dibuang saat ekspor). Atribut string yang masih memuat bentuk rahasia diganti penanda.
+  transform/redact_traces:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - replace_all_patterns(attributes, "value", "(?i)bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer ***")
+          - replace_all_patterns(attributes, "value", "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]*", "***jwt***")
+          - replace_all_patterns(attributes, "value", "(?i)(token|password|secret)=[^&\\s\"]+", "$$1=***")
+
   batch:
     timeout: 2s
     send_batch_size: 512
 
 exporters:
+  # Tempo menerima OTLP gRPC di :4317 (jaringan internal, tanpa TLS). Antrean dan retry bawaan menahan span sementara
+  # bila Tempo mati; bila antrean penuh, span dibuang.
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
   # Loki menerima OTLP/HTTP di /otlp. Antrean dan retry bawaan menahan log sementara bila Loki mati; bila antrean
-  # penuh data dibuang, tidak pernah memblokir aplikasi (aplikasi tidak mengirim ke collector sama sekali).
+  # penuh data dibuang. Log tidak dikirim aplikasi (dibaca dari berkas log Docker), jadi collector mati tidak
+  # mengganggu aplikasi sama sekali.
   otlphttp/loki:
     endpoint: http://loki:3100/otlp
 
 service:
   extensions: [file_storage, health_check]
   pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/redact_traces, batch]
+      exporters: [otlp/tempo]
     logs:
       receivers: [filelog]
       processors: [memory_limiter, transform/redact, batch]

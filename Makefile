@@ -34,7 +34,7 @@
 # diterima. Tanpa itu, stack berjalan seperti biasa tanpa observability. Butuh GRAFANA_ADMIN_PASSWORD di env file.
 #
 # Perintah OBSERVABILITY (opsional, overlay docker-compose.observability.yml; OBS_TARGET=dev|prod, bawaan dev):
-#   make obs-up [OBS_TARGET=prod]           jalankan collector, Loki, Prometheus, exporter, Grafana, dan pasang pengumpulan log di service
+#   make obs-up [OBS_TARGET=prod]           jalankan collector, Loki, Tempo, Prometheus, exporter, Grafana, dan pasang pengumpulan log dan trace di service
 #                                           aplikasi (service aplikasi dibuat ulang sekali). Butuh GRAFANA_ADMIN_PASSWORD dan
 #                                           METRICS_DB_PASSWORD di .env (dev) atau $(PROD_ENV) (prod). Role database
 #                                           metrics_ro dibuat/diperbarui otomatis.
@@ -84,7 +84,7 @@ endif
 # obs=1 menambahkan overlay observability ke perintah compose DEV (up, tunnel). Kosong bila obs tidak diisi 1.
 # OBS_SERVICES: service overlay yang ikut dinaikkan pada `make tunnel` (daftar service di sana eksplisit).
 OBS_DEV_FILES := $(if $(filter 1,$(obs)),-f docker-compose.yml -f docker-compose.observability.yml)
-OBS_SERVICES := $(if $(filter 1,$(obs)),collector loki grafana prometheus cadvisor node-exporter postgres-exporter nginx-exporter)
+OBS_SERVICES := $(if $(filter 1,$(obs)),collector loki grafana prometheus cadvisor node-exporter postgres-exporter nginx-exporter tempo)
 
 # Dengan obs=1: menolak jalan bila GRAFANA_ADMIN_PASSWORD kosong di env file $(1), sebelum ada container yang dibuat ulang.
 define obs_require_password
@@ -390,7 +390,7 @@ obs-up:
 # supaya compose bisa menguraikan file; tidak memengaruhi penghapusan.
 obs-down:
 	GRAFANA_ADMIN_PASSWORD=$${GRAFANA_ADMIN_PASSWORD:-x} SMTP_HOST=$${SMTP_HOST:-x} SMTP_PORT=$${SMTP_PORT:-1} SMTP_FROM=$${SMTP_FROM:-x@x.y} MAIL_SERVICE_TOKEN=$${MAIL_SERVICE_TOKEN:-x} \
-	$(OBS_COMPOSE) rm -sf collector loki grafana prometheus cadvisor node-exporter postgres-exporter nginx-exporter
+	$(OBS_COMPOSE) rm -sf collector loki grafana prometheus cadvisor node-exporter postgres-exporter nginx-exporter tempo
 	echo "Observability dihentikan. Data (log, Grafana) tersimpan di volume obs_*; hapus dengan: docker volume rm <project>_obs_loki_data ..."
 
 # Tampilkan alamat Grafana tanpa menjalankan apa pun.

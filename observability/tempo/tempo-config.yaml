@@ -1,0 +1,62 @@
+# =============================================================================
+# tempo-config.yaml: Tempo satu node untuk QMS (Fase 4: trace). Filesystem, tanpa auth, hanya jaringan internal.
+# -----------------------------------------------------------------------------
+# Dipakai : docker-compose.observability.yml (service `tempo`, dijalankan dengan -config.expand-env=true).
+# Env     : OBS_TRACE_RETENTION  lama simpan trace, bawaan 72h (3 hari). Dibaca lewat ${OBS_TRACE_RETENTION:-72h}.
+# Masuk   : span dikirim collector lewat OTLP gRPC ke tempo:4317 (aplikasi tidak langsung ke Tempo).
+# Keluar  : metrics-generator menulis metrik trace (service graph dan span metrics) ke Prometheus lewat remote write,
+#           dipakai peta service dan panel RED-dari-trace di dashboard Trace.
+# =============================================================================
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+# Retensi blok trace (Tempo 3: diatur di backend-scheduler dan backend-worker, bukan lagi di `compactor`).
+# Blok yang lebih tua dari nilai ini dihapus. Kedua tempat diisi sama supaya scheduler dan worker sepakat.
+backend_scheduler:
+  provider:
+    compaction:
+      compaction:
+        block_retention: ${OBS_TRACE_RETENTION:-72h}
+backend_worker:
+  compaction:
+    block_retention: ${OBS_TRACE_RETENTION:-72h}
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+# Pembuat metrik dari trace. service-graphs membentuk peta service; span-metrics memberi laju, galat, dan latensi
+# per service dan span. (Tempo 3 tidak lagi memakai processor local-blocks; query TraceQL dilayani live-store.)
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+  processor:
+    span_metrics:
+      # Dimensi tambahan dari atribut span; request_id sengaja TIDAK dipakai (kardinalitas tinggi).
+      dimensions: [http.route, http.request.method, http.response.status_code]
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]

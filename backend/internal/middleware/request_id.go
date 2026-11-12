@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"qms/internal/requestid"
 )
@@ -28,6 +30,8 @@ func RequestID() gin.HandlerFunc {
 		c.Set("request_id", id)
 		// simpan juga di context request supaya qrclient bisa meneruskannya ke qr-service
 		c.Request = c.Request.WithContext(requestid.With(c.Request.Context(), id))
+		// catat ID sebagai atribut span (no-op bila tidak ada span), supaya trace bisa dicari lewat request_id
+		trace.SpanFromContext(c.Request.Context()).SetAttributes(attribute.String("request_id", id))
 		// kirim ID kembali ke klien untuk korelasi
 		c.Header("X-Request-Id", id)
 		// lanjutkan ke handler berikutnya

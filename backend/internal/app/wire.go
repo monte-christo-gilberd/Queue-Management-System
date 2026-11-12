@@ -18,6 +18,7 @@ import (
 	"qms/internal/router"
 	"qms/internal/service"
 	"qms/internal/sse"
+	"qms/internal/telemetry"
 )
 
 // App adalah hasil Wire: router yang sudah lengkap dan hub SSE yang harus dihentikan saat server berhenti.
@@ -328,6 +329,10 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 	// metrik Prometheus: middleware HTTP dipasang di router, dan gauge SSE membaca hub saat di-scrape
 	appMetrics := metrics.NewBackend(hub)
 	appRouter.WithMetrics(appMetrics.Middleware())
+	// tracing hanya dipasang bila aktif (OTEL_EXPORTER_OTLP_ENDPOINT terisi); tanpa itu tidak ada middleware tambahan
+	if telemetry.Enabled() {
+		appRouter.WithTracing(telemetry.Middleware("backend"))
+	}
 
 	return &App{
 		Router:  appRouter,

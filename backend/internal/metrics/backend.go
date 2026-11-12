@@ -43,11 +43,12 @@ func NewBackend(
 ) *Backend {
 	// registry dasar dengan runtime Go dan proses
 	b := &Backend{Metrics: New("backend")}
-	// penghitung tiket
+	// penghitung tiket masuk
 	b.ticketsJoined = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "tickets_joined_total",
 		Help: "Tiket yang masuk antrian (join lewat token atau disisipkan owner).",
 	})
+	// penghitung tiket yang mulai dilayani
 	b.ticketsServed = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "tickets_served_total",
 		Help: "Panggilan tiket berikutnya (Next) yang berhasil, yaitu tiket mulai dilayani.",
@@ -67,9 +68,11 @@ func NewBackend(
 		Name: "email_not_verified_rejected_total",
 		Help: "Request yang ditolak EMAIL_NOT_VERIFIED, per aksi: queue_create, join, subscription_extend.",
 	}, []string{"action"})
+	// daftarkan semua penghitung; label service ditempel otomatis oleh Reg
 	b.Reg.MustRegister(b.ticketsJoined, b.ticketsServed, b.subInactive, b.subExtend, b.emailRejected)
 	// nilai awal 0 untuk label yang diketahui, supaya grafik dan alert tidak menunggu kejadian pertama
 	for _, r := range []string{"ok", "email_not_verified", "error"} {
+		// WithLabelValues membuat deret berstatus 0 tanpa menaikkannya
 		b.subExtend.WithLabelValues(r)
 	}
 	for _, a := range []string{"queue_create", "join", "subscription_extend"} {
@@ -97,6 +100,7 @@ func (b *Backend) hook(
 	// kode galat aplikasi (kosong bila respons sukses)
 	code := c.GetString("error_code")
 	method := c.Request.Method
+	// sukses = status 2xx
 	ok := status >= 200 && status < 300
 
 	switch {
@@ -107,7 +111,7 @@ func (b *Backend) hook(
 	case method == http.MethodPost && route == routeNext && ok:
 		b.ticketsServed.Inc()
 	}
-	// langganan tidak aktif ditolak di route mana pun
+	// langganan tidak aktif ditolak di route mana pun; label route berupa templat sehingga jumlah deret kecil
 	if code == "SUBSCRIPTION_INACTIVE" {
 		b.subInactive.WithLabelValues(route).Inc()
 	}

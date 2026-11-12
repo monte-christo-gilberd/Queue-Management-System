@@ -20,13 +20,17 @@ type Mail struct {
 
 // NewMail membuat Metrics mail-service. Gauge mail_outbox_pending dipasang lewat SetPending setelah database tersambung.
 func NewMail() *Mail {
+	// registry dasar dengan runtime Go dan proses
 	m := &Mail{Metrics: New("mail-service")}
+	// email yang berhasil terkirim
 	m.sent = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "mail_sent_total", Help: "Email outbox yang berhasil dikirim (ditandai terkirim).",
 	})
+	// email yang gagal permanen (tidak akan dicoba lagi)
 	m.failed = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "mail_failed_total", Help: "Email outbox yang gagal permanen (batas percobaan habis atau galat permanen).",
 	})
+	// daftarkan keduanya; label service ditempel otomatis oleh Reg
 	m.Reg.MustRegister(m.sent, m.failed)
 	return m
 }

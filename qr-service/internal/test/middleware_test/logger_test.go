@@ -19,6 +19,7 @@ import (
 func newLogEngine(t *testing.T) (*gin.Engine, *bytes.Buffer) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
+	// log ditulis ke buffer; level Debug agar log probe /health (level debug) ikut tertangkap
 	buf := &bytes.Buffer{}
 	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	engine := gin.New()
@@ -26,11 +27,13 @@ func newLogEngine(t *testing.T) (*gin.Engine, *bytes.Buffer) {
 	return engine, buf
 }
 
-// logLines memecah buffer menjadi baris log yang sudah di-decode; gagal bila ada baris yang bukan JSON.
+// logLines memecah buffer menjadi baris log yang sudah di-decode; gagal bila ada baris yang bukan JSON
+// (semua keluaran log harus JSON agar bisa diurai collector).
 func logLines(t *testing.T, buf *bytes.Buffer) []map[string]any {
 	t.Helper()
 	var out []map[string]any
-	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+		// lewati baris kosong (buffer kosong menghasilkan satu elemen kosong)
 		if line == "" {
 			continue
 		}
@@ -48,29 +51,36 @@ func TestLogger_UsesRouteTemplateAndHidesSecrets(t *testing.T) {
 	engine, buf := newLogEngine(t)
 	engine.GET("/display/:token", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
+	// request dengan token di path dan di query, plus ID dari nginx
 	req := httptest.NewRequest(http.MethodGet, "/display/SECRET-TOKEN-123?token=QUERY-SECRET", nil)
 	req.Header.Set("X-Request-Id", "req-abc")
 	engine.ServeHTTP(httptest.NewRecorder(), req)
 
+	// tidak boleh ada jejak rahasia di seluruh keluaran log
 	if strings.Contains(buf.String(), "SECRET-TOKEN-123") || strings.Contains(buf.String(), "QUERY-SECRET") {
 		t.Fatalf("log memuat nilai rahasia: %s", buf.String())
 	}
+	// harus tepat satu baris akses
 	lines := logLines(t, buf)
 	if len(lines) != 1 {
 		t.Fatalf("diharapkan 1 baris log, dapat %d", len(lines))
 	}
 	got := lines[0]
+	// atribut identitas request
 	if got["route"] != "/display/:token" || got["method"] != "GET" || got["request_id"] != "req-abc" {
 		t.Fatalf("atribut log tidak sesuai: %v", got)
 	}
+	// hasil: status, ukuran body ("ok" = 2 byte), dan level info
 	if got["status"] != float64(200) || got["bytes"] != float64(2) || got["level"] != "INFO" {
 		t.Fatalf("status/bytes/level tidak sesuai: %v", got)
 	}
+	// field wajib lain
 	for _, key := range []string{"latency_ms", "client_ip"} {
 		if _, ok := got[key]; !ok {
 			t.Fatalf("atribut %s tidak ada: %v", key, got)
 		}
 	}
+	// request belum login, jadi tidak boleh ada user_id
 	if _, ok := got["user_id"]; ok {
 		t.Fatalf("user_id tidak boleh ada bila belum login: %v", got)
 	}
@@ -82,16 +92,18 @@ func TestLogger_UnmatchedRouteAndLevels(t *testing.T) {
 
 	engine.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/tidak/ada/TOKEN-XYZ", nil))
 
+	// path mentah tidak boleh bocor ke log
 	if strings.Contains(buf.String(), "TOKEN-XYZ") {
 		t.Fatalf("path mentah masuk log: %s", buf.String())
 	}
+	// 404 = kesalahan klien, jadi level WARN
 	got := logLines(t, buf)[0]
 	if got["route"] != "unmatched" || got["status"] != float64(404) || got["level"] != "WARN" {
 		t.Fatalf("log 404 tidak sesuai: %v", got)
 	}
 }
 
-// Probe /health turun ke level debug supaya tidak memenuhi log.
+// Probe /health turun ke level debug supaya tidak memenuhi log (Docker memanggilnya terus-menerus).
 func TestLogger_HealthProbeIsDebug(t *testing.T) {
 	engine, buf := newLogEngine(t)
 	engine.GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
@@ -113,19 +125,23 @@ func TestRecovery_PanicBecomes500AndIsLogged(t *testing.T) {
 	req.Header.Set("X-Request-Id", "req-panic")
 	engine.ServeHTTP(w, req)
 
+	// klien menerima 500
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status %d, diharapkan 500", w.Code)
 	}
+	// body berbentuk {"error":{"code":"INTERNAL_ERROR",...}} seperti galat handler biasa
 	var body struct {
 		Error struct{ Code, Message string } `json:"error"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Error.Code != "INTERNAL_ERROR" {
 		t.Fatalf("body error tidak sesuai: %s", w.Body.String())
 	}
+	// detail panic tidak boleh sampai ke klien
 	if strings.Contains(w.Body.String(), "meledak") {
 		t.Fatalf("detail panic bocor ke klien: %s", w.Body.String())
 	}
 
+	// log: baris pertama panic (dengan request_id dan nilai panic), baris kedua akses berstatus 500
 	lines := logLines(t, buf)
 	if len(lines) != 2 {
 		t.Fatalf("diharapkan 2 baris log (panic + akses), dapat %d", len(lines))

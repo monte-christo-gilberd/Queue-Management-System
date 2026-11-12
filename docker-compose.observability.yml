@@ -5,11 +5,15 @@
 #   dev : docker compose -f docker-compose.yml      -f docker-compose.observability.yml ...
 #   prod: docker compose -f docker-compose.prod.yml -f docker-compose.observability.yml --env-file .env.prod ...
 # Isi: collector (OTel), loki, grafana, dan blok `logging:` untuk service aplikasi (Fase 2); prometheus, cadvisor,
-# node-exporter, postgres-exporter, nginx-exporter (Fase 3). Fase 4 menambah tempo (docs/plan-observability-tracing.md).
+# node-exporter, postgres-exporter, nginx-exporter (Fase 3); tempo dan pengiriman trace dari backend, auth, qr, mail
+# (Fase 4). Lihat docs/plan-observability-tracing.md.
 #
 # [PENTING] ISOLASI: TIDAK ADA depends_on dari service aplikasi ke komponen observability, dan service aplikasi
 #           tidak memakai variabel observability. Observability mati (atau overlay tidak dipakai) tidak boleh
 #           mengganggu antrian. Jangan menambah depends_on di sini ke arah itu.
+# [PENTING] Tracing hanya aktif di service yang mendapat OTEL_EXPORTER_OTLP_ENDPOINT dari overlay ini (backend, auth,
+#           qr, mail). Tanpa overlay variabel itu kosong, jadi tracing no-op dan aplikasi start seperti biasa. Pengiriman
+#           span asinkron dan terbatas: collector atau Tempo mati tidak pernah menahan request.
 # [PENTING] Listener metrik service Go (:9100) dan exporter TIDAK dipublikasikan ke host dan tidak melewati nginx.
 # [PENTING] Hanya Grafana yang membuka port ke host, dan hanya di 127.0.0.1 (akses jauh lewat SSH tunnel):
 #           ssh -L 3000:127.0.0.1:3000 <user>@<server>, lalu buka http://localhost:3000.
@@ -24,6 +28,8 @@
 #                           `make obs-up` lewat db/migrations/07_metrics_role.sh.
 #   OBS_LOG_RETENTION       lama simpan log di Loki, bawaan 168h (7 hari).
 #   OBS_METRICS_RETENTION   lama simpan metrik di Prometheus, bawaan 7d (batas ukuran tetap 1GB).
+#   OBS_TRACE_RETENTION     lama simpan trace di Tempo, bawaan 72h (3 hari).
+#   OTEL_TRACES_SAMPLER_ARG rasio trace yang direkam (head sampling), bawaan 0.1 (10%). 1 = semua, 0 = tidak ada.
 #   OBS_PROJECT             nama project compose; diisi otomatis oleh Makefile (qms atau qms-prod).
 # =============================================================================
 
@@ -36,18 +42,28 @@ x-app-logging: &app-logging
     max-file: "3"
     labels-regex: "^com\\.docker\\.compose\\.(project|service)$"
 
+# Pengiriman trace dari service Go ke collector (OTLP gRPC, jaringan internal). Hanya service yang dipasangi SDK
+# (backend, auth, qr, mail). Nilai kosong/hilang = tracing mati. Tidak ada depends_on ke collector.
+x-otel-env: &otel-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4317
+  OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
+
 services:
   # ---------------------------------------------------------------------------
-  # Service aplikasi: hanya menambah blok logging (tidak ada perubahan lain).
+  # Service aplikasi: hanya menambah blok logging dan (backend, auth, qr, mail) pengiriman trace.
   # ---------------------------------------------------------------------------
   backend:
     logging: *app-logging
+    environment: *otel-env
   auth-service:
     logging: *app-logging
+    environment: *otel-env
   qr-service:
     logging: *app-logging
+    environment: *otel-env
   mail-service:
     logging: *app-logging
+    environment: *otel-env
   notify-service:
     logging: *app-logging
   nginx:
@@ -70,6 +86,22 @@ services:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - obs_collector_data:/var/lib/otelcol
     mem_limit: 256m
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # tempo: penyimpanan trace (filesystem, satu node). Menerima OTLP dari collector saja. Tanpa port ke host.
+  # ---------------------------------------------------------------------------
+  tempo:
+    image: grafana/tempo:3.0.2
+    command: ["-config.file=/etc/tempo/tempo-config.yaml", "-config.expand-env=true"]
+    environment:
+      OBS_TRACE_RETENTION: ${OBS_TRACE_RETENTION:-72h}
+    volumes:
+      - ./observability/tempo/tempo-config.yaml:/etc/tempo/tempo-config.yaml:ro
+      - obs_tempo_data:/var/tempo
+    mem_limit: 384m
     networks:
       - internal
     restart: unless-stopped
@@ -127,6 +159,8 @@ services:
       - --storage.tsdb.retention.time=${OBS_METRICS_RETENTION:-7d}
       # Batas ukuran: data terlama dibuang lebih dulu bila disk tidak cukup.
       - --storage.tsdb.retention.size=1GB
+      # Menerima remote write dari metrics-generator Tempo (peta service dan metrik span).
+      - --web.enable-remote-write-receiver
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - obs_prometheus_data:/prometheus
@@ -199,6 +233,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  # Data trace Tempo.
+  obs_tempo_data:
   # Data deret waktu Prometheus.
   obs_prometheus_data:
   # Posisi baca berkas log milik collector.

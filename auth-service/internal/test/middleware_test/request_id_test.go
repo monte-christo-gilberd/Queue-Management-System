@@ -17,6 +17,7 @@ import (
 func serveWithRequestID(t *testing.T, header string) (*httptest.ResponseRecorder, string, string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
+	// penangkap ID yang dilihat handler
 	var ginID, ctxID string
 	engine := gin.New()
 	engine.Use(middleware.RequestID())
@@ -26,6 +27,7 @@ func serveWithRequestID(t *testing.T, header string) (*httptest.ResponseRecorder
 		c.Status(http.StatusOK)
 	})
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	// header kosong berarti request tanpa ID dari nginx
 	if header != "" {
 		req.Header.Set("X-Request-Id", header)
 	}
@@ -37,6 +39,7 @@ func serveWithRequestID(t *testing.T, header string) (*httptest.ResponseRecorder
 // ID yang wajar dari nginx dipakai apa adanya dan dikirim balik di respons.
 func TestRequestID_ReusesValidHeader(t *testing.T) {
 	w, ginID, ctxID := serveWithRequestID(t, "9f8e7d6c5b4a-test_1.2")
+	// ID sama di context Gin, context request, dan header respons
 	if ginID != "9f8e7d6c5b4a-test_1.2" || ctxID != ginID || w.Header().Get("X-Request-Id") != ginID {
 		t.Fatalf("ID tidak dipakai: gin=%q ctx=%q header=%q", ginID, ctxID, w.Header().Get("X-Request-Id"))
 	}
@@ -50,8 +53,9 @@ func TestRequestID_GeneratesWhenMissing(t *testing.T) {
 	}
 }
 
-// ID terlalu panjang atau berisi karakter di luar daftar diganti ID baru.
+// ID terlalu panjang atau berisi karakter di luar daftar diganti ID baru (mencegah log disisipi isi liar).
 func TestRequestID_ReplacesInvalidHeader(t *testing.T) {
+	// 129 karakter (melebihi batas), spasi, tanda kutip, dan kurung kurawal bentuk JSON
 	for _, bad := range []string{strings.Repeat("a", 129), "ada spasi", `kutip"`, "baris{json}"} {
 		_, ginID, _ := serveWithRequestID(t, bad)
 		if ginID == bad || len(ginID) != 24 {

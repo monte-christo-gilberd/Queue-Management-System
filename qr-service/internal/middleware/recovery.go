@@ -28,13 +28,14 @@ func Recovery(
 			if r == http.ErrAbortHandler {
 				panic(r)
 			}
-			// catat panic beserta stack agar penyebabnya bisa dilacak; request_id menghubungkannya ke baris akses
-			logger.Error("panic recovered",
+			// catat panic beserta stack agar penyebabnya bisa dilacak; request_id menghubungkannya ke baris akses,
+			// dan ErrorContext membawa trace_id bila request sedang dilacak
+			logger.ErrorContext(c.Request.Context(), "panic recovered",
 				"request_id", c.GetString("request_id"),
 				"panic", fmt.Sprint(r),
 				"stack", string(debug.Stack()),
 			)
-			// balas 500 tanpa membocorkan detail panic ke klien
+			// balas 500 tanpa membocorkan detail panic ke klien; bentuk body sama dengan galat handler biasa
 			c.AbortWithStatusJSON(
 				http.StatusInternalServerError,
 				gin.H{
@@ -45,7 +46,7 @@ func Recovery(
 				},
 			)
 		}()
-		// jalankan handler berikutnya
+		// jalankan handler berikutnya; bila panic, defer di atas yang mengambil alih
 		c.Next()
 	}
 }

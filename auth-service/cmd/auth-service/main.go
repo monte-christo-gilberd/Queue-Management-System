@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"qms/auth-service/internal/config"
 	"qms/auth-service/internal/database"
@@ -26,6 +27,7 @@ import (
 	"qms/auth-service/internal/repository"
 	"qms/auth-service/internal/router"
 	"qms/auth-service/internal/service"
+	"qms/auth-service/internal/telemetry"
 	"qms/auth-service/internal/validator"
 )
 
@@ -58,6 +60,15 @@ func run() error {
 		// Bungkus dengan asal galat agar log jelas.
 		return fmt.Errorf("config: %w", err)
 	}
+	// tracing: aktif hanya bila OTEL_EXPORTER_OTLP_ENDPOINT terisi; kosong berarti no-op. Sisa span dikirim saat
+	// berhenti (maks 5 detik). Pengiriman asinkron dan terbatas, jadi collector mati tidak pernah menahan request.
+	shutdownTracing := telemetry.Setup(context.Background(), "auth-service")
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(sctx)
+	}()
+
 	// buka koneksi database dengan role auth_rw dan pastikan terjangkau
 	db, err := database.Connect(cfg.DatabaseURL)
 	if err != nil {
@@ -108,6 +119,10 @@ func run() error {
 	// metrik Prometheus: middleware HTTP dipasang di router, listener /metrics dijalankan setelah ctx dibuat
 	appMetrics := metrics.NewAuth()
 	app.WithMetrics(appMetrics.Middleware())
+	// tracing hanya dipasang bila aktif; tanpa itu tidak ada middleware tambahan
+	if telemetry.Enabled() {
+		app.WithTracing(telemetry.Middleware("auth-service"))
+	}
 	// reset password dan verifikasi email hanya dipasang bila mail-service terpasang
 	if mailer != nil {
 		// Pasang rute lupa password dan verifikasi email.

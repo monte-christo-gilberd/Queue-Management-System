@@ -51,4 +51,6 @@ type AppRouter struct {
 	logger *slog.Logger
 	// metricsMiddleware mencatat metrik HTTP (opsional; nil berarti tanpa metrik).
 	metricsMiddleware gin.HandlerFunc
+	// tracingMiddleware membuat span server per request (opsional; nil berarti tanpa tracing).
+	tracingMiddleware gin.HandlerFunc
 }

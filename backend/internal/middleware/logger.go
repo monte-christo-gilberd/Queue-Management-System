@@ -21,16 +21,16 @@ func Logger(
 		start := time.Now()
 		c.Next()
 
+		// context request: membawa span aktif, sehingga log akses memuat trace_id dan span_id
+		ctx := c.Request.Context()
 		// templat rute yang cocok; kosong berarti tidak ada rute (404), jadi pakai penanda tetap, bukan path mentah
 		route := c.FullPath()
 		if route == "" {
 			route = "unmatched"
 		}
 		// ukuran body respons; Gin memberi -1 bila belum ada yang ditulis
-		bytes := c.Writer.Size()
-		if bytes < 0 {
-			bytes = 0
-		}
+		bytes := max(c.Writer.Size(), 0)
+		// status akhir respons (setelah handler dan Recovery selesai)
 		status := c.Writer.Status()
 
 		// kumpulkan atribut log setelah request selesai
@@ -52,16 +52,16 @@ func Logger(
 		switch {
 		// status 5xx: kesalahan server, catat sebagai error
 		case status >= 500:
-			logger.Error("request", attrs...)
+			logger.ErrorContext(ctx, "request", attrs...)
 		// status 4xx: kesalahan dari klien, catat sebagai warning
 		case status >= 400:
-			logger.Warn("request", attrs...)
+			logger.WarnContext(ctx, "request", attrs...)
 		// probe liveness dipanggil terus-menerus oleh Docker; turunkan ke debug agar log tidak penuh
 		case route == "/health" || route == "/ready":
-			logger.Debug("request", attrs...)
+			logger.DebugContext(ctx, "request", attrs...)
 		// status lain: catat sebagai info
 		default:
-			logger.Info("request", attrs...)
+			logger.InfoContext(ctx, "request", attrs...)
 		}
 	}
 }

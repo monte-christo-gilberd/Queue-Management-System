@@ -10,10 +10,15 @@ apiVersion: 1
 datasources:
   - name: Loki
     type: loki
+    # uid tetap: dashboard dan datasource lain merujuknya
     uid: loki
+    # proxy: Grafana yang menghubungi Loki (Loki tidak dibuka ke browser)
     access: proxy
+    # alamat Loki di jaringan internal Docker
     url: http://loki:3100
+    # editable false: pengaturan hanya diubah lewat berkas ini
     editable: false
+    # sumber data bawaan di Explore
     isDefault: true
     jsonData:
       # Batas baris hasil query agar browser tidak berat.
@@ -29,6 +34,7 @@ datasources:
     type: prometheus
     uid: prometheus
     access: proxy
+    # alamat Prometheus di jaringan internal Docker
     url: http://prometheus:9090
     editable: false
     jsonData:
@@ -38,6 +44,7 @@ datasources:
     type: tempo
     uid: tempo
     access: proxy
+    # alamat query Tempo di jaringan internal Docker
     url: http://tempo:3200
     editable: false
     jsonData:

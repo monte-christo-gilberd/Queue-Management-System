@@ -24,6 +24,7 @@ import (
 	"qms/mail-service/internal/repository"
 	"qms/mail-service/internal/router"
 	"qms/mail-service/internal/service"
+	"qms/mail-service/internal/telemetry"
 )
 
 // main menjalankan run, lalu mencatat galatnya dan keluar dengan kode 1 bila gagal.
@@ -65,6 +66,15 @@ func run() error {
 		// Awalan config memudahkan melihat asal galat di log.
 		return fmt.Errorf("config: %w", err)
 	}
+	// tracing: aktif hanya bila OTEL_EXPORTER_OTLP_ENDPOINT terisi; kosong berarti no-op. Sisa span dikirim saat
+	// berhenti (maks 5 detik). Pengiriman asinkron dan terbatas, jadi collector mati tidak pernah menahan request.
+	shutdownTracing := telemetry.Setup(context.Background(), "mail-service")
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(sctx)
+	}()
+
 	// Rangkai lapisan: pengirim SMTP, pengisi templat, service, handler, dan router.
 	renderer := mailtemplate.New()
 	// Mailer dan service dibuat sekali dan dipakai bersama oleh semua permintaan.
@@ -80,6 +90,10 @@ func run() error {
 		handler.NewMailHandler(mailSvc),
 		middleware.ServiceToken(cfg.ServiceToken),
 	).WithSystem(handler.NewSystemHandler()).WithMetrics(appMetrics.Middleware())
+	// tracing hanya dipasang bila aktif; tanpa itu tidak ada middleware tambahan
+	if telemetry.Enabled() {
+		appRouter.WithTracing(telemetry.Middleware("mail-service"))
+	}
 	// Server HTTP dengan batas waktu baca, tulis (60 detik karena kirim sinkron bisa lama), dan koneksi diam.
 	srv := &http.Server{
 		// Alamat dan port dari konfigurasi.

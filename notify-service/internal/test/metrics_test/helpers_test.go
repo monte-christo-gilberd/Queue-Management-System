@@ -8,6 +8,7 @@ import (
 )
 
 // find mengembalikan metrik bernama name yang punya semua label yang diminta, atau nil bila tidak ada.
+// Dipakai tes untuk membaca nilai metrik tanpa menjalankan server /metrics.
 func find(
 	t *testing.T,
 	reg *prometheus.Registry,
@@ -19,14 +20,18 @@ func find(
 	// ContinueOnError menyajikan hal yang sama), jadi galatnya tidak fatal di sini.
 	families, _ := reg.Gather()
 	for _, f := range families {
+		// lewati keluarga metrik dengan nama lain
 		if f.GetName() != name {
 			continue
 		}
+		// periksa tiap deret (kombinasi label) di keluarga ini
 		for _, m := range f.GetMetric() {
+			// ubah daftar label deret menjadi peta nama -> nilai
 			got := map[string]string{}
 			for _, l := range m.GetLabel() {
 				got[l.GetName()] = l.GetValue()
 			}
+			// deret cocok bila semua label yang diminta sama persis
 			match := true
 			for k, v := range labels {
 				if got[k] != v {
@@ -38,10 +43,11 @@ func find(
 			}
 		}
 	}
+	// tidak ada deret yang cocok
 	return nil
 }
 
-// counter membaca nilai counter; 0 bila deret belum ada.
+// counter membaca nilai counter; 0 bila deret belum ada (counter yang belum pernah naik belum muncul).
 func counter(
 	t *testing.T,
 	reg *prometheus.Registry,
@@ -53,25 +59,4 @@ func counter(
 		return m.GetCounter().GetValue()
 	}
 	return 0
-}
-
-// allLabelValues mengumpulkan semua nilai label dari semua metrik, untuk memeriksa tidak ada rahasia yang bocor.
-func allLabelValues(
-	t *testing.T,
-	reg *prometheus.Registry,
-) []string {
-	t.Helper()
-	families, err := reg.Gather()
-	if err != nil {
-		t.Fatalf("gather: %v", err)
-	}
-	var out []string
-	for _, f := range families {
-		for _, m := range f.GetMetric() {
-			for _, l := range m.GetLabel() {
-				out = append(out, l.GetValue())
-			}
-		}
-	}
-	return out
 }

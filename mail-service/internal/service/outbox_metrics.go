@@ -22,7 +22,7 @@ func NewMeteredOutboxStore(
 	store OutboxStore,
 	counters OutboxCounters,
 ) OutboxStore {
-	// tanpa penghitung, kembalikan store apa adanya
+	// tanpa penghitung, kembalikan store apa adanya (tidak ada lapisan tambahan)
 	if counters == nil {
 		return store
 	}
@@ -34,8 +34,9 @@ func (m *meteredStore) MarkSent(
 	ctx context.Context,
 	id int64,
 ) error {
-	// teruskan ke store asli
+	// teruskan ke store asli; perilaku penyimpanan tidak berubah
 	err := m.OutboxStore.MarkSent(ctx, id)
+	// hitung hanya bila database benar-benar menyimpan status terkirim
 	if err == nil {
 		m.counters.IncSent()
 	}
@@ -48,8 +49,9 @@ func (m *meteredStore) MarkFailed(
 	id int64,
 	cause string,
 ) error {
-	// teruskan ke store asli
+	// teruskan ke store asli; perilaku penyimpanan tidak berubah
 	err := m.OutboxStore.MarkFailed(ctx, id, cause)
+	// hitung hanya bila database benar-benar menyimpan status gagal
 	if err == nil {
 		m.counters.IncFailed()
 	}

@@ -46,6 +46,13 @@ func (a *AppRouter) WithMetrics(m gin.HandlerFunc) *AppRouter {
 	return a
 }
 
+// WithTracing memasang middleware tracing (opsional; tanpa ini tidak ada span request).
+func (a *AppRouter) WithTracing(m gin.HandlerFunc) *AppRouter {
+	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
+	a.tracingMiddleware = m
+	return a
+}
+
 // WithCounters memasang endpoint CRUD counter (opsional; tanpa ini rute /counters tidak ada).
 func (a *AppRouter) WithCounters(h CounterHandler) *AppRouter {
 	// simpan handler counter, lalu kembalikan router yang sama agar bisa dirangkai
@@ -104,6 +111,11 @@ func SetupRouter(
 	// engine kosong tanpa middleware bawaan: gin.Default() mencatat log teks yang memuat nilai parameter route
 	// (termasuk token layar publik), jadi diganti middleware slog di bawah
 	engine := gin.New()
+	// tracing paling awal: span server mencakup semua middleware di bawahnya, dan span aktif sudah ada saat
+	// RequestID, Logger, dan Recovery berjalan (atribut request_id dan trace_id di log)
+	if router.tracingMiddleware != nil {
+		engine.Use(router.tracingMiddleware)
+	}
 	// RequestID paling awal agar semua log request memuat request_id
 	engine.Use(middleware.RequestID())
 	// metrik sebelum Logger dan Recovery: request yang panic tetap terhitung sebagai 500

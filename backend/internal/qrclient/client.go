@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"qms/internal/apperror"
 	"qms/internal/requestid"
 )
@@ -56,7 +58,9 @@ func New(baseURL string, serviceToken string, timeout time.Duration) *Client {
 	return &Client{
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		serviceToken: serviceToken,
-		httpClient:   &http.Client{Timeout: timeout},
+		// otelhttp.NewTransport membuat span klien dan menyisipkan header traceparent, sehingga qr-service ikut
+		// dalam trace yang sama. Tanpa tracing aktif, transport ini tidak melakukan apa-apa.
+		httpClient: &http.Client{Timeout: timeout, Transport: otelhttp.NewTransport(http.DefaultTransport)},
 	}
 }
 

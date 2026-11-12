@@ -22,6 +22,7 @@ import (
 	"qms/qr-service/internal/metrics"
 	"qms/qr-service/internal/router"
 	"qms/qr-service/internal/service"
+	"qms/qr-service/internal/telemetry"
 )
 
 // main hanya memanggil run, lalu menghentikan proses dengan kode 1 bila run gagal.
@@ -54,6 +55,15 @@ func run() error {
 	logger := logging.NewLogger("qr-service", cfg.LogLevel)
 	slog.SetDefault(logger)
 
+	// tracing: aktif hanya bila OTEL_EXPORTER_OTLP_ENDPOINT terisi; kosong berarti no-op. Sisa span dikirim saat
+	// berhenti (maks 5 detik). Pengiriman asinkron dan terbatas, jadi collector mati tidak pernah menahan request.
+	shutdownTracing := telemetry.Setup(context.Background(), "qr-service")
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(sctx)
+	}()
+
 	// buat service token dari JOIN_LINK_SECRET; secret yang terlalu pendek ditolak di sini
 	tokenService, err := service.NewTokenService(cfg.JoinSecret, cfg.DynamicTTL)
 	// service memeriksa ulang panjang secret: berhenti sebelum membuka port
@@ -79,6 +89,10 @@ func run() error {
 	// metrik Prometheus: middleware HTTP dipasang di router, listener /metrics dijalankan setelah ctx dibuat
 	appMetrics := metrics.NewQR()
 	appRouter.WithMetrics(appMetrics.Middleware())
+	// tracing hanya dipasang bila aktif; tanpa itu tidak ada middleware tambahan
+	if telemetry.Enabled() {
+		appRouter.WithTracing(telemetry.Middleware("qr-service"))
+	}
 	// bangun gin.Engine dengan semua rute dan middleware terpasang
 	engine := router.SetupRouter(appRouter)
 

@@ -9,10 +9,12 @@
 auth_enabled: false
 
 server:
+  # port HTTP: query dari Grafana dan push OTLP dari collector
   http_listen_port: 3100
   grpc_listen_port: 9096
   log_level: warn
 
+# Pengaturan satu node: semua komponen Loki jalan di satu proses, ring di memori, tanpa replikasi.
 common:
   instance_addr: 127.0.0.1
   path_prefix: /loki
@@ -25,6 +27,7 @@ common:
     kvstore:
       store: inmemory
 
+# Skema index: TSDB v13 di filesystem, satu berkas index per 24 jam.
 schema_config:
   configs:
     - from: 2024-01-01

@@ -38,6 +38,13 @@ func (a *AppRouter) WithRender(h RenderHandler) *AppRouter {
 	return a
 }
 
+// WithTracing memasang middleware tracing (opsional; tanpa ini tidak ada span request).
+func (a *AppRouter) WithTracing(m gin.HandlerFunc) *AppRouter {
+	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
+	a.tracingMiddleware = m
+	return a
+}
+
 // WithMetrics memasang middleware metrik HTTP (opsional; tanpa ini tidak ada metrik request).
 func (a *AppRouter) WithMetrics(m gin.HandlerFunc) *AppRouter {
 	// simpan middleware, lalu kembalikan router yang sama agar bisa dirangkai
@@ -64,6 +71,11 @@ func SetupRouter(
 	engine := gin.New()
 	// pasang middleware global: beri request ID, catat request, tangkap panic, dan larang cache
 	// RequestID dipasang paling awal agar semua log memuat request_id
+	// tracing paling awal: span server mencakup semua middleware di bawahnya, dan span aktif sudah ada saat
+	// RequestID, Logger, dan Recovery berjalan (atribut request_id dan trace_id di log)
+	if router.tracingMiddleware != nil {
+		engine.Use(router.tracingMiddleware)
+	}
 	engine.Use(middleware.RequestID())
 	// metrik sebelum Logger dan Recovery: request yang panic tetap terhitung sebagai 500
 	if router.metricsMiddleware != nil {

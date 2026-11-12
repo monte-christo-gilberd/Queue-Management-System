@@ -34,6 +34,7 @@ type Auth struct {
 func NewAuth() *Auth {
 	// registry dasar dengan runtime Go dan proses
 	a := &Auth{Metrics: New("auth-service")}
+	// label bersama untuk metrik yang hanya dipisah menurut hasil
 	result := []string{"result"}
 	a.login = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "auth_login_total", Help: "Hasil login password: ok, atau kode galat huruf kecil (mis. invalid_credentials).",
@@ -47,6 +48,7 @@ func NewAuth() *Auth {
 	a.verify = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "auth_email_verify_total", Help: "Hasil verifikasi email: ok, atau kode galat huruf kecil.",
 	}, result)
+	// daftarkan keempatnya; label service ditempel otomatis oleh Reg
 	a.Reg.MustRegister(a.login, a.register, a.reset, a.verify)
 	// nilai awal 0 untuk hasil yang pasti ada, supaya grafik dan alert tidak menunggu kejadian pertama
 	a.login.WithLabelValues("ok")
@@ -74,6 +76,7 @@ func outcome(
 	}
 	// kode galat aplikasi yang dicatat respondError
 	if code := c.GetString("error_code"); code != "" {
+		// huruf kecil agar label konsisten dan mudah ditulis di query (mis. invalid_credentials)
 		return strings.ToLower(code)
 	}
 	// galat tanpa kode (mis. dari middleware atau panic)
@@ -90,15 +93,21 @@ func (a *Auth) hook(
 	if c.Request.Method != http.MethodPost {
 		return
 	}
+	// pilih penghitung sesuai route; route lain diabaikan (sudah tercatat di http_requests_total)
 	switch route {
+	// login password
 	case routeLogin:
 		a.login.WithLabelValues(outcome(c, status)).Inc()
+	// registrasi akun baru
 	case routeRegister:
 		a.register.WithLabelValues(outcome(c, status)).Inc()
+	// minta tautan reset password (langkah 1)
 	case routeForgotPassword:
 		a.reset.WithLabelValues("requested", outcome(c, status)).Inc()
+	// ganti password dengan token dari email (langkah 2)
 	case routeResetPassword:
 		a.reset.WithLabelValues("completed", outcome(c, status)).Inc()
+	// verifikasi email dengan token dari tautan
 	case routeVerifyEmail:
 		a.verify.WithLabelValues(outcome(c, status)).Inc()
 	}

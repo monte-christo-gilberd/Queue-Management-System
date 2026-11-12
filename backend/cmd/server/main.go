@@ -18,12 +18,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"qms/internal/app"
 	"qms/internal/config"
 	"qms/internal/database"
 	"qms/internal/httpserver"
 	"qms/internal/logging"
+	"qms/internal/telemetry"
 )
 
 // main memasang logger JSON, lalu memanggil run dan mencatat error-nya. Pekerjaan sebenarnya ada di run agar defer
@@ -57,6 +59,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	// tracing: aktif hanya bila OTEL_EXPORTER_OTLP_ENDPOINT terisi; kosong berarti no-op. Dipasang sebelum database
+	// dibuka karena pembungkus query memeriksa telemetry.Enabled(). Sisa span dikirim saat berhenti (maks 5 detik).
+	shutdownTracing := telemetry.Setup(context.Background(), "backend")
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(sctx)
+	}()
 
 	// membuka koneksi ke database dan cek koneksi (Ping)
 	db, err := database.Connect(

@@ -7,6 +7,8 @@ import (
 	// import kosong: mendaftarkan driver "pgx" ke database/sql, sehingga sqlx.Connect("pgx", ...) dikenali
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
+
+	"qms/internal/telemetry"
 )
 
 // Config berisi pengaturan koneksi database.
@@ -20,16 +22,17 @@ type Config struct {
 // Mengembalikan *sqlx.DB siap pakai, atau error jika gagal. Pemanggil bertanggung jawab memanggil db.Close().
 func Connect(cfg Config) (*sqlx.DB, error) {
 
-	// membuka koneksi ke database memakai driver "pgx" dan DSN dari config
-	db, err := sqlx.Connect(
-		"pgx",
-		cfg.DSN,
-	)
+	// membuka koneksi ke database memakai driver "pgx" dan DSN dari config. Bila tracing aktif, query dibungkus agar
+	// menjadi span anak dari request (hanya templat query, tanpa nilai parameter); bila tidak, sama dengan sql.Open.
+	sqlDB, err := telemetry.OpenSQL("pgx", cfg.DSN)
 
 	// jika error, kembalikan nil sebagai koneksi beserta errornya
 	if err != nil {
 		return nil, err
 	}
+
+	// sqlx di atas database/sql yang sama
+	db := sqlx.NewDb(sqlDB, "pgx")
 
 	// membuat context dengan batas waktu 5 detik; context ini dipakai oleh PingContext di bawah
 	// context = pembawa batas waktu dan pembatalan untuk satu operasi
