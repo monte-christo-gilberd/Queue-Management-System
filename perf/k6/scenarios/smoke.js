@@ -7,12 +7,18 @@ import { assertSafeTarget, intEnv } from '../lib/config.js';
 import { customers, owners, queues, ownerFor } from '../lib/data.js';
 import * as q from '../lib/queues.js';
 import { okStatus, hasData } from '../lib/checks.js';
-import { build } from '../lib/summary.js';
+import { build, latencyThresholds } from '../lib/summary.js';
+
+// Endpoint yang dilaporkan latensinya di ringkasan (nama tag = templat URL).
+const ENDPOINTS = ['POST /join', 'GET /queues/:id/status', 'GET /users/me/tickets', 'GET /queues/:id/tickets',
+  'POST /queues/:id/next', 'POST /queues/:id/cancel', 'GET /display/:token', 'POST /users/login'];
 
 // Pagar target: gagal sebelum request pertama bila BASE_URL bukan lingkungan uji.
 assertSafeTarget();
 
 export const options = {
+  // p(99) tidak dihitung k6 secara bawaan; dibutuhkan untuk gerbang dan tabel ringkasan
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   // satu VU dan satu iterasi default; ITER mengulang perjalanan dengan pelanggan berbeda
   vus: 1,
   iterations: intEnv('ITER', 1),
@@ -21,6 +27,8 @@ export const options = {
     checks: ['rate==1'],
     http_req_failed: ['rate<0.01'],
     perf_http_429: ['count==0'],
+    // pagar kasar latensi per endpoint (smoke satu pengguna: lebih dari 2 detik berarti ada yang salah)
+    ...latencyThresholds(ENDPOINTS, 2000),
   },
 };
 
@@ -79,6 +87,5 @@ export default function (data) {
 
 // handleSummary: teks ringkas dan berkas JSON laporan.
 export function handleSummary(data) {
-  return build(data, 'smoke', ['POST /join', 'GET /queues/:id/status', 'GET /users/me/tickets', 'GET /queues/:id/tickets',
-    'POST /queues/:id/next', 'POST /queues/:id/cancel', 'GET /display/:token', 'POST /users/login']);
+  return build(data, 'smoke', ENDPOINTS);
 }

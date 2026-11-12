@@ -17,7 +17,11 @@ import { assertSafeTarget, intEnv } from '../lib/config.js';
 import { customers, queues, ownerFor } from '../lib/data.js';
 import * as q from '../lib/queues.js';
 import { okStatus } from '../lib/checks.js';
-import { build } from '../lib/summary.js';
+import { build, latencyThresholds, statusThresholds } from '../lib/summary.js';
+
+// Endpoint yang dilaporkan latensinya di ringkasan (nama tag = templat URL).
+const ENDPOINTS = ['GET /queues/:id/status', 'POST /join', 'GET /queues/:id/tickets', 'GET /display/:token',
+  'POST /users/login', 'POST /queues/:id/next'];
 
 assertSafeTarget();
 
@@ -53,6 +57,8 @@ const arrival = (execName, rate) => ({
 });
 
 export const options = {
+  // p(99) tidak dihitung k6 secara bawaan; dibutuhkan untuk gerbang dan tabel ringkasan
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   scenarios: {
     // preload: setiap pengguna aktif bergabung ke antrian-nya (membuat tiket) sebelum beban dimulai
     preload: { executor: 'shared-iterations', exec: 'preload', vus: 50, iterations: USERS, maxDuration: '15m' },
@@ -81,6 +87,11 @@ export const options = {
     perf_http_429: ['count==0'],
     // iterasi yang tidak sempat dijalankan karena VU habis: tanda generator atau server kewalahan
     dropped_iterations: ['count<1'],
+    // endpoint lain: hanya pagar kasar 3 detik agar sub-metriknya tampil di ringkasan (gerbang sebenarnya di atas)
+    ...latencyThresholds(ENDPOINTS.filter((n) => n !== 'GET /queues/:id/status' && n !== 'POST /join'), 3000),
+    ...statusThresholds(),
+    'http_reqs{name:GET /queues/:id/status}': ['count>=0'],
+    'http_reqs{name:POST /join}': ['count>=0'],
   },
 };
 
@@ -155,6 +166,5 @@ export function ownerNext(data) {
 
 // handleSummary: teks ringkas dan berkas JSON laporan.
 export function handleSummary(data) {
-  return build(data, `load-u${USERS}-rps${RPS}`, ['GET /queues/:id/status', 'POST /join', 'GET /queues/:id/tickets',
-    'GET /display/:token', 'POST /users/login', 'POST /queues/:id/next']);
+  return build(data, `load-u${USERS}-rps${RPS}`, ENDPOINTS);
 }

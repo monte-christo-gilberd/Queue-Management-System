@@ -53,7 +53,7 @@ Syarat: `.env` sudah ada (sama dengan stack dev), `docker`, `k6`, `go`, `curl`, 
 `seed.sql` mengisi database uji langsung lewat SQL (registrasi API memakai bcrypt dan terlalu lambat untuk ribuan akun):
 - owner `perf-owner-<n>@perf.invalid` dan pelanggan `perf-customer-<n>@perf.invalid`, email terverifikasi, tiap owner berlangganan 365 hari;
 - antrian `Perf <n>` dibagi rata ke owner, dengan counter default dan pengaturan bawaan;
-- hanya 20 akun pertama yang punya password nyata (`perf-password`, bcrypt) untuk uji login; sisanya sesinya memakai JWT.
+- tabel `users` mewajibkan `password_hash` atau `google_id`, jadi semua akun memakai hash bcrypt yang sama (dihitung sekali, cost 10, password `perf-password`); sesi uji memakai JWT dan hanya bagian kecil lalu lintas yang login nyata.
 
 `perf/seed/mint` membuat JWT RS256 (klaim `sub`, `iat`, `exp`, header `kid`) dengan `keys-perf/auth-private.pem`, persis seperti
 token buatan auth-service, dan menulis `perf/data/tokens.json` (izin 0600, berlaku 24 jam). Backend uji memverifikasinya dengan

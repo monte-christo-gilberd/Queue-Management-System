@@ -360,7 +360,8 @@ perf-seed:
 	q "SELECT id FROM users WHERE email LIKE 'perf-owner-%@perf.invalid' ORDER BY id" > perf/data/owners.csv
 	q "SELECT id FROM users WHERE email LIKE 'perf-customer-%@perf.invalid' ORDER BY id" > perf/data/customers.csv
 	q "SELECT id, owner_id FROM queues WHERE queue_name LIKE 'Perf %' ORDER BY id" > perf/data/queues.csv
-	cd perf/seed/mint && go run . -key ../../../keys-perf/auth-private.pem -dir ../../data
+	# subshell: dengan .ONESHELL, `cd` tanpa kurung mengubah direktori untuk baris-baris berikutnya
+	(cd perf/seed/mint && go run . -key ../../../keys-perf/auth-private.pem -dir ../../data)
 	rm -f perf/data/owners.csv perf/data/customers.csv perf/data/queues.csv
 
 # Uji asap: satu pengguna menjalankan seluruh perjalanan; semua check harus lulus.
@@ -375,11 +376,11 @@ perf-load:
 # proses ini bila diizinkan; tanpa itu puluhan ribu koneksi gagal dengan "too many open files".
 perf-sse:
 	mkdir -p perf/.generated perf/reports
-	cd perf/sse-holder && go build -o ../.generated/sse-holder .
+	(cd perf/sse-holder && go build -o ../.generated/sse-holder .)
 	ulimit -n 1048576 2>/dev/null || echo "Peringatan: ulimit -n tidak bisa dinaikkan; batas sekarang $$(ulimit -n)" >&2
 	perf/.generated/sse-holder -base $(PERF_BASE_URL) -tokens perf/data/tokens.json -conns $(PERF_CONNS) -duration $(PERF_HOLD) -report perf/reports/sse-$(PERF_CONNS).json
 
 # Tes unit alat uji beban (pembuat token JWT dan penahan SSE).
 perf-test:
-	cd perf/seed/mint && go test ./...
-	cd perf/sse-holder && go test ./...
+	(cd perf/seed/mint && go test ./...)
+	(cd perf/sse-holder && go test ./...)

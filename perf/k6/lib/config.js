@@ -12,7 +12,7 @@ export const BASE_URL = (__ENV.BASE_URL || 'http://localhost:18080').replace(/\/
 // lewat PERF_TOKENS; nilai bawaan ini hanya untuk menjalankan `k6 run` langsung dari folder perf/k6/scenarios.
 export const TOKENS_PATH = __ENV.PERF_TOKENS || '../../data/tokens.json';
 
-// Password akun seed yang punya password nyata (seed.sql: auth_accounts akun pertama). Dipakai uji login.
+// Password semua akun seed (seed.sql memberi hash bcrypt yang sama ke semua akun). Dipakai uji login nyata.
 export const SEED_PASSWORD = __ENV.PERF_SEED_PASSWORD || 'perf-password';
 
 // Host yang SELALU ditolak walau ALLOW_PUBLIC_TARGET=1: domain produksi. Tambahkan lewat PERF_BLOCKED_HOSTS (koma).

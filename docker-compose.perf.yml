@@ -32,6 +32,8 @@ services:
     environment:
       # tidak ada mail-service di uji ini: fitur lupa/reset password dan verifikasi tidak dipasang
       MAIL_SERVICE_URL: ""
+      # auth-service menolak start bila URL dan token mail tidak diisi bersamaan, jadi token ikut dikosongkan
+      MAIL_SERVICE_TOKEN: ""
       EMAIL_VERIFICATION_REQUIRED: "false"
       # [SINKRON] harus sama dengan subnet networks.internal di bawah
       TRUSTED_PROXIES: 172.31.0.0/16
