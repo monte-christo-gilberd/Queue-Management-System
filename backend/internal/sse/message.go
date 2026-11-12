@@ -23,6 +23,9 @@ const (
 	EventQueueClosed = "queue_closed"
 	// EventQueueUpdated: pengaturan antrian berubah.
 	EventQueueUpdated = "queue_updated"
+	// EventQueueQRUpdated: QR antrian dibuat ulang. Tidak dikirim ke layar publik karena QR tidak tampil di sana.
+	// Nilainya sama dengan aksi "queue_qr_updated" yang dibandingkan di Hub.Notify.
+	EventQueueQRUpdated = "queue_qr_updated"
 	// EventDisplayChanged: sinyal tanpa data untuk layar publik ("ambil ulang snapshot").
 	EventDisplayChanged = "display_changed"
 )
@@ -55,7 +58,8 @@ func NewEvent(
 	}
 }
 
-// MarshalEvent mengubah event menjadi JSON siap kirim. Mengembalikan nil bila JSON gagal dibuat.
+// MarshalEvent mengubah event menjadi JSON siap kirim. Mengembalikan nil bila JSON gagal dibuat
+// (mis. payload tidak bisa di-marshal); Broadcast mengabaikan pesan nil, jadi event itu tidak terkirim.
 func MarshalEvent(
 	queueID int64,
 	eventType string,

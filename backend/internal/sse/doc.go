@@ -6,6 +6,9 @@
 //     (DisplayRoom) yang hanya menerima sinyal tanpa data tiket.
 //   - Heartbeat: baris komentar ": ping" berkala agar koneksi yang diam tidak diputus proxy atau load balancer.
 //   - Broadcast: menyebarkan satu pesan ke semua klien di satu room.
+//   - Klien lambat: klien yang antrean send-nya penuh dilepas dari room (bukan ditunggu), supaya satu koneksi
+//     macet tidak menahan siaran ke klien lain. Klien yang dilepas harus menyambung ulang dan mengambil ulang data.
+//   - Shutdown: dipanggil saat server berhenti; menutup semua koneksi SSE dan menolak klien baru.
 //
 // Isinya:
 //   - hub.go: Hub, yang menyimpan room dan menyebarkan pesan. Satu goroutine Run() memproses register,
