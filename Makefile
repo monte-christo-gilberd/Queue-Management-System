@@ -346,7 +346,7 @@ endif
 # idempoten. Dipanggil dengan $(call obs_db_role_run,<perintah compose>,<env file>). Mencoba sampai 30 detik karena
 # database mungkin baru dinyalakan. Gagal hanya memberi peringatan: aplikasi tidak bergantung pada role ini.
 define obs_db_role_run
-pw=$$(grep -E '^METRICS_DB_PASSWORD=' $(2) | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+pw=$$(grep -E '^METRICS_DB_PASSWORD=' $(2) | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 ok=
 for _ in $$(seq 1 30); do
   if $(1) exec -T -e METRICS_DB_PASSWORD="$$pw" db sh < db/migrations/07_metrics_role.sh >/dev/null 2>&1; then ok=1; break; fi
@@ -358,8 +358,10 @@ endef
 # Tracing di DEV: overlay mengirim trace dengan sampling bawaan 10% (cocok untuk prod). Di dev trafik kecil, jadi 10%
 # membuat dashboard Trace tampak kosong; makro ini memakai 100% (semua trace) bila OTEL_TRACES_SAMPLER_ARG tidak
 # diisi di .env maupun di shell. Nilai yang diisi eksplisit tetap dihormati. Prod tidak memakai makro ini (tetap 10%).
+# `|| true` WAJIB pada grep: recipe berjalan dengan `-e -o pipefail`, jadi grep tanpa hasil (variabel belum ada di .env) akan
+# menghentikan make secara diam-diam.
 define obs_dev_sampling
-r=$$(grep -E '^OTEL_TRACES_SAMPLER_ARG=.+' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+r=$$(grep -E '^OTEL_TRACES_SAMPLER_ARG=.+' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 export OTEL_TRACES_SAMPLER_ARG="$${OTEL_TRACES_SAMPLER_ARG:-$${r:-1}}"
 echo "Tracing aktif (dev): sampling $$OTEL_TRACES_SAMPLER_ARG (1 = semua trace; ubah lewat OTEL_TRACES_SAMPLER_ARG di .env)"
 endef
