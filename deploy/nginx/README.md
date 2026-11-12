@@ -81,11 +81,21 @@ Batas ukuran body default `client_max_body_size 1m` berlaku untuk semua rute, ke
 Header proxy umum (`Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`) dan header keamanan dasar
 (`X-Content-Type-Options`, `Referrer-Policy`) diatur di `server.conf`, yang berada di dalam `server{}`.
 
-## Yang disamarkan di log
+## Log akses dan request ID
 
-Token reset password ada di query string (`?token=`), dan token layar publik ada di path. Format log `qms_masked`
-hanya mencatat `$uri_masked` (token diganti `***`), dan tidak pernah mencatat query string. Rute yang membawa token
-memakai `access_log ... qms_masked`.
+Semua location memakai satu `access_log` global berformat JSON (`qms_json`, didefinisikan di `nginx.conf` dan
+`nginx.prod.conf`). Field: `time`, `service` (`nginx`), `request_id`, `remote_addr`, `method`, `uri`, `status`, `bytes`,
+`request_time`, `upstream_response_time`. Semua nilai berupa string. `/health` tidak dicatat (`access_log off`).
+
+Yang disamarkan: token reset password ada di query string (`?token=`) dan token layar publik ada di path. Log
+mencatat `$uri_masked` (token diganti `***`) dan tidak pernah mencatat query string, jadi tidak ada location yang
+butuh format log khusus.
+
+Request ID: nginx membuat `$request_id` untuk setiap request (nilai kiriman klien selalu ditimpa), meneruskannya ke
+upstream sebagai `X-Request-Id`, dan mengembalikannya di header respons. Backend, auth-service, dan qr-service (lewat
+backend) mencatat ID yang sama sebagai `request_id`. Location yang punya `proxy_set_header` atau `add_header` sendiri
+(SSE, halaman layar, reset password, `@auth_unavailable`) mengulang header ini karena direktif di location
+menggantikan yang di `server{}`.
 
 ## Saat pindah domain atau topologi
 

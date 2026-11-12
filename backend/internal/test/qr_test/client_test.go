@@ -11,6 +11,7 @@ import (
 
 	"qms/internal/apperror"
 	"qms/internal/qrclient"
+	"qms/internal/requestid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -237,4 +238,22 @@ func TestNew_TrimsTrailingSlash(t *testing.T) {
 	require.NoError(t, err)
 	// Tanpa trim, path menjadi "//internal/v1/join-token".
 	assert.Equal(t, "/internal/v1/join-token", gotPath)
+}
+
+// Request ID di context diteruskan ke qr-service lewat header X-Request-Id; tanpa ID di context, header tidak dikirim.
+func TestClient_ForwardsRequestID(t *testing.T) {
+	var gotID string
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotID = r.Header.Get("X-Request-Id")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"token":"v1.abc.sig","type":"dynamic","expires_at":null}`))
+	})
+
+	_, err := client.IssueJoinToken(requestid.With(context.Background(), "req-xyz"), 1, "dynamic", 0)
+	require.NoError(t, err)
+	assert.Equal(t, "req-xyz", gotID)
+
+	_, err = client.IssueJoinToken(context.Background(), 1, "dynamic", 0)
+	require.NoError(t, err)
+	assert.Empty(t, gotID)
 }

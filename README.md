@@ -326,6 +326,13 @@ Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat
 - **Tes Playwright:** helper `playwright/unit-test/support/mailpit.ts` (`waitForMail`, `mailsTo`, `expectNoMail`, `uniqueRecipient`) membaca API Mailpit (`QMS_MAILPIT_URL`, bawaan `http://localhost:8025`); tes email di-skip bila Mailpit tidak menjawab. Pakai penerima unik per tes karena kotak surat dibagi semua tes.
 - Memakai image baru? Pin versi di `docker-compose.yml` dan `docker-compose.prod.yml`; pull dari jaringan yang memeriksa sertifikat (proxy) bisa gagal, ulangi dari jaringan lain.
 
+#### Log dan request ID
+Semua service Go (backend, auth, qr, mail, notify) menulis **satu baris JSON per kejadian** ke stdout lewat `slog`, dengan atribut `service`. Level diatur `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; bawaan `info`). nginx menulis log akses JSON sendiri (lihat `deploy/nginx/README.md`).
+
+- **Log akses** (backend, auth, qr, mail): `request_id`, `method`, `route`, `status`, `latency_ms`, `bytes`, `client_ip`, dan `user_id` (angka saja, backend dan auth). `route` adalah **templat** (`/api/v1/display/:token`), bukan path mentah; rute yang tidak ada dicatat `unmatched`. Probe `/health` dan `/ready` dicatat di level `debug`. Panic dicatat sebagai `panic recovered` (dengan stack) dan klien menerima 500 `INTERNAL_ERROR`.
+- **Request ID:** nginx membuat `X-Request-Id` untuk tiap request (nilai dari klien ditimpa) dan meneruskannya ke backend dan auth-service. Backend meneruskannya lagi ke qr-service. ID dari luar yang kosong, lebih dari 128 karakter, atau berisi karakter selain huruf, angka, `-`, `_`, `.` diganti ID baru. Cari satu request di semua service dengan `docker compose logs | grep <request_id>`.
+- **Kebijakan isi log.** Tidak boleh masuk log (termasuk log nginx dan, nanti, atribut span): JWT dan header `Authorization`, password, token layar publik, token reset password, token verifikasi email, token join/QR, token Web Push, isi body request, query string, dan alamat email penuh. Catat id angka (`user_id`, `ticket_id`, `queue_id`) atau templat route, bukan nilainya. Saat menambah log baru, jangan memasukkan error mentah dari pustaka yang bisa memuat URL atau kredensial tanpa memeriksanya.
+
 ## 3. What was built
 
 ### Progres per komponen

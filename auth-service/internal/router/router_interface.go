@@ -1,6 +1,10 @@
 package router
 
-import "github.com/gin-gonic/gin"
+import (
+	"log/slog"
+
+	"github.com/gin-gonic/gin"
+)
 
 // AuthHandler adalah handler untuk rute akun yang selalu ada: registrasi dan login.
 type AuthHandler interface {
@@ -43,4 +47,6 @@ type AppRouter struct {
 	authMiddleware gin.HandlerFunc
 	// trustedProxies adalah daftar CIDR proxy yang boleh menentukan IP klien lewat X-Forwarded-For.
 	trustedProxies []string
+	// logger mencatat log akses dan panic (opsional; nil berarti slog.Default()).
+	logger *slog.Logger
 }

@@ -3,7 +3,7 @@
 package app
 
 import (
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -59,7 +59,7 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 	if cfg.EmailVerificationRequired {
 		verification = service.NewEmailVerificationGuard(repository.NewVerificationRepository(db))
 	} else {
-		log.Println("verifikasi email mati: akun baru tidak perlu verifikasi")
+		slog.Info("email verification disabled: new accounts do not need to verify")
 	}
 
 	// inisialisasi transaksi sqlx

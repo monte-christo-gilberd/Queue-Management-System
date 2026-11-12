@@ -82,8 +82,25 @@ func (r *Runner) dispatch(
 		defer cancel()
 		// Proses event. Galat hanya dicatat, tidak menghentikan listener.
 		if err := r.handler.Handle(sendCtx, e); err != nil {
-			slog.Error("handle event", "kind", e.Kind, "ticket_id", e.TicketID, "err", err)
+			slog.Error(
+				"handle event",
+				"kind",
+				e.Kind,
+				"ticket_id",
+				e.TicketID,
+				"err",
+				err,
+			)
+			return
 		}
+		// Event selesai diproses: catat jenis dan id tiket (angka saja, tanpa isi notifikasi atau data pengguna).
+		slog.Info(
+			"event handled",
+			"kind",
+			e.Kind,
+			"ticket_id",
+			e.TicketID,
+		)
 	}()
 }
 

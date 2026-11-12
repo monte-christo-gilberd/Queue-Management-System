@@ -55,11 +55,13 @@ func SetupRouter(
 	// mode release menonaktifkan log debug bawaan Gin, lalu buat engine kosong tanpa middleware
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
-	// pasang middleware global: tangkap panic, beri request ID, catat request, dan larang cache
-	engine.Use(gin.Recovery())
-	// RequestID dipasang sebelum Logger agar log memuat request_id
+	// pasang middleware global: beri request ID, catat request, tangkap panic, dan larang cache
+	// RequestID dipasang paling awal agar semua log memuat request_id
 	engine.Use(middleware.RequestID())
+	// Logger sebelum Recovery: request yang panic tetap tercatat sebagai baris akses berstatus 500
 	engine.Use(middleware.Logger(logger))
+	// Recovery mengubah panic menjadi 500 dan mencatatnya lewat slog (JSON), bukan teks bawaan Gin
+	engine.Use(middleware.Recovery(logger))
 	// respons bisa berisi token, jadi tidak boleh disimpan cache
 	engine.Use(middleware.NoStore())
 

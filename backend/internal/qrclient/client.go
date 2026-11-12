@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"qms/internal/apperror"
+	"qms/internal/requestid"
 )
 
 // defaultTimeout: batas waktu satu panggilan ke qr-service bila timeout yang diberikan tidak valid (nol atau negatif).
@@ -159,6 +160,10 @@ func (c *Client) do(
 	req.Header.Set("Content-Type", "application/json")
 	// kirim token service agar qr-service menerima request ini
 	req.Header.Set("X-Service-Token", c.serviceToken)
+	// teruskan request ID dari request pengguna agar satu request bisa diikuti di log backend dan qr-service
+	if id := requestid.From(ctx); id != "" {
+		req.Header.Set("X-Request-Id", id)
+	}
 	// kirim request; error berarti tidak terhubung, timeout, atau koneksi putus
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

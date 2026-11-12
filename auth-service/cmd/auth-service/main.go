@@ -19,6 +19,7 @@ import (
 	"qms/auth-service/internal/google"
 	"qms/auth-service/internal/handler"
 	"qms/auth-service/internal/httpserver"
+	"qms/auth-service/internal/logging"
 	"qms/auth-service/internal/mailclient"
 	"qms/auth-service/internal/middleware"
 	"qms/auth-service/internal/repository"
@@ -30,6 +31,14 @@ import (
 // main hanya memanggil run dan mencatat error-nya. Pekerjaan sebenarnya ada di run agar defer di dalamnya
 // (termasuk db.Close) sudah berjalan sebelum proses berhenti dengan kode 1.
 func main() {
+	// logger JSON dengan atribut service=auth-service dan level dari LOG_LEVEL (bawaan info)
+	logger := logging.NewLogger(
+		"auth-service",
+		os.Getenv("LOG_LEVEL"),
+	)
+	// jadikan default: slog.* di seluruh paket (service, handler, middleware) ikut berformat JSON
+	slog.SetDefault(logger)
+
 	// jalankan service; galat berarti server gagal start atau berhenti tidak wajar
 	if err := run(); err != nil {
 		// Catat penyebab berhenti sebagai log terstruktur.

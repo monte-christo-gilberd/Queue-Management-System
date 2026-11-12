@@ -1,6 +1,10 @@
 package router
 
-import "github.com/gin-gonic/gin"
+import (
+	"log/slog"
+
+	"github.com/gin-gonic/gin"
+)
 
 // TicketHandler adalah handler untuk operasi tiket dan antrian yang dipakai petugas maupun pelanggan.
 type TicketHandler interface {
@@ -165,4 +169,6 @@ type AppRouter struct {
 	authMiddleware gin.HandlerFunc
 	// allowedOrigins adalah daftar origin browser yang boleh memanggil API (dipakai CORS).
 	allowedOrigins []string
+	// logger mencatat log akses dan panic (opsional; nil berarti slog.Default()).
+	logger *slog.Logger
 }

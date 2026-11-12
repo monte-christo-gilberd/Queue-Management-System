@@ -50,7 +50,7 @@ func run() error {
 	}
 
 	// buat logger sesuai LOG_LEVEL lalu jadikan default untuk slog di seluruh proses
-	logger := logging.NewLogger(cfg.LogLevel)
+	logger := logging.NewLogger("qr-service", cfg.LogLevel)
 	slog.SetDefault(logger)
 
 	// buat service token dari JOIN_LINK_SECRET; secret yang terlalu pendek ditolak di sini

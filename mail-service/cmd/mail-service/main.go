@@ -16,6 +16,7 @@ import (
 
 	"qms/mail-service/internal/config"
 	"qms/mail-service/internal/handler"
+	"qms/mail-service/internal/logging"
 	"qms/mail-service/internal/mailer"
 	"qms/mail-service/internal/mailtemplate"
 	"qms/mail-service/internal/middleware"
@@ -26,8 +27,13 @@ import (
 
 // main menjalankan run, lalu mencatat galatnya dan keluar dengan kode 1 bila gagal.
 func main() {
-	// Atur logger default ke JSON di stdout.
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	// Atur logger default ke JSON di stdout, dengan atribut service=mail-service dan level dari LOG_LEVEL.
+	slog.SetDefault(
+		logging.NewLogger(
+			"mail-service",
+			os.Getenv("LOG_LEVEL"),
+		),
+	)
 
 	// Jalankan perintah atau layanan. Galat berarti proses harus berhenti dengan status gagal.
 	if err := run(); err != nil {
@@ -61,7 +67,11 @@ func run() error {
 	// Rangkai lapisan: pengirim SMTP, pengisi templat, service, handler, dan router.
 	renderer := mailtemplate.New()
 	// Mailer dan service dibuat sekali dan dipakai bersama oleh semua permintaan.
-	mailSvc := service.NewMailService(mailer.New(cfg.SMTP), renderer, slog.Default())
+	mailSvc := service.NewMailService(
+		mailer.New(cfg.SMTP),
+		renderer,
+		slog.Default(),
+	)
 	// Router mendaftarkan rute kirim yang dilindungi token, lalu rute health dan 404.
 	appRouter := router.NewAppRouter(
 		handler.NewMailHandler(mailSvc),
@@ -84,7 +94,11 @@ func run() error {
 	}
 
 	// Konteks yang batal saat SIGINT atau SIGTERM diterima.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	)
 	// Lepas pendaftaran sinyal saat run selesai.
 	defer stop()
 	// Outbox aktif bila DATABASE_URL diisi: jalankan worker di goroutine terpisah.
@@ -142,7 +156,11 @@ func sendTest(
 		return fmt.Errorf("config: %w", err)
 	}
 	// Rangkai service dengan pengirim SMTP dan pengisi templat, lalu kirim email uji.
-	svc := service.NewMailService(mailer.New(smtpCfg), mailtemplate.New(), slog.Default())
+	svc := service.NewMailService(
+		mailer.New(smtpCfg),
+		mailtemplate.New(),
+		slog.Default(),
+	)
 	// Kirim email uji.
 	if err := svc.SendTest(context.Background(), to); err != nil {
 		// Teruskan galat SMTP apa adanya agar penyebab terlihat.
@@ -162,7 +180,10 @@ func runOutbox(
 	renderer service.TemplateRenderer,
 ) {
 	// Sambung ke database outbox, diulang sampai berhasil. Nil bila konteks batal lebih dulu.
-	db := repository.ConnectWithRetry(ctx, cfg.Outbox.DatabaseURL)
+	db := repository.ConnectWithRetry(
+		ctx,
+		cfg.Outbox.DatabaseURL,
+	)
 	if db == nil {
 		// Shutdown dimulai sebelum database tersambung: tidak ada yang dijalankan.
 		return
@@ -182,9 +203,20 @@ func runOutbox(
 		slog.Default(),
 	)
 	// Dengarkan NOTIFY mail_outbox di goroutine terpisah untuk membangunkan worker saat ada baris baru.
-	go repository.Listen(ctx, cfg.Outbox.DatabaseURL, w.Wake, slog.Default())
+	go repository.Listen(
+		ctx,
+		cfg.Outbox.DatabaseURL,
+		w.Wake,
+		slog.Default(),
+	)
 	// Catat laju dan batas percobaan yang aktif.
-	slog.Info("outbox worker started", "rate_per_sec", cfg.Outbox.Rate, "max_attempts", cfg.Outbox.MaxAttempts)
+	slog.Info(
+		"outbox worker started",
+		"rate_per_sec",
+		cfg.Outbox.Rate,
+		"max_attempts",
+		cfg.Outbox.MaxAttempts,
+	)
 	// Jalankan worker sampai konteks batal.
 	w.Run(ctx)
 }

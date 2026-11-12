@@ -14,6 +14,7 @@ import (
 	"qms/notify-service/internal/config"
 	"qms/notify-service/internal/httpserver"
 	"qms/notify-service/internal/listener"
+	"qms/notify-service/internal/logging"
 	"qms/notify-service/internal/model"
 	"qms/notify-service/internal/pusher"
 	"qms/notify-service/internal/repository"
@@ -29,15 +30,9 @@ const healthAddr = ":8091"
 
 // main memanggil run, lalu keluar dengan kode 1 bila gagal. Error sudah dicatat di run.
 func main() {
-	// Atur logger default ke JSON di stdout untuk seluruh proses.
-	slog.SetDefault(
-		slog.New(
-			slog.NewJSONHandler(
-				os.Stdout,
-				nil,
-			),
-		),
-	)
+	// Atur logger default ke JSON di stdout untuk seluruh proses, dengan atribut service=notify-service
+	// dan level dari LOG_LEVEL (bawaan info).
+	slog.SetDefault(logging.NewLogger("notify-service", os.Getenv("LOG_LEVEL")))
 
 	// Jalankan service. Error berarti service gagal start, jadi hentikan proses dengan status gagal.
 	if err := run(); err != nil {

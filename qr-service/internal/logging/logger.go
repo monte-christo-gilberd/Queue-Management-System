@@ -6,8 +6,10 @@ import (
 	"strings"
 )
 
-// NewLogger membuat logger JSON ke stdout dengan level dari LOG_LEVEL. Nilai tidak dikenal memakai info.
+// NewLogger membuat logger JSON ke stdout dengan level dari LOG_LEVEL. Setiap baris log membawa atribut
+// service=<nama service> supaya log semua service bisa dipisahkan di Loki. Nilai level tidak dikenal memakai info.
 func NewLogger(
+	service string,
 	level string,
 ) *slog.Logger {
 	// level log yang dipakai handler, bawaannya info
@@ -30,6 +32,16 @@ func NewLogger(
 		// info adalah bawaan
 		lvl = slog.LevelInfo
 	}
-	// buat handler JSON ke stdout dengan level yang sudah dipilih
-	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
+	// buat handler JSON ke stdout dengan level yang sudah dipilih, lalu tempelkan nama service ke semua baris
+	return slog.New(
+		slog.NewJSONHandler(
+			os.Stdout,
+			&slog.HandlerOptions{
+				Level: lvl,
+			},
+		),
+	).With(
+		"service",
+		service,
+	)
 }

@@ -1,6 +1,12 @@
 package router
 
-import "github.com/gin-gonic/gin"
+import (
+	"log/slog"
+
+	"github.com/gin-gonic/gin"
+
+	"qms/mail-service/internal/middleware"
+)
 
 // AppRouter menyimpan handler dan middleware yang akan didaftarkan oleh SetupRouter.
 type AppRouter struct {
@@ -10,6 +16,8 @@ type AppRouter struct {
 	authMiddleware gin.HandlerFunc
 	// systemHandler: handler health check dan 404 (opsional).
 	systemHandler SystemHandler
+	// logger: pencatat log akses dan panic (opsional; nil berarti slog.Default()).
+	logger *slog.Logger
 }
 
 // NewAppRouter membuat AppRouter dengan handler wajib: kirim email dan middleware token layanan.
@@ -37,14 +45,32 @@ func (a *AppRouter) WithSystem(
 	return a
 }
 
+// WithLogger memasang logger untuk log akses dan Recovery (opsional; tanpa ini dipakai slog.Default()).
+func (a *AppRouter) WithLogger(l *slog.Logger) *AppRouter {
+	// simpan logger, lalu kembalikan router yang sama agar bisa dirangkai
+	a.logger = l
+	return a
+}
+
 // SetupRouter membuat gin.Engine dan mendaftarkan semua rute sesuai handler yang sudah dipasang di router.
 func SetupRouter(
 	router *AppRouter,
 ) *gin.Engine {
-	// mode release menonaktifkan log debug bawaan Gin, lalu buat engine kosong dengan penangkap panic
+	// pakai logger dari AppRouter; bila tidak dipasang, pakai logger default slog (diatur di main)
+	logger := router.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	// mode release menonaktifkan log debug bawaan Gin, lalu buat engine kosong tanpa middleware bawaan
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
-	engine.Use(gin.Recovery())
+	// RequestID paling awal agar semua log request memuat request_id
+	engine.Use(middleware.RequestID())
+	// Logger sebelum Recovery: request yang panic tetap tercatat sebagai baris akses berstatus 500
+	engine.Use(middleware.Logger(logger))
+	// Recovery mengubah panic menjadi 500 dan mencatatnya lewat slog
+	engine.Use(middleware.Recovery(logger))
 	// Service ini hanya dipanggil lewat jaringan internal; header X-Forwarded-For tidak dipakai.
 	_ = engine.SetTrustedProxies(nil)
 	// rute sistem hanya didaftarkan bila dipasang
