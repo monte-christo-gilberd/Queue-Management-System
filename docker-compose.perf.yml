@@ -1,0 +1,81 @@
+# =============================================================================
+# docker-compose.perf.yml: overlay UJI BEBAN (k6). Digabung dengan docker-compose.yml, dijalankan sebagai project
+# terpisah "qms-perf" oleh `make perf-up` (volume, jaringan, dan database terpisah dari stack dev).
+# -----------------------------------------------------------------------------
+# Dipakai oleh : make perf-up / perf-down / perf-seed / perf-smoke / perf-sse (lihat perf/README.md).
+#   docker compose -p qms-perf -f docker-compose.yml -f docker-compose.perf.yml up -d db qr-service auth-service backend nginx
+# Yang dinyalakan: db, qr-service, auth-service, backend, nginx. TIDAK dinyalakan: frontend, mail-service,
+#   notify-service, mailpit (uji beban tidak boleh mengirim email atau push; pengguna seed bahkan mematikan email_notifications).
+# Beda dengan dev:
+#   [PERF] Image tahap `prod` (binary statis), bukan `go run` dengan kode di-mount: yang diukur adalah aplikasi, bukan kompilator.
+#   [PERF] nginx memakai nginx.perf.conf (banyak worker dan koneksi, limit_req dilonggarkan) dan server.perf.conf
+#          (tanpa access_log per location), dibuat `make perf-up` di perf/.generated/.
+#   [PERF] Kunci JWT KHUSUS UJI di keys-perf/ (dibuat `make perf-keys`). Kunci dev dan prod tidak dipakai.
+#   [PERF] Verifikasi email dimatikan di backend dan auth-service (nilai harus sama di keduanya): akun seed tidak
+#          melewati alur email. Seed juga mengisi email_verified_at, jadi guard tetap tidak menolak.
+#   [PERF] Subnet 172.31.0.0/16 dan port host 127.0.0.1:${QMS_PERF_PORT:-18080} supaya bisa berjalan berdampingan
+#          dengan stack dev (172.28.0.0/16, port 8080).
+# [PENTING] Hanya untuk mesin uji. Jangan diarahkan ke produksi.
+# =============================================================================
+
+services:
+  # qr-service: binary prod, tanpa mount kode.
+  qr-service:
+    build:
+      target: prod
+    volumes: !override []
+
+  # auth-service: binary prod, kunci uji, tanpa email.
+  auth-service:
+    build:
+      target: prod
+    environment:
+      # tidak ada mail-service di uji ini: fitur lupa/reset password dan verifikasi tidak dipasang
+      MAIL_SERVICE_URL: ""
+      EMAIL_VERIFICATION_REQUIRED: "false"
+      # [SINKRON] harus sama dengan subnet networks.internal di bawah
+      TRUSTED_PROXIES: 172.31.0.0/16
+    volumes: !override
+      - ./keys-perf:/run/keys:ro
+
+  # backend: binary prod, kunci publik uji, pool database eksplisit.
+  backend:
+    build:
+      target: prod
+    environment:
+      EMAIL_VERIFICATION_REQUIRED: "false"
+      TRUSTED_PROXIES: 172.31.0.0/16
+      # Pool database (lihat backend/internal/database/pool.go). Postgres bawaan max_connections 100.
+      DB_MAX_OPEN_CONNS: ${PERF_DB_MAX_OPEN_CONNS:-40}
+      DB_MAX_IDLE_CONNS: ${PERF_DB_MAX_IDLE_CONNS:-10}
+    volumes: !override
+      - ./keys-perf/auth-public.pem:/run/keys/auth-public.pem:ro
+
+  # nginx: konfigurasi uji, port host berbeda, tidak menunggu frontend (frontend tidak dinyalakan).
+  nginx:
+    build:
+      context: ./deploy/nginx
+      args:
+        NGINX_CONF: nginx.perf.conf
+    ports: !override
+      - "127.0.0.1:${QMS_PERF_PORT:-18080}:80"
+    volumes:
+      # server.conf tanpa access_log per location (dibuat make perf-up dari deploy/nginx/server.conf)
+      - ./perf/.generated/server.perf.conf:/etc/nginx/snippets/server.conf:ro
+    depends_on: !override
+      backend:
+        condition: service_healthy
+      qr-service:
+        condition: service_healthy
+    # batas file terbuka kontainer (tiap koneksi SSE memakai fd)
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+
+# Subnet khusus uji agar tidak bentrok dengan stack dev yang berjalan bersamaan.
+networks:
+  internal:
+    ipam:
+      config: !override
+        - subnet: 172.31.0.0/16

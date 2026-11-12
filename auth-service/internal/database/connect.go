@@ -20,6 +20,9 @@ func Connect(
 		// Gagal terhubung: tidak ada koneksi untuk dikembalikan.
 		return nil, err
 	}
+	// batasi pool koneksi (DB_MAX_OPEN_CONNS, DB_MAX_IDLE_CONNS, DB_CONN_MAX_LIFETIME); bawaan auth-service lebih kecil
+	// dari backend karena jalur login dibatasi bcrypt dan rate limit
+	ApplyPool(db)
 	// batas 5 detik untuk ping; melepas timer saat fungsi selesai (bukan menutup koneksi)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	// Lepas timer saat fungsi selesai (bukan menutup koneksi).

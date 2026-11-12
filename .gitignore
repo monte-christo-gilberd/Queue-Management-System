@@ -10,3 +10,9 @@ keys-dev/
 
 # Hasil coverage Go (go test -coverprofile)
 coverage.out
+
+# Uji beban (perf/): kunci JWT uji, berkas hasil generate, token seed, dan hasil uji
+keys-perf/
+perf/.generated/
+perf/data/
+perf/reports/*.json

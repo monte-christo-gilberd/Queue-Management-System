@@ -29,6 +29,15 @@
 #   make prod-backup                        backup DB prod ke ~/qms-backups/
 #   make prod-reset                         kosongkan antrian dan tiket demo (akun dipertahankan, backup dulu)
 #
+# Perintah UJI BEBAN (k6; project terpisah "qms-perf", port 127.0.0.1:18080, database dan kunci uji; lihat perf/README.md):
+#   make perf-up                            nyalakan stack uji (db, qr, auth, backend, nginx uji)
+#   make perf-seed [PERF_CUSTOMERS=5000]    isi data massal dan buat token uji (perf/data/tokens.json)
+#   make perf-smoke                         uji asap k6: satu pengguna menjalankan seluruh perjalanan
+#   make perf-load [PERF_USERS=1000 PERF_RPS=200 PERF_DURATION=2m]   uji beban API k6
+#   make perf-sse [PERF_CONNS=10000 PERF_HOLD=2m]                    tahan koneksi SSE dan tiru klien
+#   make perf-test                          tes unit alat uji (pembuat token dan penahan SSE)
+#   make perf-down                          hapus stack uji beserta data ujinya (project qms-perf saja)
+#
 # Catatan:
 #   - Kamera di browser butuh HTTPS atau localhost. Scan QR dari HP lewat IP LAN tidak jalan di web;
 #     pakai `make tunnel`. Tunnel butuh cloudflared dan internet.
@@ -52,7 +61,8 @@ SHELL := bash
 # Perintah tidak ditampilkan sebelum dijalankan. Pesan yang memang dicetak (echo) tetap tampil.
 .SILENT:
 .PHONY: up tunnel down restart seed logs ps mailpit verify-user \
-        prod-up prod-up-mailpit prod-up-smtp prod-down prod-guard prod-backup prod-reset
+        prod-up prod-up-mailpit prod-up-smtp prod-down prod-guard prod-backup prod-reset \
+        perf-keys perf-up perf-down perf-seed perf-smoke perf-load perf-sse perf-test
 
 # -----------------------------------------------------------------------------
 # Variabel dan potongan bersama
@@ -289,3 +299,87 @@ mailpit:
 	pmp=$$(grep -E '^MAILPIT_UI_PORT=' $(PROD_ENV) 2>/dev/null | tail -1 | cut -d= -f2 || true); pmp=$${pmp:-8025}
 	echo "Prod (MAIL_MODE=$(MAIL_MODE)): $(if $(filter mailpit,$(MAIL_MODE)),Mailpit di server prod: http://localhost:$$pmp (hanya dari server itu; jauh: ssh -L $$pmp:127.0.0.1:$$pmp <user>@<server>),tanpa Mailpit: email dikirim lewat SMTP nyata)"
 	# Ubah mode prod: make prod-up MAIL_MODE=mailpit   atau   make prod-up MAIL_MODE=smtp   (atau set MAIL_MODE di $(PROD_ENV))
+
+# -----------------------------------------------------------------------------
+# UJI BEBAN (perf/): stack terpisah "qms-perf" (docker-compose.perf.yml), tidak menyentuh stack dev maupun prod
+# -----------------------------------------------------------------------------
+
+# Nama project compose uji. Volume, jaringan, dan database-nya terpisah dari stack dev ("qms") dan prod ("qms-prod").
+PERF_PROJECT := qms-perf
+# Port host nginx uji (hanya 127.0.0.1) dan alamat dasar yang dipakai k6 dan penahan SSE.
+PERF_PORT ?= 18080
+PERF_BASE_URL ?= http://localhost:$(PERF_PORT)
+# Ukuran data seed: owner, pelanggan, dan antrian (pelanggan harus >= PERF_USERS dan PERF_CONNS).
+PERF_OWNERS ?= 10
+PERF_CUSTOMERS ?= 1000
+PERF_QUEUES ?= 10
+# Parameter uji beban k6 dan penahan SSE.
+PERF_USERS ?= 1000
+PERF_RPS ?= 200
+PERF_DURATION ?= 2m
+PERF_CONNS ?= 1000
+PERF_HOLD ?= 1m
+# Berkas token hasil seed (path absolut: open() di k6 relatif terhadap berkas skrip, jadi path mutlak paling aman).
+PERF_TOKENS := $(abspath perf/data/tokens.json)
+
+# Perintah compose uji lengkap (dasar + overlay, project terpisah, port host dari PERF_PORT).
+PERF_COMPOSE = QMS_PERF_PORT=$(PERF_PORT) docker compose -p $(PERF_PROJECT) -f docker-compose.yml -f docker-compose.perf.yml
+
+# Bila K6_PROMETHEUS_RW_SERVER_URL diisi, hasil k6 juga dikirim ke Prometheus (butuh stack observability; lihat
+# perf/README.md). Kosong = hanya ringkasan terminal dan berkas JSON di perf/reports/.
+PERF_K6_OUT = $(if $(K6_PROMETHEUS_RW_SERVER_URL),-o experimental-prometheus-rw,)
+
+# Membuat kunci JWT KHUSUS UJI di keys-perf/ (idempoten, tidak menimpa). Kunci dev dan prod tidak dipakai.
+perf-keys:
+	AUTH_KEYS_DIR=keys-perf scripts/gen-auth-keys.sh
+
+# Menyalakan stack uji. server.perf.conf dibuat dari deploy/nginx/server.conf tanpa baris access_log per location
+# (log per request membebani uji). Menunggu nginx menjawab /health sebelum selesai.
+perf-up: perf-keys
+	[ -f .env ] || { echo ".env belum ada (cp .env.example .env lalu isi secret)" >&2; exit 1; }
+	mkdir -p perf/.generated perf/data perf/reports
+	sed '/access_log \/dev\/stdout qms_masked;/d' deploy/nginx/server.conf > perf/.generated/server.perf.conf
+	$(PERF_COMPOSE) up -d --build db qr-service auth-service backend nginx
+	echo "Menunggu $(PERF_BASE_URL)/health ..."
+	for _ in $$(seq 1 90); do
+	  curl -fsS -o /dev/null $(PERF_BASE_URL)/health 2>/dev/null && { echo "Stack uji siap: $(PERF_BASE_URL)"; exit 0; }
+	  sleep 2
+	done
+	echo "Stack uji belum menjawab dalam 3 menit; cek: $(PERF_COMPOSE) logs backend nginx" >&2; exit 1
+
+# Menghapus stack uji DAN volume datanya (hanya project qms-perf; stack dev dan prod tidak disentuh).
+perf-down:
+	$(PERF_COMPOSE) down -v --remove-orphans
+
+# Mengisi data massal (seed.sql, idempoten), mengekspor id ke CSV, lalu membuat token JWT uji (perf/seed/mint).
+# Syarat: stack uji berjalan (make perf-up). Mengisi di database project qms-perf saja.
+perf-seed:
+	mkdir -p perf/data
+	$(PERF_COMPOSE) exec -T db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -v ON_ERROR_STOP=1 -v owners=$(PERF_OWNERS) -v customers=$(PERF_CUSTOMERS) -v queues=$(PERF_QUEUES) -f -' < perf/seed/seed.sql
+	q() { $(PERF_COMPOSE) exec -T db sh -c "psql -U \"\$$POSTGRES_USER\" -d \"\$$POSTGRES_DB\" -tA -F, -c \"$$1\""; }
+	q "SELECT id FROM users WHERE email LIKE 'perf-owner-%@perf.invalid' ORDER BY id" > perf/data/owners.csv
+	q "SELECT id FROM users WHERE email LIKE 'perf-customer-%@perf.invalid' ORDER BY id" > perf/data/customers.csv
+	q "SELECT id, owner_id FROM queues WHERE queue_name LIKE 'Perf %' ORDER BY id" > perf/data/queues.csv
+	cd perf/seed/mint && go run . -key ../../../keys-perf/auth-private.pem -dir ../../data
+	rm -f perf/data/owners.csv perf/data/customers.csv perf/data/queues.csv
+
+# Uji asap: satu pengguna menjalankan seluruh perjalanan; semua check harus lulus.
+perf-smoke:
+	k6 run $(PERF_K6_OUT) -e BASE_URL=$(PERF_BASE_URL) -e PERF_TOKENS=$(PERF_TOKENS) perf/k6/scenarios/smoke.js
+
+# Uji beban API: preload PERF_USERS pengguna lalu beban PERF_RPS req/detik selama PERF_DURATION.
+perf-load:
+	k6 run $(PERF_K6_OUT) -e BASE_URL=$(PERF_BASE_URL) -e PERF_TOKENS=$(PERF_TOKENS) -e PERF_USERS=$(PERF_USERS) -e PERF_RPS=$(PERF_RPS) -e PERF_DURATION=$(PERF_DURATION) perf/k6/scenarios/load.js
+
+# Menahan PERF_CONNS koneksi SSE selama PERF_HOLD sambil meniru klien (perf/sse-holder). Menaikkan batas file terbuka
+# proses ini bila diizinkan; tanpa itu puluhan ribu koneksi gagal dengan "too many open files".
+perf-sse:
+	mkdir -p perf/.generated perf/reports
+	cd perf/sse-holder && go build -o ../.generated/sse-holder .
+	ulimit -n 1048576 2>/dev/null || echo "Peringatan: ulimit -n tidak bisa dinaikkan; batas sekarang $$(ulimit -n)" >&2
+	perf/.generated/sse-holder -base $(PERF_BASE_URL) -tokens perf/data/tokens.json -conns $(PERF_CONNS) -duration $(PERF_HOLD) -report perf/reports/sse-$(PERF_CONNS).json
+
+# Tes unit alat uji beban (pembuat token JWT dan penahan SSE).
+perf-test:
+	cd perf/seed/mint && go test ./...
+	cd perf/sse-holder && go test ./...

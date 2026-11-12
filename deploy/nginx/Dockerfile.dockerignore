@@ -17,6 +17,8 @@
 !nginx.conf
 # Masukkan konfigurasi prod (dipakai bila build arg NGINX_CONF=nginx.prod.conf).
 !nginx.prod.conf
+# konfigurasi KHUSUS UJI BEBAN (docker-compose.perf.yml); tidak dipakai dev maupun prod
+!nginx.perf.conf
 # Masukkan isi server{} bersama, yang di-COPY ke snippets/server.conf.
 !server.conf
 # Masukkan header WebSocket dev (dipakai bila FRONTEND_UPGRADE tidak diubah).

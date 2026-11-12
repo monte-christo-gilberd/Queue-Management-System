@@ -31,6 +31,10 @@ func Connect(cfg Config) (*sqlx.DB, error) {
 		return nil, err
 	}
 
+	// batasi pool koneksi (DB_MAX_OPEN_CONNS, DB_MAX_IDLE_CONNS, DB_CONN_MAX_LIFETIME) supaya beban tinggi tidak
+	// menghabiskan slot koneksi Postgres; nilai bawaan ada di pool.go
+	ApplyPool(db)
+
 	// membuat context dengan batas waktu 5 detik; context ini dipakai oleh PingContext di bawah
 	// context = pembawa batas waktu dan pembatalan untuk satu operasi
 	ctx, cancel := context.WithTimeout(
