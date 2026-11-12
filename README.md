@@ -334,7 +334,7 @@ Semua service Go (backend, auth, qr, mail, notify) menulis **satu baris JSON per
 - **Request ID:** nginx membuat `X-Request-Id` untuk tiap request (nilai dari klien ditimpa) dan meneruskannya ke backend dan auth-service. Backend meneruskannya lagi ke qr-service. ID dari luar yang kosong, lebih dari 128 karakter, atau berisi karakter selain huruf, angka, `-`, `_`, `.` diganti ID baru. Cari satu request di semua service dengan `docker compose logs | grep <request_id>`.
 - **Kebijakan isi log.** Tidak boleh masuk log (termasuk log nginx dan, nanti, atribut span): JWT dan header `Authorization`, password, token layar publik, token reset password, token verifikasi email, token join/QR, token Web Push, isi body request, query string, dan alamat email penuh. Catat id angka (`user_id`, `ticket_id`, `queue_id`) atau templat route, bukan nilainya. Saat menambah log baru, jangan memasukkan error mentah dari pustaka yang bisa memuat URL atau kredensial tanpa memeriksanya.
 
-#### Observability: log (opsional)
+#### Observability (opsional: log, metrik, trace, alert)
 Overlay `docker-compose.observability.yml` menambah OpenTelemetry Collector, Loki, dan Grafana. Aplikasi tidak bergantung padanya: tidak ada `depends_on` ke arah sana, dan bila overlay mati antrian, login, SSE, dan langganan tetap jalan.
 
 1. Isi `GRAFANA_ADMIN_PASSWORD` di `.env` (dev) atau `.env.prod` (prod). Wajib, tanpa nilai bawaan. `GRAFANA_PORT` dan `OBS_LOG_RETENTION` opsional.
@@ -348,7 +348,7 @@ Overlay `docker-compose.observability.yml` menambah OpenTelemetry Collector, Lok
 9. Alert (Grafana, Alerting > Alert rules, folder "QMS Alert"): 11 aturan sebagai kode di `observability/grafana/provisioning/alerting/rules.yaml`: service mati, container start ulang berulang, rasio 5xx, latensi p95, antrean email menumpuk, login gagal melonjak, lonjakan langganan ditolak email belum diverifikasi, koneksi PostgreSQL, disk, memori host, dan lonjakan 429. Statusnya (Normal, Pending, Firing) terlihat di UI, tetapi **tidak ada notifikasi yang dikirim**: semua ditahan jadwal senyap `selalu-senyap` (`mutetimings.yaml`, `policies.yaml`). Ambang adalah tebakan awal dan disetel setelah ada data nyata. Mengirim notifikasi (email, Slack) menyusul: buat contact point di `contactpoints.yaml`, arahkan policy ke sana, lalu hapus `mute_time_intervals`. Perhatian: berkas alerting yang tidak valid membuat Grafana gagal start (modul provisioning gagal), jadi uji perubahan di sana dengan `docker compose ... up grafana` dan periksa lognya.
 10. `make obs-down` menghapus container observability saja; log dan data Grafana tersimpan di volume `obs_*`. `make down` dan `make prod-down` ikut membersihkannya (`--remove-orphans`).
 
-Rincian: log Docker (`json-file`, maks 3 x 10 MB per container) dibaca collector dari `/var/lib/docker/containers` (read-only, tanpa `docker.sock`), disamarkan lagi (Bearer, JWT, `token=`, `password=`) sebagai lapis kedua, lalu dikirim ke Loki (retensi 7 hari). Prometheus dan Tempo sudah didaftarkan sebagai datasource, tetapi service-nya baru ada di fase berikutnya. Tambahkan kata `obs` agar observability ikut menyala: `make up obs`, `make tunnel obs`, `make prod-up obs` (butuh `GRAFANA_ADMIN_PASSWORD` dan `METRICS_DB_PASSWORD`). Menjalankan `make up` atau `make prod-up` tanpa kata itu membuat ulang service aplikasi tanpa blok `logging:`, sehingga log-nya berhenti terkumpul sampai `make obs-up` dijalankan lagi.
+Rincian: log Docker (`json-file`, maks 3 x 10 MB per container) dibaca collector dari `/var/lib/docker/containers` (read-only, tanpa `docker.sock`), disamarkan lagi (Bearer, JWT, `token=`, `password=`) sebagai lapis kedua, lalu dikirim ke Loki (retensi 7 hari). Prometheus dan Tempo sudah berjalan di overlay yang sama (lihat butir 6 dan 8). Tambahkan kata `obs` agar observability ikut menyala: `make up obs`, `make tunnel obs`, `make prod-up obs` (butuh `GRAFANA_ADMIN_PASSWORD` dan `METRICS_DB_PASSWORD`). Menjalankan `make up` atau `make prod-up` tanpa kata itu membuat ulang service aplikasi tanpa blok `logging:`, sehingga log-nya berhenti terkumpul sampai `make obs-up` dijalankan lagi.
 
 ## 3. What was built
 
@@ -383,6 +383,7 @@ Rincian: log Docker (`json-file`, maks 3 x 10 MB per container) dibaca collector
 | Riwayat dan ekspor | Owner melihat riwayat antrian dan bisa mengekspornya ke CSV atau XLSX. Customer melihat riwayat tiketnya. |
 | Langganan | Owner menambah 30 hari langganan langsung, tanpa pembayaran (MOCK, di backend; label di layar memuat `[MOCK]`). |
 | Real-time | Pembaruan lewat Server-Sent Events, termasuk `queue_qr_updated`. |
+| Navigasi keyboard (web) | Di halaman masuk dan daftar, panah atas/bawah memindahkan fokus antar field dan tombol; Enter menekan tombol yang sedang fokus (di field teks, Enter ditangani form). |
 | Tampilan | Mode terang dan gelap. |
 | Shutdown rapi | Backend menangani SIGINT/SIGTERM: koneksi SSE ditutup, request yang berjalan dituntaskan (paling lama `SHUTDOWN_TIMEOUT`), lalu database ditutup. `ReadHeaderTimeout` 5 dtk, `ReadTimeout` 30 dtk, `IdleTimeout` 120 dtk. |
 
@@ -430,10 +431,12 @@ queue-management-system/
 │                             mailer (SMTP), mailtemplate (templat), test/<lapisan>_test
 ├── db/                       Dockerfile, migrations (skema, indeks, role per service), dan scripts (apply_schema, reset_seed_dev, backfill)
 ├── deploy/nginx/             konfigurasi nginx (reverse proxy, rate limit)
+├── observability/            overlay opsional: otel-collector, loki, prometheus, tempo, grafana (dashboard dan alert sebagai kode)
 ├── scripts/                  backup-prod, reset-demo, create-demo-accounts, verify-user, gen-auth-keys, check-mail-mode, check-google-config, check-service-isolation (lihat "Daftar script")
 ├── keys/ dan keys-dev/       pasangan kunci RSA token login (prod dan dev), dibuat gen-auth-keys.sh
 ├── docker-compose.yml        stack development (hot reload)
 ├── docker-compose.prod.yml   stack demo/produksi (nginx hanya di 127.0.0.1)
+├── docker-compose.observability.yml   overlay observability (dipasang lewat kata `obs`)
 ├── Makefile                  perintah umum: make up, make tunnel, make prod-up, dan lainnya
 ├── .env.example              template env dev
 └── .env.prod.example         template env produksi
