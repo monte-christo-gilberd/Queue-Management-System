@@ -24,7 +24,6 @@ type CheckoutRequest struct {
 	OwnerID     int64  `json:"owner_id"`
 	Amount      int64  `json:"amount"`
 	Method      string `json:"method"`
-	BankCode    string `json:"bank_code,omitempty"`
 	ReturnURL   string `json:"return_url,omitempty"`
 	ReferenceID string `json:"reference_id"`
 	PlanType    string `json:"plan_type"`

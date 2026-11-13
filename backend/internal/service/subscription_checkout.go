@@ -31,10 +31,8 @@ type SubscriptionCheckout struct {
 
 // CheckoutInput: pilihan metode pembayaran dari frontend.
 type CheckoutInput struct {
-	// Method: qris, va, atau ewallet.
+	// Method: hanya qris.
 	Method string
-	// BankCode: wajib untuk va dan ewallet.
-	BankCode string
 	// ReturnURL: halaman tujuan setelah membayar (opsional).
 	ReturnURL string
 }
@@ -66,15 +64,9 @@ func (s *SubscriptionCheckout) Checkout(ctx context.Context, ownerID int64, in C
 		}
 	}
 
+	// Hanya QRIS yang didukung; metode lain ditolak sebelum payment-service dipanggil.
 	method := strings.ToLower(strings.TrimSpace(in.Method))
-	bankCode := strings.ToUpper(strings.TrimSpace(in.BankCode))
-	switch method {
-	case "qris":
-	case "va", "ewallet":
-		if bankCode == "" {
-			return CheckoutResult{}, apperror.ErrInvalidPaymentMethod
-		}
-	default:
+	if method != "qris" {
 		return CheckoutResult{}, apperror.ErrInvalidPaymentMethod
 	}
 
@@ -87,7 +79,6 @@ func (s *SubscriptionCheckout) Checkout(ctx context.Context, ownerID int64, in C
 		OwnerID:     ownerID,
 		Amount:      s.priceIDR,
 		Method:      method,
-		BankCode:    bankCode,
 		ReturnURL:   strings.TrimSpace(in.ReturnURL),
 		ReferenceID: refID,
 		PlanType:    planMonthly,

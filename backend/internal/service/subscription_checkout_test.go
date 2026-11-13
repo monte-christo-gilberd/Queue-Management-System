@@ -63,33 +63,16 @@ func TestSubscriptionCheckout_ReferenceIDsAreUnique(t *testing.T) {
 	}
 }
 
-func TestSubscriptionCheckout_ValidatesMethod(t *testing.T) {
-	cases := []CheckoutInput{
-		{Method: "cash"},
-		{Method: "va"},
-		{Method: "ewallet", BankCode: " "},
-		{Method: ""},
-	}
-	for _, in := range cases {
+func TestSubscriptionCheckout_OnlyQRIS(t *testing.T) {
+	for _, method := range []string{"cash", "va", "ewallet", ""} {
 		pay := &fakePayment{}
 		svc := NewSubscriptionCheckout(pay, 15000)
-		if _, err := svc.Checkout(context.Background(), 7, in); !errors.Is(err, apperror.ErrInvalidPaymentMethod) {
-			t.Errorf("%+v: err = %v, want ErrInvalidPaymentMethod", in, err)
+		if _, err := svc.Checkout(context.Background(), 7, CheckoutInput{Method: method}); !errors.Is(err, apperror.ErrInvalidPaymentMethod) {
+			t.Errorf("method %q: err = %v, want ErrInvalidPaymentMethod", method, err)
 		}
 		if pay.got.Amount != 0 {
-			t.Errorf("%+v: payment-service tidak boleh dipanggil", in)
+			t.Errorf("method %q: payment-service tidak boleh dipanggil", method)
 		}
-	}
-}
-
-func TestSubscriptionCheckout_VANeedsBankCode(t *testing.T) {
-	pay := &fakePayment{}
-	svc := NewSubscriptionCheckout(pay, 15000)
-	if _, err := svc.Checkout(context.Background(), 7, CheckoutInput{Method: "va", BankCode: "bca"}); err != nil {
-		t.Fatalf("va dengan bank: %v", err)
-	}
-	if pay.got.BankCode != "BCA" {
-		t.Fatalf("bank_code = %q, want BCA", pay.got.BankCode)
 	}
 }
 

@@ -13,7 +13,7 @@ const (
 	routeQueues    = "/api/v1/queues"
 	routeInsert    = "/api/v1/queues/:queue_id/insert"
 	routeNext      = "/api/v1/queues/:queue_id/next"
-	routeSubExtend = "/api/v1/owners/subscription/extend"
+	routeSubExtend = "/api/v1/owners/subscription/checkout"
 )
 
 // ClientCounter memberi jumlah koneksi SSE aktif: queue untuk room antrian, display untuk layar publik.
@@ -61,7 +61,7 @@ func NewBackend(
 	// hasil perpanjangan langganan
 	b.subExtend = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "subscription_extend_total",
-		Help: "Hasil POST /owners/subscription/extend: ok, email_not_verified, atau error.",
+		Help: "Hasil POST /owners/subscription/checkout: ok, email_not_verified, atau error.",
 	}, []string{"result"})
 	// penolakan karena email belum diverifikasi
 	b.emailRejected = prometheus.NewCounterVec(prometheus.CounterOpts{

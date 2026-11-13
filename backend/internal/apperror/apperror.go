@@ -57,7 +57,7 @@ var (
 	ErrPaymentUnavailable = errors.New("payment service unavailable")
 	// ErrPaymentRejected: payment-service menolak permintaan pembayaran (502).
 	ErrPaymentRejected = errors.New("payment request rejected")
-	// ErrInvalidPaymentMethod: metode atau bank pembayaran tidak valid (400).
+	// ErrInvalidPaymentMethod: metode pembayaran tidak didukung, hanya qris (400).
 	ErrInvalidPaymentMethod = errors.New("invalid payment method")
 	ErrRetryExhausted       = errors.New("too many failed retries")
 )

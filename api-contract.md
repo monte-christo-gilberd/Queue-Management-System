@@ -599,17 +599,18 @@ Heartbeat `: ping` tiap 25 detik seperti stream biasa. Error: 404 (token tidak b
 
 nginx: zona laju `display_zone` (20 permintaan/detik per IP, burst 40) dan log akses yang menyamarkan token (`/api/v1/display/***`).
 
-## Langganan owner (mock)
+## Langganan owner (BorderPay)
 
-Dilayani backend. **Ini mock: tidak ada pembayaran sungguhan** dan tidak ada penyedia pembayaran. Satu panggilan = perpanjangan 30 hari gratis.
+Dilayani backend, pembayaran lewat payment-service.
 
-### POST /api/v1/owners/subscription/extend
-Butuh token. Tanpa body. Menambah 30 hari ke `owners.subscription_expires_at` dengan rumus `GREATEST(now(), subscription_expires_at) + 30 hari` (langganan yang masih berlaku diperpanjang dari tanggal berakhirnya, yang sudah lewat dihitung dari sekarang). User yang belum punya baris `owners` otomatis dibuatkan (jadi owner). Setiap panggilan menulis satu baris `payments` (`amount` 0, `plan_type` `monthly`, `status` `success`), semuanya dalam satu transaksi.
+### POST /api/v1/owners/subscription/checkout
+Butuh token. Body `{ "method": "qris" }` (hanya QRIS yang didukung). Membuat pesanan pembayaran satu bulan lewat payment-service dan BorderPay. Harga ditentukan server (`SUBSCRIPTION_PRICE_IDR`, bawaan 15000). Langganan **tidak** bertambah di sini: `owners.subscription_expires_at` diperpanjang 30 hari oleh webhook BorderPay `payment.paid` setelah pembayaran lunas. Calon owner otomatis menjadi owner pada pembayaran pertama yang lunas.
 
-200:
+Respons 200:
 ```json
-{ "data": { "subscription_expires_at": "2026-12-04T02:01:06Z" } }
+{ "data": { "reference_id": "SUB-7-1794539540-a1b2c3d4e5f6", "pay_url": "https://borderpay.id/pay/...", "expires_at": "2026-11-13T04:12:20Z", "amount": 15000 } }
 ```
+Galat: 400 `INVALID_PAYMENT_METHOD`, 403 `EMAIL_NOT_VERIFIED`, 502 `PAYMENT_REJECTED`, 503 `PAYMENT_UNAVAILABLE`.
 Error: 401 `UNAUTHORIZED` (tanpa token atau token tidak valid), 500 `INTERNAL_ERROR` (galat database; tidak ada yang berubah). Lewat nginx, path ini masuk ke backend (`location /api/`).
 
 ## Objek

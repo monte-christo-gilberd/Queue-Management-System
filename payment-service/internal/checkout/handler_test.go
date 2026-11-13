@@ -91,11 +91,11 @@ func TestCheckout_ReturnsPayURL(t *testing.T) {
 	rec0 := &fakeRecorder{}
 	h := NewHandler(testServiceToken, creator, rec0)
 
-	rec := do(t, h, testServiceToken, `{"owner_id":7,"amount":150000,"method":"va","bank_code":" BCA ","reference_id":"ORD-123","return_url":"https://toko.com/ok"}`)
+	rec := do(t, h, testServiceToken, `{"owner_id":7,"amount":150000,"method":"qris","reference_id":"ORD-123","return_url":"https://toko.com/ok"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	if creator.got.BankCode != "BCA" || creator.got.ReferenceID != "ORD-123" || creator.got.Amount != 150000 {
+	if creator.got.ReferenceID != "ORD-123" || creator.got.Amount != 150000 || creator.got.Method != "qris" {
 		t.Fatalf("request ke BorderPay salah: %+v", creator.got)
 	}
 	if len(rec0.pending) != 1 || rec0.pending[0].OwnerID != 7 || rec0.pending[0].PlanType != order.PlanMonthly {

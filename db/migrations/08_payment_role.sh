@@ -19,8 +19,9 @@ BEGIN
     EXECUTE format('GRANT CONNECT ON DATABASE %I TO payment_rw', current_database());
 END $$;
 GRANT USAGE ON SCHEMA public TO payment_rw;
--- owners: baca user_id dan langganan; perbarui hanya subscription_expires_at (perpanjangan).
+-- owners: baca user_id dan langganan; buat baris baru (calon owner) dan perbarui subscription_expires_at.
 GRANT SELECT (user_id, subscription_expires_at) ON owners TO payment_rw;
+GRANT INSERT (user_id, subscription_expires_at) ON owners TO payment_rw;
 GRANT UPDATE (subscription_expires_at) ON owners TO payment_rw;
 -- payment_orders: buat pesanan, simpan pay_url, dan tandai lunas. Tidak ada DELETE.
 GRANT SELECT, INSERT ON payment_orders TO payment_rw;

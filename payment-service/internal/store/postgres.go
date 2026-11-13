@@ -109,12 +109,14 @@ func (p *Postgres) MarkPaid(ctx context.Context, referenceID string, amount int6
 		return false, fmt.Errorf("store: tandai lunas: %w", err)
 	}
 
-	// Perpanjang langganan dari tanggal sekarang atau dari akhir langganan yang masih berjalan, mana yang lebih besar.
+	// Buat baris owners bila belum ada (calon owner pertama kali berlangganan), atau perpanjang yang sudah ada.
+	// Perpanjangan dihitung dari sekarang atau dari akhir langganan yang masih berjalan, mana yang lebih besar.
 	var expiresAt time.Time
 	err = tx.GetContext(ctx, &expiresAt,
-		`UPDATE owners
-		 SET subscription_expires_at = GREATEST(now(), subscription_expires_at) + $2::interval
-		 WHERE user_id = $1
+		`INSERT INTO owners (user_id, subscription_expires_at)
+		 VALUES ($1, now() + $2::interval)
+		 ON CONFLICT (user_id) DO UPDATE
+		 SET subscription_expires_at = GREATEST(now(), owners.subscription_expires_at) + $2::interval
 		 RETURNING subscription_expires_at`,
 		o.OwnerID, subscriptionPeriod,
 	)

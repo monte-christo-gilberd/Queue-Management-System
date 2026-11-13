@@ -82,9 +82,8 @@ func TestValidate(t *testing.T) {
 	}{
 		{"qris valid", CreateRequest{Amount: 1, Method: MethodQRIS}, true},
 		{"nominal nol", CreateRequest{Amount: 0, Method: MethodQRIS}, false},
-		{"va tanpa bank", CreateRequest{Amount: 1, Method: MethodVA}, false},
-		{"va dengan bank", CreateRequest{Amount: 1, Method: MethodVA, BankCode: "BCA"}, true},
-		{"ewallet tanpa bank", CreateRequest{Amount: 1, Method: MethodEwallet}, false},
+		{"va ditolak", CreateRequest{Amount: 1, Method: "va"}, false},
+		{"ewallet ditolak", CreateRequest{Amount: 1, Method: "ewallet"}, false},
 		{"metode tidak dikenal", CreateRequest{Amount: 1, Method: "cash"}, false},
 	}
 	for _, tc := range cases {

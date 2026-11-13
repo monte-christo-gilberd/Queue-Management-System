@@ -88,13 +88,6 @@ func (a *AppRouter) WithSubscriptionCheckout(h SubscriptionCheckoutHandler) *App
 	return a
 }
 
-// WithSubscription memasang endpoint tambah 30 hari langganan owner (opsional; tanpa ini rute /owners tidak ada).
-func (a *AppRouter) WithSubscription(h SubscriptionHandler) *AppRouter {
-	// simpan handler langganan, lalu kembalikan router yang sama
-	a.subscriptionHandler = h
-	return a
-}
-
 // WithPush memasang endpoint Web Push (opsional; tanpa ini rute /push tidak ada).
 func (a *AppRouter) WithPush(h PushHandler) *AppRouter {
 	// simpan handler push, lalu kembalikan router yang sama
@@ -218,15 +211,11 @@ func SetupRouter(
 		registerHistoryRoutes(history, router.historyHandler)
 	}
 
-	// langganan owner: tambah 30 hari tanpa pembayaran; hanya didaftarkan bila dipasang, dan wajib login
-	if router.subscriptionHandler != nil {
+	// langganan owner: checkout pembayaran lewat payment-service; hanya didaftarkan bila dipasang, dan wajib login
+	if router.subscriptionCheckoutHandler != nil {
 		owners := v1.Group("/owners")
 		owners.Use(router.authMiddleware)
-		owners.POST("/subscription/extend", router.subscriptionHandler.Extend)
-		// checkout pembayaran langganan: hanya bila payment-service dipasang
-		if router.subscriptionCheckoutHandler != nil {
-			owners.POST("/subscription/checkout", router.subscriptionCheckoutHandler.Checkout)
-		}
+		owners.POST("/subscription/checkout", router.subscriptionCheckoutHandler.Checkout)
 	}
 
 	// Web Push; hanya didaftarkan bila dipasang, dan wajib login

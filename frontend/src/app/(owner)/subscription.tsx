@@ -1,23 +1,23 @@
 /**
- * subscription: langganan owner (MOCK): status aktif, tombol tambah 30 hari, dan tombol jadi owner untuk calon owner.
+ * subscription: langganan owner: status aktif, tombol bayar satu bulan, dan tombol jadi owner untuk calon owner.
  *
  * Rute        : /subscription.
  * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx).
  * Dipakai oleh: Profil (tombol langganan atau Jadi Owner).
- * Bergantung  : extendSubscription dan describeSubscriptionError (lib/subscription), getMe (lib/users), Subscription.
- * Catatan     : Tidak ada pembayaran. Tombol langsung menambah 30 hari lewat backend.
+ * Bergantung  : startSubscriptionCheckout dan describeSubscriptionError (lib/subscription), getMe (lib/users), Subscription.
+ * Catatan     : Tombol membuat pesanan lalu membuka halaman BorderPay. Langganan diperbarui oleh webhook setelah lunas.
  */
 import { useEffect, useRef, useState } from 'react';
+import { Linking, Platform } from 'react-native';
 
 import Subscription from '@/components/Subscription';
-import { describeSubscriptionError, extendSubscription } from '@/lib/subscription';
-import { refreshMe } from '@/hooks/use-me';
+import { describeSubscriptionError, startSubscriptionCheckout } from '@/lib/subscription';
 import { getMe, type Me } from '@/lib/users';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 import { useAuthStore } from '@/store/authStore';
 import { subscriptionStatus } from '@/utils/profile';
 
-const MSG_DONE = 'Masa langganan bertambah 30 hari.';
+const MSG_DONE = 'Selesaikan pembayaran di halaman BorderPay. Langganan aktif otomatis setelah pembayaran diterima; tekan REFRESH untuk memperbarui.';
 
 /** Layar langganan. Status yang tampil selalu berasal dari profil (getMe). */
 export default function SubscriptionRoute() {
@@ -55,16 +55,18 @@ export default function SubscriptionRoute() {
     }
   }
 
-  async function extend() {
+  async function pay() {
     setErrorMessage('');
     setDoneMessage('');
     setPaying(true);
     try {
-      await extendSubscription();
-      // Muat ulang profil agar tanggal berakhir yang tampil sudah yang baru.
-      await reload();
-      // Perbarui status owner di layout (menu panel kanan) tanpa refresh.
-      await refreshMe();
+      const checkout = await startSubscriptionCheckout();
+      // Buka halaman pembayaran BorderPay. Di web lewat tab baru; di native lewat browser sistem.
+      if (Platform.OS === 'web') {
+        window.open(checkout.pay_url, '_blank', 'noopener');
+      } else {
+        await Linking.openURL(checkout.pay_url);
+      }
       if (alive.current) setDoneMessage(MSG_DONE);
     } catch (e) {
       if (alive.current) setErrorMessage(describeSubscriptionError(e));
@@ -80,19 +82,19 @@ export default function SubscriptionRoute() {
   }
 
   const status = me?.is_owner ? subscriptionStatus(me.subscription_expires_at) : null;
-  // Calon owner: 30 hari pertama langsung menjadikan akun ini owner.
+  // Calon owner: pembayaran pertama yang lunas menjadikan akun ini owner.
   const prospect = me !== null && !me.is_owner;
   return (
     <Subscription
       shell={{ userName: displayName ?? undefined }}
       paid={status?.active ?? false}
       title={status ? (status.active ? 'Langganan Aktif' : 'Langganan Belum Aktif') : prospect ? 'Belum Jadi Owner' : ''}
-      subtitle={status?.description ?? (prospect ? 'Tambah 30 hari untuk menjadi owner dan mulai membuat antrian.' : '')}
+      subtitle={status?.description ?? (prospect ? 'Bayar satu bulan untuk menjadi owner dan mulai membuat antrian.' : '')}
       payTitle={prospect ? 'Jadi Owner' : undefined}
-      payHint={prospect ? '[MOCK] Tanpa pembayaran. Akun Anda langsung menjadi owner dengan langganan aktif 30 hari.' : undefined}
-      payLabel={prospect ? 'JADI OWNER (30 HARI)' : undefined}
+      payHint={prospect ? 'Bayar satu bulan dengan QRIS. Akun Anda menjadi owner setelah pembayaran diterima.' : undefined}
+      payLabel={prospect ? 'JADI OWNER (BAYAR 1 BULAN)' : undefined}
       username={me?.username ?? ''}
-      onPay={extend}
+      onPay={pay}
       paying={paying}
       message={doneMessage}
       errorMessage={errorMessage}

@@ -18,7 +18,9 @@ func TestMetricsBusinessRoutesStillRegistered(t *testing.T) {
 	app := router.NewAppRouter(struct{ router.TicketHandler }{}, struct{ router.UserHandler }{}, struct{ router.QueueHandler }{},
 		func(c *gin.Context) { c.AbortWithStatus(http.StatusUnauthorized) },
 		stubSSE{}, nil).
-		WithSubscription(struct{ router.SubscriptionHandler }{})
+		WithSubscriptionCheckout(struct {
+			router.SubscriptionCheckoutHandler
+		}{})
 	engine := router.SetupRouter(app)
 
 	// kumpulkan semua rute terdaftar sebagai "METHOD /path"
@@ -32,7 +34,7 @@ func TestMetricsBusinessRoutesStillRegistered(t *testing.T) {
 		"POST /api/v1/queues",
 		"POST /api/v1/queues/:queue_id/insert",
 		"POST /api/v1/queues/:queue_id/next",
-		"POST /api/v1/owners/subscription/extend",
+		"POST /api/v1/owners/subscription/checkout",
 	} {
 		if !registered[want] {
 			t.Errorf("route %q tidak terdaftar; perbarui internal/metrics/backend.go", want)

@@ -1,10 +1,10 @@
 /**
- * Subscription: halaman status dan perpanjangan langganan owner.
+ * Subscription: halaman status dan pembayaran langganan owner.
  *
  * Dipakai oleh : app/(owner)/subscription.tsx
  * Bergantung   : layout/ResponsiveScreenLayout, ui/AppButton, ui/Icon, ui/Toast, constants/app-theme, utils/cn
  * Peran        : owner
- * Catatan      : MOCK. Tidak ada pembayaran; tombol langsung menambah 30 hari lewat backend (lihat lib/subscription.ts).
+ * Catatan      : Tombol membuat pesanan pembayaran lewat backend lalu membuka halaman BorderPay (lihat lib/subscription.ts).
  */
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
@@ -33,7 +33,7 @@ export type SubscriptionProps = {
   subtitle: string;
   /** Username akun owner, hanya ditampilkan sebagai informasi di kartu pembayaran. */
   username: string;
-  /** Tambah 30 hari langsung (MOCK, tanpa pembayaran). Untuk calon owner, 30 hari pertama menjadikannya owner. */
+  /** Membuat pesanan pembayaran langganan dan membuka halaman bayar. */
   onPay?: () => void;
   /** Judul kartu pembayaran. Opsional; default "Perpanjang 1 Bulan". */
   payTitle?: string;
@@ -63,8 +63,8 @@ export default function Subscription({
   username,
   onPay,
   payTitle = 'Tambah 30 Hari',
-  payHint = '[MOCK] Tanpa pembayaran. Masa langganan langsung bertambah 30 hari.',
-  payLabel = 'TAMBAH 30 HARI',
+  payHint = 'Bayar satu bulan langganan dengan QRIS. Langganan bertambah otomatis setelah pembayaran diterima.',
+  payLabel = 'BAYAR 1 BULAN',
   paying = false,
   message,
   errorMessage,

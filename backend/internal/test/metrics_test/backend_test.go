@@ -113,7 +113,7 @@ func TestBackend_SubscriptionExtendResults(t *testing.T) {
 	engine, b := newBackendEngine(t, nil)
 	// status dan kode galat diubah di antara request untuk menghasilkan tiga hasil berbeda
 	status, code := http.StatusOK, ""
-	engine.POST("/api/v1/owners/subscription/extend", func(c *gin.Context) { reply(status, code)(c) })
+	engine.POST("/api/v1/owners/subscription/checkout", func(c *gin.Context) { reply(status, code)(c) })
 
 	// ketiga deret harus sudah ada (bernilai 0) sebelum ada request, agar grafik tidak menunggu kejadian pertama
 	for _, r := range []string{"ok", "email_not_verified", "error"} {
@@ -122,13 +122,13 @@ func TestBackend_SubscriptionExtendResults(t *testing.T) {
 		}
 	}
 	// hasil 1: sukses
-	do(engine, http.MethodPost, "/api/v1/owners/subscription/extend")
+	do(engine, http.MethodPost, "/api/v1/owners/subscription/checkout")
 	// hasil 2: email belum diverifikasi
 	status, code = http.StatusForbidden, "EMAIL_NOT_VERIFIED"
-	do(engine, http.MethodPost, "/api/v1/owners/subscription/extend")
+	do(engine, http.MethodPost, "/api/v1/owners/subscription/checkout")
 	// hasil 3: galat server
 	status, code = http.StatusInternalServerError, "INTERNAL_ERROR"
-	do(engine, http.MethodPost, "/api/v1/owners/subscription/extend")
+	do(engine, http.MethodPost, "/api/v1/owners/subscription/checkout")
 
 	// masing-masing hasil dihitung tepat satu kali
 	for _, r := range []string{"ok", "email_not_verified", "error"} {

@@ -7,7 +7,8 @@
 CREATE TABLE payment_orders (
     -- ID pesanan dari backend utama. Dipakai sebagai reference_id di BorderPay dan di webhook.
     reference_id   TEXT PRIMARY KEY,
-    owner_id       BIGINT NOT NULL REFERENCES owners(user_id),
+    -- Mereferensi users, bukan owners: calon owner belum punya baris owners sampai pembayaran lunas.
+    owner_id       BIGINT NOT NULL REFERENCES users(id),
     -- Nominal dalam rupiah; webhook harus membawa nominal yang sama.
     amount         BIGINT NOT NULL CHECK (amount > 0),
     plan_type      VARCHAR NOT NULL CHECK (plan_type IN ('monthly', 'yearly', 'one_time')),

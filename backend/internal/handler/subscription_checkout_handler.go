@@ -29,7 +29,6 @@ func NewSubscriptionCheckoutHandler(s SubscriptionCheckoutService) *Subscription
 // checkoutBody: body JSON dari frontend.
 type checkoutBody struct {
 	Method    string `json:"method"`
-	BankCode  string `json:"bank_code"`
 	ReturnURL string `json:"return_url"`
 }
 
@@ -43,7 +42,6 @@ func (h *SubscriptionCheckoutHandler) Checkout(c *gin.Context) {
 
 	res, err := h.service.Checkout(c.Request.Context(), c.GetInt64("user_id"), service.CheckoutInput{
 		Method:    body.Method,
-		BankCode:  body.BankCode,
 		ReturnURL: body.ReturnURL,
 	})
 	if err != nil {
@@ -51,7 +49,7 @@ func (h *SubscriptionCheckoutHandler) Checkout(c *gin.Context) {
 		case errors.Is(err, apperror.ErrEmailNotVerified):
 			respondError(c, http.StatusForbidden, "EMAIL_NOT_VERIFIED", "verify your email before subscribing")
 		case errors.Is(err, apperror.ErrInvalidPaymentMethod):
-			respondError(c, http.StatusBadRequest, "INVALID_PAYMENT_METHOD", "method must be qris, va, or ewallet; va and ewallet need bank_code")
+			respondError(c, http.StatusBadRequest, "INVALID_PAYMENT_METHOD", "method must be qris")
 		case errors.Is(err, apperror.ErrPaymentUnavailable):
 			respondError(c, http.StatusServiceUnavailable, "PAYMENT_UNAVAILABLE", "payment service is unavailable")
 		case errors.Is(err, apperror.ErrPaymentRejected):

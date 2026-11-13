@@ -261,28 +261,8 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 	appRouter.
 		WithDisplay(displayHandler)
 
-	// inisialisasi layer repository langganan: tambah 30 hari tanpa pembayaran (pengganti payment-service)
-	subscriptionRepo := repository.
-		NewSubscriptionRepository(db)
-
-	// inisialisasi layer service langganan
-	subscriptionService := service.
-		NewSubscriptionService(subscriptionRepo)
-
-	// subscribe (menjadi owner) butuh email terverifikasi
-	if verification != nil {
-		subscriptionService.WithVerificationGuard(verification)
-	}
-
-	// inisialisasi layer handler langganan
-	subscriptionHandler := handler.
-		NewSubscriptionHandler(subscriptionService)
-
-	// memasang endpoint langganan ke appRouter: POST /api/v1/owners/subscription/extend
-	appRouter.
-		WithSubscription(subscriptionHandler)
-
-	// checkout pembayaran langganan lewat payment-service. Hanya dipasang bila PAYMENT_SERVICE_URL diisi.
+	// checkout pembayaran langganan lewat payment-service (satu-satunya jalur berlangganan).
+	// Hanya dipasang bila PAYMENT_SERVICE_URL diisi.
 	if cfg.PaymentServiceURL != "" {
 		paymentClient := paymentclient.New(cfg.PaymentServiceURL, cfg.PaymentServiceToken, cfg.QRHTTPTimeout)
 		checkoutService := service.

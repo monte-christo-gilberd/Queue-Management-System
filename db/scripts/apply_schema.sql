@@ -297,7 +297,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS queue_settings_qr_current_code_key
 -- Pesanan pembayaran BorderPay (payment-service). Aman dijalankan berulang.
 CREATE TABLE IF NOT EXISTS payment_orders (
     reference_id   TEXT PRIMARY KEY,
-    owner_id       BIGINT NOT NULL REFERENCES owners(user_id),
+    owner_id       BIGINT NOT NULL REFERENCES users(id),
     amount         BIGINT NOT NULL CHECK (amount > 0),
     plan_type      VARCHAR NOT NULL CHECK (plan_type IN ('monthly', 'yearly', 'one_time')),
     status         VARCHAR NOT NULL DEFAULT 'pending'
@@ -307,5 +307,8 @@ CREATE TABLE IF NOT EXISTS payment_orders (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     paid_at        TIMESTAMPTZ
 );
+-- FK pesanan dipindah dari owners ke users (calon owner belum punya baris owners). Aman dijalankan berulang.
+ALTER TABLE payment_orders DROP CONSTRAINT IF EXISTS payment_orders_owner_id_fkey;
+ALTER TABLE payment_orders ADD CONSTRAINT payment_orders_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES users(id);
 
 COMMIT;

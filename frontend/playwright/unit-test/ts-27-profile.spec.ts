@@ -36,7 +36,7 @@ test.describe('TS-27 Halaman profil', () => {
     await action(page, 'Jadi Owner & Bayar →').click();
     await expect(page).toHaveURL(/\/subscription$/);
     await expect(action(page, 'Belum Jadi Owner')).toBeVisible();
-    await expect(action(page, 'BAYAR & JADI OWNER')).toBeVisible();
+    await expect(action(page, 'JADI OWNER (BAYAR 1 BULAN)')).toBeVisible();
   });
 
   test('TC-27-01c Owner tidak melihat ajakan Jadi Owner', async ({ page, request }) => {
@@ -130,6 +130,6 @@ test.describe('TS-27 Halaman profil', () => {
     await action(page, 'Perpanjang Langganan →').click();
     await expect(page).toHaveURL(/\/subscription$/);
     await expect(action(page, 'Langganan Aktif')).toBeVisible();
-    await expect(action(page, 'PERPANJANG 1 BULAN')).toBeVisible();
+    await expect(action(page, 'BAYAR 1 BULAN')).toBeVisible();
   });
 });

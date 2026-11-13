@@ -36,6 +36,8 @@ sequenceDiagram
     actor O as Owner
     participant FE as Frontend
     participant BE as Backend
+    participant PS as payment-service
+    participant BB as BorderPay
     O->>FE: Panel profil → Buat Antrian Baru
     FE->>FE: Buka Dashboard dengan popup buat antrian
     O->>FE: Isi nama dan deskripsi → Simpan
@@ -205,13 +207,17 @@ sequenceDiagram
     actor U as User
     participant FE as Frontend
     participant BE as Backend
-    U->>FE: Profil → Jadi Owner / Subscription
-    U->>FE: Tekan JADI OWNER (30 HARI) / Tambah 30 Hari
-    FE->>BE: POST /api/v1/owners/subscription/extend (JWT)
-    BE->>BE: owners.subscription_expires_at + 30 hari, catat payments (amount 0)
-    BE-->>FE: 200 { subscription_expires_at }
-    FE->>BE: GET /api/v1/users/me
-    FE-->>U: Status langganan diperbarui
+    U->>FE: Profil → Jadi Owner / Subscription, tekan BAYAR 1 BULAN
+    FE->>BE: POST /api/v1/owners/subscription/checkout (JWT) { method: qris }
+    BE->>PS: POST /internal/v1/payments (X-Service-Token), harga dari server
+    PS->>BB: POST /api/v1/payments (Bearer API key)
+    BB-->>PS: pay_url
+    PS-->>BE: pay_url, reference_id (pesanan pending di payment_orders)
+    BE-->>FE: 200 { pay_url, reference_id, amount }
+    FE-->>U: Buka halaman BorderPay
+    BB->>PS: webhook payment.paid (x-borderpay-token)
+    PS->>PS: tandai lunas, upsert owners +30 hari, catat payments (idempoten)
+    FE-->>U: Tekan REFRESH untuk melihat langganan aktif
 ```
 
 - Calon owner melihat kartu dengan judul "Jadi Owner", keterangan berawalan "[MOCK]", dan tombol "JADI OWNER (30 HARI)". Penekanan pertama membuat akunnya menjadi owner dengan langganan aktif 30 hari. Owner yang sudah ada melihat "Tambah 30 Hari" (tombol "TAMBAH 30 HARI"). Tombol REFRESH memuat ulang status.

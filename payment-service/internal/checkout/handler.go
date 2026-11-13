@@ -34,7 +34,6 @@ type Request struct {
 	OwnerID   int64  `json:"owner_id"`
 	Amount    int64  `json:"amount"`
 	Method    string `json:"method"`
-	BankCode  string `json:"bank_code"`
 	ReturnURL string `json:"return_url"`
 	// ReferenceID: ID pesanan dari backend. Wajib dan unik; dipakai sebagai kunci di webhook.
 	ReferenceID string `json:"reference_id"`
@@ -106,7 +105,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	out, err := h.creator.CreatePayment(r.Context(), borderpay.CreateRequest{
 		Amount:      req.Amount,
 		Method:      req.Method,
-		BankCode:    strings.TrimSpace(req.BankCode),
 		ReferenceID: strings.TrimSpace(req.ReferenceID),
 		ReturnURL:   strings.TrimSpace(req.ReturnURL),
 	})

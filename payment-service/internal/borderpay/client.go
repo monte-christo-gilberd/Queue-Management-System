@@ -16,12 +16,8 @@ import (
 	"time"
 )
 
-// Metode pembayaran yang didukung REST API BorderPay.
-const (
-	MethodQRIS    = "qris"
-	MethodVA      = "va"
-	MethodEwallet = "ewallet"
-)
+// MethodQRIS: satu-satunya metode pembayaran yang didukung layanan ini.
+const MethodQRIS = "qris"
 
 // ErrInvalidRequest: data pembuatan pembayaran tidak lengkap atau tidak valid (dicek sebelum request dikirim).
 var ErrInvalidRequest = errors.New("borderpay: invalid payment request")
@@ -33,10 +29,8 @@ var ErrUpstream = errors.New("borderpay: upstream error")
 type CreateRequest struct {
 	// Amount: nominal dalam rupiah (bilangan bulat, lebih dari nol).
 	Amount int64 `json:"amount"`
-	// Method: qris, va, atau ewallet.
+	// Method: hanya qris.
 	Method string `json:"method"`
-	// BankCode: wajib untuk va (mis. BCA) dan ewallet (mis. DANA, OVO).
-	BankCode string `json:"bank_code,omitempty"`
 	// ReferenceID: ID pesanan dari sisi kita; harus unik per transaksi.
 	ReferenceID string `json:"reference_id,omitempty"`
 	// ReturnURL: tujuan setelah customer membayar. Harus https (kecuali key test boleh http://localhost).
@@ -81,16 +75,9 @@ func (r CreateRequest) Validate() error {
 	if r.Amount <= 0 {
 		return fmt.Errorf("%w: amount harus lebih dari 0", ErrInvalidRequest)
 	}
-	switch r.Method {
-	case MethodQRIS:
-		// QRIS tidak butuh kode bank.
-	case MethodVA, MethodEwallet:
-		// VA dan e-wallet wajib menyebut bank atau dompet digital.
-		if strings.TrimSpace(r.BankCode) == "" {
-			return fmt.Errorf("%w: bank_code wajib untuk metode %s", ErrInvalidRequest, r.Method)
-		}
-	default:
-		return fmt.Errorf("%w: method tidak dikenal %q", ErrInvalidRequest, r.Method)
+	// Hanya QRIS yang didukung.
+	if r.Method != MethodQRIS {
+		return fmt.Errorf("%w: method hanya qris, bukan %q", ErrInvalidRequest, r.Method)
 	}
 	return nil
 }
