@@ -228,7 +228,7 @@ tunnel:
 down:
 	$(stop_tunnel)
 	# --remove-orphans: ikut membersihkan container observability (collector, loki, grafana) bila overlay pernah dinyalakan.
-	docker compose down --remove-orphans
+	docker compose --profile '*' down --remove-orphans
 	rm -f $(GOOGLE_STAMP)
 	rm -rf keys-dev
 
@@ -314,7 +314,7 @@ prod-up-smtp:
 # Nilai SMTP palsu hanya supaya compose bisa menguraikan file; tidak memengaruhi `down`.
 prod-down:
 	SMTP_HOST=$${SMTP_HOST:-x} SMTP_PORT=$${SMTP_PORT:-1} SMTP_FROM=$${SMTP_FROM:-x@x.y} MAIL_SERVICE_TOKEN=$${MAIL_SERVICE_TOKEN:-x} \
-	docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) --profile mailpit down --remove-orphans
+	docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) --profile '*' down --remove-orphans
 
 # Tandai DB prod agar seed/reset ditolak. Jalankan sekali setelah akun demo dibuat.
 prod-guard:

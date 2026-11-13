@@ -228,14 +228,26 @@ jumlah akun dan owner yang tersisa.
 Data uji untuk penguji yang hanya punya **satu akun** (`penguji@montechristo.my.id`, username `penguji`). Akun itu
 adalah owner sekaligus customer, sehingga semua fitur antrian bisa diuji dari satu login:
 
-- **Sebagai owner** (antrian aktif "Antrian Uji Penguji"): NEXT, panggil ulang, skip, hapus nomor, sisip pelanggan
-  (lewat username `pelanggan-9` atau `pelanggan-10`), catatan, counter (Loket 1 dan Loket 2), tutup antrian, QR, layar
-  publik, riwayat dan ekspor (antrian "Antrian Uji Sebelumnya").
-- **Sebagai customer**: bergabung dengan memindai QR antriannya sendiri lewat HP (akun yang sama), batalkan nomor,
-  Antrian Saya, Riwayat Saya, dan notifikasi.
+Setiap fitur punya antrian sendiri, dan setiap antrian aktif berisi 5 sampai 12 orang menunggu:
+
+| Awalan | Antrian | Untuk diuji |
+|---|---|---|
+| N | Demo NEXT | NEXT berulang (10 menunggu), layar publik |
+| U | Demo Panggil Ulang | PANGGIL ULANG pada nomor yang dilayani |
+| S | Demo Skip | SKIP, pengaturan skip "kembali ke belakang" |
+| H | Demo Hapus Nomor | Hapus nomor oleh owner (customer dapat email dan layarnya berubah) |
+| B | Demo Batal Nomor | Batal dari customer. Akun penguji sudah punya nomor di sini (nomor 3) |
+| I | Demo Sisip | Sisip pelanggan lewat username `pelanggan-7` sampai `pelanggan-12` |
+| C | Demo Catatan | Catatan per nomor (sudah ada di nomor 1, 3, dan 5) |
+| K | Demo Counter | CRUD counter. Loket 2 sedang melayani nomor 1 |
+| T | Demo Tutup Antrian | Tutup antrian (pindah ke riwayat) |
+| R | Riwayat Panjang | Antrian tutup dengan 25 nomor, untuk paginasi Riwayat dan ekspor |
+
+Akun penguji juga bisa bergabung dengan memindai QR antriannya sendiri lewat HP (akun yang sama) untuk menguji sisi
+customer: Antrian Saya, Riwayat Saya, dan notifikasi.
 
 Isi data uji ada di [`db/scripts/seed_prod_penguji.sql`](../db/scripts/seed_prod_penguji.sql). Pelanggan seed
-(`pelanggan-1` sampai `pelanggan-10`) adalah akun tanpa kata sandi, tidak bisa login, dan notifikasi emailnya mati.
+(`pelanggan-1` sampai `pelanggan-12`) adalah akun tanpa kata sandi, tidak bisa login, dan notifikasi emailnya mati.
 
 ```bash
 make prod-seed-penguji        # atau: scripts/seed-prod-penguji.sh [-y]
