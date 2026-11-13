@@ -99,6 +99,12 @@ type PushHandler interface {
 }
 
 // SubscriptionHandler adalah handler untuk penambahan masa langganan owner (30 hari, tanpa pembayaran).
+// SubscriptionCheckoutHandler: rute checkout pembayaran langganan (POST /owners/subscription/checkout).
+type SubscriptionCheckoutHandler interface {
+	// Checkout membuat pesanan pembayaran dan mengembalikan pay_url.
+	Checkout(c *gin.Context)
+}
+
 type SubscriptionHandler interface {
 	// Extend menambah 30 hari ke langganan user yang login.
 	Extend(c *gin.Context)
@@ -157,6 +163,8 @@ type AppRouter struct {
 	pushHandler PushHandler
 	// subscriptionHandler menangani penambahan masa langganan owner (opsional).
 	subscriptionHandler SubscriptionHandler
+	// subscriptionCheckoutHandler menangani checkout pembayaran langganan lewat payment-service (opsional).
+	subscriptionCheckoutHandler SubscriptionCheckoutHandler
 	// ticketHandler menangani tiket dan join antrian.
 	ticketHandler TicketHandler
 	// userHandler menangani akun user.

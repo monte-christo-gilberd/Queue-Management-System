@@ -67,6 +67,8 @@ services:
       MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}
       # Wajib diisi agar role auth_rw (db/migrations/06_auth_role.sh) selalu dibuat; tanpanya tidak ada yang bisa login.
       AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
+      # Role payment_rw (db/migrations/08_payment_role.sh). Kosong = role dilewati; payment-service tidak bisa terhubung.
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-}
     volumes:
       # Data database prod. Terpisah dari dev. Bertahan saat container dibuat ulang.
       - db_data_prod:/var/lib/postgresql/data
@@ -242,6 +244,11 @@ services:
       TRUSTED_PROXIES: 172.29.0.0/16
       QR_SERVICE_URL: http://qr-service:8090
       QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
+
+      # Checkout langganan lewat payment-service (profil "payments"). Tanpa payment-service, checkout membalas 503.
+      PAYMENT_SERVICE_URL: http://payment-service:8095
+      PAYMENT_SERVICE_TOKEN: ${PAYMENT_SERVICE_TOKEN:-}
+      SUBSCRIPTION_PRICE_IDR: ${SUBSCRIPTION_PRICE_IDR:-15000}
       QR_HTTP_TIMEOUT: ${QR_HTTP_TIMEOUT:-1}
       # Batas menunggu request selesai saat berhenti; harus lebih kecil dari stop_grace_period di bawah.
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-8}
@@ -313,6 +320,30 @@ services:
     restart: unless-stopped
 
 # Volume bernama. Terpisah dari dev. Bertahan saat container dibuat ulang.
+  # payment-service: membuat pembayaran BorderPay (checkout internal) dan menerima webhook-nya. Hanya aktif dengan
+  # profil "payments" (docker compose --profile payments up -d payment-service), supaya `make up` tidak berubah.
+  # Konfigurasi wajib (BORDERPAY_API_KEY, dll.) dibaca layanan saat start; kosong = layanan berhenti dengan pesan jelas.
+  # Port 8095 tidak dipetakan ke host; webhook masuk lewat nginx dan checkout hanya dari backend (/internal/ diblokir nginx).
+  payment-service:
+    profiles: ["payments"]
+    build:
+      context: ./payment-service
+      target: prod
+    environment:
+      PORT: "8095"
+      PAYMENT_DATABASE_URL: postgresql://payment_rw:${PAYMENT_DB_PASSWORD:-}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
+      BORDERPAY_BASE_URL: ${BORDERPAY_BASE_URL:-https://borderpay.id}
+      BORDERPAY_API_KEY: ${BORDERPAY_API_KEY:-}
+      BORDERPAY_WEBHOOK_TOKEN: ${BORDERPAY_WEBHOOK_TOKEN:-}
+      PAYMENT_SERVICE_TOKEN: ${PAYMENT_SERVICE_TOKEN:-}
+    stop_grace_period: 3s
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+
 volumes:
   # Data PostgreSQL prod. Kosongkan (down -v) hanya bila ingin menghapus seluruh data.
   db_data_prod:

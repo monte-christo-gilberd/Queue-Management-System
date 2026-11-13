@@ -51,6 +51,13 @@ var (
 	ErrQRReplaceNotAllowed = errors.New("qr replacement not allowed")
 
 	// 7. Kegagalan layanan / infrastruktur: layanan eksternal tidak bisa dihubungi atau retry sudah habis (kesalahan server).
-	ErrQRUnavailable  = errors.New("qr service unavailable")
-	ErrRetryExhausted = errors.New("too many failed retries")
+	ErrQRUnavailable = errors.New("qr service unavailable")
+
+	// ErrPaymentUnavailable: payment-service tidak bisa dihubungi atau gagal sementara (503).
+	ErrPaymentUnavailable = errors.New("payment service unavailable")
+	// ErrPaymentRejected: payment-service menolak permintaan pembayaran (502).
+	ErrPaymentRejected = errors.New("payment request rejected")
+	// ErrInvalidPaymentMethod: metode atau bank pembayaran tidak valid (400).
+	ErrInvalidPaymentMethod = errors.New("invalid payment method")
+	ErrRetryExhausted       = errors.New("too many failed retries")
 )

@@ -13,6 +13,7 @@ import (
 	"qms/internal/handler"
 	"qms/internal/metrics"
 	"qms/internal/middleware"
+	"qms/internal/paymentclient"
 	"qms/internal/repository"
 	"qms/internal/router"
 	"qms/internal/service"
@@ -280,6 +281,17 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 	// memasang endpoint langganan ke appRouter: POST /api/v1/owners/subscription/extend
 	appRouter.
 		WithSubscription(subscriptionHandler)
+
+	// checkout pembayaran langganan lewat payment-service. Hanya dipasang bila PAYMENT_SERVICE_URL diisi.
+	if cfg.PaymentServiceURL != "" {
+		paymentClient := paymentclient.New(cfg.PaymentServiceURL, cfg.PaymentServiceToken, cfg.QRHTTPTimeout)
+		checkoutService := service.
+			NewSubscriptionCheckout(paymentClient, cfg.SubscriptionPriceIDR)
+		if verification != nil {
+			checkoutService.WithVerificationGuard(verification)
+		}
+		appRouter.WithSubscriptionCheckout(handler.NewSubscriptionCheckoutHandler(checkoutService))
+	}
 
 	// inisialisasi layer repository riwayat
 	historyRepo := repository.

@@ -54,6 +54,12 @@ type Config struct {
 	// batas waktu tiap panggilan ke qr-service dalam detik (QR_HTTP_TIMEOUT). Bila kosong atau nilai <= 0, 1 detik.
 	// Nilai yang bukan angka membuat Load() gagal.
 	QRHTTPTimeout time.Duration
+	// URL dasar payment-service (PAYMENT_SERVICE_URL). Kosong = checkout langganan tidak dipasang.
+	PaymentServiceURL string
+	// token antarservice ke payment-service (PAYMENT_SERVICE_TOKEN), dikirim sebagai X-Service-Token.
+	PaymentServiceToken string
+	// harga paket bulanan dalam rupiah (SUBSCRIPTION_PRICE_IDR). Bawaan 15000.
+	SubscriptionPriceIDR int64
 	// batas waktu menunggu request yang sedang berjalan selesai saat server berhenti (SHUTDOWN_TIMEOUT, detik).
 	// Bila kosong atau nilai <= 0, 8 detik. Harus lebih kecil dari stop_grace_period backend di compose.
 	// Nilai yang bukan angka membuat Load() gagal.
@@ -98,10 +104,13 @@ func Load() (Config, error) {
 		AllowedOrigins: (parseOrigins(os.Getenv("ALLOWED_ORIGINS"))),
 		TrustedProxies: parseOrigins(os.Getenv("TRUSTED_PROXIES")),
 
-		PublicAppURL:   strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/"),
-		QRServiceURL:   strings.TrimRight(os.Getenv("QR_SERVICE_URL"), "/"),
-		QRServiceToken: os.Getenv("QR_SERVICE_TOKEN"),
-		VAPIDPublicKey: os.Getenv("VAPID_PUBLIC_KEY"),
+		PublicAppURL:         strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/"),
+		QRServiceURL:         strings.TrimRight(os.Getenv("QR_SERVICE_URL"), "/"),
+		QRServiceToken:       os.Getenv("QR_SERVICE_TOKEN"),
+		PaymentServiceURL:    strings.TrimRight(os.Getenv("PAYMENT_SERVICE_URL"), "/"),
+		PaymentServiceToken:  os.Getenv("PAYMENT_SERVICE_TOKEN"),
+		SubscriptionPriceIDR: 15000,
+		VAPIDPublicKey:       os.Getenv("VAPID_PUBLIC_KEY"),
 	}
 
 	// pengecekan apakah cfg.DatabaseURL ada
