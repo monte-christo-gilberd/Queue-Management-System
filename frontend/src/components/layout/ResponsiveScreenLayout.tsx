@@ -418,7 +418,7 @@ function MobileLayout({
           </View>
         ) : null}
 
-        {/* Popup Masuk Antrian: scan QR atau tempel tautan. Join dilakukan di dalam popup; layout ini hanya membuka dan menutupnya. */}
+        {/* Popup Masuk Antrian: scan QR atau masukkan token. Join dilakukan di dalam popup; layout ini hanya membuka dan menutupnya. */}
         <JoinQueueModals visible={joinOpen} onClose={() => setJoinOpen(false)} />
 
         {panelOpen ? (

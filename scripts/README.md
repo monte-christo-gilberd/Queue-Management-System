@@ -17,6 +17,8 @@ Prasyarat umum: `bash`, `docker` dengan `docker compose`. `check-service-isolati
 | [`verify-user.sh`](#verify-usersh) | Menandai email satu akun terverifikasi langsung di database | dev atau prod | `make verify-user` |
 | [`create-demo-accounts.sh`](#create-demo-accountssh) | Membuat 1 owner dan 4 customer demo | prod | manual |
 | [`reset-demo.sh`](#reset-demosh) | Mengosongkan antrian dan tiket demo, akun dipertahankan | prod | `make prod-reset` |
+| [`seed-prod-penguji.sh`](#seed-prod-penguji-dan-restore-prod-penguji) | Membuat 1 akun penguji (owner + customer) dan mengisi data uji antrian | prod | `make prod-seed-penguji` |
+| [`restore-prod-penguji.sh`](#seed-prod-penguji-dan-restore-prod-penguji) | Mengembalikan data uji akun penguji ke kondisi seed | prod | `make prod-restore-penguji` |
 | [`backup-prod.sh`](#backup-prodsh) | Backup dan restore database prod | prod | `make prod-backup`, `make prod-reset` |
 
 Variabel lingkungan yang dibaca beberapa skrip:
@@ -218,6 +220,43 @@ make prod-reset
 
 Tidak menyentuh stack dev. Gagal dengan pesan jelas bila stack prod tidak berjalan. Setelah selesai, skrip mencetak
 jumlah akun dan owner yang tersisa.
+
+---
+
+## seed-prod-penguji dan restore-prod-penguji
+
+Data uji untuk penguji yang hanya punya **satu akun** (`penguji@montechristo.my.id`, username `penguji`). Akun itu
+adalah owner sekaligus customer, sehingga semua fitur antrian bisa diuji dari satu login:
+
+- **Sebagai owner** (antrian aktif "Antrian Uji Penguji"): NEXT, panggil ulang, skip, hapus nomor, sisip pelanggan
+  (lewat username `pelanggan-9` atau `pelanggan-10`), catatan, counter (Loket 1 dan Loket 2), tutup antrian, QR, layar
+  publik, riwayat dan ekspor (antrian "Antrian Uji Sebelumnya").
+- **Sebagai customer**: bergabung dengan memindai QR antriannya sendiri lewat HP (akun yang sama), batalkan nomor,
+  Antrian Saya, Riwayat Saya, dan notifikasi.
+
+Isi data uji ada di [`db/scripts/seed_prod_penguji.sql`](../db/scripts/seed_prod_penguji.sql). Pelanggan seed
+(`pelanggan-1` sampai `pelanggan-10`) adalah akun tanpa kata sandi, tidak bisa login, dan notifikasi emailnya mati.
+
+```bash
+make prod-seed-penguji        # atau: scripts/seed-prod-penguji.sh [-y]
+make prod-restore-penguji     # atau: scripts/restore-prod-penguji.sh [-y]
+```
+
+- **seed**: bila akun belum ada, mendaftarkannya lewat API dengan sandi acak 16 karakter. Kredensial ditulis ke
+  `~/qms-penguji-account.txt` (mode 600, di luar repo) dan tidak menimpa berkas yang ada. Bila akun sudah ada, sandinya
+  **tidak** diubah dan hanya datanya yang diisi ulang. Email dan username bisa diganti lewat `PENGUJI_EMAIL` dan
+  `PENGUJI_USERNAME`. Email verifikasi dari pendaftaran ikut terkirim sesuai `MAIL_MODE`.
+- **restore**: mengembalikan antrian, tiket, counter, layar publik (token baru), catatan, riwayat, dan profil dasar
+  (username, notifikasi email, foto profil, langganan 365 hari dari sekarang) ke kondisi seed. Akun dan sandinya
+  tetap. Akun harus sudah ada (`seed` dulu).
+- Keduanya membuat backup database (`scripts/backup-prod.sh`) lebih dulu dan meminta konfirmasi (`ketik 'ya'`) kecuali
+  memakai `-y`.
+- Hanya akun penguji, tiketnya, dan akun pelanggan seed yang disentuh. Akun lain dan data produksi lain tidak.
+- Jalankan restore **setelah** sesi pengujian selesai. Bila `make prod-reset` dijalankan, antrian penguji ikut
+  terhapus, jadi jalankan `make prod-restore-penguji` sesudahnya. Restore tidak mengembalikan perubahan sandi; gunakan
+  alur lupa sandi bila penguji mengubahnya.
+- Kode QR dan token layar publik berbeda setiap kali data diisi ulang. Cetak ulang QR dari layar owner dan gunakan
+  tautan layar publik yang ditampilkan saat skrip selesai.
 
 ---
 

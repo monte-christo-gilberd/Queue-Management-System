@@ -13,7 +13,6 @@ import (
 	"qms/internal/handler"
 	"qms/internal/metrics"
 	"qms/internal/middleware"
-	"qms/internal/qrclient"
 	"qms/internal/repository"
 	"qms/internal/router"
 	"qms/internal/service"
@@ -121,24 +120,15 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 		queueService.WithVerificationGuard(verification)
 	}
 
-	// service QR: memanggil microservice qr-service lewat qrclient
-	// microservice = layanan terpisah yang dipanggil lewat HTTP
+	// service QR: kode join 6 karakter dibuat dan dicari langsung di database (tidak lagi lewat qr-service)
 	qrService := service.
 		NewQRService(
 			queueRepo,
-
-			// klien HTTP ke qr-service
-			qrclient.New(
-				cfg.QRServiceURL,
-				cfg.QRServiceToken,
-				cfg.QRHTTPTimeout,
-			),
 			cfg.PublicAppURL,
 			hub,
 		).
 
-		// TTL token join QR dinamis: 120 detik (sama dengan default)
-		// TTL = time to live, masa berlaku
+		// masa berlaku kode join dinamis: 120 detik (sama dengan default); kode juga berganti setelah ada yang join
 		WithDynamicTTL(120 * time.Second)
 
 	// inisialisasi layer handler queue, termasuk endpoint QR

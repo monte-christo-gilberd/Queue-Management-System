@@ -84,7 +84,7 @@ Dibuka dari Dashboard (ketuk judul antrian) atau dari Daftar Antrian. Layout dua
 | Bagian | Fungsi |
 |---|---|
 | QR antrian | QR digambar di frontend dari `join_url`, mode statis/dinamis, hitung mundur, salin tautan, ganti kode (statis) |
-| Tautan join | Tautan `<origin>/join?t=<token>` berasal dari backend (tombol salin di kartu QR) |
+| Tautan join | Tautan `<origin>/join?t=<kode>` berasal dari backend (tombol salin di kartu QR). Kode 6 karakter juga ditampilkan di kartu QR untuk diketik manual |
 | SKIP / NEXT | Keduanya berfungsi (dengan popup konfirmasi). SKIP melewati nomor yang dilayani lalu memanggil berikutnya; nomor yang dilewati tampil "dilewati" atau kembali Menunggu sesuai pengaturan "Saat nomor dilewati" (dihapus, mundur ke belakang, mundur N nomor; ada batas pengembalian per nomor) |
 | Append Note | Popup catatan untuk nomor yang sedang dilayani. Dibuka dengan catatan yang sudah ada (GET), simpan membuat atau menimpa (PUT). Catatan tampil di daftar tiket dan riwayat owner, tidak pernah ke customer. Tombol nonaktif bila belum ada nomor yang dilayani |
 | Tampilan customer | Nomor yang sedang dilayani (tanpa posisi sebelum/sesudah) |
@@ -113,14 +113,14 @@ sequenceDiagram
     participant FE as Frontend
     participant BE as Backend
     participant QR as qr-service
-    C->>FE: Scan QR / buka /join?t=<token>
+    C->>FE: Scan QR / buka /join?t=<kode>
     alt belum login
-        FE-->>C: Halaman masuk (next = /join?t=<token>)
+        FE-->>C: Halaman masuk (next = /join?t=<kode>)
         C->>FE: Masuk
-        FE-->>C: Kembali ke /join?t=<token>
+        FE-->>C: Kembali ke /join?t=<kode>
     end
     FE->>BE: GET /api/v1/join/preview?t=<token>
-    BE->>QR: POST /internal/v1/join-token/verify
+    BE->>BE: cari kode di queue_settings (qr_current_code)
     QR-->>BE: queue_id + type (+ exp)
     BE-->>FE: 200 info publik antrian
     FE->>BE: POST /api/v1/join {t}
@@ -139,7 +139,10 @@ sequenceDiagram
 
 - Customer harus login sebelum bisa bergabung. Setelah login, halaman join dibuka lagi dengan token utuh.
 - Scan atau tekan Gabung berulang kali tidak membuat tiket kedua. Layar hanya menampilkan nomor yang sudah ada.
-- Join hanya lewat token QR; `POST /queues/:id/join` sudah dihapus. Token statis yang sudah diganti ditolak.
+- Join hanya lewat kode join; `POST /queues/:id/join` sudah dihapus. Kode statis yang sudah diganti ditolak.
+- **Kode join**: 6 karakter huruf dan angka tanpa 0, O, 1, I, L (sekitar satu miliar kombinasi), dibuat backend dan unik di seluruh antrian. Pengunjung bisa memindai QR atau mengetik kodenya di popup "Masuk Ke Antrian" (huruf kecil diterima). Kode disimpan di `queue_settings.qr_current_code`; hanya kode aktif yang berlaku.
+- **Kode statis** berlaku sampai owner menekan "Ganti kode". **Kode dinamis** berlaku 120 detik dan diganti otomatis setelah ada yang berhasil join (kode lama langsung tidak berlaku), atau saat kedaluwarsa dan owner membuka QR. Join yang gagal (misalnya sudah pernah join) tidak mengganti kode.
+- Tidak ada pembatasan percobaan khusus untuk kode; batas per IP tetap dari nginx (`join_zone`).
 - Gabung di PC bisa lewat tombol "Masuk Ke Antrian" di Beranda (scan placeholder atau tempel tautan join di popup). Di HP, lewat tombol QR di tengah navbar.
 - Kalau email belum terverifikasi dan verifikasi menyala, join dibalas 403 `EMAIL_NOT_VERIFIED` (lihat bagian 1).
 - Setelah bergabung, customer menerima email "masuk antrian" (bagian 6c) bila sakelar email menyala.

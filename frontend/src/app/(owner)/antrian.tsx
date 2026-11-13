@@ -37,7 +37,7 @@ export default function AntrianSayaRoute() {
         <EmptyState
           icon={<Icon name="list" size={44} color={avatarColor} />}
           title="Belum Ikut Antrian"
-          description="Masuk ke antrian dengan tautan dari penyelenggara untuk mulai mengantri."
+          description="Masukkan token dari penyelenggara untuk mulai mengantri."
         />
       ) : (
         <MyTicketsList

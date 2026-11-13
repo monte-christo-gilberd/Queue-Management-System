@@ -2,14 +2,13 @@ package service_test
 
 import (
 	"context"
-	"fmt"
-	"sync"
+	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
 	"qms/internal/apperror"
 	"qms/internal/model"
-	qrclient "qms/internal/qrclient"
 	"qms/internal/service"
 
 	"github.com/stretchr/testify/assert"
@@ -18,88 +17,41 @@ import (
 
 const qrPublicAppURL = "https://app.example.com"
 
-// fakeQRClient: fake service.QRClient. Token berurutan agar mudah dibedakan
-// (static-1, static-2, ...). Tidak menandatangani apa pun — itu tugas qr-service.
-type fakeQRClient struct {
-	mu sync.Mutex
-
-	issueCount int
-	issueCalls []fakeIssueCall
-	issueErr   error
-
-	verifyTokens []string
-	verifyClaims qrclient.JoinTokenClaims
-	verifyErr    error
-}
-
-type fakeIssueCall struct {
-	QueueID    int64
-	Type       string
-	TTLSeconds int
-}
-
-func (f *fakeQRClient) IssueJoinToken(
-	_ context.Context,
-	queueID int64,
-	typ string,
-	ttlSeconds int,
-) (qrclient.JoinToken, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.issueCount++
-	f.issueCalls = append(f.issueCalls, fakeIssueCall{QueueID: queueID, Type: typ, TTLSeconds: ttlSeconds})
-	if f.issueErr != nil {
-		return qrclient.JoinToken{}, f.issueErr
+// seqCodes: pembuat kode yang mengembalikan kode dari daftar secara berurutan (kode valid, 6 karakter).
+func seqCodes(codes ...string) func() (string, error) {
+	i := 0
+	return func() (string, error) {
+		if i >= len(codes) {
+			return "", errors.New("kode uji habis")
+		}
+		i++
+		return codes[i-1], nil
 	}
-
-	out := qrclient.JoinToken{
-		Token: fmt.Sprintf("%s-%d", typ, f.issueCount),
-		Type:  typ,
-	}
-	if typ == model.QueueQRTypeDynamic {
-		exp := time.Now().Add(time.Duration(ttlSeconds) * time.Second).Unix()
-		out.ExpiresAt = &exp
-	}
-	return out, nil
 }
 
-func (f *fakeQRClient) VerifyJoinToken(
-	_ context.Context,
-	token string,
-) (qrclient.JoinTokenClaims, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.verifyTokens = append(f.verifyTokens, token)
-	if f.verifyErr != nil {
-		return qrclient.JoinTokenClaims{}, f.verifyErr
-	}
-	return f.verifyClaims, nil
-}
-
-func (f *fakeQRClient) issued() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.issueCount
-}
-
-func (f *fakeQRClient) calls() []fakeIssueCall {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]fakeIssueCall(nil), f.issueCalls...)
-}
-
-func newQRSpecEnv(t *testing.T) (*specEnv, *fakeQRClient, *service.QRService) {
+// newQRSpecEnv menyiapkan lingkungan uji dengan TTL dinamis 90 detik dan pembuat kode yang bisa diprediksi.
+func newQRSpecEnv(t *testing.T, codes ...string) (*specEnv, *service.QRService) {
 	t.Helper()
 	env := newSpecEnv(t)
-	client := &fakeQRClient{}
-	svc := service.NewQRService(env.queues, client, qrPublicAppURL, env.events).
-		WithDynamicTTL(90 * time.Second)
-	return env, client, svc
+	svc := service.NewQRService(env.queues, qrPublicAppURL, env.events).
+		WithDynamicTTL(90 * time.Second).
+		WithCodeGenerator(seqCodes(codes...))
+	return env, svc
 }
 
-func TestQR_GetQR_StaticTokenIssuedOnceAndPersisted(t *testing.T) {
-	// 4.2: QR statis dibuat sekali, disimpan, dan dipakai lagi pada permintaan berikutnya.
-	env, client, svc := newQRSpecEnv(t)
+// expireQRCode memundurkan masa berlaku kode dinamis antrian ke masa lalu.
+func expireQRCode(env *specEnv, queueID int64) {
+	env.queues.mu.Lock()
+	defer env.queues.mu.Unlock()
+	settings := env.queues.settings[queueID]
+	settings.QRExpiresAt.Time = time.Now().Add(-time.Minute)
+	settings.QRExpiresAt.Valid = true
+	env.queues.settings[queueID] = settings
+}
+
+// Kode statis diterbitkan sekali, disimpan, dan dipakai lagi pada GET berikutnya tanpa event.
+func TestQR_GetQR_StaticCodeIssuedOnceAndPersisted(t *testing.T) {
+	env, svc := newQRSpecEnv(t, "STAT23")
 	ctx := context.Background()
 
 	first, err := svc.GetQR(ctx, env.queueID, env.ownerID)
@@ -108,20 +60,19 @@ func TestQR_GetQR_StaticTokenIssuedOnceAndPersisted(t *testing.T) {
 	assert.Equal(t, env.queueID, first.QueueID)
 	assert.Equal(t, model.QueueQRTypeStatic, first.Type)
 	assert.Nil(t, first.ExpiresAt)
-	assert.Equal(t, qrPublicAppURL+"/join?t=static-1", first.JoinURL)
+	assert.Equal(t, qrPublicAppURL+"/join?t=STAT23", first.JoinURL)
 
+	// Kode statis tidak dibuat ulang: generator hanya punya satu kode.
 	second, err := svc.GetQR(ctx, env.queueID, env.ownerID)
 	require.NoError(t, err)
 	assert.Equal(t, first.JoinURL, second.JoinURL)
-
-	assert.Equal(t, 1, client.issued(), "token statis tidak boleh dibuat ulang setiap GET")
-	assert.Equal(t, "static-1", env.queues.currentQRCode(env.queueID))
+	assert.Equal(t, "STAT23", env.queues.currentQRCode(env.queueID))
 	assert.Equal(t, 0, env.events.count(service.EventQueueQRUpdated), "GET tidak mengirim event")
 }
 
-func TestQR_GetQR_DynamicIssuesFreshTokenWithoutStoring(t *testing.T) {
-	// 4.2: QR dinamis berganti tiap permintaan, tidak disimpan, dan punya masa berlaku.
-	env, client, svc := newQRSpecEnv(t)
+// Kode dinamis tetap dipakai selama belum kedaluwarsa, lalu diterbitkan kode baru setelah masa berlakunya habis.
+func TestQR_GetQR_DynamicCodeKeptUntilExpiredOrJoined(t *testing.T) {
+	env, svc := newQRSpecEnv(t, "DYN234", "DYN345")
 	ctx := context.Background()
 	env.queues.setQRType(env.queueID, model.QueueQRTypeDynamic)
 
@@ -132,55 +83,75 @@ func TestQR_GetQR_DynamicIssuesFreshTokenWithoutStoring(t *testing.T) {
 	require.NotNil(t, first.ExpiresAt)
 	assert.GreaterOrEqual(t, *first.ExpiresAt, before+89)
 	assert.LessOrEqual(t, *first.ExpiresAt, before+91)
+	assert.Equal(t, "DYN234", env.queues.currentQRCode(env.queueID))
 
+	// Tanpa join atau kedaluwarsa, kode yang sama tetap dipakai.
 	second, err := svc.GetQR(ctx, env.queueID, env.ownerID)
 	require.NoError(t, err)
-	require.NotNil(t, second.ExpiresAt)
-	assert.NotEqual(t, first.JoinURL, second.JoinURL)
+	assert.Equal(t, first.JoinURL, second.JoinURL)
+	assert.Equal(t, "DYN234", env.queues.currentQRCode(env.queueID))
 
-	assert.Equal(t, 2, client.issued())
-	assert.Empty(t, env.queues.currentQRCode(env.queueID), "token dinamis tidak disimpan")
-	for _, call := range client.calls() {
-		assert.Equal(t, model.QueueQRTypeDynamic, call.Type)
-		assert.Equal(t, 90, call.TTLSeconds)
-	}
+	// Setelah kedaluwarsa, GET menerbitkan kode baru.
+	expireQRCode(env, env.queueID)
+	third, err := svc.GetQR(ctx, env.queueID, env.ownerID)
+	require.NoError(t, err)
+	assert.Equal(t, qrPublicAppURL+"/join?t=DYN345", third.JoinURL)
 	assert.Equal(t, 0, env.events.count(service.EventQueueQRUpdated))
+}
+
+// Antrian lama yang belum punya baris queue_settings dibuatkan pengaturan default (statis) saat pertama dibuka.
+// Kode statis berformat lama (token panjang dari sebelum kode 6 karakter) diganti dengan kode join baru saat dibuka.
+func TestQR_GetQR_ReplacesLegacyLongToken(t *testing.T) {
+	env, svc := newQRSpecEnv(t, "FRESH2")
+	ctx := context.Background()
+	env.queues.mu.Lock()
+	settings := env.queues.settings[env.queueID]
+	settings.QRCurrentCode = sql.NullString{String: "v1.eyJxaWQiOjF9.sig", Valid: true}
+	env.queues.settings[env.queueID] = settings
+	env.queues.mu.Unlock()
+
+	resp, err := svc.GetQR(ctx, env.queueID, env.ownerID)
+	require.NoError(t, err)
+	assert.Equal(t, qrPublicAppURL+"/join?t=FRESH2", resp.JoinURL)
+	assert.Equal(t, "FRESH2", env.queues.currentQRCode(env.queueID))
 }
 
 func TestQR_GetQR_BackfillsMissingSettings(t *testing.T) {
 	// Antrian lama (dibuat sebelum fitur QR) belum punya baris queue_settings.
-	env, _, svc := newQRSpecEnv(t)
+	env, svc := newQRSpecEnv(t, "BACK23")
 	ctx := context.Background()
 	env.queues.dropSettings(env.queueID)
 
 	resp, err := svc.GetQR(ctx, env.queueID, env.ownerID)
 	require.NoError(t, err)
 	assert.Equal(t, model.QueueQRTypeStatic, resp.Type)
-	assert.Equal(t, "static-1", env.queues.currentQRCode(env.queueID))
+	assert.Equal(t, "BACK23", env.queues.currentQRCode(env.queueID))
 	assert.Equal(t, model.QueueQRTypeStatic, env.queues.qrType(env.queueID))
 }
 
+// Non-owner tidak boleh melihat kode QR antrian; respons disamarkan sebagai ErrNotFound.
 func TestQR_GetQR_NonOwnerIsNotFound(t *testing.T) {
-	env, client, svc := newQRSpecEnv(t)
-	ctx := context.Background()
+	env, svc := newQRSpecEnv(t, "OWNR23")
 
-	_, err := svc.GetQR(ctx, env.queueID, specOtherOwnerID)
+	_, err := svc.GetQR(context.Background(), env.queueID, specOtherOwnerID)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
-	assert.Equal(t, 0, client.issued())
-}
-
-func TestQR_GetQR_PropagatesQRServiceError(t *testing.T) {
-	env, client, svc := newQRSpecEnv(t)
-	ctx := context.Background()
-	client.issueErr = apperror.ErrQRUnavailable
-
-	_, err := svc.GetQR(ctx, env.queueID, env.ownerID)
-	assert.ErrorIs(t, err, apperror.ErrQRUnavailable)
 	assert.Empty(t, env.queues.currentQRCode(env.queueID))
 }
 
+// Galat dari pembuat kode diteruskan dan tidak ada kode yang tersimpan.
+func TestQR_GetQR_GeneratorErrorPropagates(t *testing.T) {
+	env := newSpecEnv(t)
+	svc := service.NewQRService(env.queues, qrPublicAppURL, env.events).
+		WithCodeGenerator(func() (string, error) { return "", errors.New("rng mati") })
+
+	_, err := svc.GetQR(context.Background(), env.queueID, env.ownerID)
+	assert.Error(t, err)
+	assert.Empty(t, env.queues.currentQRCode(env.queueID))
+}
+
+// Mengubah mode menyimpan tipe baru, mengirim tepat satu event, dan kode statis baru diterbitkan saat kembali dari dinamis.
 func TestQR_SetQRType_PersistsAndEmitsOnce(t *testing.T) {
-	env, _, svc := newQRSpecEnv(t)
+	env, svc := newQRSpecEnv(t, "DYNA23", "STAT34")
 	ctx := context.Background()
 
 	resp, err := svc.SetQRType(ctx, env.queueID, env.ownerID, model.QueueQRTypeDynamic)
@@ -190,21 +161,23 @@ func TestQR_SetQRType_PersistsAndEmitsOnce(t *testing.T) {
 	assert.Equal(t, model.QueueQRTypeDynamic, env.queues.qrType(env.queueID))
 	assert.Equal(t, 1, env.events.count(service.EventQueueQRUpdated))
 
-	// Kembali ke statis: token statis yang tersimpan (kalau ada) dipakai lagi.
-	_, err = svc.SetQRType(ctx, env.queueID, env.ownerID, model.QueueQRTypeStatic)
+	// Kembali ke statis: kode dinamis yang masih tersimpan tidak dipakai sebagai statis; diterbitkan kode statis baru.
+	resp, err = svc.SetQRType(ctx, env.queueID, env.ownerID, model.QueueQRTypeStatic)
 	require.NoError(t, err)
 	assert.Equal(t, model.QueueQRTypeStatic, env.queues.qrType(env.queueID))
+	assert.Nil(t, resp.ExpiresAt)
+	assert.Equal(t, qrPublicAppURL+"/join?t=STAT34", resp.JoinURL)
 	assert.Equal(t, 2, env.events.count(service.EventQueueQRUpdated))
 }
 
+// Tipe tidak dikenal dan non-owner ditolak tanpa mengubah pengaturan atau mengirim event.
 func TestQR_SetQRType_RejectsUnknownTypeAndNonOwner(t *testing.T) {
-	env, client, svc := newQRSpecEnv(t)
+	env, svc := newQRSpecEnv(t, "NOPE23")
 	ctx := context.Background()
 
 	_, err := svc.SetQRType(ctx, env.queueID, env.ownerID, "hologram")
 	assert.ErrorIs(t, err, apperror.ErrQRTypeInvalid)
 	assert.Equal(t, model.QueueQRTypeStatic, env.queues.qrType(env.queueID))
-	assert.Equal(t, 0, client.issued())
 	assert.Equal(t, 0, env.events.count(service.EventQueueQRUpdated))
 
 	_, err = svc.SetQRType(ctx, env.queueID, specOtherOwnerID, model.QueueQRTypeDynamic)
@@ -213,107 +186,121 @@ func TestQR_SetQRType_RejectsUnknownTypeAndNonOwner(t *testing.T) {
 	assert.Equal(t, 0, env.events.count(service.EventQueueQRUpdated))
 }
 
-func TestQR_ReplaceQR_IssuesNewStaticTokenAndEmits(t *testing.T) {
-	// 4.2: penggantian kode membuat token lama langsung tidak berlaku.
-	env, client, svc := newQRSpecEnv(t)
+// Mengganti kode statis membuat kode lama tidak berlaku dan mengirim satu event.
+func TestQR_ReplaceQR_IssuesNewStaticCodeAndEmits(t *testing.T) {
+	// penggantian kode membuat kode lama langsung tidak berlaku.
+	env, svc := newQRSpecEnv(t, "OLDD23", "NEWC34")
 	ctx := context.Background()
 
 	first, err := svc.GetQR(ctx, env.queueID, env.ownerID)
 	require.NoError(t, err)
-	oldToken := env.queues.currentQRCode(env.queueID)
 
 	replaced, err := svc.ReplaceQR(ctx, env.queueID, env.ownerID)
 	require.NoError(t, err)
 	assert.Equal(t, model.QueueQRTypeStatic, replaced.Type)
 	assert.Nil(t, replaced.ExpiresAt)
 	assert.NotEqual(t, first.JoinURL, replaced.JoinURL)
-	assert.Equal(t, "static-2", env.queues.currentQRCode(env.queueID))
+	assert.Equal(t, "NEWC34", env.queues.currentQRCode(env.queueID))
 	assert.Equal(t, 1, env.events.count(service.EventQueueQRUpdated))
 
-	// Token lama sudah tidak cocok dengan kode aktif.
-	client.verifyClaims = qrclient.JoinTokenClaims{QueueID: env.queueID, Type: model.QueueQRTypeStatic}
-	_, err = svc.ResolveJoinToken(ctx, oldToken)
-	assert.ErrorIs(t, err, apperror.ErrQRInvalid)
+	_, err = svc.ResolveJoinToken(ctx, "OLDD23")
+	assert.ErrorIs(t, err, apperror.ErrQRInvalid, "kode lama harus ditolak")
 
-	_, err = svc.ResolveJoinToken(ctx, "static-2")
+	queue, err := svc.ResolveJoinToken(ctx, "NEWC34")
 	require.NoError(t, err)
+	assert.Equal(t, env.queueID, queue.ID)
 }
 
-func TestQR_ReplaceQR_DynamicIsRejected(t *testing.T) {
-	env, client, svc := newQRSpecEnv(t)
+// Kode dinamis tidak bisa diganti manual, dan non-owner tidak boleh mengganti kode.
+func TestQR_ReplaceQR_DynamicIsRejectedAndNonOwner(t *testing.T) {
+	env, svc := newQRSpecEnv(t, "DYNR23")
 	ctx := context.Background()
 	env.queues.setQRType(env.queueID, model.QueueQRTypeDynamic)
 
 	_, err := svc.ReplaceQR(ctx, env.queueID, env.ownerID)
 	assert.ErrorIs(t, err, apperror.ErrQRReplaceNotAllowed)
-	assert.Equal(t, 0, client.issued())
+	assert.Equal(t, 0, env.events.count(service.EventQueueQRUpdated))
+
+	_, err = svc.ReplaceQR(ctx, env.queueID, specOtherOwnerID)
+	assert.ErrorIs(t, err, apperror.ErrNotFound)
+}
+
+// Kode yang diketik boleh huruf kecil dan spasi, sedangkan format yang salah atau karakter yang dikecualikan ditolak.
+func TestQR_ResolveJoinToken_AcceptsTypedCodeAndRejectsBadFormat(t *testing.T) {
+	env, svc := newQRSpecEnv(t, "TYPE23")
+	ctx := context.Background()
+	_, err := svc.GetQR(ctx, env.queueID, env.ownerID)
+	require.NoError(t, err)
+
+	// Kode yang diketik boleh huruf kecil dan dikelilingi spasi.
+	queue, err := svc.ResolveJoinToken(ctx, "  type23 ")
+	require.NoError(t, err)
+	assert.Equal(t, env.queueID, queue.ID)
+
+	for _, bad := range []string{"", "TYPE2", "TYPE234", "TYP0 23", "TYPE2O", "TYPE2I", "nope99"} {
+		_, err = svc.ResolveJoinToken(ctx, bad)
+		assert.ErrorIs(t, err, apperror.ErrQRInvalid, "kode %q harus ditolak", bad)
+	}
+}
+
+// Kode dinamis yang sudah kedaluwarsa ditolak dengan ErrQRExpired.
+func TestQR_ResolveJoinToken_DynamicExpiredIsGone(t *testing.T) {
+	env, svc := newQRSpecEnv(t, "EXPR23")
+	ctx := context.Background()
+	env.queues.setQRType(env.queueID, model.QueueQRTypeDynamic)
+	_, err := svc.GetQR(ctx, env.queueID, env.ownerID)
+	require.NoError(t, err)
+
+	_, err = svc.ResolveJoinToken(ctx, "EXPR23")
+	require.NoError(t, err)
+
+	expireQRCode(env, env.queueID)
+	_, err = svc.ResolveJoinToken(ctx, "EXPR23")
+	assert.ErrorIs(t, err, apperror.ErrQRExpired)
+}
+
+// Join dengan kode dinamis yang aktif memutar kode; join yang memakai kode lama tidak memutar lagi.
+func TestQR_AfterJoin_RotatesDynamicCodeOnlyWhenActive(t *testing.T) {
+	env, svc := newQRSpecEnv(t, "ACTV23", "NXTV34", "LATF34")
+	ctx := context.Background()
+	env.queues.setQRType(env.queueID, model.QueueQRTypeDynamic)
+	_, err := svc.GetQR(ctx, env.queueID, env.ownerID)
+	require.NoError(t, err)
+
+	// Join berhasil dengan kode aktif: kode diganti dan event dikirim.
+	require.NoError(t, svc.AfterJoin(ctx, env.queueID, "actv23"))
+	assert.Equal(t, "NXTV34", env.queues.currentQRCode(env.queueID))
+	assert.Equal(t, 1, env.events.count(service.EventQueueQRUpdated))
+
+	// Kode lama tidak berlaku lagi.
+	_, err = svc.ResolveJoinToken(ctx, "ACTV23")
+	assert.ErrorIs(t, err, apperror.ErrQRInvalid)
+
+	// Join lain yang masih memakai kode lama tidak memutar kode baru lagi.
+	require.NoError(t, svc.AfterJoin(ctx, env.queueID, "ACTV23"))
+	assert.Equal(t, "NXTV34", env.queues.currentQRCode(env.queueID))
+	assert.Equal(t, 1, env.events.count(service.EventQueueQRUpdated))
+}
+
+// Kode statis tidak pernah berganti karena join.
+func TestQR_AfterJoin_StaticCodeNeverRotates(t *testing.T) {
+	env, svc := newQRSpecEnv(t, "STAY23")
+	ctx := context.Background()
+	_, err := svc.GetQR(ctx, env.queueID, env.ownerID)
+	require.NoError(t, err)
+
+	require.NoError(t, svc.AfterJoin(ctx, env.queueID, "STAY23"))
+	assert.Equal(t, "STAY23", env.queues.currentQRCode(env.queueID))
 	assert.Equal(t, 0, env.events.count(service.EventQueueQRUpdated))
 }
 
-func TestQR_ReplaceQR_NonOwnerIsNotFound(t *testing.T) {
-	env, client, svc := newQRSpecEnv(t)
-	ctx := context.Background()
-
-	_, err := svc.ReplaceQR(ctx, env.queueID, specOtherOwnerID)
-	assert.ErrorIs(t, err, apperror.ErrNotFound)
-	assert.Equal(t, 0, client.issued())
-}
-
-func TestQR_ResolveJoinToken_StaticMustMatchStoredCode(t *testing.T) {
-	env, client, svc := newQRSpecEnv(t)
-	ctx := context.Background()
-
-	_, err := svc.GetQR(ctx, env.queueID, env.ownerID)
-	require.NoError(t, err)
-	stored := env.queues.currentQRCode(env.queueID)
-
-	client.verifyClaims = qrclient.JoinTokenClaims{QueueID: env.queueID, Type: model.QueueQRTypeStatic}
-	queue, err := svc.ResolveJoinToken(ctx, stored)
-	require.NoError(t, err)
-	assert.Equal(t, env.queueID, queue.ID)
-
-	// Tanda tangan valid tetapi bukan kode aktif (mis. QR lama) -> ditolak.
-	_, err = svc.ResolveJoinToken(ctx, "static-lama")
-	assert.ErrorIs(t, err, apperror.ErrQRInvalid)
-}
-
-func TestQR_ResolveJoinToken_TypeMustMatchSettings(t *testing.T) {
-	env, client, svc := newQRSpecEnv(t)
-	ctx := context.Background()
-
-	client.verifyClaims = qrclient.JoinTokenClaims{QueueID: env.queueID, Type: model.QueueQRTypeDynamic}
-	_, err := svc.ResolveJoinToken(ctx, "dynamic-1")
-	assert.ErrorIs(t, err, apperror.ErrQRInvalid, "mode statis tidak menerima token dinamis")
-
-	env.queues.setQRType(env.queueID, model.QueueQRTypeDynamic)
-	queue, err := svc.ResolveJoinToken(ctx, "dynamic-1")
-	require.NoError(t, err)
-	assert.Equal(t, env.queueID, queue.ID)
-}
-
-func TestQR_ResolveJoinToken_UnknownQueueAndClientErrors(t *testing.T) {
-	_, client, svc := newQRSpecEnv(t)
-	ctx := context.Background()
-
-	client.verifyClaims = qrclient.JoinTokenClaims{QueueID: 999999, Type: model.QueueQRTypeStatic}
-	_, err := svc.ResolveJoinToken(ctx, "static-1")
-	assert.ErrorIs(t, err, apperror.ErrQRInvalid)
-
-	client.verifyErr = apperror.ErrQRExpired
-	_, err = svc.ResolveJoinToken(ctx, "dynamic-1")
-	assert.ErrorIs(t, err, apperror.ErrQRExpired)
-
-	client.verifyErr = apperror.ErrQRInvalid
-	_, err = svc.ResolveJoinToken(ctx, "rusak")
-	assert.ErrorIs(t, err, apperror.ErrQRInvalid)
-}
-
+// Garis miring di akhir URL dasar dibuang sebelum membentuk tautan join.
 func TestQR_JoinURL_TrimsTrailingSlash(t *testing.T) {
 	env := newSpecEnv(t)
-	client := &fakeQRClient{}
-	svc := service.NewQRService(env.queues, client, qrPublicAppURL+"/", env.events)
+	svc := service.NewQRService(env.queues, qrPublicAppURL+"/", env.events).
+		WithCodeGenerator(seqCodes("PATH23"))
 
 	resp, err := svc.GetQR(context.Background(), env.queueID, env.ownerID)
 	require.NoError(t, err)
-	assert.Equal(t, qrPublicAppURL+"/join?t=static-1", resp.JoinURL)
+	assert.Equal(t, qrPublicAppURL+"/join?t=PATH23", resp.JoinURL)
 }

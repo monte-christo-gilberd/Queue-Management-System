@@ -88,11 +88,17 @@ type TicketService interface {
 
 // JoinQRService adalah layanan yang memverifikasi token join dari QR code.
 type JoinQRService interface {
-	// ResolveJoinToken memverifikasi token join lalu mengembalikan antrian-nya.
+	// ResolveJoinToken mencari antrian dari kode join lalu mengembalikannya.
 	ResolveJoinToken(
 		ctx context.Context,
 		token string,
 	) (model.Queue, error)
+	// AfterJoin dipanggil setelah join berhasil; kode dinamis yang dipakai diganti dengan yang baru.
+	AfterJoin(
+		ctx context.Context,
+		queueID int64,
+		token string,
+	) error
 }
 
 // TicketHandler menangani rute tiket: join, preview, panggil, lewati, batal, sisip, hapus, dan daftar.
@@ -162,6 +168,10 @@ func (h *TicketHandler) Join(
 		h.respondJoinError(c, err)
 		return
 	}
+
+	// tiket sudah dibuat: ganti kode dinamis yang dipakai. Galat di sini tidak membatalkan join,
+	// kode lama tetap berlaku sampai masa berlakunya habis.
+	_ = h.qr.AfterJoin(ctx, queue.ID, token)
 
 	// berhasil: kirim tiket baru
 	respondData(

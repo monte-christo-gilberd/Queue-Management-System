@@ -34,6 +34,11 @@ func (s *stubTicketService) JoinQueue(context.Context, int64, int64) (model.Tick
 	return model.Ticket{}, s.joinErr
 }
 
+// AfterJoin: stub; tidak memutar kode di tes handler.
+func (s *stubTicketService) AfterJoin(context.Context, int64, string) error {
+	return nil
+}
+
 func (s *stubTicketService) ResolveJoinToken(_ context.Context, token string) (model.Queue, error) {
 	s.token = token
 	return s.joinQueue, s.resolveErr

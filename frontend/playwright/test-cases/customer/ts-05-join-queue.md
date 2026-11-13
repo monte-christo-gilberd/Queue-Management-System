@@ -78,7 +78,7 @@
 |---|---|
 | **Priority** | P2 |
 | **Steps** | 1. Login 2. Klik **Masuk Ke Antrian** |
-| **Expected Result** | Petunjuk memakai kamera HP tampil, beserta form "tempel tautan antrian" dan tombol **Masuk** |
+| **Expected Result** | Petunjuk memakai kamera HP tampil, beserta form "masukkan token antrian" dan tombol **Masuk** |
 
 ### TC-05-10 — Join dengan menempel tautan
 | | |

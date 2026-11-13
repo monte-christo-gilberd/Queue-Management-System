@@ -170,7 +170,7 @@ test.describe('TS-10 Skenario antrian dengan akun seed', () => {
     queueA = await createViaUi(owner.page, OWNER1, NAME_A);
     await expect(owner.page.locator(`input[value="${NAME_A}"]`)).toBeVisible();
     await action(owner.page, 'LIHAT QR').click();
-    await expect(action(owner.page, 'SALIN TAUTAN')).toBeVisible();
+    await expect(action(owner.page, 'SALIN TOKEN')).toBeVisible();
   });
 
   test('TC-10-08 Dashboard menampilkan antrian A; Next pada antrian kosong menampilkan pesan', async () => {

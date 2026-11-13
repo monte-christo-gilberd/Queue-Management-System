@@ -17,3 +17,18 @@ test('QR yang bukan QR antrian ditolak', () => {
   assert.equal(parseJoinToken('http://x.com/join?t='), null);
   assert.equal(parseJoinToken(`http://x.com/join?t=${'a'.repeat(3000)}`), null);
 });
+
+// Kode 6 karakter yang diketik manual diterima, termasuk huruf kecil dan spasi di sekitarnya.
+test('kode 6 karakter yang diketik diterima dan dikapitalkan', () => {
+  assert.equal(parseJoinToken('ab23cd'), 'AB23CD');
+  assert.equal(parseJoinToken('  AB23CD  '), 'AB23CD');
+});
+
+// Kode dengan karakter yang dikecualikan atau panjang yang salah ditolak.
+test('kode yang salah format ditolak', () => {
+  assert.equal(parseJoinToken('AB0CD2'), null, 'angka 0 tidak dipakai');
+  assert.equal(parseJoinToken('AB1CD2'), null, 'angka 1 tidak dipakai');
+  assert.equal(parseJoinToken('ABOCD2'), null, 'huruf O tidak dipakai');
+  assert.equal(parseJoinToken('AB23C'), null, 'terlalu pendek');
+  assert.equal(parseJoinToken('AB23CDE'), null, 'terlalu panjang');
+});

@@ -4,6 +4,7 @@ import (
 	"context"
 	"qms/internal/apperror"
 	"qms/internal/model"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -69,6 +70,23 @@ type QueueRepository interface {
 		queueID int64,
 		token string,
 	) error
+	GetQueueSettingsByJoinCode(
+		ctx context.Context,
+		code string,
+	) (model.QueueSettings, error)
+	UpdateDynamicQRCode(
+		ctx context.Context,
+		queueID int64,
+		code string,
+		expiresAt time.Time,
+	) error
+	RotateDynamicQRCode(
+		ctx context.Context,
+		queueID int64,
+		oldCode string,
+		newCode string,
+		expiresAt time.Time,
+	) (bool, error)
 	CreateDefaultCounter(
 		ctx context.Context,
 		queueID int64,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"qms/internal/apperror"
 	"qms/internal/model"
@@ -118,6 +119,35 @@ func (f *fakeQueueRepo) UpdateQRCurrentCode(
 	token string,
 ) error {
 	return nil
+}
+
+// GetQueueSettingsByJoinCode: stub; selalu tidak ditemukan.
+func (f *fakeQueueRepo) GetQueueSettingsByJoinCode(
+	ctx context.Context,
+	code string,
+) (model.QueueSettings, error) {
+	return model.QueueSettings{}, apperror.ErrNotFound
+}
+
+// UpdateDynamicQRCode: stub; tidak menyimpan apa pun.
+func (f *fakeQueueRepo) UpdateDynamicQRCode(
+	ctx context.Context,
+	queueID int64,
+	code string,
+	expiresAt time.Time,
+) error {
+	return nil
+}
+
+// RotateDynamicQRCode: stub; selalu melaporkan kode tidak berganti.
+func (f *fakeQueueRepo) RotateDynamicQRCode(
+	ctx context.Context,
+	queueID int64,
+	oldCode string,
+	newCode string,
+	expiresAt time.Time,
+) (bool, error) {
+	return false, nil
 }
 
 func (f *fakeQueueRepo) CreateDefaultCounter(

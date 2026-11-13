@@ -26,6 +26,9 @@ CREATE TABLE queue_settings (
     qr_type                VARCHAR NOT NULL DEFAULT 'static'
         CHECK (qr_type IN ('static', 'dynamic')),
     qr_current_code        TEXT,
+    -- Kode join aktif (6 karakter). Unik di seluruh antrian karena pengunjung hanya mengetik kode, tanpa ID antrian.
+    -- Kode dinamis punya masa berlaku di qr_expires_at; kode statis tidak (NULL).
+    qr_expires_at          TIMESTAMPTZ,
 
     -- [tidak dipakai] Batas pendaftar per antrian. NULL = tanpa batas. Dihapus dari produk 31 Okt 2026.
     registration_limit     INT,
@@ -57,6 +60,9 @@ CREATE TABLE queue_settings (
 
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Kode join aktif harus unik di seluruh antrian (lihat qr_current_code). Kode lama yang sudah diganti tidak disimpan.
+CREATE UNIQUE INDEX queue_settings_qr_current_code_key ON queue_settings (qr_current_code) WHERE qr_current_code IS NOT NULL;
 
 -- Loket pemanggil. Counter tidak menyimpan admin atau tiket yang sedang dilayani: siapa pun yang login sebagai
 -- owner boleh memakai counter mana pun, dan tiketlah yang mencatat counter pemanggilnya (tickets.called_counter_id).

@@ -286,4 +286,12 @@ BEGIN
     END IF;
 END $$;
 
+-- Kode join 6 karakter (ganti token panjang lama). Kode lama yang panjangnya bukan 6 dikosongkan supaya GET QR
+-- menerbitkan kode baru. Kode statis yang sudah dicetak tidak berlaku lagi. Kolom masa berlaku untuk kode dinamis.
+ALTER TABLE queue_settings ADD COLUMN IF NOT EXISTS qr_expires_at TIMESTAMPTZ;
+UPDATE queue_settings SET qr_current_code = NULL, qr_expires_at = NULL
+ WHERE qr_current_code IS NOT NULL AND length(qr_current_code) <> 6;
+CREATE UNIQUE INDEX IF NOT EXISTS queue_settings_qr_current_code_key
+    ON queue_settings (qr_current_code) WHERE qr_current_code IS NOT NULL;
+
 COMMIT;

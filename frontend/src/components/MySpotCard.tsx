@@ -104,7 +104,7 @@ export function NotQueuingCard({ onJoin }: NotQueuingCardProps) {
     <View className="items-center gap-2 rounded-card bg-surface p-5">
       <Text className="text-[15px] font-extrabold text-foreground">Anda tidak sedang mengantri</Text>
       <Text className="text-center text-[12px] font-normal text-muted">
-        Masuk ke antrian dengan tautan dari penyelenggara.
+        Masukkan token dari penyelenggara untuk masuk ke antrian.
       </Text>
       {onJoin ? <AppButton label="Masuk Ke Antrian" variant="dark" className="mt-2 self-stretch" onPress={onJoin} /> : null}
     </View>

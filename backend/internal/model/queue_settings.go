@@ -1,6 +1,9 @@
 package model
 
-import "database/sql"
+import (
+	"database/sql"
+	"time"
+)
 
 // QueueQRTypeStatic dan QueueQRTypeDynamic adalah nilai tetap kolom
 // queue_settings.qr_type (CHECK constraint di schema: static | dynamic).
@@ -10,7 +13,7 @@ const (
 )
 
 // QueueSettings: satu baris konfigurasi QR per antrian (primary key = queue_id).
-// qr_current_code menyimpan token statis terakhir yang diterbitkan.
+// qr_current_code menyimpan kode join aktif (6 karakter): statis atau dinamis.
 type QueueSettings struct {
 	// QueueID: id antrian. Juga kunci utama baris ini.
 	QueueID int64 `db:"queue_id"`
@@ -18,6 +21,13 @@ type QueueSettings struct {
 	QRType string `db:"qr_type"`
 	// QRCurrentCode: token statis terakhir. Tidak valid (null) bila belum pernah diterbitkan.
 	QRCurrentCode sql.NullString `db:"qr_current_code"`
+	// QRExpiresAt: waktu kedaluwarsa kode dinamis. Null untuk kode statis dan bila belum pernah diterbitkan.
+	QRExpiresAt sql.NullTime `db:"qr_expires_at"`
+}
+
+// QRCodeExpiresAt mengembalikan waktu kedaluwarsa kode dinamis (dan false bila tidak ada).
+func (s QueueSettings) QRCodeExpiresAt() (time.Time, bool) {
+	return s.QRExpiresAt.Time, s.QRExpiresAt.Valid
 }
 
 // Nilai queue_settings.skip_fallback.

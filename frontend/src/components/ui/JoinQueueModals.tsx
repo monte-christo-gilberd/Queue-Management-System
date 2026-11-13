@@ -41,7 +41,7 @@ export function JoinQueueModals({ visible, onClose }: JoinQueueModalsProps) {
   );
 }
 
-/** Isi popup: kamera (atau tombol izin), kotak tempel tautan, dan status join. */
+/** Isi popup: kamera (atau tombol izin), kotak masukkan token, dan status join. */
 function ScannerBody({ onClose }: { onClose: () => void }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [message, setMessage] = useState<string>();
@@ -92,8 +92,8 @@ function ScannerBody({ onClose }: { onClose: () => void }) {
     [attempt],
   );
 
-  // Tautan yang ditempel tidak perlu jeda: form boleh langsung dicoba lagi.
-  const submitLink = () => void attempt(link, 'Tautan ini bukan tautan antrian.', 0);
+  // Token atau tautan yang dimasukkan tidak perlu jeda: form boleh langsung dicoba lagi.
+  const submitLink = () => void attempt(link, 'Token ini tidak valid.', 0);
 
   const granted = permission?.granted === true;
 
@@ -128,17 +128,17 @@ function ScannerBody({ onClose }: { onClose: () => void }) {
         {busy ? 'Bergabung ke antrian...' : message ?? 'Arahkan kamera ke QR code antrian.'}
       </Text>
 
-      {/* Tanpa kamera: tempel tautan antrian dari penyelenggara (mis. kamera diblokir browser). */}
-      <Text className="text-center text-[12px] text-muted">atau tempel tautan antrian</Text>
+      {/* Tanpa kamera: masukkan token 6 karakter dari penyelenggara (tautan juga diterima). */}
+      <Text className="text-center text-[12px] text-muted">atau masukkan token antrian (6 karakter)</Text>
       <TextInput
         value={link}
         onChangeText={setLink}
         editable={!busy}
-        placeholder="https://..."
+        placeholder="Token 6 karakter"
         placeholderTextColor={AppColors.placeholder}
-        autoCapitalize="none"
+        autoCapitalize="characters"
         autoCorrect={false}
-        keyboardType="url"
+        maxLength={2048}
         returnKeyType="go"
         onSubmitEditing={submitLink}
         className="h-[48px] rounded-card bg-surface px-3.5 text-[14px] text-foreground"

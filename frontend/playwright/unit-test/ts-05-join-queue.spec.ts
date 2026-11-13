@@ -132,7 +132,7 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     await action(page, 'Masuk Ke Antrian').click();
 
     await expect(page.getByText('Masuk ke Antrian', { exact: true })).toBeVisible();
-    await expect(field(page, 'https://...')).toHaveCount(1);
+    await expect(field(page, 'Token 6 karakter')).toHaveCount(1);
     await expect(action(page, 'Masuk')).toBeVisible();
   });
 
@@ -143,7 +143,7 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     await signInWithToken(page, customer.token, customer.email);
 
     await action(page, 'Masuk Ke Antrian').click();
-    await field(page, 'https://...').fill(`${WEB_URL}${path}`);
+    await field(page, 'Token 6 karakter').fill(`${WEB_URL}${path}`);
     await action(page, 'Masuk').click();
 
     await expect(page).toHaveURL(new RegExp(`/ticket/${queue.id}`));
@@ -156,9 +156,26 @@ test.describe('TS-05 Bergabung ke antrian (customer)', () => {
     await signInWithToken(page, customer.token, customer.email);
 
     await action(page, 'Masuk Ke Antrian').click();
-    await field(page, 'https://...').fill('https://example.com/lainnya');
+    await field(page, 'Token 6 karakter').fill('https://example.com/lainnya');
     await action(page, 'Masuk').click();
 
-    await expect(page.getByText('Tautan ini bukan tautan antrian.')).toBeVisible();
+    await expect(page.getByText('Token ini tidak valid.')).toBeVisible();
+  });
+
+  // Kode 6 karakter yang diketik di popup (huruf kecil) membuat tiket tanpa memindai QR.
+  test('TC-05-12 Mengetik kode 6 karakter di popup membuat tiket tanpa QR', async ({ page, request }) => {
+    const queue = await newQueue(request);
+    const customer = await registerAccount(request, 'typed');
+    const path = await joinPathViaApi(request, queue.id, queue.ownerToken);
+    const code = joinTokenOf(path);
+    expect(code).toMatch(/^[2-9A-HJKMNP-Z]{6}$/);
+    await signInWithToken(page, customer.token, customer.email);
+
+    await action(page, 'Masuk Ke Antrian').click();
+    await field(page, 'Token 6 karakter').fill(code.toLowerCase());
+    await action(page, 'Masuk').click();
+
+    await expect(page).toHaveURL(new RegExp(`/ticket/${queue.id}`));
+    await expect(page.getByText('Nomor Anda')).toBeVisible();
   });
 });

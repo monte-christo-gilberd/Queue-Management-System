@@ -740,8 +740,49 @@ func (m *memQueueRepo) UpdateQRCurrentCode(_ context.Context, queueID int64, tok
 		return apperror.ErrNotFound
 	}
 	settings.QRCurrentCode = sql.NullString{String: token, Valid: token != ""}
+	settings.QRExpiresAt = sql.NullTime{}
 	m.settings[queueID] = settings
 	return nil
+}
+
+// GetQueueSettingsByJoinCode mencari pengaturan antrian yang kode aktifnya sama, seperti kolom unik di database.
+func (m *memQueueRepo) GetQueueSettingsByJoinCode(_ context.Context, code string) (model.QueueSettings, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, settings := range m.settings {
+		if settings.QRCurrentCode.Valid && settings.QRCurrentCode.String == code {
+			return settings, nil
+		}
+	}
+	return model.QueueSettings{}, apperror.ErrNotFound
+}
+
+// UpdateDynamicQRCode menyimpan kode dinamis dan masa berlakunya untuk antrian queueID.
+func (m *memQueueRepo) UpdateDynamicQRCode(_ context.Context, queueID int64, code string, expiresAt time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	settings, ok := m.settings[queueID]
+	if !ok {
+		return apperror.ErrNotFound
+	}
+	settings.QRCurrentCode = sql.NullString{String: code, Valid: true}
+	settings.QRExpiresAt = sql.NullTime{Time: expiresAt, Valid: true}
+	m.settings[queueID] = settings
+	return nil
+}
+
+// RotateDynamicQRCode menggantikan kode hanya bila kode aktif masih oldCode dan antrian dinamis, meniru UPDATE bersyarat.
+func (m *memQueueRepo) RotateDynamicQRCode(_ context.Context, queueID int64, oldCode, newCode string, expiresAt time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	settings, ok := m.settings[queueID]
+	if !ok || settings.QRType != model.QueueQRTypeDynamic || settings.QRCurrentCode.String != oldCode {
+		return false, nil
+	}
+	settings.QRCurrentCode = sql.NullString{String: newCode, Valid: true}
+	settings.QRExpiresAt = sql.NullTime{Time: expiresAt, Valid: true}
+	m.settings[queueID] = settings
+	return true, nil
 }
 
 // dropSettings mensimulasikan antrian lama yang belum punya baris queue_settings

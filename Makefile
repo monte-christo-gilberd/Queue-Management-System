@@ -28,6 +28,8 @@
 #   make prod-guard                         tandai DB prod agar seed/reset ditolak (jalankan sekali)
 #   make prod-backup                        backup DB prod ke ~/qms-backups/
 #   make prod-reset                         kosongkan antrian dan tiket demo (akun dipertahankan, backup dulu)
+#   make prod-seed-penguji                  buat akun penguji (owner + customer) dan isi data uji (backup dulu)
+#   make prod-restore-penguji               kembalikan data uji akun penguji ke kondisi seed (backup dulu)
 #
 # Kata `obs` (opsional): make up obs, make tunnel obs, make prod-up obs ikut menyalakan observability (collector, Loki,
 # Grafana) dan memasang pengumpulan log di service aplikasi, tanpa menjalankan make obs-up terpisah. Bentuk obs=1 juga
@@ -69,6 +71,7 @@ SHELL := bash
 .SILENT:
 .PHONY: obs up tunnel down restart seed logs ps mailpit verify-user \
         prod-up prod-up-mailpit prod-up-smtp prod-down prod-guard prod-backup prod-reset \
+        prod-seed-penguji prod-restore-penguji \
         obs-up obs-down obs-url obs-check
 
 # -----------------------------------------------------------------------------
@@ -324,6 +327,14 @@ prod-backup:
 # Reset data demo: hapus antrian, tiket, dan push. Akun dipertahankan. Backup otomatis dibuat dulu (scripts/reset-demo.sh).
 prod-reset:
 	QMS_ENV_FILE=$(PROD_ENV) scripts/reset-demo.sh
+
+# Akun penguji (1 akun: owner + customer) dan data uji antrian. Membuat akun bila belum ada (scripts/seed-prod-penguji.sh).
+prod-seed-penguji:
+	QMS_ENV_FILE=$(PROD_ENV) scripts/seed-prod-penguji.sh
+
+# Kembalikan data uji akun penguji ke kondisi seed. Akun dan sandinya tetap (scripts/restore-prod-penguji.sh).
+prod-restore-penguji:
+	QMS_ENV_FILE=$(PROD_ENV) scripts/restore-prod-penguji.sh
 
 # -----------------------------------------------------------------------------
 # OBSERVABILITY (overlay docker-compose.observability.yml, lihat berkas itu dan docs/plan-observability-tracing.md)

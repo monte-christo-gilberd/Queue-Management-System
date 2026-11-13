@@ -231,6 +231,11 @@ func (s *specTicketSvc) ListMyTickets(_ context.Context, userID int64) ([]model.
 	return nil, s.err
 }
 
+// AfterJoin: stub; kode dinamis tidak diputar di tes handler.
+func (s *specTicketSvc) AfterJoin(_ context.Context, _ int64, _ string) error {
+	return nil
+}
+
 // ResolveJoinToken: stub verifikasi token join (token -> antrian).
 func (s *specTicketSvc) ResolveJoinToken(_ context.Context, token string) (model.Queue, error) {
 	s.gotToken = token

@@ -105,7 +105,7 @@ test.describe('TS-02 Mengelola antrian (owner)', () => {
     await page.goto(`${WEB_URL}/queues/${queue.id}`);
 
     await action(page, 'LIHAT QR').click();
-    await expect(action(page, 'SALIN TAUTAN')).toBeVisible();
+    await expect(action(page, 'SALIN TOKEN')).toBeVisible();
     await expect(action(page, 'UNDUH PNG')).toBeVisible();
   });
 
@@ -116,16 +116,16 @@ test.describe('TS-02 Mengelola antrian (owner)', () => {
     await page.goto(`${WEB_URL}/queues/${queue.id}`);
 
     await action(page, 'LIHAT QR').click();
-    await action(page, 'SALIN TAUTAN').click();
+    await action(page, 'SALIN TOKEN').click();
 
-    await expect(action(page, 'TAUTAN TERSALIN')).toBeVisible();
+    await expect(action(page, 'TOKEN TERSALIN')).toBeVisible();
     // Membaca clipboard hanya bisa di konteks aman (localhost/HTTPS); di http://<ip-lan> jalur fallback yang diuji,
     // dan label "TERSALIN" di atas sudah membuktikan execCommand berhasil.
     if (await page.evaluate(() => window.isSecureContext)) {
-      expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/join\?t=v1\./);
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^[2-9A-HJKMNP-Z]{6}$/);
     }
-    // Label kembali ke "SALIN TAUTAN" setelah beberapa detik.
-    await expect(action(page, 'SALIN TAUTAN')).toBeVisible({ timeout: 5000 });
+    // Label kembali ke "SALIN TOKEN" setelah beberapa detik.
+    await expect(action(page, 'SALIN TOKEN')).toBeVisible({ timeout: 5000 });
   });
 
   test('TC-02-07c Salin gagal (tanpa Clipboard API dan execCommand ditolak): ada pesan dan tautan bisa disalin manual', async ({
@@ -141,11 +141,11 @@ test.describe('TS-02 Mengelola antrian (owner)', () => {
     await page.goto(`${WEB_URL}/queues/${queue.id}`);
 
     await action(page, 'LIHAT QR').click();
-    await action(page, 'SALIN TAUTAN').click();
+    await action(page, 'SALIN TOKEN').click();
 
-    await expect(action(page, 'Tidak bisa menyalin otomatis. Pilih tautan di bawah lalu salin manual.')).toBeVisible();
-    await expect(page.getByLabel('Tautan join')).toHaveValue(/\/join\?t=v1\./);
-    await expect(action(page, 'TAUTAN TERSALIN')).toHaveCount(0);
+    await expect(action(page, 'Tidak bisa menyalin otomatis. Pilih token di bawah lalu salin manual.')).toBeVisible();
+    await expect(page.getByLabel('Token join')).toHaveValue(/^[2-9A-HJKMNP-Z]{6}$/);
+    await expect(action(page, 'TOKEN TERSALIN')).toHaveCount(0);
   });
 
   test('TC-02-08 Daftar antrian bisa dibuka dari menu profil', async ({ page, request }) => {

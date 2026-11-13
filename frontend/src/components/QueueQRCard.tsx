@@ -16,6 +16,7 @@ import { ModalCard } from '@/components/ui/ModalCard';
 import { QrCode } from '@/components/ui/QrCode';
 import { useThemeColor } from '@/hooks/use-theme-mode';
 import { renderQrPngDataUrl } from '@/lib/qr-matrix';
+import { parseJoinToken } from '@/lib/qr-scan';
 import { copyToClipboard } from '@/lib/web-origin';
 import type { QueueQR } from '@/types/api';
 
@@ -80,6 +81,8 @@ export function QueueQRCard({
 
   const joinUrl = qr?.join_url ?? null;
   const isDynamic = qr?.type === 'dynamic';
+  // Kode 6 karakter dari tautan join, untuk diketik pengunjung yang tidak memindai QR.
+  const joinCode = joinUrl ? parseJoinToken(joinUrl) : null;
 
   // Label "TERSALIN" hanya sebentar; tanpa ini tombol terus mengaku sudah menyalin, juga setelah token dinamis berganti.
   useEffect(() => {
@@ -88,12 +91,15 @@ export function QueueQRCard({
     return () => clearTimeout(t);
   }, [copied]);
 
+  // Yang disalin adalah token 6 karakter; tautan lengkap dipakai hanya bila kode tidak bisa dibaca dari URL.
+  const tokenText = joinCode ?? joinUrl;
+
   async function handleCopy() {
-    if (!joinUrl) return;
-    const ok = await copyToClipboard(joinUrl);
+    if (!tokenText) return;
+    const ok = await copyToClipboard(tokenText);
     setCopied(ok);
     setCopyFailed(!ok);
-    if (!ok) toast.show('Tidak bisa menyalin otomatis. Pilih tautan di bawah lalu salin manual.');
+    if (!ok) toast.show('Tidak bisa menyalin otomatis. Pilih token di bawah lalu salin manual.');
   }
 
   // Unduh hanya di web: PNG digambar dari tautan lewat canvas. Native bisa memakai share sheet nanti.
@@ -232,16 +238,32 @@ export function QueueQRCard({
               )}
             </View>
 
+            {/* Kode 6 karakter ditampilkan agar pengunjung bisa mengetiknya tanpa memindai QR. */}
+            {joinCode ? (
+              <View className="items-center gap-1">
+                <Text className="text-[11px] font-bold uppercase tracking-wide text-muted">Kode join</Text>
+                <Text
+                  accessibilityLabel={`Kode join ${joinCode}`}
+                  selectable
+                  className="text-[28px] font-extrabold tracking-[6px] text-foreground"
+                  style={{ fontFamily: 'monospace' }}
+                >
+                  {joinCode}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Keterangan singkat: kapan kode berganti, sesuai tipe QR yang aktif. */}
             <Text className="text-[12px] text-muted">
               {isDynamic
-                ? 'Token dinamis diganti otomatis setelah kedaluwarsa.'
-                : 'Token statis berlaku sampai Anda mengganti kode.'}
+                ? 'Kode dinamis diganti otomatis setelah ada yang berhasil join atau setelah kedaluwarsa.'
+                : 'Kode statis berlaku sampai Anda mengganti kode.'}
             </Text>
 
-            {joinUrl && copyFailed ? (
+            {tokenText && copyFailed ? (
               <TextInput
-                accessibilityLabel="Tautan join"
-                value={joinUrl}
+                accessibilityLabel="Token join"
+                value={tokenText}
                 editable={false}
                 selectTextOnFocus
                 className="rounded-card border border-line px-3 py-2 text-[12px] text-foreground"
@@ -253,7 +275,7 @@ export function QueueQRCard({
             <View className="flex-row gap-2">
               {joinUrl ? (
                 <AppButton
-                  label={copied ? 'TAUTAN TERSALIN' : 'SALIN TAUTAN'}
+                  label={copied ? 'TOKEN TERSALIN' : 'SALIN TOKEN'}
                   variant="outline"
                   className="flex-1"
                   onPress={() => void handleCopy()}

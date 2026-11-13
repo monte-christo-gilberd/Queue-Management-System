@@ -6,6 +6,7 @@ import (
 	"errors"
 	"qms/internal/apperror"
 	"qms/internal/model"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -332,7 +333,8 @@ func (r *QueueRepository) GetQueueSettings(
 		SELECT
 			queue_id,
 			qr_type,
-			qr_current_code
+			qr_current_code,
+			qr_expires_at
 		FROM queue_settings
 		WHERE queue_id = $1
 	`
@@ -474,10 +476,19 @@ func (r *QueueRepository) UpdateQRCurrentCode(
 	queueID int64,
 	token string,
 ) error {
+
+	const query = `
+		UPDATE queue_settings 
+		SET 
+			qr_current_code = $2, 
+			qr_expires_at = NULL 
+		WHERE queue_id = $1
+	`
+
 	// Jalankan UPDATE qr_current_code (token QR yang aktif) untuk antrian queueID.
 	result, err := r.db.ExecContext(
 		ctx,
-		`UPDATE queue_settings SET qr_current_code = $2 WHERE queue_id = $1`,
+		query,
 		queueID,
 		token,
 	)
@@ -536,4 +547,94 @@ func (r *QueueRepository) GetCounterByQueue(
 		return model.Counter{}, err
 	}
 	return counter, nil
+}
+
+// GetQueueSettingsByJoinCode mencari queue_settings dari kode join aktif. Mengembalikan ErrNotFound bila tidak ada.
+func (r *QueueRepository) GetQueueSettingsByJoinCode(
+	ctx context.Context,
+	code string,
+) (model.QueueSettings, error) {
+	var settings model.QueueSettings
+	// Cari baris yang kode aktifnya sama dengan code. Kode lama yang sudah diganti tidak ada di kolom ini.
+	err := r.db.GetContext(
+		ctx,
+		&settings,
+		`SELECT queue_id, qr_type, qr_current_code, qr_expires_at
+		 FROM queue_settings WHERE qr_current_code = $1`,
+		code,
+	)
+	// Tidak ada baris yang cocok: kode tidak dikenal, kembalikan ErrNotFound.
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.QueueSettings{}, apperror.ErrNotFound
+		}
+		// Error database lain dikembalikan apa adanya.
+		return model.QueueSettings{}, err
+	}
+	// Baris ditemukan: kembalikan pengaturan antrian yang memakai kode ini.
+	return settings, nil
+}
+
+// UpdateDynamicQRCode menyimpan kode dinamis baru beserta waktu kedaluwarsanya untuk antrian queueID.
+func (r *QueueRepository) UpdateDynamicQRCode(
+	ctx context.Context,
+	queueID int64,
+	code string,
+	expiresAt time.Time,
+) error {
+	// Simpan kode dinamis dan masa berlakunya untuk antrian queueID.
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE queue_settings SET qr_current_code = $2, qr_expires_at = $3 WHERE queue_id = $1`,
+		queueID,
+		code,
+		expiresAt,
+	)
+	// Jika UPDATE gagal, kembalikan error.
+	if err != nil {
+		return err
+	}
+	// Ambil jumlah baris yang terpengaruh oleh UPDATE.
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	// Tidak ada baris yang berubah berarti queue_settings antrian itu tidak ada.
+	if rowsAffected == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
+}
+
+// RotateDynamicQRCode mengganti kode dinamis oldCode dengan newCode hanya bila kode aktif masih oldCode dan
+// antrian memakai QR dinamis. Mengembalikan false bila kode sudah berganti (tidak ada baris yang berubah).
+func (r *QueueRepository) RotateDynamicQRCode(
+	ctx context.Context,
+	queueID int64,
+	oldCode string,
+	newCode string,
+	expiresAt time.Time,
+) (bool, error) {
+	// UPDATE bersyarat: kode hanya diganti bila masih oldCode dan mode antrian masih dinamis.
+	// Bila join lain sudah lebih dulu menggantinya, tidak ada baris yang cocok dan hasilnya false.
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE queue_settings
+		 SET qr_current_code = $3, qr_expires_at = $4
+		 WHERE queue_id = $1 AND qr_current_code = $2 AND qr_type = 'dynamic'`,
+		queueID,
+		oldCode,
+		newCode,
+		expiresAt,
+	)
+	// Jika UPDATE gagal, kembalikan error.
+	if err != nil {
+		return false, err
+	}
+	// Ambil jumlah baris yang terpengaruh; lebih dari nol berarti kode benar-benar diganti.
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected > 0, nil
 }

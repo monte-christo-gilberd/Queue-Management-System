@@ -141,6 +141,21 @@ func (m *memQueues) UpdateQRCurrentCode(_ context.Context, id int64, token strin
 	return nil
 }
 
+// GetQueueSettingsByJoinCode: stub; tes ini tidak menguji pencarian kode.
+func (m *memQueues) GetQueueSettingsByJoinCode(_ context.Context, code string) (model.QueueSettings, error) {
+	return model.QueueSettings{}, apperror.ErrNotFound
+}
+
+// UpdateDynamicQRCode: stub; tidak menyimpan apa pun.
+func (m *memQueues) UpdateDynamicQRCode(_ context.Context, id int64, code string, expiresAt time.Time) error {
+	return nil
+}
+
+// RotateDynamicQRCode: stub; selalu melaporkan kode tidak berganti.
+func (m *memQueues) RotateDynamicQRCode(_ context.Context, id int64, oldCode, newCode string, expiresAt time.Time) (bool, error) {
+	return false, nil
+}
+
 func (m *memQueues) CreateDefaultCounter(
 	_ context.Context,
 	queueID int64,
