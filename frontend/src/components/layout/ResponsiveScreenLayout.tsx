@@ -107,7 +107,7 @@ const TAB_TO_ITEM: Record<TabKey, OwnerMenuItem> = {
 };
 
 // Logo header SVG dimuat lewat require (SVG sebagai modul).
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const LOGO_HEADER = require('../../../logo/logo-header.svg');
 
 /** Tab navbar bawah HP: Beranda, Antrian, Riwayat, Profil. Tombol QR melayang di tengah, di antara Antrian dan Riwayat (lihat spacer "Masuk"). */
