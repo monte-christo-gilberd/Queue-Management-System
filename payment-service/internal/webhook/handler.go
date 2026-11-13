@@ -13,6 +13,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+
+	"qms/payment-service/internal/order"
 )
 
 // Event yang dikirim BorderPay di header x-borderpay-event.
@@ -92,6 +94,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Simpan dulu, baru balas 2xx. Bila penyimpanan gagal, balas 500 supaya BorderPay mengirim ulang.
 	applied, err := h.store.MarkPaid(r.Context(), payload.Data.ReferenceID, payload.Data.Amount)
+	// Pesanan tidak dikenal: tidak ada yang bisa diterapkan dan mengirim ulang tidak membantu, jadi dibalas 200.
+	if errors.Is(err, order.ErrUnknown) {
+		log.Printf("payment webhook: reference_id=%s tidak dikenal, diabaikan", payload.Data.ReferenceID)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	// Nominal tidak sesuai: pembayaran tidak diterapkan. Dibalas 409 dan dicatat untuk ditelusuri.
+	if errors.Is(err, order.ErrAmountMismatch) {
+		log.Printf("payment webhook: nominal reference_id=%s tidak sesuai pesanan", payload.Data.ReferenceID)
+		http.Error(w, "amount mismatch", http.StatusConflict)
+		return
+	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return

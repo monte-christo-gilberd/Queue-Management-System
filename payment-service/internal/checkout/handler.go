@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"qms/payment-service/internal/borderpay"
+	"qms/payment-service/internal/order"
 )
 
 // maxBodyBytes: batas ukuran body request internal.
@@ -21,14 +22,24 @@ type Creator interface {
 	CreatePayment(ctx context.Context, req borderpay.CreateRequest) (borderpay.CreateResponse, error)
 }
 
+// Recorder menyimpan pesanan checkout (dipenuhi store.Postgres).
+type Recorder interface {
+	CreatePending(ctx context.Context, o order.Pending) error
+	SetPayURL(ctx context.Context, referenceID, payURL string) error
+}
+
 // Request: body POST /internal/v1/payments dari backend utama.
 type Request struct {
+	// OwnerID: owner yang membayar langganan.
+	OwnerID   int64  `json:"owner_id"`
 	Amount    int64  `json:"amount"`
 	Method    string `json:"method"`
 	BankCode  string `json:"bank_code"`
 	ReturnURL string `json:"return_url"`
-	// ReferenceID: ID pesanan dari backend. Bila kosong, layanan ini tidak membuatkan ID sendiri.
+	// ReferenceID: ID pesanan dari backend. Wajib dan unik; dipakai sebagai kunci di webhook.
 	ReferenceID string `json:"reference_id"`
+	// PlanType: paket yang dibeli. Kosong berarti order.PlanMonthly.
+	PlanType string `json:"plan_type"`
 }
 
 // Response: data yang dikembalikan ke backend utama.
@@ -43,11 +54,12 @@ type Response struct {
 type Handler struct {
 	serviceToken []byte
 	creator      Creator
+	recorder     Recorder
 }
 
 // NewHandler membuat Handler. Token layanan kosong berarti semua request ditolak.
-func NewHandler(serviceToken string, creator Creator) *Handler {
-	return &Handler{serviceToken: []byte(serviceToken), creator: creator}
+func NewHandler(serviceToken string, creator Creator, recorder Recorder) *Handler {
+	return &Handler{serviceToken: []byte(serviceToken), creator: creator, recorder: recorder}
 }
 
 // ServeHTTP memeriksa token layanan, memvalidasi request, lalu membuat pembayaran di BorderPay.
@@ -66,6 +78,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	req.ReferenceID = strings.TrimSpace(req.ReferenceID)
+	if req.ReferenceID == "" || req.OwnerID <= 0 {
+		http.Error(w, "reference_id and owner_id are required", http.StatusBadRequest)
+		return
+	}
+	if req.PlanType == "" {
+		req.PlanType = order.PlanMonthly
+	}
+
+	// Catat pesanan dulu sebagai pending, supaya webhook yang datang cepat tetap menemukannya.
+	err := h.recorder.CreatePending(r.Context(), order.Pending{
+		ReferenceID: req.ReferenceID,
+		OwnerID:     req.OwnerID,
+		Amount:      req.Amount,
+		PlanType:    req.PlanType,
+	})
+	if errors.Is(err, order.ErrDuplicate) {
+		http.Error(w, "reference_id already exists", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	out, err := h.creator.CreatePayment(r.Context(), borderpay.CreateRequest{
 		Amount:      req.Amount,
 		Method:      req.Method,
@@ -80,6 +117,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.Error(w, "payment provider unavailable", http.StatusBadGateway)
+		return
+	}
+	// Simpan pay_url ke pesanan. Tanpa pay_url tersimpan, webhook tetap bisa mencocokkan pesanan, tetapi
+	// pemanggil sudah menerima pay_url yang tidak tercatat, jadi galat ini dibalas 500.
+	if err := h.recorder.SetPayURL(r.Context(), req.ReferenceID, out.PayURL); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 

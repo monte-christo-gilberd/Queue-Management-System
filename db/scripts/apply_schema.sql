@@ -294,4 +294,18 @@ UPDATE queue_settings SET qr_current_code = NULL, qr_expires_at = NULL
 CREATE UNIQUE INDEX IF NOT EXISTS queue_settings_qr_current_code_key
     ON queue_settings (qr_current_code) WHERE qr_current_code IS NOT NULL;
 
+-- Pesanan pembayaran BorderPay (payment-service). Aman dijalankan berulang.
+CREATE TABLE IF NOT EXISTS payment_orders (
+    reference_id   TEXT PRIMARY KEY,
+    owner_id       BIGINT NOT NULL REFERENCES owners(user_id),
+    amount         BIGINT NOT NULL CHECK (amount > 0),
+    plan_type      VARCHAR NOT NULL CHECK (plan_type IN ('monthly', 'yearly', 'one_time')),
+    status         VARCHAR NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'paid', 'expired', 'failed')),
+    pay_url        TEXT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    paid_at        TIMESTAMPTZ
+);
+
 COMMIT;

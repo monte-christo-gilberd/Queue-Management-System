@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"qms/payment-service/internal/order"
 )
 
 const testToken = "bpt_test_token_123"
@@ -138,5 +140,20 @@ func TestWebhook_StoreErrorAsksForRetry(t *testing.T) {
 	// Galat penyimpanan harus 500 agar BorderPay mengirim ulang, bukan 200 yang menelan pembayaran.
 	if rec := post(t, h, testToken, paidBody); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+}
+
+func TestWebhook_UnknownReferenceIsAcknowledged(t *testing.T) {
+	// Pesanan tidak dikenal tidak bisa diterapkan; dibalas 200 supaya BorderPay tidak mengulang terus.
+	h := NewHandler(testToken, &fakeStore{err: order.ErrUnknown})
+	if rec := post(t, h, testToken, paidBody); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
+func TestWebhook_AmountMismatchIsConflict(t *testing.T) {
+	h := NewHandler(testToken, &fakeStore{err: order.ErrAmountMismatch})
+	if rec := post(t, h, testToken, paidBody); rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", rec.Code)
 	}
 }
