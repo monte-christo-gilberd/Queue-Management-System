@@ -10,7 +10,7 @@ Sistem antrian untuk layanan tatap muka. Ada dua peran:
 - **Owner**: membuat antrian, memanggil nomor (Next, Skip, Panggil ulang), mengelola counter, menyisipkan atau menghapus nomor, menulis catatan, mengaktifkan layar publik, melihat riwayat dan mengekspornya, dan menutup antrian. Owner harus punya langganan aktif. Langganan saat ini MOCK: satu tombol di layar Subscription menambah 30 hari tanpa pembayaran (`POST /api/v1/owners/subscription/extend`). User biasa menjadi owner lewat penekanan pertama tombol itu.
 - **Customer**: login, bergabung ke antrian lewat token QR atau tautan, melihat nomor yang sedang dilayani dan posisinya secara real-time, membatalkan tiketnya, dan melihat riwayat tiket. Menerima Web Push dan email.
 
-Sistem terdiri dari lima service Go (backend antrian, `auth-service`, `qr-service`, `notify-service`, `mail-service`), satu PostgreSQL, satu frontend Expo, dan nginx. Ringkasan lintas-service ada di [README.md](README.md) bagian 5. `payment-service` (Stripe) sudah dihapus.
+Sistem terdiri dari lima service Go (backend antrian, `auth-service`, `qr-service`, `notify-service`, `mail-service`), satu PostgreSQL, satu frontend Expo, dan nginx. Ringkasan lintas-service ada di [README.md](../README.md) bagian 5. `payment-service` (Stripe) sudah dihapus.
 
 ```
    Browser (Expo web / native)
@@ -126,7 +126,7 @@ Batasan penting di `tickets`:
                          └── skip permanen (fallback `remove`) ──► skipped
 ```
 
-Aturan Skip diatur per antrian lewat `queue_settings.skip_fallback` (`remove|back|after_n`), `skip_fallback_n`, dan `skip_max_returns`. Setiap counter melayani satu nomor (`currently_served`). Menghapus counter yang sedang melayani mengembalikan nomornya ke depan antrian.
+Aturan Skip diatur per antrian lewat `queue_settings.skip_fallback` (`remove|back|after_n`), `skip_fallback_n`, dan `skip_max_returns`. Bawaan antrian baru: `skip_fallback = back` (kembali ke paling belakang) dan `skip_max_returns = 1`; antrian yang sudah ada menyimpan nilainya sendiri. Setiap counter melayani satu nomor (`currently_served`). Menghapus counter yang sedang melayani mengembalikan nomornya ke depan antrian.
 
 - **Join ulang** (user yang sudah punya tiket di antrian itu): backend mengembalikan **tiket yang sudah ada** dengan 200.
   Tidak ada nomor kedua dan tidak ada event baru. Ini menjawab kasus scan QR dua kali atau double-tap.
@@ -247,7 +247,7 @@ Dengan nginx, `EXPO_PUBLIC_API_URL` harus diisi dengan origin nginx. Kalau tidak
 | Layar dan komponen dipisah (presentational) | Tampilan bisa diuji dan dirombak tanpa menyentuh data. |
 | Daftar antrian tetap ada tanpa langganan, tetapi hanya yang aktif | Owner tetap bisa melihat antrian yang masih berjalan. |
 | Gap 65536 untuk `sort_key` | Penyisipan di tengah bisa dilakukan tanpa menulis ulang baris lain. |
-| Library Go diseragamkan: `gin` untuk HTTP, `sqlx` dengan driver `pgx` untuk query, pgx v5.12.0 di semua modul | Satu cara menulis handler, middleware, dan repository di semua service, jadi pola logging, request ID, dan metrik (lihat `plan-observability-tracing`) tidak perlu dua versi. Berlaku untuk backend, auth-service, mail-service (gin dan sqlx), qr-service (gin; tanpa database), dan notify-service (sqlx). |
+| Library Go diseragamkan: `gin` untuk HTTP, `sqlx` dengan driver `pgx` untuk query, pgx v5.12.0 di semua modul | Satu cara menulis handler, middleware, dan repository di semua service, jadi pola logging, request ID, dan metrik tidak perlu dua versi. Berlaku untuk backend, auth-service, mail-service (gin dan sqlx), qr-service (gin; tanpa database), dan notify-service (sqlx). |
 | LISTEN/NOTIFY tetap memakai koneksi `pgx` langsung, bukan `sqlx` (mail-service `LISTEN mail_outbox`, notify-service `LISTEN queue_events`) | `WaitForNotification` hanya ada di API pgx native; `database/sql` tidak punya padanannya. Koneksi LISTEN dibuka khusus (`pgx.Connect`), tidak diambil dari pool sqlx, supaya koneksi yang menunggu notifikasi tidak ikut dipakai ulang oleh query biasa. Karena itu `pgx` tetap menjadi dependensi langsung di mail-service dan notify-service. |
 | notify-service tidak memakai `gin`; `/health` tetap `net/http` | Satu-satunya endpoint HTTP-nya hanya `GET /health` (48 baris, tanpa middleware). Menambah gin hanya untuk satu rute menambah dependensi dan ukuran binary tanpa manfaat. `net/http` di `internal/pusher` adalah klien Web Push, bukan server. |
 | qr-service tidak memakai `sqlx` | Tidak punya database sama sekali; ia hanya membuat dan merender QR. |

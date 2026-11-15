@@ -39,7 +39,7 @@ type Props = {
 
 /** Form pengaturan skip: pilihan perilaku nomor yang dilewati, plus isian N dan batas pengembalian bila relevan. */
 export function SkipSettingsCard({ settings, disabled = false, saving = false, saved = false, error, onSave }: Props) {
-  const [fallback, setFallback] = useState<SkipFallback>(settings?.fallback ?? 'remove');
+  const [fallback, setFallback] = useState<SkipFallback>(settings?.fallback ?? 'back');
   const [n, setN] = useState(settings?.n ? String(settings.n) : '1');
   const [max, setMax] = useState(settings ? String(settings.max_returns) : '1');
   const [localError, setLocalError] = useState<string>();

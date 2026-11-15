@@ -11,6 +11,7 @@ import { useLocalSearchParams } from 'expo-router';
 
 import HistoryDetail from '@/components/HistoryDetail';
 import { useHistoryQueue } from '@/hooks/use-history';
+import { useAuthStore } from '@/store/authStore';
 import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
 
 /** Detail riwayat satu antrian yang sudah ditutup: semua nomor, customer, hasil akhir, dan catatan owner. */
@@ -20,9 +21,11 @@ export default function HistoryDetailRoute() {
   // Parameter URL selalu string; hanya bilangan bulat positif yang dianggap id antrian yang valid.
   const validId = Number.isInteger(id) && id > 0 ? id : null;
   const history = useHistoryQueue(validId);
+  const displayName = useAuthStore((s) => s.displayName);
 
   return (
     <HistoryDetail
+      shell={{ userName: displayName ?? undefined }}
       queue={history.queue}
       tickets={history.tickets}
       loading={history.loading}

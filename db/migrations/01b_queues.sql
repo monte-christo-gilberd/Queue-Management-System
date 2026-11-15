@@ -47,10 +47,10 @@ CREATE TABLE queue_settings (
 
     -- [dipakai] Pengaturan Skip: apa yang terjadi pada nomor yang dilewati owner.
     --   remove  : jadi 'skipped' dan tidak kembali
-    --   back    : kembali 'waiting' di posisi paling belakang
+    --   back    : kembali 'waiting' di posisi paling belakang (bawaan antrian baru)
     --   after_n : kembali 'waiting' setelah N tiket yang sedang menunggu (skip_fallback_n)
     -- skip_max_returns = berapa kali satu tiket boleh dikembalikan; sesudah itu 'skipped' permanen.
-    skip_fallback          VARCHAR NOT NULL DEFAULT 'remove'
+    skip_fallback          VARCHAR NOT NULL DEFAULT 'back'
         CHECK (skip_fallback IN ('remove', 'back', 'after_n')),
     skip_fallback_n        INT CHECK (skip_fallback_n IS NULL OR skip_fallback_n >= 1),
     skip_max_returns       INT NOT NULL DEFAULT 1 CHECK (skip_max_returns >= 1),

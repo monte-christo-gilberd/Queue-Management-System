@@ -379,6 +379,7 @@ func TestSpec_ListTickets_CustomerCannotSeeOthersTickets(t *testing.T) {
 
 func TestSpec_Skip_SkipsServingAndCallsNext(t *testing.T) {
 	env := newSpecEnv(t)
+	useRemoveSkip(t, env)
 	ctx := context.Background()
 	for _, c := range []int64{specCustomerA, specCustomerB, specCustomerC} {
 		_, _ = env.ts.JoinQueue(ctx, env.queueID, c)

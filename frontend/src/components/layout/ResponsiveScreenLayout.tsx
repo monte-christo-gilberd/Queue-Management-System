@@ -501,7 +501,9 @@ function PanelHeader({
         accessibilityLabel="Buka profil"
         className="flex-1 flex-row items-center gap-3">
         <UserAvatar size={56} iconSize={22} background />
-        <Text className="flex-shrink text-[18px] font-extrabold text-foreground">{userName}</Text>
+        <Text className="min-w-0 flex-1 text-[18px] font-extrabold text-foreground" numberOfLines={1} ellipsizeMode="tail">
+          {userName}
+        </Text>
       </Pressable>
       {/* Mode terang: ikon matahari. Mode gelap: ikon bulan sabit. */}
       <Pressable

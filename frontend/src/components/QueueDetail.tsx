@@ -325,7 +325,7 @@ export default function QueueDetail({
       </View>
 
       {/* Daftar semua tiket yang terdaftar di antrian ini (dibuka dari kartu customer). */}
-      <ModalCard visible={ticketsOpen && !noteOpen} onRequestClose={() => setTicketsOpen(false)}>
+      <ModalCard visible={ticketsOpen && !noteOpen} onRequestClose={() => setTicketsOpen(false)} scrollable>
         <Text className="text-[20px] font-extrabold text-foreground">Daftar tiket</Text>
         {timeline.length > 0 ? (
           <View className="rounded-[20px] bg-dark p-5">

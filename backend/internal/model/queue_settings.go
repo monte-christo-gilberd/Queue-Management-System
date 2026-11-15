@@ -48,8 +48,8 @@ type SkipSettings struct {
 	MaxReturns int `db:"skip_max_returns"`
 }
 
-// DefaultSkipSettings: perilaku sebelum pengaturan ada (nomor yang dilewati tidak kembali).
+// DefaultSkipSettings: pengaturan bawaan antrian baru (nomor yang dilewati kembali ke paling belakang).
 func DefaultSkipSettings() SkipSettings {
-	// Nomor yang dilewati dikeluarkan (remove) dan boleh dikembalikan sekali (MaxReturns 1).
-	return SkipSettings{Fallback: SkipFallbackRemove, MaxReturns: 1}
+	// Nomor yang dilewati kembali ke antrian paling belakang (back) dan boleh dikembalikan sekali (MaxReturns 1).
+	return SkipSettings{Fallback: SkipFallbackBack, MaxReturns: 1}
 }

@@ -5,7 +5,7 @@ Skrip bantu untuk menjalankan, memeriksa, dan merawat stack QMS. Semua skrip **d
 aman). Sebagian besar dipanggil lewat `make`; yang lain dijalankan langsung.
 
 Prasyarat umum: `bash`, `docker` dengan `docker compose`. `check-service-isolation.sh` juga butuh `python3`;
-`gen-auth-keys.sh` dan `create-demo-accounts.sh` butuh `openssl`; `create-demo-accounts.sh` butuh `curl`.
+`gen-auth-keys.sh` dan `seed-prod-penguji.sh` butuh `openssl`; `seed-prod-penguji.sh` juga butuh `curl` dan modul Python `bcrypt`.
 
 | Skrip | Untuk apa | Stack | Dipanggil oleh |
 |---|---|---|---|
@@ -15,10 +15,8 @@ Prasyarat umum: `bash`, `docker` dengan `docker compose`. `check-service-isolati
 | [`check-google-config.sh`](#check-google-configsh) | Memeriksa konfigurasi login Google (server dan frontend sinkron) | dev dan prod | `make up`, `make tunnel`, `make prod-up` |
 | [`check-mail-mode.sh`](#check-mail-modesh) | Memeriksa `MAIL_MODE` dan `SMTP_*` sebelum stack prod naik | prod | `make prod-up` |
 | [`verify-user.sh`](#verify-usersh) | Menandai email satu akun terverifikasi langsung di database | dev atau prod | `make verify-user` |
-| [`create-demo-accounts.sh`](#create-demo-accountssh) | Membuat 1 owner dan 4 customer demo | prod | manual |
-| [`reset-demo.sh`](#reset-demosh) | Mengosongkan antrian dan tiket demo, akun dipertahankan | prod | `make prod-reset` |
-| [`seed-prod-penguji.sh`](#seed-prod-penguji-dan-restore-prod-penguji) | Membuat 1 akun penguji (owner + customer) dan mengisi data uji antrian | prod | `make prod-seed-penguji` |
-| [`restore-prod-penguji.sh`](#seed-prod-penguji-dan-restore-prod-penguji) | Mengembalikan data uji akun penguji ke kondisi seed | prod | `make prod-restore-penguji` |
+| [`reset-demo.sh`](#reset-demosh) | RESET TOTAL database prod (semua akun dihapus) | prod | `make prod-reset` |
+| [`seed-prod-penguji.sh`](#seed-prod-penguji) | Membuat 1 akun penguji (owner + customer) dan mengisi data uji antrian | prod | `make prod-seed-penguji` |
 | [`backup-prod.sh`](#backup-prodsh) | Backup dan restore database prod | prod | `make prod-backup`, `make prod-reset` |
 
 Variabel lingkungan yang dibaca beberapa skrip:
@@ -184,46 +182,25 @@ Email dikirim sebagai variabel psql, bukan disisipkan ke teks SQL.
 
 ---
 
-## create-demo-accounts.sh
-
-Membuat 1 owner (langganan 30 hari) dan 4 customer lewat API register, dengan sandi acak 16 karakter. Semua akun
-langsung ditandai terverifikasi (tidak bergantung pada kotak surat atau Mailpit).
-
-```bash
-scripts/create-demo-accounts.sh
-QMS_API=http://localhost:8080 QMS_DEMO_FILE=~/akun.txt scripts/create-demo-accounts.sh
-```
-
-- Stack prod harus sudah berjalan (`make prod-up`). Registrasi lewat nginx dilayani `auth-service`.
-- Daftar akun ditulis ke `~/qms-demo-accounts.txt` (mode 600, di luar repo). Skrip **menolak berjalan** bila berkas itu
-  sudah ada; hapus dulu bila ingin membuat ulang.
-- `QMS_API` (bawaan `http://localhost:8080`) dan `QMS_DEMO_FILE` mengganti alamat API dan lokasi keluaran.
-- Domain di nama akun dan judul keluaran ditulis tetap di dalam skrip; sesuaikan bila domain demo berbeda.
-
----
-
 ## reset-demo.sh
 
-Mengosongkan data demo di stack **prod**: `notification_outbox`, `push_subscriptions`, `ticket_notes`, `counters`,
-`tickets`, `queue_history`, `queue_settings`, `queue_displays`, dan `queues`. Akun (`users`, `owners`, `payments`, foto
-profil) tetap, dan langganan owner diperpanjang 30 hari. Backup dibuat otomatis lebih dulu.
+**Reset total** database prod. Volume `qms-prod_db_data_prod` dihapus, lalu `make prod-up` menyalakan stack lagi dengan
+database kosong. Container `db` membuat ulang skema dan role dari `db/migrations/`. **Semua akun (owner, pelanggan,
+penguji), antrian, tiket, riwayat, dan pembayaran ikut hilang.**
 
-Semua tabel yang mereferensikan `queues`, `tickets`, atau `counters` harus ikut di perintah `TRUNCATE`, karena skrip tidak
-memakai `CASCADE`. Tabel yang terlewat membuat Postgres menolak seluruh perintah dan transaksi dibatalkan (itu yang terjadi
-sebelum `queue_displays` ditambahkan).
+Urutan skrip: cek stack berjalan, konfirmasi (ketik `hapus-prod`), backup (`backup-prod.sh`), `down`, hapus volume,
+`make prod-up`, tunggu `db` sehat, lalu `CREATE TABLE _no_seed_guard` agar seed/reset dev ditolak di DB ini.
 
 ```bash
-scripts/reset-demo.sh        # minta konfirmasi (ketik 'ya')
+scripts/reset-demo.sh        # minta konfirmasi (ketik 'hapus-prod')
 scripts/reset-demo.sh -y     # tanpa konfirmasi
 make prod-reset
 ```
 
-Tidak menyentuh stack dev. Gagal dengan pesan jelas bila stack prod tidak berjalan. Setelah selesai, skrip mencetak
-jumlah akun dan owner yang tersisa.
+Setelah reset, buat ulang akun penguji dan data uji dengan `make prod-seed-penguji`. Untuk memulihkan data sebelumnya:
+`scripts/backup-prod.sh restore <file>` (menimpa database prod).
 
----
-
-## seed-prod-penguji dan restore-prod-penguji
+## seed-prod-penguji
 
 Data uji untuk penguji yang hanya punya **satu akun** (`penguji@montechristo.my.id`, username `penguji`). Akun itu
 adalah owner sekaligus customer, sehingga semua fitur antrian bisa diuji dari satu login:
@@ -247,26 +224,26 @@ Akun penguji juga bisa bergabung dengan memindai QR antriannya sendiri lewat HP 
 customer: Antrian Saya, Riwayat Saya, dan notifikasi.
 
 Isi data uji ada di [`db/scripts/seed_prod_penguji.sql`](../db/scripts/seed_prod_penguji.sql). Pelanggan seed
-(`pelanggan-1` sampai `pelanggan-12`) adalah akun tanpa kata sandi, tidak bisa login, dan notifikasi emailnya mati.
+(`pelanggan-1` sampai `pelanggan-12`) punya kata sandi acak sendiri per run dan bisa login dengan username. Notifikasi emailnya mati.
+
+Setiap run membuat kata sandi acak baru untuk akun penguji dan **semua** pelanggan seed, lalu menulis email, username, dan
+kata sandinya ke `~/qms-penguji-account.txt` (mode 600, di luar repo, ditimpa setiap run). Sesi login lama semua akun itu dicabut. Jalankan ulang skrip yang sama untuk mengembalikan data uji ke kondisi seed.
 
 ```bash
 make prod-seed-penguji        # atau: scripts/seed-prod-penguji.sh [-y]
-make prod-restore-penguji     # atau: scripts/restore-prod-penguji.sh [-y]
 ```
 
-- **seed**: bila akun belum ada, mendaftarkannya lewat API dengan sandi acak 16 karakter. Kredensial ditulis ke
-  `~/qms-penguji-account.txt` (mode 600, di luar repo) dan tidak menimpa berkas yang ada. Bila akun sudah ada, sandinya
-  **tidak** diubah dan hanya datanya yang diisi ulang. Email dan username bisa diganti lewat `PENGUJI_EMAIL` dan
-  `PENGUJI_USERNAME`. Email verifikasi dari pendaftaran ikut terkirim sesuai `MAIL_MODE`.
-- **restore**: mengembalikan antrian, tiket, counter, layar publik (token baru), catatan, riwayat, dan profil dasar
-  (username, notifikasi email, foto profil, langganan 365 hari dari sekarang) ke kondisi seed. Akun dan sandinya
-  tetap. Akun harus sudah ada (`seed` dulu).
-- Keduanya membuat backup database (`scripts/backup-prod.sh`) lebih dulu dan meminta konfirmasi (`ketik 'ya'`) kecuali
-  memakai `-y`.
+- **seed**: setiap run membuat kata sandi acak 16 karakter untuk akun penguji. Bila akun belum ada, akun didaftarkan
+  lewat API. Bila sudah ada, sandinya diganti lewat hash bcrypt. Kredensial ditulis ke `~/qms-penguji-account.txt`
+  (mode 600, di luar repo) dan **ditimpa** setiap run. Setiap run juga mencabut sesi login lama akun penguji.
+  Email dan username bisa diganti lewat `PENGUJI_EMAIL` dan `PENGUJI_USERNAME`. Email verifikasi dari pendaftaran
+  ikut terkirim sesuai `MAIL_MODE`. Skrip ini juga mengembalikan data uji ke kondisi seed, jadi tidak perlu
+  skrip restore terpisah.
+- Skrip membuat backup database (`scripts/backup-prod.sh`) lebih dulu dan meminta konfirmasi (`ketik 'ya'`) kecuali
+  memakai `-y`. Butuh modul Python `bcrypt` di host.
 - Hanya akun penguji, tiketnya, dan akun pelanggan seed yang disentuh. Akun lain dan data produksi lain tidak.
-- Jalankan restore **setelah** sesi pengujian selesai. Bila `make prod-reset` dijalankan, antrian penguji ikut
-  terhapus, jadi jalankan `make prod-restore-penguji` sesudahnya. Restore tidak mengembalikan perubahan sandi; gunakan
-  alur lupa sandi bila penguji mengubahnya.
+- Jalankan ulang seed **setelah** sesi pengujian selesai. Bila `make prod-reset` dijalankan, akun dan data penguji ikut
+  terhapus, jadi jalankan `make prod-seed-penguji` sesudahnya. Sandi baru akan ditulis ke berkas kredensial.
 - Kode QR dan token layar publik berbeda setiap kali data diisi ulang. Cetak ulang QR dari layar owner dan gunakan
   tautan layar publik yang ditampilkan saat skrip selesai.
 

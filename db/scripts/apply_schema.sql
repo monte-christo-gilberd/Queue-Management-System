@@ -8,7 +8,8 @@ BEGIN;
 
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS recalled_at TIMESTAMPTZ;
 ALTER TABLE queues ADD COLUMN IF NOT EXISTS ticket_prefix VARCHAR(3) NOT NULL DEFAULT 'A';
-ALTER TABLE queue_settings ADD COLUMN IF NOT EXISTS skip_fallback VARCHAR NOT NULL DEFAULT 'remove';
+ALTER TABLE queue_settings ADD COLUMN IF NOT EXISTS skip_fallback VARCHAR NOT NULL DEFAULT 'back';
+ALTER TABLE queue_settings ALTER COLUMN skip_fallback SET DEFAULT 'back';
 ALTER TABLE queue_settings ADD COLUMN IF NOT EXISTS skip_fallback_n INT;
 ALTER TABLE queue_settings ADD COLUMN IF NOT EXISTS skip_max_returns INT NOT NULL DEFAULT 1;
 

@@ -30,7 +30,7 @@ Isi dokumen:
 
 Verifikasi email: login tetap bisa sebelum diverifikasi, tetapi bergabung ke antrian (nomor baru) dan membuat antrian ditolak (403 `EMAIL_NOT_VERIFIED`) sampai tautan di email dibuka. Di dev email masuk ke Mailpit; di produksi ikut `MAIL_MODE` ([bagian 2](#verifikasi-email)).
 
-Diagram dan detail lengkap ada di [FLOW.md](FLOW.md).
+Diagram dan detail lengkap ada di [FLOW.md](docs/FLOW.md).
 
 ### Asumsi
 
@@ -50,9 +50,9 @@ Proyek capstone. Hasil pembacaan seluruh kode: backend, frontend, dan keempat se
 
 ### Dokumen lain
 
-- [DESIGN.md](DESIGN.md): arsitektur, keputusan desain, dan batasan.
-- [FLOW.md](FLOW.md): alur pengguna dan diagram urutan.
-- [api-contract.md](api-contract.md): kontrak HTTP dan SSE.
+- [DESIGN.md](docs/DESIGN.md): arsitektur, keputusan desain, dan batasan.
+- [FLOW.md](docs/FLOW.md): alur pengguna dan diagram urutan.
+- [api-contract.md](docs/api-contract.md): kontrak HTTP dan SSE.
 - [deploy/nginx/README.md](deploy/nginx/README.md): pemasangan nginx.
 
 ## 2. Setup and run
@@ -198,10 +198,10 @@ Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) ata
 cp .env.prod.example .env.prod && chmod 600 .env.prod   # isi rahasia (openssl rand -hex 32) dan kunci VAPID baru; .env dev tidak tersentuh
 make down                   # stack dev memakai port 8080 yang sama
 make prod-up                # docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
-scripts/create-demo-accounts.sh   # 1 owner + 4 customer (sudah terverifikasi emailnya), sandi acak di ~/qms-demo-accounts.txt
-make prod-guard             # setelah akun demo dibuat: seed/reset ditolak di DB ini
+make prod-seed-penguji       # akun penguji + pelanggan seed, sandi acak, ditulis ke ~/qms-penguji-account.txt
+make prod-guard             # seed/reset dev ditolak di DB ini
 make prod-backup            # ~/qms-backups/qms-<waktu>.sql.gz; restore: scripts/backup-prod.sh restore <file>
-make prod-reset             # kosongkan antrian/tiket/push untuk demo ulang; akun dipertahankan, backup otomatis dulu
+make prod-reset             # RESET TOTAL: hapus semua akun dan data prod, mulai kosong; backup otomatis dulu
 ```
 
 Tunnel `qms-ta` adalah service systemd yang **manual**: `sudo systemctl start cloudflared` sebelum demo, `sudo systemctl stop cloudflared` sesudahnya (tidak hidup saat boot, berhenti otomatis saat laptop mati). Akses dibatasi aturan WAF Cloudflare berdasarkan IP WiFi. Berkas `docs/setup-perintah-manual.md` dan `docs/petunjuk-mentor.md` (perintah tanpa `make` dan panduan mentor) tidak ada di repo ini.
@@ -215,8 +215,7 @@ Semua script berada di `scripts/` (dijalankan dari akar `queue-management-system
 | Script | Fungsi | Cara pakai | Dipanggil dari |
 |---|---|---|---|
 | `scripts/backup-prod.sh` | Backup (`pg_dump`, gzip) dan restore database prod. Restore **menimpa** data prod. | `make prod-backup`, atau `QMS_ENV_FILE=.env.prod scripts/backup-prod.sh backup`. Restore: `scripts/backup-prod.sh restore <file.sql.gz>` | `make prod-backup`, `make prod-reset` |
-| `scripts/reset-demo.sh` | Mengosongkan antrian, tiket, catatan, riwayat, layar publik, email outbox, dan langganan push di prod. Akun dipertahankan. Backup otomatis dibuat dulu. | `make prod-reset`, atau `scripts/reset-demo.sh -y` untuk melewati konfirmasi | `make prod-reset` |
-| `scripts/create-demo-accounts.sh` | Membuat 1 owner (langganan 30 hari) dan 4 customer demo dengan sandi acak. Daftar akun ditulis ke `~/qms-demo-accounts.txt`. Tidak menimpa berkas yang sudah ada. | `scripts/create-demo-accounts.sh` (stack prod harus sudah berjalan) | Manual |
+| `scripts/reset-demo.sh` | RESET TOTAL database prod: volume DB dihapus, stack dinyalakan lagi dengan DB kosong. Semua akun ikut hilang. Backup otomatis dibuat dulu. | `make prod-reset`, atau `scripts/reset-demo.sh [-y]` |
 | `scripts/verify-user.sh` | Menandai satu email sebagai terverifikasi langsung di database. Dipakai bila email verifikasi tidak sampai. | `make verify-user EMAIL=<email> [STACK=prod]`, atau `scripts/verify-user.sh <email> [prod]` | `make verify-user` |
 | `scripts/check-mail-mode.sh` | Memeriksa `MAIL_MODE` dan `SMTP_*` di `.env.prod` sebelum stack prod naik. Menolak konfigurasi yang salah. | Otomatis lewat `make prod-up`, atau `MAIL_MODE=smtp scripts/check-mail-mode.sh .env.prod` | `make prod-up` |
 | `scripts/gen-auth-keys.sh` | Membuat pasangan kunci RSA untuk token login (`keys/`, tidak ikut git). Idempoten; tidak menimpa kunci yang ada. | Otomatis lewat `make up` dan `make prod-up` | `make up`, `make prod-up` |
@@ -432,7 +431,7 @@ queue-management-system/
 ├── db/                       Dockerfile, migrations (skema, indeks, role per service), dan scripts (apply_schema, reset_seed_dev, backfill)
 ├── deploy/nginx/             konfigurasi nginx (reverse proxy, rate limit)
 ├── observability/            overlay opsional: otel-collector, loki, prometheus, tempo, grafana (dashboard dan alert sebagai kode)
-├── scripts/                  backup-prod, reset-demo, create-demo-accounts, verify-user, gen-auth-keys, check-mail-mode, check-google-config, check-service-isolation (lihat "Daftar script")
+├── scripts/                  backup-prod, reset-demo, verify-user, gen-auth-keys, check-mail-mode, check-google-config, check-service-isolation (lihat "Daftar script")
 ├── keys/ dan keys-dev/       pasangan kunci RSA token login (prod dan dev), dibuat gen-auth-keys.sh
 ├── docker-compose.yml        stack development (hot reload)
 ├── docker-compose.prod.yml   stack demo/produksi (nginx hanya di 127.0.0.1)

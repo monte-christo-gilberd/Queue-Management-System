@@ -3,7 +3,6 @@
 -- -----------------------------------------------------------------------------
 -- Dipakai oleh:
 --   scripts/seed-prod-penguji.sh     membuat akun penguji lewat API (bila belum ada), lalu menjalankan berkas ini
---   scripts/restore-prod-penguji.sh  hanya menjalankan berkas ini: data uji kembali ke kondisi seed
 -- Butuh dua variabel psql:  -v tester_email=... -v tester_username=...
 -- Akun penguji HARUS sudah ada di users (berkas ini menolak jalan bila belum).
 --
@@ -11,8 +10,8 @@
 --   1. akun penguji: username, notifikasi email, verifikasi, langganan, foto profil, langganan push, pembayaran
 --   2. antrian, tiket, counter, layar publik, catatan, dan riwayat milik akun penguji
 --   3. tiket akun penguji di antrian mana pun (akun ini hanya untuk uji)
---   4. akun pelanggan seed: users dengan google_id 'seed-pelanggan-N' (tanpa password, tidak bisa login)
--- Kata sandi penguji TIDAK diubah. Akun lain dan data produksi lain tidak disentuh.
+--   4. akun pelanggan seed: users dengan google_id 'seed-pelanggan-N' (kata sandi acak diberikan skrip setelah berkas ini)
+-- Kata sandi penguji dan pelanggan diatur oleh scripts/seed-prod-penguji.sh (bukan oleh berkas ini). Akun lain dan data produksi lain tidak disentuh.
 --
 -- Isi setelah dijalankan: satu antrian per fitur. Setiap antrian aktif berisi 5 sampai 12 orang menunggu.
 --   N  Demo NEXT             10 menunggu. Uji NEXT berulang.
@@ -85,8 +84,8 @@ SELECT owner_id, now() + interval '365 days' FROM _ctx
 ON CONFLICT (user_id) DO UPDATE SET subscription_expires_at = EXCLUDED.subscription_expires_at;
 
 -- -----------------------------------------------------------------------------
--- 3. Pelanggan seed (12 orang). Tanpa password (password_hash NULL) dan notifikasi email mati, sehingga trigger
---    tidak menulis email untuk mereka. Hanya bisa dipakai sebagai tiket, tidak bisa login.
+-- 3. Pelanggan seed (12 orang). Dibuat tanpa password (password_hash NULL); scripts/seed-prod-penguji.sh memberi
+--    kata sandi acak setelah berkas ini. Notifikasi email mati, sehingga trigger tidak menulis email untuk mereka.
 -- -----------------------------------------------------------------------------
 INSERT INTO users (email, username, password_hash, google_id, email_notifications, email_verified_at)
 SELECT 'seed-pelanggan-' || n || '@qms.invalid',
@@ -237,6 +236,28 @@ FROM (
     FROM generate_series(1, 25) AS n
 ) h
 CROSS JOIN _ctx o
+JOIN _q q ON q.kunci = 'R';
+
+-- 6b. Nomor R juga ada di tabel tickets (antrian R sudah tertutup). Halaman detail antrian tertutup membaca tickets,
+--     bukan queue_history, jadi tanpa blok ini daftar nomor di Riwayat Panjang kosong. Status sama dengan arsip di atas.
+INSERT INTO tickets (queue_id, ticket_number, sort_key, user_id, status, skip_count,
+                     called_counter_id, called_at, completed_at, cancelled_at, created_at)
+SELECT q.id, h.n, h.n::bigint * 65536, p.id, h.st,
+       CASE WHEN h.st = 'skipped' THEN 1 ELSE 0 END,
+       NULL, NULL,
+       CASE WHEN h.st = 'completed' THEN now() - interval '2 days' + make_interval(mins => h.n * 40 + 10) END,
+       CASE WHEN h.st = 'cancelled' THEN now() - interval '2 days' + make_interval(mins => h.n * 40 + 3) END,
+       now() - interval '2 days' + make_interval(mins => h.n * 40)
+FROM (
+    SELECT n,
+           ((n - 1) % 12) + 1 AS pel,
+           CASE WHEN n % 5 = 0 THEN 'cancelled'
+                WHEN n % 7 = 0 THEN 'skipped'
+                WHEN n % 9 = 0 THEN 'deleted'
+                ELSE 'completed' END AS st
+    FROM generate_series(1, 25) AS n
+) h
+JOIN _pel p ON p.n = h.pel
 JOIN _q q ON q.kunci = 'R';
 
 -- Insert tiket di atas memicu trigger email "joined" untuk akun penguji. Itu email palsu dari proses seed, jadi dibuang.

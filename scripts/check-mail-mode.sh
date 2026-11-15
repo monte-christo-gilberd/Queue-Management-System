@@ -24,7 +24,7 @@ case "$mode" in
       *)
         echo "PERINGATAN: verifikasi email menyala. Pengguna baru TIDAK menerima tautan verifikasi dan tidak bisa bergabung/membuat antrian"
         echo "            sebelum diverifikasi. Ambil tautan dari Mailpit, atau jalankan: make verify-user EMAIL=<email> STACK=prod"
-        echo "            (akun dari scripts/create-demo-accounts.sh sudah terverifikasi). Matikan lewat EMAIL_VERIFICATION_REQUIRED=false."
+        echo "            (akun penguji dari scripts/seed-prod-penguji.sh sudah terverifikasi). Matikan lewat EMAIL_VERIFICATION_REQUIRED=false."
         ;;
     esac
     ;;

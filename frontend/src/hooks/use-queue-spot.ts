@@ -66,10 +66,11 @@ export function useQueueSpot(queueId: number, onChanged?: () => void) {
     [],
   );
 
-  // Hanya event yang mengubah antrean (join, next, skip, hapus, tutup) yang memicu muat ulang. Cancel dan update lain tidak termasuk.
+  // Event yang mengubah posisi antrean (join, next, skip, batal, hapus, tutup) memicu muat ulang. Pembatalan ikut
+  // karena waiting di belakangnya naik satu posisi; tanpa ini posisi customer lain tidak ter-update.
   useQueueEvents(queueId, {
     onEvent: (event) => {
-      if (event.type === 'ticket_joined' || event.type === 'ticket_next' || event.type === 'ticket_skipped' || event.type === 'ticket_removed' || event.type === 'queue_closed') {
+      if (event.type === 'ticket_joined' || event.type === 'ticket_next' || event.type === 'ticket_skipped' || event.type === 'ticket_cancelled' || event.type === 'ticket_removed' || event.type === 'queue_closed') {
         scheduleReload();
         onChanged?.();
       }

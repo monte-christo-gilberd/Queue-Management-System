@@ -27,9 +27,8 @@
 #   make prod-down                          hentikan stack prod (termasuk container Mailpit)
 #   make prod-guard                         tandai DB prod agar seed/reset ditolak (jalankan sekali)
 #   make prod-backup                        backup DB prod ke ~/qms-backups/
-#   make prod-reset                         kosongkan antrian dan tiket demo (akun dipertahankan, backup dulu)
-#   make prod-seed-penguji                  buat akun penguji (owner + customer) dan isi data uji (backup dulu)
-#   make prod-restore-penguji               kembalikan data uji akun penguji ke kondisi seed (backup dulu)
+#   make prod-reset                         RESET TOTAL database prod: semua akun dan data dihapus, mulai kosong (backup dulu)
+#   make prod-seed-penguji                  buat/setel akun penguji dan pelanggan seed, kata sandi acak baru per akun, isi ulang data uji (backup dulu)
 #
 # Kata `obs` (opsional): make up obs, make tunnel obs, make prod-up obs ikut menyalakan observability (collector, Loki,
 # Grafana) dan memasang pengumpulan log di service aplikasi, tanpa menjalankan make obs-up terpisah. Bentuk obs=1 juga
@@ -53,7 +52,7 @@
 #   - URL tunnel acak tiap sesi. Backend, auth-service, dan mail-service membacanya saat start (QMS_PUBLIC_ORIGIN, untuk
 #     CORS dan tautan di email).
 #   - Login Google (opsional; kosong = tombol tersembunyi). Variabel: GOOGLE_CLIENT_IDS (server) dan
-#     EXPO_PUBLIC_GOOGLE_{WEB,ANDROID,IOS}_CLIENT_ID (frontend) di .env / .env.prod. Setup: documentation/docs/setup-google-login.md
+#     EXPO_PUBLIC_GOOGLE_{WEB,ANDROID,IOS}_CLIENT_ID (frontend) di .env / .env.prod. Setup: lihat scripts/README.md bagian check-google-config.sh
 #       make up / tunnel / prod-up memeriksa konfigurasinya dulu (scripts/check-google-config.sh) dan berhenti bila tidak
 #       sinkron (login pasti gagal). make up dan tunnel juga membersihkan cache Metro otomatis bila EXPO_PUBLIC_GOOGLE_* berubah.
 #       Google hanya menerima origin https atau http://localhost: di dev pakai http://localhost:8080 (bukan IP LAN); di tunnel
@@ -71,7 +70,7 @@ SHELL := bash
 .SILENT:
 .PHONY: obs up tunnel down restart seed logs ps mailpit verify-user \
         prod-up prod-up-mailpit prod-up-smtp prod-down prod-guard prod-backup prod-reset \
-        prod-seed-penguji prod-restore-penguji \
+        prod-seed-penguji \
         obs-up obs-down obs-url obs-check
 
 # -----------------------------------------------------------------------------
@@ -299,7 +298,7 @@ prod-up:
 	if grep -qE '^EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=.+' $(PROD_ENV) 2>/dev/null; then
 	  origin=$$(grep -E '^QMS_PUBLIC_ORIGIN=' $(PROD_ENV) | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 	  echo "Login Google prod: pastikan $$origin dan $$origin/ terdaftar di Authorized JavaScript origins dan redirect URIs (client Web)."
-	  echo "  Role database auth_rw harus punya izin terbaru: bila DB prod sudah ada, jalankan ulang db/migrations/06_auth_role.sh (lihat setup-google-login.md)."
+	  echo "  Role database auth_rw harus punya izin terbaru: bila DB prod sudah ada, jalankan ulang db/migrations/06_auth_role.sh (lihat db/migrations/README.md)."
 	fi
 
 # Pintasan: prod-up dengan MAIL_MODE=mailpit.
@@ -324,20 +323,17 @@ prod-guard:
 prod-backup:
 	QMS_ENV_FILE=$(PROD_ENV) scripts/backup-prod.sh backup
 
-# Reset data demo: hapus antrian, tiket, dan push. Akun dipertahankan. Backup otomatis dibuat dulu (scripts/reset-demo.sh).
+# RESET TOTAL database prod: hapus volume DB, nyalakan ulang stack dengan DB kosong. Semua akun ikut hilang. Backup dulu (scripts/reset-demo.sh).
 prod-reset:
 	QMS_ENV_FILE=$(PROD_ENV) scripts/reset-demo.sh
 
-# Akun penguji (1 akun: owner + customer) dan data uji antrian. Membuat akun bila belum ada (scripts/seed-prod-penguji.sh).
+# Akun penguji (owner + customer) dan pelanggan seed: kata sandi acak baru per akun (ditulis ke ~/qms-penguji-account.txt),
+# dan mengisi ulang data uji antrian ke kondisi seed. Dipakai juga untuk mengembalikan data uji (scripts/seed-prod-penguji.sh).
 prod-seed-penguji:
 	QMS_ENV_FILE=$(PROD_ENV) scripts/seed-prod-penguji.sh
 
-# Kembalikan data uji akun penguji ke kondisi seed. Akun dan sandinya tetap (scripts/restore-prod-penguji.sh).
-prod-restore-penguji:
-	QMS_ENV_FILE=$(PROD_ENV) scripts/restore-prod-penguji.sh
-
 # -----------------------------------------------------------------------------
-# OBSERVABILITY (overlay docker-compose.observability.yml, lihat berkas itu dan docs/plan-observability-tracing.md)
+# OBSERVABILITY (overlay docker-compose.observability.yml, lihat berkas itu dan bagian Observability di README.md)
 # -----------------------------------------------------------------------------
 
 # Target overlay: dev (bawaan) atau prod. Menentukan berkas compose, env file, dan nama project yang dibaca collector.

@@ -211,8 +211,22 @@ func TestRemove_AlreadyInactiveIsNoOp(t *testing.T) {
 	assert.Equal(t, 1, env.events.count(service.EventTicketRemoved), "remove kedua tidak memancarkan event")
 }
 
+// useRemoveSkip mengatur antrian ke perilaku skip 'remove' (bawaan sekarang 'back'), supaya tes ini menguji remove.
+func useRemoveSkip(t *testing.T, env *specEnv) {
+	t.Helper()
+	remove := model.SkipSettings{Fallback: model.SkipFallbackRemove, MaxReturns: 1}
+	_, err := env.qs.UpdateSkipSettings(context.Background(), env.queueID, specOwnerID, remove)
+	require.NoError(t, err)
+	// Jalur skip tiket membaca pengaturan dari ticket repo (fake terpisah), jadi isi juga di sana.
+	if env.tickets.skipSettings == nil {
+		env.tickets.skipSettings = map[int64]model.SkipSettings{}
+	}
+	env.tickets.skipSettings[env.queueID] = remove
+}
+
 func TestRemove_SkippedTicketIsNoOp(t *testing.T) {
 	env := newSpecEnv(t)
+	useRemoveSkip(t, env)
 	ctx := context.Background()
 	_, _ = env.ts.JoinQueue(ctx, env.queueID, specCustomerA)
 	second, _ := env.ts.JoinQueue(ctx, env.queueID, specCustomerB)
