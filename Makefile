@@ -23,6 +23,7 @@
 # Perintah PROD (membaca .env.prod, salin dari .env.prod.example):
 #   make prod-up [MAIL_MODE=smtp|mailpit]   jalankan stack prod (MAIL_MODE menimpa nilai di .env.prod)
 #   make prod-up-mailpit                    singkatan untuk prod-up dengan MAIL_MODE=mailpit
+#   make prod-payment-check                 periksa konfigurasi BorderPay dan hak role payment_rw (hanya membaca)
 #   make prod-up-smtp                       singkatan untuk prod-up dengan MAIL_MODE=smtp
 #   make prod-down                          hentikan stack prod (termasuk container Mailpit)
 #   make prod-guard                         tandai DB prod agar seed/reset ditolak (jalankan sekali)
@@ -275,7 +276,25 @@ endif
 
 # Perintah compose prod lengkap (file, env, dan profile).
 # obs=1 menambahkan overlay observability; OBS_PROJECT memberi tahu collector project mana yang dibaca.
-PROD := $(if $(filter 1,$(obs)),OBS_PROJECT=qms-prod )docker compose -f docker-compose.prod.yml $(if $(filter 1,$(obs)),-f docker-compose.observability.yml )--env-file $(PROD_ENV) $(PROD_PROFILE)
+# Profil `payments` selalu aktif di prod: service pembayaran ikut dibangun ulang dan dijalankan setiap prod-up.
+# Konfigurasinya diperiksa dulu oleh scripts/check-payment-config.sh, jadi tidak akan menyala dalam keadaan rusak.
+PROD := $(if $(filter 1,$(obs)),OBS_PROJECT=qms-prod )docker compose -f docker-compose.prod.yml $(if $(filter 1,$(obs)),-f docker-compose.observability.yml )--env-file $(PROD_ENV) $(PROD_PROFILE) --profile payments
+
+# Membuat atau memperbarui role payment_rw lewat db/migrations/08_payment_role.sh (idempoten), lalu memeriksa hak
+# yang dibutuhkan payment-service (db/scripts/check_payment_grants.sql). Berbeda dengan obs_db_role_run, galat di sini
+# MENGHENTIKAN prod-up: grant yang kurang membuat webhook BorderPay gagal 500 tanpa tanda lain di aplikasi.
+# Skrip 08 hanya jalan saat volume database kosong, jadi database prod yang sudah ada perlu langkah ini.
+define payment_role_run
+pw=$$(grep -E '^PAYMENT_DB_PASSWORD=' $(PROD_ENV) | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+ready=
+for _ in $$(seq 1 30); do
+  if $(PROD) exec -T db sh -c 'pg_isready -q -d "$$POSTGRES_DB"' >/dev/null 2>&1; then ready=1; break; fi
+  sleep 1
+done
+if [ -z "$$ready" ]; then echo "GAGAL: database prod belum siap; role payment_rw tidak diperbarui." >&2; exit 1; fi
+$(PROD) exec -T -e PAYMENT_DB_PASSWORD="$$pw" db sh < db/migrations/08_payment_role.sh
+$(PROD) exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' < db/scripts/check_payment_grants.sql
+endef
 
 # Jalankan stack prod. Memeriksa MAIL_MODE dulu (scripts/check-mail-mode.sh) dan menolak konfigurasi salah.
 # Bila berpindah dari mailpit ke smtp, sisa container Mailpit dihentikan supaya tidak membingungkan.
@@ -283,7 +302,10 @@ prod-up:
 	scripts/gen-auth-keys.sh
 	MAIL_MODE=$(MAIL_MODE) QMS_ENV_FILE=$(PROD_ENV) scripts/check-mail-mode.sh
 	scripts/check-google-config.sh $(PROD_ENV)
+	scripts/check-payment-config.sh $(PROD_ENV)
 	$(call obs_require_password,$(PROD_ENV))
+	$(PROD) up -d --build db
+	$(call payment_role_run)
 	$(PROD) up -d --build
 	$(if $(filter 1,$(obs)),$(call obs_db_role_run,$(PROD),$(PROD_ENV)))
 	$(if $(PROD_PROFILE),,docker compose -f docker-compose.prod.yml --env-file $(PROD_ENV) --profile mailpit rm -sf mailpit >/dev/null 2>&1 || true)
@@ -308,6 +330,12 @@ prod-up-mailpit:
 # Pintasan: prod-up dengan MAIL_MODE=smtp.
 prod-up-smtp:
 	$(MAKE) prod-up MAIL_MODE=smtp
+
+# Periksa pembayaran tanpa mengubah apa pun: konfigurasi di env file, hak role payment_rw di database, dan status container.
+prod-payment-check:
+	scripts/check-payment-config.sh $(PROD_ENV)
+	$(PROD) exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' < db/scripts/check_payment_grants.sql
+	$(PROD) ps payment-service
 
 # Hentikan stack prod. Memakai --profile mailpit agar container Mailpit ikut berhenti walau mode saat ini smtp.
 # Nilai SMTP palsu hanya supaya compose bisa menguraikan file; tidak memengaruhi `down`.

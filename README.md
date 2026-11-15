@@ -37,7 +37,7 @@ Diagram dan detail lengkap ada di [FLOW.md](docs/FLOW.md).
 - Layanan tatap muka: customer hadir langsung dan membawa HP. Owner memanggil nomor satu per satu.
 - Customer wajib login dan memverifikasi email sebelum bergabung. Tidak ada join anonim. Verifikasi hanya membuktikan kepemilikan email lewat tautan; domain email tidak diperiksa (tanpa cek MX atau allowlist).
 - Join hanya lewat token QR atau tautan. Token statis bisa diganti owner, token dinamis kedaluwarsa.
-- Owner butuh langganan aktif untuk membuat antrian. User biasa menjadi owner lewat aksi langganan pertama (MOCK 30 hari, tanpa pembayaran).
+- Owner butuh langganan aktif untuk membuat antrian. User biasa menjadi owner lewat pembayaran QRIS BorderPay untuk 1 bulan (30 hari).
 - Layar publik hanya menampilkan nomor, tanpa nama customer (privasi).
 - Riwayat dan antrian tidak pernah dihapus permanen (keputusan produk 31 Okt 2026).
 - Backend berjalan satu instance, karena hub SSE ada di memori proses.
@@ -197,14 +197,15 @@ Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) ata
 ```bash
 cp .env.prod.example .env.prod && chmod 600 .env.prod   # isi rahasia (openssl rand -hex 32) dan kunci VAPID baru; .env dev tidak tersentuh
 make down                   # stack dev memakai port 8080 yang sama
-make prod-up                # docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+make prod-up                # cek konfigurasi (MAIL, Google, pembayaran), siapkan role DB, lalu docker compose up -d --build
+make prod-payment-check     # hanya membaca: konfigurasi BorderPay, hak role payment_rw, status payment-service
 make prod-seed-penguji       # akun penguji + pelanggan seed, sandi acak, ditulis ke ~/qms-penguji-account.txt
 make prod-guard             # seed/reset dev ditolak di DB ini
 make prod-backup            # ~/qms-backups/qms-<waktu>.sql.gz; restore: scripts/backup-prod.sh restore <file>
 make prod-reset             # RESET TOTAL: hapus semua akun dan data prod, mulai kosong; backup otomatis dulu
 ```
 
-Tunnel `qms-ta` adalah service systemd yang **manual**: `sudo systemctl start cloudflared` sebelum demo, `sudo systemctl stop cloudflared` sesudahnya (tidak hidup saat boot, berhenti otomatis saat laptop mati). Akses dibatasi aturan WAF Cloudflare berdasarkan IP WiFi. Berkas `docs/setup-perintah-manual.md` dan `docs/petunjuk-mentor.md` (perintah tanpa `make` dan panduan mentor) tidak ada di repo ini.
+Tunnel `qms-ta` adalah service systemd yang **manual**: `sudo systemctl start cloudflared` sebelum demo, `sudo systemctl stop cloudflared` sesudahnya (tidak hidup saat boot, berhenti otomatis saat laptop mati). Akses dibatasi aturan WAF Cloudflare berdasarkan IP WiFi. Webhook BorderPay wajib dikecualikan dari aturan itu; lihat [Langganan owner dan pembayaran BorderPay](#langganan-owner-dan-pembayaran-borderpay). Berkas `docs/setup-perintah-manual.md` dan `docs/petunjuk-mentor.md` (perintah tanpa `make` dan panduan mentor) tidak ada di repo ini.
 
 Nginx hanya terikat ke `127.0.0.1:8080`; `cloudflared` di host menunjuk ke `http://localhost:8080`. IP klien dibaca dari `CF-Connecting-IP`. Backend dan auth-service dengan `APP_ENV=production` menolak start bila rahasia lemah atau origin bukan https. Database prod memakai volume sendiri tanpa seed. Backend berjalan satu instance (hub SSE di memori). Catatan domain, WAF, dan rencana live (`docs/setup-domain.md`, `docs/setup-waf-wifi.md`, `docs/plan-live.md`) tidak ada di repo ini.
 
@@ -225,7 +226,8 @@ Semua script berada di `scripts/` (dijalankan dari akar `queue-management-system
 | `db/scripts/apply_schema.sql` | Penyesuaian skema yang idempoten untuk database yang sudah berjalan. Tidak menyentuh data. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql`. Prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`. Lalu restart backend, notify-service, dan mail-service. | Manual (lihat [Notifikasi](#notifikasi-notify-service) dan [Email](#email-mailpit-atau-smtp-nyata)) |
 | `db/scripts/reset_seed_dev.sql` | Mengembalikan database dev ke data seed. Ditolak di prod setelah `make prod-guard`. | `make seed` | `make seed`, tes Playwright |
 | `db/scripts/backfill_currently_served.sql` | Backfill sekali jalan: tiket `completed` terakhir di antrian aktif menjadi `currently_served`. Berakhir dengan `ROLLBACK`: periksa jumlah baris, lalu ganti ke `COMMIT`. Jalankan setelah backup dan `apply_schema.sql`. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/backfill_currently_served.sql` | Manual |
-| `db/migrations/*.sh` (`03`, `04`, `06`) | Membuat role database `notify_ro`, `mail_rw`, dan `auth_rw` (role `payment_rw` tidak ada lagi). | **Tidak dijalankan manual.** Docker menjalankannya saat volume database masih kosong (lihat `db/Dockerfile`). | Docker `initdb` |
+| `db/migrations/*.sh` (`03`, `04`, `06`) | Membuat role database `notify_ro`, `mail_rw`, dan `auth_rw`. | **Tidak dijalankan manual.** Docker menjalankannya saat volume database masih kosong (lihat `db/Dockerfile`). | Docker `initdb` |
+| `db/migrations/08_payment_role.sh` | Membuat atau memperbarui role `payment_rw` (payment-service) dan grant-nya. Idempoten. | **Dijalankan ulang otomatis oleh `make prod-up`**, karena database prod yang sudah ada tidak menerima initdb. Hak-haknya diperiksa `db/scripts/check_payment_grants.sql`. | `make prod-up`, `make prod-payment-check` |
 
 **Script yang sudah dihapus**
 
@@ -257,21 +259,54 @@ Catatan:
 - Awalan nomor tiket: DB lama butuh `ALTER TABLE queues ADD COLUMN ticket_prefix VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (ticket_prefix ~ '^[A-Z0-9]{1,3}$');`, lalu restart backend dan notify-service (notify membaca kolom ini).
 - Tes unit: `cd notify-service && go test ./...`.
 
-#### Langganan owner (MOCK, tanpa pembayaran)
+#### Langganan owner dan pembayaran BorderPay
 
-> **MOCK.** Tidak ada sistem pembayaran. Tombol di layar Subscription langsung menambah **30 hari** langganan owner.
-> Tidak ada service pembayaran di repo ini; tombol ini hanya menggantikan alur berbayar sampai pembayaran sungguhan dibuat.
+Owner membayar **1 bulan langganan (30 hari)** lewat QRIS BorderPay. Harga di `SUBSCRIPTION_PRICE_IDR` (bawaan 15000). Alur:
 
-**Alur.** Calon owner (belum punya baris `owners`) atau owner yang sudah ada menekan tombol di layar Subscription. Frontend memanggil `POST /api/v1/owners/subscription/extend` (butuh JWT). Backend, dalam satu transaksi:
+1. Frontend memanggil `POST /api/v1/owners/subscription/checkout` (butuh JWT, metode `qris`). Backend menentukan harga dan membuat `reference_id` (`SUB-<owner>-<unix>-<acak>`).
+2. Backend memanggil payment-service di `/internal/v1/payments` dengan `X-Service-Token`. payment-service mencatat pesanan `pending` di `payment_orders`, lalu membuat transaksi di BorderPay dan menyimpan `pay_url`.
+3. Frontend membuka `pay_url`. Customer membayar di halaman BorderPay.
+4. BorderPay mengirim `payment.paid` ke `https://<domain>/api/v1/webhooks/borderpay` dengan header `x-borderpay-token`. payment-service memverifikasi token, lalu dalam **satu transaksi**: pesanan menjadi `paid`, `owners.subscription_expires_at = GREATEST(now(), berakhir) + 30 hari` (baris `owners` dibuat untuk calon owner pertama), dan satu baris `payments` dicatat. Webhook kembar tidak menerapkan pembayaran dua kali (idempoten).
 
-- `owners.subscription_expires_at = GREATEST(now(), subscription_expires_at) + 30 hari` (dari tanggal berakhir bila masih aktif, dari sekarang bila sudah lewat). Calon owner mendapat baris `owners` baru dengan `now() + 30 hari`.
-- Satu baris `payments` dicatat (`plan_type='monthly'`, `amount=0`, `status='success'`) sebagai riwayat.
+Backend hanya *membaca* `owners.subscription_expires_at` (402 `SUBSCRIPTION_INACTIVE` bila lewat). Pembayaran tidak mengubah antrian. Kode: `payment-service/internal/{checkout,webhook,store,borderpay}`, `backend/internal/service/subscription_checkout.go`, `backend/internal/paymentclient`.
 
-Respons berisi `subscription_expires_at` yang baru. Kode: `backend/internal/repository/subscription_repo.go`, `backend/internal/service/subscription_service.go`, `backend/internal/handler/subscription_handler.go`.
+**Arti respons webhook** (lihat juga log Dashboard BorderPay):
 
-**Terisolasi dari antrian.** Backend hanya *membaca* `owners.subscription_expires_at` (402 `SUBSCRIPTION_INACTIVE` bila lewat). Penambahan 30 hari sekarang dikerjakan di backend itu sendiri, jadi tidak ada service terpisah yang bisa mati.
+| Status | Arti | Tindakan |
+|---|---|---|
+| `200` | Diterapkan, atau sudah pernah diterapkan, atau `reference_id` tidak dikenal (diabaikan) | Tidak perlu tindakan |
+| `401` | `x-borderpay-token` tidak cocok dengan `BORDERPAY_WEBHOOK_TOKEN` | Samakan token dengan dashboard BorderPay |
+| `403` (di BorderPay, tidak ada di log nginx) | WAF Cloudflare memblokir request sebelum sampai ke server | Lihat bagian Cloudflare di bawah |
+| `409` | Nominal webhook tidak sama dengan pesanan | Pembayaran tidak diterapkan; periksa manual |
+| `500` | Penyimpanan ke database gagal (lihat log `simpan pembayaran gagal`) | BorderPay mengirim ulang; perbaiki penyebab di log dulu |
 
-**Tes.** Unit: `cd backend && go test ./internal/test/handler_test/ -run TestSubscription`.
+**Persiapan prod** (setiap kali rahasia pembayaran diganti atau server baru):
+
+- Isi `BORDERPAY_API_KEY` (`bp_live_...`), `BORDERPAY_WEBHOOK_TOKEN`, `PAYMENT_SERVICE_TOKEN`, dan `PAYMENT_DB_PASSWORD` di `.env.prod`. Daftarnya ada di `.env.prod.example`.
+- Di dashboard BorderPay mode **Live**, isi endpoint `https://<QMS_PUBLIC_ORIGIN>/api/v1/webhooks/borderpay`, aktifkan event `payment.paid`, dan samakan verification token dengan `BORDERPAY_WEBHOOK_TOKEN`. Mode Test punya endpoint terpisah.
+- Jalankan `make prod-payment-check`. Semua pemeriksaan harus lulus (peringatan kunci test muncul bila masih `bp_test_`).
+- Cloudflare: rule WAF yang membatasi akses per IP WiFi harus mengecualikan path webhook. Ekspresi yang dipakai:
+  `(http.host eq "<domain>" and not ip.src in {<IP WiFi>} and not (http.request.uri.path eq "/api/v1/webhooks/borderpay"))`.
+  Tanpa pengecualian ini, BorderPay menerima 403 dan pembayaran tidak tercatat, padahal pembayarannya sudah lunas.
+
+**Yang dijaga otomatis oleh `make prod-up`** (sehingga kegagalan di atas tidak terulang diam-diam):
+
+- `scripts/check-payment-config.sh` menolak start bila rahasia kosong, pendek, atau masih contoh (`GANTI`). Nilai rahasia tidak pernah dicetak.
+- Profil `payments` selalu aktif di prod dan `payment-service` dibangun ulang dari kode sekarang, sehingga image lama tidak tertinggal.
+- Database `db` dinyalakan dulu, lalu `db/migrations/08_payment_role.sh` dijalankan ulang (idempoten). Skrip ini hanya jalan saat volume kosong, jadi tanpa langkah ini grant yang ditambahkan kemudian tidak pernah sampai ke database prod.
+- `db/scripts/check_payment_grants.sql` memastikan `payment_rw` punya semua hak yang dibutuhkan (termasuk `INSERT` pada `owners`, yang diperlukan `ON CONFLICT`). Bila ada yang kurang, `make prod-up` berhenti dan menyebut hak yang hilang.
+
+**Pemecahan masalah:**
+
+| Gejala | Penyebab paling mungkin | Cek |
+|---|---|---|
+| Checkout `503 PAYMENT_UNAVAILABLE` | payment-service mati atau restart, atau token backend dan service tidak sama | `make prod-payment-check`, lalu `docker compose -f docker-compose.prod.yml --env-file .env.prod logs --tail=100 payment-service` |
+| payment-service restart terus | `variabel wajib kosong` (config) atau `koneksi database gagal` (password atau role) | Log yang sama dengan perintah di atas |
+| Webhook `500`, log `permission denied for table owners` | Hak `payment_rw` kurang | `make prod-payment-check`, lalu `make prod-up` |
+| Pembayaran sudah lunas di BorderPay, langganan tidak bertambah, pesanan `pending` | Webhook tidak sampai (401, 403, atau 500) | Log pengiriman di dashboard BorderPay; `docker logs -f qms-prod-nginx-1 2>&1 \| grep borderpay` |
+| Webhook `403` di BorderPay, tidak ada baris di log nginx | WAF Cloudflare memblokir | Cloudflare → Security → Events, filter path webhook |
+
+Setelah penyebabnya diperbaiki, kirim ulang dari dashboard BorderPay. Webhook yang sama aman dikirim ulang karena idempoten. Jangan menambahkan langganan secara manual ke database tanpa bukti pembayaran dari BorderPay.
 
 
 #### Email (Mailpit atau SMTP nyata)
@@ -380,7 +415,7 @@ Rincian: log Docker (`json-file`, maks 3 x 10 MB per container) dibaca collector
 | Notifikasi giliran | Web Push dari `notify-service`: "Giliran Anda" saat dipanggil, "Tinggal 1 nomor lagi" untuk nomor berikutnya, dan pemberitahuan untuk nomor yang dilewati. Aktif otomatis saat join bila izin diberikan. Hanya di browser lewat HTTPS (`make tunnel`). |
 | Email | `mail-service` mengirim email dari outbox (tiket, dan `queue-closed` ke owner saat antrian ditutup) dan mencoba ulang bila gagal; auth-service mengirim email verifikasi, `email-verified`, dan reset password lewat mail-service. Pengguna bisa mematikan email notifikasi di Profil. |
 | Riwayat dan ekspor | Owner melihat riwayat antrian dan bisa mengekspornya ke CSV atau XLSX. Customer melihat riwayat tiketnya. |
-| Langganan | Owner menambah 30 hari langganan langsung, tanpa pembayaran (MOCK, di backend; label di layar memuat `[MOCK]`). |
+| Langganan | Owner membayar 1 bulan (30 hari) lewat QRIS BorderPay. Langganan aktif setelah webhook `payment.paid` terverifikasi dan diterapkan. |
 | Real-time | Pembaruan lewat Server-Sent Events, termasuk `queue_qr_updated`. |
 | Navigasi keyboard (web) | Di halaman masuk dan daftar, panah atas/bawah memindahkan fokus antar field dan tombol; Enter menekan tombol yang sedang fokus (di field teks, Enter ditangani form). |
 | Tampilan | Mode terang dan gelap. |
@@ -392,7 +427,7 @@ Yang belum ada dan alasannya ada di [bagian 4](#4-what-was-deferred-and-why).
 
 ```
 queue-management-system/
-├── backend/                  API Go (Gin, sqlx): antrian, tiket, counter, riwayat, SSE, langganan MOCK
+├── backend/                  API Go (Gin, sqlx): antrian, tiket, counter, riwayat, SSE, langganan dan checkout
 │   ├── cmd/server/           titik masuk (main.go): hanya merangkai komponen
 │   └── internal/
 │       ├── apperror/         error bersama (sentinel) untuk repository, service, dan handler
@@ -453,7 +488,7 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 | Outbox untuk Web Push | Push yang terjadi saat `notify-service` mati hilang | Ya | Email sudah memakai outbox; push dibuat lebih sederhana dulu. Rencana di `plan-setelah-live.md` (tidak ada di repo ini). |
 | Migration runner | `db/migrations/01*.sql` hanya jalan pada data directory kosong; DB lama memakai `db/scripts/apply_schema.sql` yang idempoten | Ya | Cukup selama skema jarang berubah. |
 | HSTS dan Cloudflare Access | Belum aktif; TLS dipegang Cloudflare, nginx hanya HTTP | Ya | Menunggu HTTPS stabil dan Zero Trust siap. |
-| Pembayaran sungguhan dan plan langganan lain | Langganan hanya aksi MOCK tambah 30 hari tanpa pembayaran; tidak ada penagihan berulang | Ya | Service pembayaran (Stripe) dihapus; tabel `payments` tetap dipakai sebagai riwayat (amount 0). Kolom `plan_type` selain `monthly` belum dipakai. |
+| Plan langganan lain (tahunan, sekali bayar) dan penagihan berulang | Hanya paket `monthly` 30 hari lewat QRIS BorderPay; tidak ada penagihan otomatis | Ya | Kolom `plan_type` dan CHECK di `payment_orders` serta `payments` sudah menerima `yearly` dan `one_time`, tetapi belum ada harga dan alur untuk keduanya. |
 | Ekspor file dan push di aplikasi native | Hanya jalan di web | Ya | Web Push hanya di browser lewat HTTPS; Expo Go tidak mendukung. |
 | `registration_limit`, batas harian QR, batas riwayat, penghapusan permanen | Kolom skema ada, kode tidak memakainya | Ya | Dihapus dari produk pada 31 Okt 2026. |
 | Backup otomatis | Hanya manual lewat `make prod-backup`, tanpa jadwal, retensi, atau salinan di luar mesin | Ya | Tidak diperlukan; cukup untuk demo. |
@@ -516,7 +551,7 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 - **notify-service**: trigger Postgres memancarkan `pg_notify`; service mendengarkan lalu mengirim Web Push. Tidak ada panggilan langsung dari backend.
 - **auth-service**: nginx meneruskan rute login, registrasi, Google, reset password, dan verifikasi email ke sini. Backend tidak memanggilnya; ia memverifikasi JWT RS256 secara lokal dengan kunci publik. Bila auth-service mati, user yang sudah login tetap bisa memakai aplikasi (nginx menjawab 503 `AUTH_UNAVAILABLE` untuk rute auth).
 - **mail-service**: trigger menulis ke `notification_outbox` dalam transaksi yang sama dengan perubahan tiket atau penutupan antrian; worker mengirim dan mencoba ulang. Email auth (verifikasi, `email-verified`, reset password) dikirim auth-service lewat `POST /internal/v1/send`.
-- **Langganan**: `POST /api/v1/owners/subscription/extend` di backend (MOCK, tanpa service pembayaran).
+- **Langganan**: `POST /api/v1/owners/subscription/checkout` di backend memanggil payment-service (`/internal/v1/payments`, dengan token layanan). Pembayaran lunas diterapkan lewat webhook BorderPay.
 - **Keamanan akses data**: tiap service memakai role database sendiri dengan hak minimal (`notify_ro`, `mail_rw`, `auth_rw`); backend memakai role aplikasi utama.
 
 ## 6. Trade-offs
@@ -535,8 +570,8 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 | Verifikasi email membatasi aksi (bergabung, membuat antrian), bukan login | User yang salah ketik email tidak terkunci dan masih bisa membuka Profil untuk kirim ulang | Akun belum terverifikasi tetap bisa masuk dan melihat; status dibaca dari database tiap permintaan (bukan JWT), satu query tambahan pada join dan buat antrian |
 | Rate limit login dan `/join` hanya di nginx | Satu tempat untuk membatasi, tanpa kode tambahan di backend | Backend yang dijangkau tanpa nginx tidak membatasi login |
 | Interface didefinisikan di tiap lapisan | Service bisa diuji dengan fake tanpa database | Ada interface ganda yang tidak dipakai (mis. `database.TxRunnerInterface` dan `handler_interface.go`) |
-| Langganan berupa aksi MOCK +30 hari di backend (tanpa pembayaran) | Alur owner bisa didemokan tanpa penyedia pembayaran; tidak ada service tambahan yang bisa mati | Tidak ada pembayaran sungguhan, plan lain, atau penagihan berulang; siapa pun yang login bisa menjadi owner |
-| Service pembayaran (Stripe) dihapus dari repo (keputusan historis) | Lebih sedikit container, rahasia, dan role database | Pembayaran nyata harus dibangun ulang bila dibutuhkan |
+| Pembayaran QRIS lewat BorderPay dengan service terpisah `payment-service` | Pembayaran sungguhan. Langganan hanya berubah lewat webhook yang diverifikasi token dan idempoten. Service pembayaran bisa mati tanpa menghentikan antrian | Satu service dan satu role database tambahan yang harus dijaga (grant, token, webhook). Pembayaran gagal bila WAF memblokir webhook |
+| Service pembayaran BorderPay ditambahkan kembali, menggantikan keputusan awal tanpa pembayaran | Pembayaran nyata; konfigurasi dan rahasia diperiksa sebelum deploy (`check-payment-config.sh`) | Lebih banyak container, rahasia, dan role database yang harus dijaga |
 
 ## 7. Next steps
 
@@ -548,4 +583,4 @@ Urutan menurut dampak terhadap keandalan, dari yang paling dekat.
 4. **Keamanan produksi**: HSTS setelah HTTPS stabil, Cloudflare Access, IP WiFi kantor di aturan WAF, dan `VAPID_SUBJECT` dengan email asli.
 5. **Backup otomatis** dengan jadwal, retensi, salinan di luar mesin, dan role database ikut tercakup.
 6. **Kebersihan kode dan tes**: hapus `handler_interface.go` dan `database.TxRunnerInterface` yang tidak dipakai; perbarui komentar usang di `docker-compose.yml` dan `deploy/nginx/README.md`.
-7. **Pembayaran sungguhan dan plan langganan tambahan** bila dibutuhkan produk.
+7. **Plan langganan tambahan** (tahunan, sekali bayar) dan penagihan berulang bila dibutuhkan produk. Pembayaran QRIS bulanan sudah berjalan.

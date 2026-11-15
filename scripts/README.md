@@ -14,6 +14,7 @@ Prasyarat umum: `bash`, `docker` dengan `docker compose`. `check-service-isolati
 | [`check-observability-leaks.sh`](#check-observability-leakssh) | Tes kebocoran rahasia ke log, trace, dan metrik | dev dan prod (overlay observability) | `make obs-check` |
 | [`check-google-config.sh`](#check-google-configsh) | Memeriksa konfigurasi login Google (server dan frontend sinkron) | dev dan prod | `make up`, `make tunnel`, `make prod-up` |
 | [`check-mail-mode.sh`](#check-mail-modesh) | Memeriksa `MAIL_MODE` dan `SMTP_*` sebelum stack prod naik | prod | `make prod-up` |
+| [`check-payment-config.sh`](#check-payment-configsh) | Memeriksa kunci BorderPay, token webhook, token service, dan password role `payment_rw` (hanya keberadaan dan panjang, nilai tidak dicetak) | prod | `make prod-up`, `make prod-payment-check` |
 | [`verify-user.sh`](#verify-usersh) | Menandai email satu akun terverifikasi langsung di database | dev atau prod | `make verify-user` |
 | [`reset-demo.sh`](#reset-demosh) | RESET TOTAL database prod (semua akun dihapus) | prod | `make prod-reset` |
 | [`seed-prod-penguji.sh`](#seed-prod-penguji) | Membuat 1 akun penguji (owner + customer) dan mengisi data uji antrian | prod | `make prod-seed-penguji` |
@@ -164,6 +165,31 @@ MAIL_MODE=smtp scripts/check-mail-mode.sh .env.prod
 
 ---
 
+## check-payment-config.sh
+
+Memeriksa konfigurasi pembayaran BorderPay di file env prod. Dipanggil `make prod-up` (sebelum stack dinyalakan) dan
+`make prod-payment-check` (kapan saja, tanpa mengubah apa pun). Skrip hanya mencetak keberadaan, panjang, dan prefix;
+nilai rahasia tidak pernah tampil.
+
+| Variabel | Pemeriksaan | Hasil bila gagal |
+|---|---|---|
+| `BORDERPAY_API_KEY` | Terisi, berawalan `bp_test_` atau `bp_live_` | Galat bila kosong atau prefix lain. `bp_test_` hanya peringatan: pembayaran sungguhan tidak akan diterima |
+| `BORDERPAY_WEBHOOK_TOKEN` | Terisi, minimal 32 karakter, bukan contoh. Dianjurkan berawalan `bpt_` | Galat; `bpt_` hanya peringatan |
+| `PAYMENT_SERVICE_TOKEN` | Terisi, minimal 32 karakter, bukan contoh | Galat (checkout dan webhook akan gagal) |
+| `PAYMENT_DB_PASSWORD` | Terisi dan bukan contoh | Galat (payment-service tidak bisa konek ke database) |
+
+```bash
+scripts/check-payment-config.sh                # memakai $QMS_ENV_FILE atau .env.prod
+scripts/check-payment-config.sh .env.prod      # file env eksplisit
+```
+
+Kode keluar 1 bila ada galat, sehingga `make prod-up` berhenti sebelum container pembayaran dibangun ulang.
+
+Pemeriksaan hak database (`db/scripts/check_payment_grants.sql`) dijalankan terpisah oleh `make prod-up` dan
+`make prod-payment-check`, karena butuh database yang sedang berjalan.
+
+---
+
 ## verify-user.sh
 
 Menandai `users.email_verified_at` satu akun langsung di database, tanpa menunggu email. Berguna bila email
@@ -274,5 +300,5 @@ make prod-backup
 
 Bukan di folder ini, tetapi sering dibutuhkan bersama skrip di atas: `db/scripts/apply_schema.sql` (penyesuaian skema
 idempoten untuk database yang sudah berjalan), `db/scripts/reset_seed_dev.sql` (data seed dev, `make seed`), dan
-`db/scripts/backfill_currently_served.sql`. Role per service dibuat oleh `db/migrations/03_notify_role.sh`, `04_mail_role.sh`, dan `06_auth_role.sh`; untuk
+`db/scripts/backfill_currently_served.sql`, dan `db/scripts/check_payment_grants.sql` (hanya membaca: memastikan role `payment_rw` punya semua hak yang dibutuhkan payment-service; dipanggil `make prod-up` dan `make prod-payment-check`). Role per service dibuat oleh `db/migrations/03_notify_role.sh`, `04_mail_role.sh`, dan `06_auth_role.sh`; `08_payment_role.sh` untuk `payment_rw` juga dijalankan ulang oleh `make prod-up`. Untuk
 database lama yang belum punya role `auth_rw`, jalankan `06_auth_role.sh` seperti dijelaskan di `.env.example`.
