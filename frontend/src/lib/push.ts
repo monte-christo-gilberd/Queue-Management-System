@@ -66,21 +66,39 @@ export async function syncSubscription(): Promise<boolean> {
 }
 
 /**
+ * sameServerKey: true bila kunci VAPID yang dipakai langganan sama dengan kunci publik backend sekarang.
+ * Bila browser tidak melaporkan kuncinya, dianggap sama (tidak ada dasar untuk membuang langganan).
+ */
+function sameServerKey(sub: PushSubscription, key: Uint8Array): boolean {
+  const current = sub.options?.applicationServerKey;
+  if (!current) return true;
+  const bytes = new Uint8Array(current);
+  return bytes.length === key.length && bytes.every((b, i) => b === key[i]);
+}
+
+/**
  * enablePush: minta izin, berlangganan, lalu simpan ke backend. Mengembalikan false bila izin ditolak.
- * Langganan yang sudah ada dipakai ulang, supaya tidak membuat endpoint baru.
+ * Langganan yang sudah ada dipakai ulang, supaya tidak membuat endpoint baru. Bila langganan itu dibuat
+ * dengan kunci VAPID lama (kunci sudah diganti di server), langganan dibatalkan dan dibuat ulang.
  */
 export async function enablePush(): Promise<boolean> {
   if (!pushSupported()) return false;
   // Izin ditolak: tidak ada langganan dan backend tidak diberi tahu.
   if ((await Notification.requestPermission()) !== 'granted') return false;
   const { public_key } = await apiFetch<{ public_key: string }>('/api/v1/push/public-key');
+  const key = urlBase64ToBytes(public_key);
   const reg = await registration();
-  const sub =
-    (await reg.pushManager.getSubscription()) ??
-    (await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToBytes(public_key) as BufferSource,
-    }));
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && !sameServerKey(sub, key)) {
+    // Endpoint lama dilepas di backend dulu, lalu di browser, supaya tidak ada langganan usang yang tersisa.
+    await apiFetch('/api/v1/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } });
+    await sub.unsubscribe();
+    sub = null;
+  }
+  sub ??= await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: key as BufferSource,
+  });
   await apiFetch('/api/v1/push/subscribe', { method: 'POST', body: sub.toJSON() });
   return true;
 }

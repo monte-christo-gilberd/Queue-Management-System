@@ -68,8 +68,11 @@ export function PushToggle() {
         // enablePush mengembalikan false bila pengguna menolak izin notifikasi di browser.
         setMessage('Izin notifikasi ditolak di browser');
       }
-    } catch {
-      setMessage('Gagal mengubah notifikasi');
+    } catch (err) {
+      // Alasan asli disertakan agar penyebab (mis. layanan push diblokir browser) terlihat, bukan hanya pesan umum.
+      console.warn('[push] gagal mengubah notifikasi:', err);
+      const reason = err instanceof Error && err.message ? `: ${err.message}` : '';
+      setMessage(`Gagal mengubah notifikasi${reason}`);
     }
     setBusy(false);
   };
