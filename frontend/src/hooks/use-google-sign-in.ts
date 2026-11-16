@@ -1,5 +1,6 @@
 /**
- * use-google-sign-in.ts: membuka layar masuk Google dan mengembalikan ID token ke pemanggil.
+ * use-google-sign-in.ts: membuka layar masuk Google dan mengembalikan ID token ke pemanggil. Versi WEB (expo-auth-session).
+ * Native (Android/iOS) memakai use-google-sign-in.native.ts (SDK Google Sign-In), karena redirect custom scheme ditolak Google.
  *
  * Dipakai oleh : components/auth/GoogleSignInSection.tsx.
  * Bergantung   : expo-auth-session (provider Google), expo-web-browser, lib/google-auth.ts (client ID per platform).

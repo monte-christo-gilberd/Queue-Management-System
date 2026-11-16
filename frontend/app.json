@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "Queue Management System",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -19,7 +19,12 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "my.id.montechristo.qms"
+      "package": "my.id.montechristo.qms",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "output": "static"
@@ -30,8 +35,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Izinkan $(PRODUCT_NAME) mengakses foto untuk foto profil",
-          "cameraPermission": false,
-          "microphonePermission": false
+          "cameraPermission": "Izinkan $(PRODUCT_NAME) memakai kamera untuk mengambil foto profil"
         }
       ],
       [
@@ -52,6 +56,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "80505e4c-7b12-4e65-997f-67b98702a7eb"
+      }
     }
   }
 }

@@ -362,12 +362,13 @@ export default function QueueDetail({
           <View className="gap-2">
             <Text className="text-[13px] font-semibold text-muted">Hapus nomor dari antrian</Text>
             {removableTickets.map((t) => (
-              <View key={t.id} className="flex-row items-center justify-between rounded-card border border-line p-3">
-                <View>
+              <View key={t.id} className="flex-row items-center rounded-card border border-line p-3">
+                <View className="shrink-0 pr-3">
                   <Text className="text-[15px] font-extrabold text-foreground">{t.number}</Text>
                   <Text className="text-[12px] text-muted">{t.current ? 'Sedang dilayani' : 'Menunggu'}</Text>
                 </View>
-                <View className="flex-row gap-2">
+                {/* Tombol digeser mendatar bila tidak muat; scrollbar disembunyikan, sama seperti daftar counter. */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-1 min-w-0" contentContainerClassName="flex-row gap-2">
                   {onOpenTicketNote ? (
                     <AppButton
                       label={t.hasNote ? "Edit catatan" : "Tambah catatan"}
@@ -382,7 +383,7 @@ export default function QueueDetail({
                     className="h-10"
                     onPress={() => setRemoveTarget({ id: t.id, number: t.number })}
                   />
-                </View>
+                </ScrollView>
               </View>
             ))}
           </View>

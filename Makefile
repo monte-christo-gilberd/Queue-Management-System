@@ -328,11 +328,11 @@ prod-up:
 
 # Pintasan: prod-up dengan MAIL_MODE=mailpit.
 prod-up-mailpit:
-	$(MAKE) prod-up MAIL_MODE=mailpit
+	$(MAKE) prod-up MAIL_MODE=mailpit $(if $(filter 1,$(obs)),obs=1)
 
-# Pintasan: prod-up dengan MAIL_MODE=smtp.
+# Pintasan: prod-up dengan MAIL_MODE=smtp. Kata `obs` ikut diteruskan ke sub-make.
 prod-up-smtp:
-	$(MAKE) prod-up MAIL_MODE=smtp
+	$(MAKE) prod-up MAIL_MODE=smtp $(if $(filter 1,$(obs)),obs=1)
 
 # Periksa pembayaran tanpa mengubah apa pun: konfigurasi di env file, hak role payment_rw di database, dan status container.
 prod-payment-check:

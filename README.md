@@ -575,12 +575,8 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 
 ## 7. Next steps
 
-Urutan menurut dampak terhadap keandalan, dari yang paling dekat.
-
-1. **Pub/sub untuk SSE** agar backend bisa lebih dari satu instance.
-2. **Outbox untuk Web Push** dan worker pool terbatas di notify-service.
-3. **Migration runner**, dan jadikan `03_notify_role.sh` idempoten seperti skrip role lain.
-4. **Keamanan produksi**: HSTS setelah HTTPS stabil, Cloudflare Access, IP WiFi kantor di aturan WAF, dan `VAPID_SUBJECT` dengan email asli.
-5. **Backup otomatis** dengan jadwal, retensi, salinan di luar mesin, dan role database ikut tercakup.
-6. **Kebersihan kode dan tes**: hapus `handler_interface.go` dan `database.TxRunnerInterface` yang tidak dipakai; perbarui komentar usang di `docker-compose.yml` dan `deploy/nginx/README.md`.
-7. **Plan langganan tambahan** (tahunan, sekali bayar) dan penagihan berulang bila dibutuhkan produk. Pembayaran QRIS bulanan sudah berjalan.
+1. **Push notification untuk android**: buat sistem push notification android.
+2. **Backup otomatis** dengan jadwal, retensi, salinan di luar mesin, dan role database ikut tercakup.
+3. **Kebersihan kode dan tes**: hapus `handler_interface.go` dan `database.TxRunnerInterface` yang tidak dipakai.
+4. **Plan langganan tambahan** (2 bulan, 3 bulan, 6 bulan, 12 bulan) dan penagihan berulang bila dibutuhkan produk.
+5. **Aplikasi ios**: agar bisa di download oleh user ios.
