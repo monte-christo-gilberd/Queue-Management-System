@@ -16,6 +16,14 @@ dir="${AUTH_KEYS_DIR:-keys}"
 priv="$dir/auth-private.pem"
 pub="$dir/auth-public.pem"
 
+# Docker membuat direktori (milik root) bila bind-mount berkas yang belum ada. Itu bukan kunci: tolak dengan jelas.
+for f in "$priv" "$pub"; do
+  if [ -d "$f" ]; then
+    echo "GAGAL: $f adalah direktori, bukan berkas kunci (sering dibuat Docker). Jalankan: sudo rm -rf $dir lalu ulangi." >&2
+    exit 1
+  fi
+done
+
 # Kunci sudah lengkap: tidak ada yang dikerjakan.
 if [ -f "$priv" ] && [ -f "$pub" ]; then
   echo "Kunci auth sudah ada di $dir/ (tidak ditimpa)."

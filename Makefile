@@ -99,8 +99,11 @@ endef
 
 # Kunci JWT dev di keys-dev/ dibuat ulang setiap `make up` / `make tunnel` dan dihapus `make down`.
 # Kunci prod di keys/ tidak pernah disentuh target dev. rm -rf (bukan rm -f) juga membersihkan direktori salah-buat oleh Docker.
+# Bila keys-dev/ milik root (sering dibuat Docker saat bind-mount berkas kunci belum ada), rm gagal: hentikan dengan pesan jelas
+# supaya tidak lanjut ke `docker compose up` dengan kunci yang salah (backend crash-loop: "is a directory").
+# Setelah generate, pastikan kedua berkas kunci benar-benar berkas biasa.
 define fresh_auth_keys
-rm -rf keys-dev && AUTH_KEYS_DIR=keys-dev scripts/gen-auth-keys.sh
+{ [ ! -e keys-dev ] || rm -rf keys-dev 2>/dev/null || { echo "GAGAL: keys-dev/ tidak bisa dihapus (milik root, biasanya dibuat Docker). Jalankan: sudo rm -rf keys-dev lalu ulangi." >&2; exit 1; }; } && AUTH_KEYS_DIR=keys-dev scripts/gen-auth-keys.sh && { [ -f keys-dev/auth-public.pem ] && [ -f keys-dev/auth-private.pem ] || { echo "GAGAL: keys-dev/ tidak berisi kedua berkas kunci." >&2; exit 1; }; }
 endef
 
 # File sementara untuk proses cloudflared (tunnel).
@@ -230,7 +233,7 @@ down:
 	# --remove-orphans: ikut membersihkan container observability (collector, loki, grafana) bila overlay pernah dinyalakan.
 	docker compose --profile '*' down --remove-orphans
 	rm -f $(GOOGLE_STAMP)
-	rm -rf keys-dev
+	rm -rf keys-dev 2>/dev/null || { echo "PERINGATAN: keys-dev/ tidak terhapus (milik root). Jalankan: sudo rm -rf keys-dev" >&2; exit 1; }
 
 # Restart service yang perlu dimuat ulang setelah kode Go berubah.
 restart:

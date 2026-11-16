@@ -19,6 +19,34 @@ BEGIN
     EXECUTE format('GRANT CONNECT ON DATABASE %I TO payment_rw', current_database());
 END $$;
 GRANT USAGE ON SCHEMA public TO payment_rw;
+-- payment_orders.owner_id harus mereferensi users(id): calon owner belum punya baris owners sampai pembayaran lunas.
+-- Database prod yang dibuat dari skema lama mereferensi owners(user_id), sehingga pesanan calon owner baru gagal
+-- dengan 500 (lalu 503 di backend). Langkah ini memperbaikinya di database yang sudah ada (idempoten).
+DO $$
+DECLARE
+    fk record;
+BEGIN
+    FOR fk IN
+        SELECT conname, pg_get_constraintdef(oid) AS def
+          FROM pg_constraint
+         WHERE conrelid = 'payment_orders'::regclass AND contype = 'f'
+           AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (owner_id)%'
+    LOOP
+        IF fk.def NOT LIKE 'FOREIGN KEY (owner_id) REFERENCES users(id)%' THEN
+            EXECUTE format('ALTER TABLE payment_orders DROP CONSTRAINT %I', fk.conname);
+            RAISE NOTICE 'payment_orders: FK lama % dihapus (%)', fk.conname, fk.def;
+        END IF;
+    END LOOP;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid = 'payment_orders'::regclass AND contype = 'f'
+           AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (owner_id) REFERENCES users(id)%'
+    ) THEN
+        ALTER TABLE payment_orders ADD CONSTRAINT payment_orders_owner_id_fkey
+            FOREIGN KEY (owner_id) REFERENCES users(id);
+        RAISE NOTICE 'payment_orders: FK owner_id -> users(id) dibuat';
+    END IF;
+END $$;
 -- owners: baca user_id dan langganan; buat baris baru (calon owner) dan perbarui subscription_expires_at.
 GRANT SELECT (user_id, subscription_expires_at) ON owners TO payment_rw;
 GRANT INSERT (user_id, subscription_expires_at) ON owners TO payment_rw;

@@ -47,6 +47,14 @@ BEGIN
     IF NOT has_table_privilege('payment_rw', 'payment_orders', 'INSERT') THEN
         missing := missing || 'payment_orders INSERT';
     END IF;
+    -- Skema: owner_id harus mereferensi users(id). Bila mereferensi owners, calon owner baru gagal membuat pesanan.
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid = 'payment_orders'::regclass AND contype = 'f'
+           AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (owner_id) REFERENCES users(id)%'
+    ) THEN
+        missing := missing || 'payment_orders.owner_id FK ke users(id)';
+    END IF;
     IF NOT has_column_privilege('payment_rw', 'payment_orders', 'status', 'UPDATE') THEN
         missing := missing || 'payment_orders.status UPDATE';
     END IF;
