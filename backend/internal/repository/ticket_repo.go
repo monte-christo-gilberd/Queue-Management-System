@@ -401,7 +401,9 @@ func (r *TicketRepository) MarkSkipped(
 }
 
 // MarkCompleted menurunkan nomor yang sedang dilayani menjadi completed. called_at dan counter dipertahankan
-// sebagai jejak pemanggilan; trigger database tidak memancarkan sinyal untuk perubahan ini.
+// sebagai jejak pemanggilan. Tidak ada push dari perubahan ini (tickets_notify hanya bereaksi pada called_at,
+// recalled_at, dan skip_count), tetapi tickets_email_outbox mengantrekan email `completed` untuk transisi
+// currently_served -> completed. Skip juga melewati status ini sebentar (lihat TicketService.SkipTicket).
 func (r *TicketRepository) MarkCompleted(
 	ctx context.Context,
 	tx *sqlx.Tx,
@@ -990,7 +992,9 @@ func (r *TicketRepository) ServingOfCounter(
 }
 
 // ReturnToWaiting mengembalikan nomor yang sedang dilayani ke urutan tunggu dengan sort_key baru. Tidak menaikkan
-// skip_count (bukan skip); penanda panggilan dikosongkan. Trigger tidak memancarkan sinyal untuk perubahan ini.
+// skip_count (bukan skip); penanda panggilan dikosongkan. Dipakai saat counter dihapus (ReleaseCounterTicket).
+// Trigger tickets_notify memancarkan event `requeued` (reason counter_closed, karena skip_count tidak naik) ke
+// notify-service, sehingga pemilik nomor menerima push posisi barunya.
 func (r *TicketRepository) ReturnToWaiting(
 	ctx context.Context,
 	tx *sqlx.Tx,

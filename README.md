@@ -56,7 +56,7 @@ Proyek capstone. Hasil pembacaan seluruh kode: backend, frontend, dan keempat se
 - [DESIGN.md](docs/DESIGN.md): arsitektur, keputusan desain, dan batasan.
 - [FLOW.md](docs/FLOW.md): alur pengguna dan diagram urutan.
 - [api-contract.md](docs/api-contract.md): kontrak HTTP dan SSE.
-- [panduan-sse-backend.md](docs/panduan-sse-backend.md): panduan package `sse` di backend untuk yang belum familiar dengan Server-Sent Events: konsep, alur, cara mengirim event baru, dan cara mencobanya.
+- [panduan-sse-backend.md](../docs/panduan-sse-backend.md): panduan package `sse` di backend untuk yang belum familiar dengan Server-Sent Events: konsep, alur, cara mengirim event baru, dan cara mencobanya.
 - [deploy/nginx/README.md](deploy/nginx/README.md): pemasangan nginx.
 
 ## 2. Setup and run
