@@ -29,7 +29,7 @@ sequenceDiagram
 
 ## 2. Owner: membuat antrian
 
-Syarat: langganan owner aktif. Tanpa langganan, tombol buat antrian tidak bisa dipakai dan API membalas 402. User biasa menjadi owner lewat penekanan pertama tombol langganan MOCK (bagian 8).
+Syarat: langganan owner aktif. Tanpa langganan, tombol buat antrian tidak bisa dipakai dan API membalas 402. User biasa menjadi owner lewat pembayaran QRIS pertama (bagian 8).
 
 ```mermaid
 sequenceDiagram
@@ -114,32 +114,30 @@ sequenceDiagram
     actor C as Customer
     participant FE as Frontend
     participant BE as Backend
-    participant QR as qr-service
     C->>FE: Scan QR / buka /join?t=<kode>
     alt belum login
         FE-->>C: Halaman masuk (next = /join?t=<kode>)
         C->>FE: Masuk
         FE-->>C: Kembali ke /join?t=<kode>
     end
-    FE->>BE: GET /api/v1/join/preview?t=<token>
+    FE->>BE: GET /api/v1/join/preview?t=<kode>
     BE->>BE: cari kode di queue_settings (qr_current_code)
-    QR-->>BE: queue_id + type (+ exp)
     BE-->>FE: 200 info publik antrian
     FE->>BE: POST /api/v1/join {t}
-    alt token valid, antrian aktif, belum punya tiket
+    alt kode valid, antrian aktif, belum punya tiket
         BE-->>FE: 200 tiket waiting baru
     else sudah punya tiket
         BE-->>FE: 200 tiket yang sudah ada
     else antrian ditutup
         BE-->>FE: 409 QUEUE_CLOSED
-    else token diganti/kedaluwarsa
+    else kode diganti/kedaluwarsa
         BE-->>FE: 404 QR_INVALID / 410 QR_EXPIRED
     end
     FE->>BE: GET /queues/:id/status
     FE-->>C: Nomor saya, sedang dilayani, dan posisi di depan
 ```
 
-- Customer harus login sebelum bisa bergabung. Setelah login, halaman join dibuka lagi dengan token utuh.
+- Customer harus login sebelum bisa bergabung. Setelah login, halaman join dibuka lagi dengan kode utuh.
 - Scan atau tekan Gabung berulang kali tidak membuat tiket kedua. Layar hanya menampilkan nomor yang sudah ada.
 - Join hanya lewat kode join; `POST /queues/:id/join` sudah dihapus. Kode statis yang sudah diganti ditolak.
 - **Kode join**: 6 karakter huruf dan angka tanpa 0, O, 1, I, L (sekitar satu miliar kombinasi), dibuat backend dan unik di seluruh antrian. Pengunjung bisa memindai QR atau mengetik kodenya di popup "Masuk Ke Antrian" (huruf kecil diterima). Kode disimpan di `queue_settings.qr_current_code`; hanya kode aktif yang berlaku.
@@ -198,32 +196,37 @@ Customer menerima email `joined` saat bergabung, `cancelled` saat membatalkan, `
 - Pilihan disimpan di perangkat dan dipulihkan saat aplikasi dibuka lagi.
 - Warna papan antrian dan header tidak berubah, karena memang gelap di kedua mode.
 
-## 8. Langganan dan menjadi owner (MOCK)
+## 8. Langganan dan menjadi owner
 
-Tidak ada pembayaran. `payment-service` dan Stripe sudah dihapus; layar Subscription hanya menambah 30 hari langganan.
+Pembayaran langganan lewat QRIS BorderPay. Backend membuat pesanan lewat `payment-service`, lalu webhook BorderPay yang memperpanjang langganan 30 hari. Webhook adalah sumber kebenaran; pengalihan browser hanya untuk UX.
 
 ```mermaid
 sequenceDiagram
     actor U as User
     participant FE as Frontend
     participant BE as Backend
+    participant PS as payment-service
+    participant BB as BorderPay
     U->>FE: Profil → Jadi Owner / Subscription, tekan BAYAR 1 BULAN
     FE->>BE: POST /api/v1/owners/subscription/checkout (JWT) { method: qris }
     BE->>PS: POST /internal/v1/payments (X-Service-Token), harga dari server
-    PS->>BB: POST /api/v1/payments (Bearer API key)
+    PS->>BB: buat transaksi QRIS (Bearer API key)
     BB-->>PS: pay_url
     PS-->>BE: pay_url, reference_id (pesanan pending di payment_orders)
     BE-->>FE: 200 { pay_url, reference_id, amount }
     FE-->>U: Buka halaman BorderPay
-    BB->>PS: webhook payment.paid (x-borderpay-token)
+    U->>BB: Bayar QRIS
+    BB->>PS: webhook payment.paid (x-borderpay-token) ke /api/v1/webhooks/borderpay
     PS->>PS: tandai lunas, upsert owners +30 hari, catat payments (idempoten)
     FE-->>U: Tekan REFRESH untuk melihat langganan aktif
 ```
 
-- Calon owner melihat kartu dengan judul "Jadi Owner", keterangan berawalan "[MOCK]", dan tombol "JADI OWNER (30 HARI)". Penekanan pertama membuat akunnya menjadi owner dengan langganan aktif 30 hari. Owner yang sudah ada melihat "Tambah 30 Hari" (tombol "TAMBAH 30 HARI"). Tombol REFRESH memuat ulang status.
-- Tidak ada pengalihan ke pihak ketiga, checkout, atau polling setelah kembali: hasilnya langsung dari respons dan profil dimuat ulang.
-- Masa berlaku dihitung dari tanggal berakhir bila masih aktif, atau dari sekarang bila sudah lewat. Satu baris `payments` dicatat per penekanan (`amount` 0, `status` `success`) sebagai riwayat.
-- Perpanjangan dikerjakan backend itu sendiri, tanpa service terpisah. Pembuatan antrian memeriksa `subscription_expires_at` (402 `SUBSCRIPTION_INACTIVE` bila lewat).
+- Calon owner memilih langganan satu bulan di layar Subscription lalu membayar lewat QRIS. Pembayaran pertama dari user biasa sekaligus menjadikannya owner. Owner yang sudah ada memperpanjang masa berlakunya dengan cara yang sama.
+- Setelah membayar, customer kembali ke aplikasi. Status langganan diperbarui oleh webhook; tekan REFRESH bila belum berubah.
+- Masa berlaku dihitung dari tanggal berakhir bila masih aktif, atau dari sekarang bila sudah lewat. Satu baris `payments` dicatat per pembayaran yang lunas.
+- Webhook kembar tidak menerapkan pembayaran dua kali. Nominal yang tidak sama dengan pesanan ditolak (409) dan tidak diterapkan.
+- Pembuatan antrian memeriksa `subscription_expires_at` (402 `SUBSCRIPTION_INACTIVE` bila lewat). Backend hanya membaca status langganan; pembayaran tidak mengubah antrian.
+- Bila payment-service mati, checkout membalas 503 `PAYMENT_UNAVAILABLE`, sedangkan login, antrian, dan tiket tetap berjalan.
 
 ## 9. Yang belum punya alur
 

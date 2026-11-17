@@ -149,7 +149,7 @@ for name in obs:
         problems.append(f"{name} tanpa mem_limit")
 
 # 6. Pengiriman trace (OTEL_*) hanya untuk service yang dipasangi SDK, dan hanya ke collector.
-sdk = {"backend", "auth-service", "qr-service", "mail-service"}
+sdk = {"backend", "auth-service", "mail-service"}
 for name, svc in svcs.items():
     ep = (svc.get("environment") or {}).get("OTEL_EXPORTER_OTLP_ENDPOINT")
     if ep is not None and name not in sdk:
@@ -215,7 +215,7 @@ echo "OK [nginx] listener stub_status :8081 membatasi akses (deny all) di dev da
 # yang ditulis keras di kode Go (alamat hanya datang dari OTEL_EXPORTER_OTLP_ENDPOINT yang diisi overlay).
 HARD='"(http://)?(collector|tempo|prometheus|loki|grafana)(:[0-9]+)?"'
 # baris komentar (diawali //) dikecualikan: komentar boleh menyebut nama host sebagai contoh
-HITS="$(grep -rnE "$HARD" backend auth-service qr-service mail-service notify-service --include=*.go | grep -v _test.go | grep -vE '^[^:]*:[0-9]+:[[:space:]]*//' || true)"
+HITS="$(grep -rnE "$HARD" backend auth-service mail-service notify-service --include=*.go | grep -v _test.go | grep -vE '^[^:]*:[0-9]+:[[:space:]]*//' || true)"
 if [ -n "$HITS" ]; then
   echo "GAGAL [kode] kode Go menulis alamat komponen observability secara keras:"
   echo "$HITS"; exit 1

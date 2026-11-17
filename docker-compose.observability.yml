@@ -60,9 +60,9 @@ services:
   auth-service:
     logging: *app-logging
     environment: *otel-env
-  qr-service:
-    logging: *app-logging
-    environment: *otel-env
+  # qr-service:
+  #   logging: *app-logging
+  #   environment: *otel-env
   mail-service:
     logging: *app-logging
     environment: *otel-env

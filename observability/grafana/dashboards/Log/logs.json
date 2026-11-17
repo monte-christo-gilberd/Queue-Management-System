@@ -474,8 +474,7 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "qr-service"
+              "id": "byName"
             },
             "properties": [
               {

@@ -61,10 +61,9 @@ Beberapa endpoint (join, next) membalas objek tiket langsung di dalam `data`, ta
 | 503 | `SERVICE_UNAVAILABLE` | Sambungan SSE (antrian atau layar publik) ditolak karena hub berhenti atau penuh |
 | 409 | `QR_REPLACE_NOT_ALLOWED` | Penggantian kode QR hanya untuk mode statis |
 | 400 | `QR_TYPE_INVALID` | `type` QR bukan `static`/`dynamic` |
-| 404 | `QR_INVALID` | Token join tidak valid, sudah diganti, atau antrian tidak ada |
-| 410 | `QR_EXPIRED` | Token join dinamis sudah kedaluwarsa |
+| 404 | `QR_INVALID` | Kode join tidak valid, sudah diganti, atau antrian tidak ada |
+| 410 | `QR_EXPIRED` | Kode join dinamis sudah kedaluwarsa |
 | 500 | `INTERNAL_ERROR` | Kesalahan server |
-| 503 | `QR_UNAVAILABLE` | qr-service tidak bisa dihubungi/timeout |
 | 503 | `RETRY_EXHAUSTED` | Join gagal setelah beberapa percobaan karena banyak permintaan bersamaan |
 
 Catatan: 404 dipakai juga untuk "bukan milik kamu". Ini disengaja agar keberadaan antrian orang lain tidak bocor.
@@ -406,26 +405,26 @@ Status QR antrian untuk owner. Token statis dibuat lazy saat pertama kali dimint
     "action": "queue_qr",
     "queue_id": 122,
     "type": "static",
-    "join_url": "https://qms.example.com/join?t=v1...",
+    "join_url": "https://qms.example.com/join?t=K7M2QX",
     "expires_at": null
   }
 }
 ```
 `type` = `static` | `dynamic`. `expires_at` hanya untuk dinamis (detik Unix).
 
-Error: 404 `NOT_FOUND` (bukan owner), 503 `QR_UNAVAILABLE`.
+Error: 404 `NOT_FOUND` (bukan owner).
 
 ### PUT /api/v1/queues/:queue_id/qr/type
 Mengubah mode QR. Body `{ "type": "static" | "dynamic" }`. Respons sama dengan `GET /qr`.
 Token statis tetap disimpan saat beralih ke dinamis (QR cetak lama berlaku lagi bila kembali ke statis).
 
-Error: 400 `QR_TYPE_INVALID`, 404 `NOT_FOUND`, 503 `QR_UNAVAILABLE`.
+Error: 400 `QR_TYPE_INVALID`, 404 `NOT_FOUND`.
 
 ### POST /api/v1/queues/:queue_id/qr/replace
 Mengganti token statis dengan kode baru. Token lama langsung ditolak saat join. Hanya untuk mode statis.
 
 200: respons yang sama dengan `GET /qr` (`type` = `static`).
-Error: 404 `NOT_FOUND`, 409 `QR_REPLACE_NOT_ALLOWED` (mode dinamis), 503 `QR_UNAVAILABLE`.
+Error: 404 `NOT_FOUND`, 409 `QR_REPLACE_NOT_ALLOWED` (mode dinamis).
 
 ## Counter (owner)
 
@@ -497,17 +496,16 @@ Mengunduh semua nomor satu antrian yang sudah ditutup. Hanya owner; bukan owner,
 
 Info publik antrian untuk pemegang tiket diambil dengan `GET /queues/:queue_id` (lihat di atas; `PublicQueueResponse`).
 
-### GET /api/v1/join/preview?t=<token>
-Info publik antrian dari token QR (login diperlukan). Backend memverifikasi token ke qr-service;
-untuk token statis, token juga harus sama dengan `queue_settings.qr_current_code` (penggantian mencabut token lama).
+### GET /api/v1/join/preview?t=<kode>
+Info publik antrian dari kode join (login diperlukan). Backend mencari kode di `queue_settings` (`qr_current_code` untuk statis); kode yang sudah diganti atau kedaluwarsa ditolak.
 
 200: `{ "data": { "action": "join_preview", "queue": PublicQueueResponse } }`
-Error: 400 `BAD_REQUEST` (token kosong), 404 `QR_INVALID`, 410 `QR_EXPIRED`, 503 `QR_UNAVAILABLE`.
+Error: 400 `BAD_REQUEST` (kode kosong), 404 `QR_INVALID`, 410 `QR_EXPIRED`.
 
 ### POST /api/v1/join
-Customer bergabung lewat token QR. Body `{ "t": "v1..." }`.
+Customer bergabung lewat kode join. Body `{ "t": "K7M2QX" }`.
 
-- Token diverifikasi ulang (jangan percaya `queue_id` dari klien).
+- Kode join dicari ulang di server (jangan percaya `queue_id` dari klien).
 - Antrian belum punya tiket untuk user ini: tiket baru dibuat dengan `status` = `waiting`.
 - Sudah punya tiket: **tiket yang sudah ada dikembalikan** (bukan error, bukan tiket kedua). Ini juga berlaku setelah tiket itu `completed`.
 - Antrian ditutup: 409 `QUEUE_CLOSED`.
@@ -517,10 +515,10 @@ Customer bergabung lewat token QR. Body `{ "t": "v1..." }`.
 ```json
 { "data": { "id": 121, "queue_id": 122, "ticket_number": 2, "sort_key": 131072, "user_id": 3, "status": "waiting", ... } }
 ```
-Error: 400 `BAD_REQUEST` (token kosong), 403 `EMAIL_NOT_VERIFIED` (hanya untuk nomor baru), 404 `QR_INVALID` / `NOT_FOUND`, 409 `QUEUE_CLOSED`,
-410 `QR_EXPIRED`, 503 `QR_UNAVAILABLE` / `RETRY_EXHAUSTED`.
+Error: 400 `BAD_REQUEST` (kode kosong), 403 `EMAIL_NOT_VERIFIED` (hanya untuk nomor baru), 404 `QR_INVALID` / `NOT_FOUND`, 409 `QUEUE_CLOSED`,
+410 `QR_EXPIRED`, 503 `RETRY_EXHAUSTED`.
 
-Endpoint lama `POST /api/v1/queues/:queue_id/join` **dihapus** (join hanya lewat token QR).
+Endpoint lama `POST /api/v1/queues/:queue_id/join` **dihapus** (join hanya lewat kode join).
 
 ### GET /api/v1/queues/:queue_id/status
 Status antrian untuk owner atau pemegang tiket. Pengguna lain mendapat 404.
@@ -601,7 +599,7 @@ nginx: zona laju `display_zone` (20 permintaan/detik per IP, burst 40) dan log a
 
 ## Langganan owner (BorderPay)
 
-Dilayani backend, pembayaran lewat payment-service.
+Dilayani backend, pembayaran lewat payment-service dan BorderPay.
 
 ### POST /api/v1/owners/subscription/checkout
 Butuh token. Body `{ "method": "qris" }` (hanya QRIS yang didukung). Membuat pesanan pembayaran satu bulan lewat payment-service dan BorderPay. Harga ditentukan server (`SUBSCRIPTION_PRICE_IDR`, bawaan 15000). Langganan **tidak** bertambah di sini: `owners.subscription_expires_at` diperpanjang 30 hari oleh webhook BorderPay `payment.paid` setelah pembayaran lunas. Calon owner otomatis menjadi owner pada pembayaran pertama yang lunas.
@@ -612,6 +610,21 @@ Respons 200:
 ```
 Galat: 400 `INVALID_PAYMENT_METHOD`, 403 `EMAIL_NOT_VERIFIED`, 502 `PAYMENT_REJECTED`, 503 `PAYMENT_UNAVAILABLE`.
 Error: 401 `UNAUTHORIZED` (tanpa token atau token tidak valid), 500 `INTERNAL_ERROR` (galat database; tidak ada yang berubah). Lewat nginx, path ini masuk ke backend (`location /api/`).
+
+## Webhook pembayaran (BorderPay)
+
+### POST /api/v1/webhooks/borderpay
+
+Publik, tanpa JWT. Dipanggil BorderPay saat transaksi QRIS lunas. Header `x-borderpay-token` harus sama dengan `BORDERPAY_WEBHOOK_TOKEN`. Event yang diproses: `payment.paid`. Pesanan dicocokkan dengan `reference_id`. Idempoten: pengiriman ulang untuk pesanan yang sama tidak menerapkan pembayaran dua kali.
+
+| Status | Arti |
+|---|---|
+| 200 | Diterapkan, sudah pernah diterapkan, atau `reference_id` tidak dikenal (diabaikan) |
+| 401 | `x-borderpay-token` tidak cocok dengan `BORDERPAY_WEBHOOK_TOKEN` |
+| 409 | Nominal webhook tidak sama dengan pesanan; pembayaran tidak diterapkan |
+| 500 | Penyimpanan ke database gagal; BorderPay mengirim ulang |
+
+Lewat nginx, path ini masuk ke payment-service dan tidak dibatasi rate limit.
 
 ## Objek
 

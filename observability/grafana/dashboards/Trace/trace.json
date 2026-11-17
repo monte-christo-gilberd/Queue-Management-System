@@ -40,7 +40,7 @@
       "id": 1,
       "type": "nodeGraph",
       "title": "Peta service",
-      "description": "Hubungan antar service dari trace (service graph dari metrics-generator Tempo). Garis menunjukkan panggilan, mis. backend ke qr-service.",
+      "description": "Hubungan antar service dari trace (service graph dari metrics-generator Tempo). Garis menunjukkan panggilan.",
       "datasource": {
         "type": "tempo",
         "uid": "tempo"
@@ -145,8 +145,7 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "qr-service"
+              "id": "byName"
             },
             "properties": [
               {
@@ -269,8 +268,7 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "qr-service"
+              "id": "byName"
             },
             "properties": [
               {
@@ -393,8 +391,7 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "qr-service"
+              "id": "byName"
             },
             "properties": [
               {
@@ -502,7 +499,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "Latensi p95 query database dan panggilan keluar",
-      "description": "Persentil ke-95 durasi span klien: query database (otelsql) dan panggilan HTTP backend ke qr-service.",
+      "description": "Persentil ke-95 durasi span klien: query database (otelsql) dan panggilan HTTP backend.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

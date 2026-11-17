@@ -11,7 +11,7 @@
 #   make up IP=192.168.1.5          sama, tetapi memakai IP LAN yang ditentukan
 #   make tunnel                     HTTPS publik lewat Cloudflare quick tunnel (kamera HP jalan)
 #   make down                       hentikan stack dan tunnel
-#   make restart                    restart backend, auth-service, qr-service, notify-service, mail-service
+#   make restart                    restart backend, auth-service,, notify-service, mail-service
 #                                   (dipakai setelah mengubah kode Go)
 #   make seed                       reset database dev ke data seed
 #   make logs                       ikuti log semua service (50 baris terakhir)
@@ -211,7 +211,7 @@ tunnel:
 	done
 	[ -n "$$url" ] || { echo "URL tunnel tidak muncul, lihat $(LOG)" >&2; $(stop_tunnel); exit 1; }
 	$(if $(filter 1,$(obs)),$(obs_dev_sampling))
-	QMS_PUBLIC_ORIGIN="$$url" docker compose $(OBS_DEV_FILES) up -d --build --force-recreate --renew-anon-volumes backend auth-service qr-service notify-service mail-service mailpit nginx frontend db $(OBS_SERVICES)
+	QMS_PUBLIC_ORIGIN="$$url" docker compose $(OBS_DEV_FILES) up -d --build --force-recreate --renew-anon-volumes backend auth-service notify-service mail-service mailpit nginx frontend db $(OBS_SERVICES)
 	$(if $(filter 1,$(obs)),$(call obs_db_role_run,docker compose $(OBS_DEV_FILES),.env))
 	$(warm_metro)
 	echo "Link: $$url"
@@ -237,7 +237,7 @@ down:
 
 # Restart service yang perlu dimuat ulang setelah kode Go berubah.
 restart:
-	docker compose restart backend auth-service qr-service notify-service mail-service
+	docker compose restart backend auth-service notify-service mail-service
 
 # Reset database dev ke data seed (db/scripts/reset_seed_dev.sql).
 seed:

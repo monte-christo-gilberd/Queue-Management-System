@@ -47,10 +47,10 @@ type Config struct {
 	PublicAppURL string
 	// URL dasar qr-service (QR_SERVICE_URL). qr-service adalah microservice terpisah yang membuat dan memverifikasi
 	// token join QR. Backend memanggil endpoint internalnya, /internal/v1/*, yang tidak dibuka lewat nginx.
-	QRServiceURL string
+	// QRServiceURL string
 	// token autentikasi antarservice dari backend ke qr-service (QR_SERVICE_TOKEN), dikirim sebagai header
 	// X-Service-Token. Ini bukan token login user.
-	QRServiceToken string
+	// QRServiceToken string
 	// batas waktu tiap panggilan ke qr-service dalam detik (QR_HTTP_TIMEOUT). Bila kosong atau nilai <= 0, 1 detik.
 	// Nilai yang bukan angka membuat Load() gagal.
 	QRHTTPTimeout time.Duration
@@ -105,8 +105,8 @@ func Load() (Config, error) {
 		TrustedProxies: parseOrigins(os.Getenv("TRUSTED_PROXIES")),
 
 		PublicAppURL:         strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/"),
-		QRServiceURL:         strings.TrimRight(os.Getenv("QR_SERVICE_URL"), "/"),
-		QRServiceToken:       os.Getenv("QR_SERVICE_TOKEN"),
+		// QRServiceURL:         strings.TrimRight(os.Getenv("QR_SERVICE_URL"), "/"),
+		// QRServiceToken:       os.Getenv("QR_SERVICE_TOKEN"),
 		PaymentServiceURL:    strings.TrimRight(os.Getenv("PAYMENT_SERVICE_URL"), "/"),
 		PaymentServiceToken:  os.Getenv("PAYMENT_SERVICE_TOKEN"),
 		SubscriptionPriceIDR: 15000,
@@ -147,14 +147,14 @@ func Load() (Config, error) {
 	}
 
 	// pengecekan apakah cfg.QRServiceURL ada
-	if cfg.QRServiceURL == "" {
-		return Config{}, fmt.Errorf("missing required env var: QR_SERVICE_URL")
-	}
+	// if cfg.QRServiceURL == "" {
+	// 	return Config{}, fmt.Errorf("missing required env var: QR_SERVICE_URL")
+	// }
 
 	// pengecekan apakah cfg.QRServiceToken ada
-	if cfg.QRServiceToken == "" {
-		return Config{}, fmt.Errorf("missing required env var: QR_SERVICE_TOKEN")
-	}
+	// if cfg.QRServiceToken == "" {
+	// 	return Config{}, fmt.Errorf("missing required env var: QR_SERVICE_TOKEN")
+	// }
 
 	// QR_HTTP_TIMEOUT dalam detik. Kosong = 1 detik. Bukan angka = error. Nilai <= 0 = 1 detik.
 	timeout := time.Second
@@ -207,20 +207,20 @@ func Load() (Config, error) {
 }
 
 // nilai contoh dari .env.example (change-me-...) dan kata umum (secret, password) yang tidak boleh dipakai sebagai secret atau token saat production
-var weakSecrets = map[string]bool{
-	"change-me-jwt-secret":                      true,
-	"change-me-service-token-at-least-32-bytes": true,
-	"secret":   true,
-	"password": true,
-}
+// var weakSecrets = map[string]bool{
+// 	"change-me-jwt-secret":                      true,
+// 	"change-me-service-token-at-least-32-bytes": true,
+// 	"secret":   true,
+// 	"password": true,
+// }
 
 // validateProduction menolak konfigurasi yang tidak aman saat APP_ENV=production.
 func (c Config) validateProduction() error {
 
 	// pengecekan apakah c.QRServiceToken lebih pendek dari 32 atau ada di weakSecrets
-	if len(c.QRServiceToken) < 32 || weakSecrets[c.QRServiceToken] {
-		return fmt.Errorf("production: QR_SERVICE_TOKEN must be at least 32 chars and not a default value")
-	}
+	// if len(c.QRServiceToken) < 32 || weakSecrets[c.QRServiceToken] {
+	// 	return fmt.Errorf("production: QR_SERVICE_TOKEN must be at least 32 chars and not a default value")
+	// }
 	for _, o := range c.AllowedOrigins {
 		// menolak wildcard * karena mengizinkan origin mana pun
 		if o == "*" {

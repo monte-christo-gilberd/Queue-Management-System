@@ -7,10 +7,10 @@ lihat [api-contract.md](api-contract.md). Untuk alur pengguna lihat [FLOW.md](FL
 
 Sistem antrian untuk layanan tatap muka. Ada dua peran:
 
-- **Owner**: membuat antrian, memanggil nomor (Next, Skip, Panggil ulang), mengelola counter, menyisipkan atau menghapus nomor, menulis catatan, mengaktifkan layar publik, melihat riwayat dan mengekspornya, dan menutup antrian. Owner harus punya langganan aktif. Langganan saat ini MOCK: satu tombol di layar Subscription menambah 30 hari tanpa pembayaran (`POST /api/v1/owners/subscription/extend`). User biasa menjadi owner lewat penekanan pertama tombol itu.
-- **Customer**: login, bergabung ke antrian lewat token QR atau tautan, melihat nomor yang sedang dilayani dan posisinya secara real-time, membatalkan tiketnya, dan melihat riwayat tiket. Menerima Web Push dan email.
+- **Owner**: membuat antrian, memanggil nomor (Next, Skip, Panggil ulang), mengelola counter, menyisipkan atau menghapus nomor, menulis catatan, mengaktifkan layar publik, melihat riwayat dan mengekspornya, dan menutup antrian. Owner harus punya langganan aktif. Langganan dibayar lewat QRIS BorderPay (`POST /api/v1/owners/subscription/checkout`, lalu webhook `payment.paid` memperpanjang 30 hari). Pembayaran pertama user biasa sekaligus menjadikannya owner.
+- **Customer**: login, bergabung ke antrian lewat kode join (dari QR atau tautan), melihat nomor yang sedang dilayani dan posisinya secara real-time, membatalkan tiketnya, dan melihat riwayat tiket. Menerima Web Push dan email.
 
-Sistem terdiri dari lima service Go (backend antrian, `auth-service`, `qr-service`, `notify-service`, `mail-service`), satu PostgreSQL, satu frontend Expo, dan nginx. Ringkasan lintas-service ada di [README.md](../README.md) bagian 5. `payment-service` (Stripe) sudah dihapus.
+Sistem terdiri dari lima service Go (backend antrian, `auth-service`, `notify-service`, `mail-service`, `payment-service`), satu PostgreSQL, satu frontend Expo, dan nginx. Ringkasan lintas-service ada di [README.md](../README.md) bagian 5. `payment-service` menangani pembayaran langganan lewat QRIS BorderPay sebagai service terpisah.
 
 ```
    Browser (Expo web / native)
@@ -18,7 +18,6 @@ Sistem terdiri dari lima service Go (backend antrian, `auth-service`, `qr-servic
         ▼
    nginx  ── frontend (Metro di dev, statis di prod)
         │  /api/  ──────────────►  Backend Go (Gin) :8080 ──► PostgreSQL (qms_db)
-        │                              └──► qr-service :8090   (token join)
         │  /api/v1/users/ (login, register, google, forgot/reset password, verify-email)
         │          ──────────────►  auth-service :8094 ──► PostgreSQL (auth_rw)
         │                              └──► mail-service :8092 (email reset password, verifikasi)
@@ -49,7 +48,7 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 - **repository** (`internal/repository`): SQL. Tidak tahu aturan bisnis.
 - **dto** (`internal/dto`): bentuk JSON ke klien. Model database tidak pernah dikirim langsung.
 
-Pola lapisan yang sama (`handler`, `service`, `repository`, `dto`, `model`, `router`, `config`, `apperror`, `httpserver`, tes di `internal/test`) dipakai backend, `auth-service`, `qr-service`, `notify-service`, dan `mail-service`; paket yang tidak diperlukan tidak ada (mis. `qr-service` tanpa `repository`). Paket khusus: `notify-service` punya `listener`, `pusher`, dan `runner`; `mail-service` punya `mailer` dan `mailtemplate`; `auth-service` punya `google` dan `mailclient`.
+Pola lapisan yang sama (`handler`, `service`, `repository`, `dto`, `model`, `router`, `config`, `apperror`, `httpserver`, tes di `internal/test`) dipakai backend, `auth-service`, `notify-service`, dan `mail-service`; paket yang tidak diperlukan tidak ada. Paket khusus: `notify-service` punya `listener`, `pusher`, dan `runner`; `mail-service` punya `mailer` dan `mailtemplate`; `auth-service` punya `google` dan `mailclient`.
 
 Setiap lapisan mendefinisikan interface yang dibutuhkannya sendiri (mis. `TicketRepository` di paket service).
 Akibatnya service bisa diuji dengan fake repository tanpa database, dan wiring dilakukan manual di
@@ -91,7 +90,7 @@ Semua tabel di skema kini dipakai (14 tabel; peta per file di `db/migrations/REA
 |---|---|
 | `users` | Akun (email, username, password hash, `google_id`, `email_notifications`, `password_changed_at`, `email_verified_at`) |
 | `owners` | Penanda owner dan masa berlaku langganan (`subscription_expires_at`) |
-| `payments` | Riwayat tiap penambahan langganan (ditulis backend; mock: `amount` 0, `status` `success`) |
+| `payments` | Riwayat tiap penambahan langganan (ditulis payment-service saat webhook `payment.paid` diterapkan) |
 | `queues`, `queue_settings` | Antrian (nama, deskripsi, status, pemilik, `ticket_prefix`) dan pengaturan Skip (`skip_fallback`, `skip_fallback_n`, `skip_max_returns`) |
 | `counters` | Counter per antrian (satu default, maks 10) |
 | `tickets`, `ticket_notes`, `queue_history` | Tiket (`waiting`, `currently_served`, `completed`, `cancelled`, `skipped`, `deleted`), catatan owner, dan riwayat |
@@ -194,7 +193,7 @@ dan dirombak tanpa menyentuh data.
 - Login ada di `/` (mode `guest`); rute lama `/login` hanya mengarahkan ke `/`. `forgot-password`, `reset-password`, dan `verify-email` publik (tanpa `AuthGate`, karena tautan sering dibuka di perangkat yang belum masuk); `link-google` memakai `guest` dan hanya bisa dipakai bila ada link token yang menunggu di memori (selain itu kembali ke login). `(owner)/` juga memuat riwayat, profil, `subscription`, dan `queues/[queueId]/live`.
 - `ticket/[queueId]` menampilkan status tiket yang sudah dimiliki (dibuka dari Antrian Saya/Riwayat).
 - Login dan register memakai `guest`: user yang sudah login langsung dibawa ke `next` atau dashboard.
-- `subscription` (MOCK): satu aksi yang memanggil `POST /api/v1/owners/subscription/extend` dan menambah 30 hari tanpa pembayaran, tanpa redirect ke pihak ketiga dan tanpa polling. User biasa melihat judul kartu "Jadi Owner" dengan tombol "JADI OWNER (30 HARI)" dan keterangan berawalan "[MOCK]"; penekanan pertama menjadikannya owner. Owner melihat "Tambah 30 Hari".
+- `subscription`: layar langganan memanggil `POST /api/v1/owners/subscription/checkout` (metode `qris`), lalu membuka `pay_url` BorderPay. User biasa melihat kartu "Jadi Owner"; pembayaran pertama menjadikannya owner. Status langganan dimuat ulang lewat tombol REFRESH setelah webhook diterapkan.
 - `next` diperiksa dengan `sanitizeNext` agar tidak bisa dipakai untuk membuka situs lain (open redirect).
 - Respons 401 dari API menghapus sesi lokal dan mengarahkan ke login.
 
@@ -227,7 +226,7 @@ Dengan nginx, `EXPO_PUBLIC_API_URL` harus diisi dengan origin nginx. Kalau tidak
 
 ## 4. Deployment
 
-- Stack berjalan lewat Docker Compose: `docker-compose.yml` (dev, kode di-mount, hot reload; termasuk Mailpit) dan `docker-compose.prod.yml` (demo/produksi di belakang Cloudflare Tunnel, env dari `.env.prod`, nginx hanya di `127.0.0.1:8080`, frontend statis). Layanan: `db`, `qr-service`, `notify-service`, `mail-service`, `auth-service`, `backend`, `frontend`, `nginx` (dan `mailpit` pada mode tertentu). Keduanya tidak bisa jalan bersamaan (port 8080).
+- Stack berjalan lewat Docker Compose: `docker-compose.yml` (dev, kode di-mount, hot reload; termasuk Mailpit) dan `docker-compose.prod.yml` (demo/produksi di belakang Cloudflare Tunnel, env dari `.env.prod`, nginx hanya di `127.0.0.1:8080`, frontend statis). Layanan: `db`, `notify-service`, `mail-service`, `auth-service`, `payment-service`, `backend`, `frontend`, `nginx` (dan `mailpit` pada mode tertentu). Keduanya tidak bisa jalan bersamaan (port 8080).
 - Hanya nginx yang membuka port. Service internal tidak punya `ports:`; `auth-service` hanya terjangkau lewat rute `/api/v1/users/...` tertentu di nginx (503 JSON `AUTH_UNAVAILABLE` bila mati) dan sengaja tanpa `depends_on` dari backend atau nginx. Kunci publik JWT (`keys/` untuk prod, `keys-dev/` untuk dev) dipasang ke backend dan kunci privatnya hanya ke auth-service (`scripts/gen-auth-keys.sh`).
 - nginx meneruskan `/api/` ke backend, memakai rute SSE tanpa buffer (antrian dan layar publik), rate limit (login dan registrasi, join, reset password, avatar, layar publik), menyamarkan token di log, dan memblokir `/internal/`. Konfigurasinya ada di `deploy/nginx/`. TLS dipegang Cloudflare; nginx hanya HTTP.
 - Backend menolak start di `APP_ENV=production` bila rahasia lemah atau origin bukan https. Shutdown rapi: SIGINT/SIGTERM menutup SSE, menuntaskan request (`SHUTDOWN_TIMEOUT`), lalu menutup database.
@@ -247,10 +246,9 @@ Dengan nginx, `EXPO_PUBLIC_API_URL` harus diisi dengan origin nginx. Kalau tidak
 | Layar dan komponen dipisah (presentational) | Tampilan bisa diuji dan dirombak tanpa menyentuh data. |
 | Daftar antrian tetap ada tanpa langganan, tetapi hanya yang aktif | Owner tetap bisa melihat antrian yang masih berjalan. |
 | Gap 65536 untuk `sort_key` | Penyisipan di tengah bisa dilakukan tanpa menulis ulang baris lain. |
-| Library Go diseragamkan: `gin` untuk HTTP, `sqlx` dengan driver `pgx` untuk query, pgx v5.12.0 di semua modul | Satu cara menulis handler, middleware, dan repository di semua service, jadi pola logging, request ID, dan metrik tidak perlu dua versi. Berlaku untuk backend, auth-service, mail-service (gin dan sqlx), qr-service (gin; tanpa database), dan notify-service (sqlx). |
+| Library Go diseragamkan: `gin` untuk HTTP, `sqlx` dengan driver `pgx` untuk query, pgx v5.12.0 di semua modul | Satu cara menulis handler, middleware, dan repository di semua service, jadi pola logging, request ID, dan metrik tidak perlu dua versi. Berlaku untuk backend, auth-service, mail-service (gin dan sqlx), dan notify-service (sqlx). |
 | LISTEN/NOTIFY tetap memakai koneksi `pgx` langsung, bukan `sqlx` (mail-service `LISTEN mail_outbox`, notify-service `LISTEN queue_events`) | `WaitForNotification` hanya ada di API pgx native; `database/sql` tidak punya padanannya. Koneksi LISTEN dibuka khusus (`pgx.Connect`), tidak diambil dari pool sqlx, supaya koneksi yang menunggu notifikasi tidak ikut dipakai ulang oleh query biasa. Karena itu `pgx` tetap menjadi dependensi langsung di mail-service dan notify-service. |
 | notify-service tidak memakai `gin`; `/health` tetap `net/http` | Satu-satunya endpoint HTTP-nya hanya `GET /health` (48 baris, tanpa middleware). Menambah gin hanya untuk satu rute menambah dependensi dan ukuran binary tanpa manfaat. `net/http` di `internal/pusher` adalah klien Web Push, bukan server. |
-| qr-service tidak memakai `sqlx` | Tidak punya database sama sekali; ia hanya membuat dan merender QR. |
 | Modul Go tidak berbagi `go.work` atau modul bersama; versi library dijaga sama secara manual | Tiap service dibangun dan di-deploy mandiri (Dockerfile sendiri). Paket kecil yang dipakai bersama (mis. logging, metrik) sengaja disalin per service. Saat menaikkan versi library bersama, naikkan di semua modul yang memakainya. |
 
 ## 6. Strategi pengujian
@@ -260,7 +258,7 @@ Dengan nginx, `EXPO_PUBLIC_API_URL` harus diisi dengan origin nginx. Kalau tidak
 | Unit backend | `go test` dengan fake repository, stub service, spy notifier, dan mock | `backend/internal/test/*_test`, `backend/internal/dto_test` |
 | Integration backend | `go test -tags integration` pada PostgreSQL (schema sementara) | `backend/internal/test/integration_test` |
 | Unit frontend | `node --test` (`npm run test:unit`) untuk logika murni | `frontend/tests/unit` |
-| Unit service lain | `go test ./...` di tiap service | `auth-service`, `mail-service`, `notify-service`, `qr-service` |
+| Unit service lain | `go test ./...` di tiap service | `auth-service`, `mail-service`, `notify-service`, `payment-service` |
 | End-to-end | Playwright (tidak dijalankan secara default; tes email butuh Mailpit) | `frontend/playwright` |
 
 Ekspektasi tes diturunkan dari product overview proyek (dokumen di luar repo ini), bukan dari kode.
@@ -275,7 +273,7 @@ Backend: `POST /queues/:id/recall` (`tickets.recalled_at`, 3 detik, sekali per p
 
 Email dikirim oleh **`mail-service`**, bukan notify-service. Pemisahannya disengaja: `notify-service` hanya Web Push, tidak punya kode, env, atau `depends_on` ke email, jadi SMTP atau mail-service yang mati tidak menghentikan push (dibuktikan dengan peristiwa nyata saat mail-service dimatikan; dijaga `scripts/check-service-isolation.sh`).
 
-- **Bentuk:** modul Go sendiri (`mail-service/`, dependensi: `gin` untuk API, `sqlx` dengan driver `pgx` untuk query outbox, dan `pgx` langsung untuk LISTEN), port internal 8092 (worker outbox: lihat bagian "Outbox email" di bawah; tanpa `DATABASE_URL` worker mati dan hanya API kirim yang jalan), tidak ada rute nginx. `GET /health` tidak memeriksa SMTP. `POST /internal/v1/send` dengan header `X-Service-Token` (`MAIL_SERVICE_TOKEN`, minimal 32 karakter; pola `qr-service`): `{"to","template","data"}`. Isi email ditentukan templat di mail-service; pemanggil hanya memberi nama dan data. Jawaban: 200 `{"data":{"status":"sent"}}`, 400 (JSON rusak, field asing, penerima tidak sah, templat tidak ada, data tidak lengkap), 401, 413 (body > 64 KB), 502 `SMTP_FAILED` (detail SMTP tidak dibocorkan), 503 `BUSY` (lebih dari 16 pengiriman bersamaan). Pengiriman sinkron dengan coba ulang di dalam; tidak ada antrian memori, jadi pemanggil yang butuh ketahanan memakai outbox (item 8, di bawah). Alamat penerima tidak dicatat di log.
+- **Bentuk:** modul Go sendiri (`mail-service/`, dependensi: `gin` untuk API, `sqlx` dengan driver `pgx` untuk query outbox, dan `pgx` langsung untuk LISTEN), port internal 8092 (worker outbox: lihat bagian "Outbox email" di bawah; tanpa `DATABASE_URL` worker mati dan hanya API kirim yang jalan), tidak ada rute nginx. `GET /health` tidak memeriksa SMTP. `POST /internal/v1/send` dengan header `X-Service-Token` (`MAIL_SERVICE_TOKEN`, minimal 32 karakter): `{"to","template","data"}`. Isi email ditentukan templat di mail-service; pemanggil hanya memberi nama dan data. Jawaban: 200 `{"data":{"status":"sent"}}`, 400 (JSON rusak, field asing, penerima tidak sah, templat tidak ada, data tidak lengkap), 401, 413 (body > 64 KB), 502 `SMTP_FAILED` (detail SMTP tidak dibocorkan), 503 `BUSY` (lebih dari 16 pengiriman bersamaan). Pengiriman sinkron dengan coba ulang di dalam; tidak ada antrian memori, jadi pemanggil yang butuh ketahanan memakai outbox (item 8, di bawah). Alamat penerima tidak dicatat di log.
 - **Paket `internal/mailer`** (dipanggil `service`): pesan MIME `multipart/alternative` (teks dan HTML, quoted-printable, subjek UTF-8), satu tenggat per percakapan SMTP (dial 5 detik, total 15 detik, ikut batal bersama `context`), mode TLS `none`/`starttls`/`tls` (`PlainAuth` menolak kata sandi lewat koneksi tanpa TLS ke host selain localhost), coba ulang 3 kali dengan backoff 1 dan 2 detik untuk kegagalan sementara (dial, 4xx); 5xx dan input tidak sah tidak diulang (`ErrPermanent`); `To` dan `Subject` dengan CR atau LF ditolak.
 - **Templat** (`internal/mailtemplate/templates`, embed): templat yang ada `joined`, `cancelled`, `removed`, `completed`, `queue-closed`, `email-verify`, `email-verified`, `password-reset`, dan `test`. Tiap templat terdiri dari `<nama>.subject.tmpl`, `.txt.tmpl`, `.html.tmpl` plus `layout.html.tmpl` bersama. HTML lewat `html/template` (nilai pengguna otomatis di-escape); `missingkey=error` membuat data yang kurang menjadi galat, bukan "<no value>" yang terkirim; nama templat divalidasi (`^[a-z0-9][a-z0-9-]*$`).
 - **Konfigurasi** divalidasi saat start (`config.Load`): `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`/`SMTP_PASSWORD` (berpasangan), `SMTP_TLS`, `MAIL_SERVICE_TOKEN`; konektivitas tidak diperiksa saat start. `mail-service send-test <alamat>` mengirim email uji.
@@ -324,7 +322,7 @@ Belum dibangun:
 - Ganti alamat email (`email_change`) belum dibangun; kolom `purpose` sudah menyiapkannya.
 - Observability (metrik, log terpusat, dashboard, alert) dan uji beban.
 - Outbox untuk Web Push, migration runner, backup otomatis, HSTS dan Cloudflare Access.
-- QR join di layar publik (kolom `show_qr` belum ada); plan langganan selain tambah 30 hari, dan pembayaran sungguhan (langganan masih MOCK setelah `payment-service` dihapus).
+- QR join di layar publik (kolom `show_qr` belum ada); plan langganan selain satu bulan (30 hari) lewat QRIS BorderPay, serta penagihan berulang.
 - Dihapus dari produk (31 Okt 2026): `registration_limit`, batas harian QR, batas riwayat, dan penghapusan permanen (riwayat selalu ada).
 
 Sudah dibangun sejak versi sebelumnya dokumen ini: pembatalan oleh customer, hapus nomor oleh owner, counter kustom, sisip posisi, antrian ulang (fallback Skip), catatan, riwayat dan ekspor, layar publik, foto profil, lupa password, email notifikasi, login Google (butuh `GOOGLE_CLIENT_IDS`), verifikasi email, dan langganan MOCK 30 hari.

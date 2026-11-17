@@ -1,6 +1,6 @@
 # Ringkasan Arsitektur — Queue Management System
 
-Diperbarui 10 November 2026 agar sesuai kode: enam service (backend, auth, qr, notify, mail, payment), outbox email, layar publik, pembayaran, dan verifikasi email. Login dipisah ke `auth-service` (fase 1) dan ditambah login Google (fase 2).
+Diperbarui 17 November 2026 agar sesuai kode: lima service (backend, auth, notify, mail, payment), outbox email, layar publik, pembayaran QRIS lewat BorderPay, dan verifikasi email. Join memakai kode 6 karakter dari backend (qr-service sudah dihapus). Login dipisah ke `auth-service` (fase 1) dan ditambah login Google (fase 2).
 
 ## Gambaran besar
 
@@ -14,9 +14,8 @@ Diperbarui 10 November 2026 agar sesuai kode: enam service (backend, auth, qr, n
     │    │    │ /internal/ → selalu 404
     │    │    └──────────────► frontend (Expo web; Metro di dev, statis di prod)
     │    ├── /api/ ──────────► backend (Go, Gin) ──► PostgreSQL
-    │    │                         ├──► qr-service (token join, internal saja)
     │    │                         └──► mail-service (email reset password dan verifikasi, internal saja)
-    │    ├── /api/v1/payments/ ► payment-service ──► PostgreSQL (role payment_rw) + Stripe
+    │    ├── /api/v1/webhooks/borderpay ► payment-service ──► PostgreSQL (role payment_rw) + BorderPay
     │    └── login, register, reset password, verifikasi email ► auth-service ──► PostgreSQL (role auth_rw)
     │                              (menerbitkan JWT RS256; backend dan payment memverifikasi lokal, tanpa memanggilnya)
 
@@ -25,7 +24,7 @@ Diperbarui 10 November 2026 agar sesuai kode: enam service (backend, auth, qr, n
     jaringan Docker internal: db, backend, qr, notify, mail, payment, frontend tidak membuka port
 ```
 
-Enam service Go, satu database, satu frontend, satu proxy (dev juga menjalankan Mailpit). Hanya nginx yang terhubung ke luar. Service pendukung tidak bisa dijangkau dari luar, kecuali `payment-service` (hanya `/api/v1/payments/`) dan `auth-service` (hanya path `/api/v1/users/...` untuk login, register, reset password, dan verifikasi email). `payment-service` dan `auth-service` terpisah dari antrian: backend tidak memanggil keduanya dan sebaliknya (dijaga `scripts/check-service-isolation.sh`).
+Lima service Go, satu database, satu frontend, satu proxy (dev juga menjalankan Mailpit). Hanya nginx yang terhubung ke luar. Service pendukung tidak bisa dijangkau dari luar, kecuali `payment-service` (hanya `/api/v1/payments/`) dan `auth-service` (hanya path `/api/v1/users/...` untuk login, register, reset password, dan verifikasi email). `payment-service` dan `auth-service` terpisah dari antrian: backend tidak memanggil keduanya dan sebaliknya (dijaga `scripts/check-service-isolation.sh`).
 
 ## 1. Database (PostgreSQL)
 
@@ -61,7 +60,6 @@ internal/
   export/      ekspor riwayat ke CSV dan XLSX
   httpserver/  imageproc/ (foto profil)
   mailclient/  klien HTTP ke mail-service
-  qrclient/    klien HTTP ke qr-service (token join)
   repository/  service/  router/  sse/  validator/
   test/        dto, handler, integration, qr, repository, router, service, sse
 ```
@@ -72,7 +70,7 @@ internal/
 | Lupa dan reset password lewat email (token sekali pakai, sesi lama dicabut) | Selesai |
 | Verifikasi email (`POST /users/verify-email`, `POST /users/me/verify-email/resend`, guard di buat antrean dan join, `EMAIL_NOT_VERIFIED` 403) | Selesai: halaman publik `/verify-email`, banner dan tombol kirim ulang di Profil. Dev lewat Mailpit; prod lewat `MAIL_MODE` |
 | Buat, lihat, ubah, tutup antrean (butuh langganan aktif untuk membuat) | Selesai |
-| Join lewat token QR bertanda tangan | Selesai |
+| Join lewat kode join 6 karakter (dibuat backend, disimpan di `queue_settings`) | Selesai |
 | Join dua kali oleh user yang sama | 200 dengan tiket yang sama |
 | Next (panggil tiket waiting pertama, tandai `completed`) | Selesai |
 | QR statis dan dinamis (TTL 120 detik), ganti kode statis | Selesai |
@@ -87,7 +85,7 @@ internal/
 | Riwayat owner dan customer, ekspor CSV/XLSX (`/history/*`, `/users/me/history`) | Selesai |
 | Notifikasi Web Push (`notify-service`) dan email (`mail-service`, outbox) | Selesai |
 | Prefix tiket kustom | Selesai |
-| Pembayaran langganan (`payment-service`, Stripe) | Selesai (service terpisah) |
+| Pembayaran langganan (`payment-service`, QRIS lewat BorderPay) | Selesai (service terpisah) |
 | Shutdown rapi (SIGINT/SIGTERM, `SHUTDOWN_TIMEOUT`) | Selesai |
 
 `TRUSTED_PROXIES=172.28.0.0/16` agar IP klien dari `X-Forwarded-For` hanya dipercaya bila datang dari nginx.
@@ -104,19 +102,18 @@ Satu-satunya pengirim email; port internal 8092, tanpa rute nginx. Dua jalur: (1
 
 Login, registrasi, login dengan Google, lupa/reset password, dan verifikasi email (`POST /api/v1/users/{register,login,google,google/link,forgot-password,reset-password,verify-email}` dan `POST /api/v1/users/me/verify-email/resend`). Path dan bentuk respons sama dengan yang dulu dilayani backend, jadi frontend tidak berubah; nginx mengarahkan path itu ke port internal 8094. Satu-satunya penerbit token: JWT **RS256** (klaim `sub`, `iat`, `exp` 24 jam, header `kid`) ditandatangani kunci privat `keys/auth-private.pem` yang hanya di-mount ke service ini (dibuat `scripts/gen-auth-keys.sh`). Role database `auth_rw` hanya boleh membaca dan menulis kolom login di `users` serta tabel `user_action_tokens` (tanpa `DELETE`, tanpa akses antrian atau tiket). Email dikirim lewat mail-service (HTTP, tanpa `depends_on`).
 
-**Terisolasi dari antrian.** Backend dan payment-service memverifikasi token **secara lokal** dengan kunci publik `keys/auth-public.pem`, dan pencabutan sesi (`users.password_changed_at` lebih baru dari `iat`) dibaca langsung dari database. Guard verifikasi email di join dan buat antrian juga membaca `users.email_verified_at` dari database. Karena itu, bila auth-service mati: user yang sudah login tetap bisa memakai antrian, tiket, SSE, profil, dan pembayaran; login baru, registrasi, reset password, dan verifikasi email dijawab nginx dengan JSON 503 `AUTH_UNAVAILABLE` (header `Retry-After: 30`) dan frontend **tidak** logout (hanya 401 yang mengakhiri sesi). Terbukti oleh tes chaos (lihat bagian 6). Verifikasi menegakkan algoritma per kunci (RS256 hanya dengan kunci publik), menolak `alg=none`, algorithm confusion, dan token ber-klaim `purpose` (link token Google bukan sesi). **Login Google** (opsional, `GOOGLE_CLIENT_IDS`): ID token diperiksa di server dengan JWKS Google; email yang sudah terdaftar dengan password tidak pernah ditautkan otomatis, pemiliknya harus membuktikan password (link token 5 menit, sekali pakai). `JWT_LEGACY_HS256_SECRET` opsional hanya untuk masa transisi 24 jam agar token HS256 lama tetap sah; kosongkan setelahnya. Dijaga `scripts/check-service-isolation.sh`.
+**Terisolasi dari antrian.** Backend dan payment-service memverifikasi token **secara lokal** dengan kunci publik `keys/auth-public.pem`, dan pencabutan sesi (`users.password_changed_at` lebih baru dari `iat`) dibaca langsung dari database. Guard verifikasi email di join dan buat antrian juga membaca `users.email_verified_at` dari database. Karena itu, bila auth-service mati: user yang sudah login tetap bisa memakai antrian, tiket, SSE, profil, dan pembayaran; login baru, registrasi, reset password, dan verifikasi email dijawab nginx dengan JSON 503 `AUTH_UNAVAILABLE` (header `Retry-After: 30`) dan frontend **tidak** logout (hanya 401 yang mengakhiri sesi). Terbukti oleh tes chaos (lihat bagian 5). Verifikasi menegakkan algoritma per kunci (RS256 hanya dengan kunci publik), menolak `alg=none`, algorithm confusion, dan token ber-klaim `purpose` (link token Google bukan sesi). **Login Google** (opsional, `GOOGLE_CLIENT_IDS`): ID token diperiksa di server dengan JWKS Google; email yang sudah terdaftar dengan password tidak pernah ditautkan otomatis, pemiliknya harus membuktikan password (link token 5 menit, sekali pakai). `JWT_LEGACY_HS256_SECRET` opsional hanya untuk masa transisi 24 jam agar token HS256 lama tetap sah; kosongkan setelahnya. Dijaga `scripts/check-service-isolation.sh`.
 
 ## 2d. payment-service (Go, terpisah)
 
-Satu kemampuan: perpanjang langganan owner 1 bulan setelah Stripe mengonfirmasi pembayaran (`POST /api/v1/payments/checkout`, `POST /api/v1/payments/webhooks/stripe`, `GET /health`, port internal 8093). Pembayaran pertama user biasa sekaligus menjadikannya owner. Webhook idempoten per event dan per sesi Checkout. Role database `payment_rw`; bila service mati nginx menjawab 503 `PAYMENT_UNAVAILABLE` dan antrian tetap jalan. Di dev tersedia simulator (`DEV_PAYMENT_SIMULATOR`), ditolak di produksi.
+Satu kemampuan: perpanjang langganan owner 1 bulan (30 hari) lewat QRIS BorderPay. Dua jalur:
 
-## 3. qr-service (Go, terpisah)
+- API internal `POST /internal/v1/payments` (`X-Service-Token`), dipanggil backend untuk membuat pesanan `pending` di `payment_orders` dan transaksi di BorderPay, lalu mengembalikan `pay_url` dan `reference_id`.
+- Webhook publik `POST /api/v1/webhooks/borderpay` (lewat nginx, diverifikasi dengan header `x-borderpay-token`). Event `payment.paid` menandai pesanan lunas dan memperpanjang `owners.subscription_expires_at` dalam satu transaksi.
 
-Stateless, tanpa database. Membuat dan memverifikasi token join bertanda tangan HMAC (`JOIN_LINK_SECRET`), dengan jenis statis atau dinamis (TTL). Hanya backend yang memanggilnya lewat `/internal/v1/*` dengan `X-Service-Token`. Gambar QR **tidak** dibuat di sini lagi: endpoint publik `/qr/join.png`, `image_url`, dan `PUBLIC_QR_URL` sudah dihapus. Backend hanya mengembalikan `join_url`.
+Webhook idempoten: pengiriman ulang tidak menerapkan pembayaran dua kali, dan nominal yang tidak sama dengan pesanan ditolak (409). Pembayaran pertama user biasa sekaligus menjadikannya owner. Role database `payment_rw`. Bila service mati, checkout membalas 503 `PAYMENT_UNAVAILABLE`, sementara login, antrian, dan tiket tetap berjalan. Port internal 8095 (`PAYMENT_SERVICE_URL`).
 
-Kode error QR: `QR_INVALID` 404, `QR_EXPIRED` 410, `QR_UNAVAILABLE` 503, `QUEUE_CLOSED` 409.
-
-## 4. Frontend (Expo / React Native Web)
+## 3. Frontend (Expo / React Native Web)
 
 Expo Router, NativeWind, Zustand. Satu basis kode untuk web dan native.
 
@@ -129,9 +126,9 @@ Expo Router, NativeWind, Zustand. Satu basis kode untuk web dan native.
   - Bila stream tidak mengirim satu byte pun selama 3 detik (terjadi lewat Cloudflare quick tunnel yang menahan stream), data diambil ulang tiap 3 detik.
 - Kamera di browser butuh HTTPS atau `localhost`.
 
-## 5. Deploy dan development
+## 4. Deploy dan development
 
-`docker-compose.yml` untuk development dan `docker-compose.prod.yml` untuk demo/produksi (project `qms-prod`, subnet `172.29.0.0/16`, env dari `.env.prod`, frontend statis, `service_healthy` untuk backend dan qr-service). Keduanya tidak bisa jalan bersamaan (port 8080). Di prod, HTTPS lewat Cloudflare Tunnel `qms-ta` ke `https://qms.montechristo.my.id` (service `cloudflared` di host, dinyalakan manual), akses dibatasi aturan WAF berdasarkan IP WiFi, dan header `Upgrade` Metro tidak dikirim. Skema DB yang sudah berjalan diperbarui dengan `db/scripts/apply_schema.sql` (idempoten). Kelima service Go memakai Go 1.27. Dockerfile multi-stage (`dev` dan `prod`). Go memakai `go run` dengan restart manual (`docker compose restart backend`), frontend memakai Metro dengan hot reload.
+`docker-compose.yml` untuk development dan `docker-compose.prod.yml` untuk demo/produksi (project `qms-prod`, subnet `172.29.0.0/16`, env dari `.env.prod`, frontend statis, `service_healthy` untuk backend). Keduanya tidak bisa jalan bersamaan (port 8080). Di prod, HTTPS lewat Cloudflare Tunnel `qms-ta` ke `https://qms.montechristo.my.id` (service `cloudflared` di host, dinyalakan manual), akses dibatasi aturan WAF berdasarkan IP WiFi, dan header `Upgrade` Metro tidak dikirim. Skema DB yang sudah berjalan diperbarui dengan `db/scripts/apply_schema.sql` (idempoten). Kelima service Go memakai Go 1.27. Dockerfile multi-stage (`dev` dan `prod`). Go memakai `go run` dengan restart manual (`docker compose restart backend`), frontend memakai Metro dengan hot reload.
 
 nginx mengikuti `template-nginx/`: `deploy/nginx/nginx.conf` dan `server.conf`. Rute:
 
@@ -142,7 +139,7 @@ nginx mengikuti `template-nginx/`: `deploy/nginx/nginx.conf` dan `server.conf`. 
 | `/api/v1/users/forgot-password`, `/reset-password` | backend | `reset_zone` 1 r/s, burst 5; log halaman `/reset-password` tanpa query |
 | `/api/v1/users/me/avatar` | backend | Body maks 6m, `avatar_zone` 5 r/s |
 | `/api/v1/display/:token[/event]`, `/display/:token` | backend, frontend | Layar publik: SSE tanpa buffer, token disamarkan di log, tanpa Referer dan cache |
-| `/api/v1/payments/` | payment-service | `payment_zone`; webhook Stripe tanpa rate limit; 503 JSON bila service mati |
+| `/api/v1/webhooks/borderpay` | payment-service | Webhook publik dari BorderPay (`x-borderpay-token`); tanpa rate limit; 503 JSON bila service mati |
 | `/api/v1/join` | backend | Rate limit 10 r/s per IP |
 | `/api/` | backend | |
 | `/internal/` | | Selalu 404 |
@@ -158,20 +155,19 @@ Akses dari HP, lewat `Makefile`:
 
 mkcert dan listener HTTPS lokal sudah dibuang; HTTPS hanya lewat tunnel. Perintah harian ada di `Makefile` (`up`, `tunnel`, `down`, `restart`, `seed`).
 
-## 6. Pengujian
+## 5. Pengujian
 
 | Lapisan | Alat | Hasil terakhir |
 |---|---|---|
 | Backend unit | Go test, fake manual | Lulus |
 | Backend integrasi | Go test dengan tag `integration`, skema sementara di Postgres | Butuh `DATABASE_URL` |
-| qr-service | Go test hitam-putih di `internal/test/*_test/` | Lulus |
 | Frontend unit | Runner bawaan Node | Lulus (sekitar 159 tes) |
 | mail-service, notify-service, payment-service | Go test (payment: integrasi DB bila env diisi; verifikasi token RS256, secret lama, dan algorithm confusion) | Lulus |
 | auth-service | Go test (token RS256, registrasi, login, reset password, verifikasi email, pencabutan sesi, handler, konfigurasi, SQL lewat sqlmock) | Lulus |
 | Tes chaos auth-service | Stack sungguhan: `docker compose stop auth-service`, lalu user yang sudah login memakai `/users/me`, buat antrian, Next, join, SSE, dan checkout dengan token yang sama; login baru, register, dan reset password menjawab 503 `AUTH_UNAVAILABLE`; HS256 palsu ditolak; setelah dinyalakan lagi login pulih | 38 dari 38 lulus (10 Nov 2026) |
 | E2E | Playwright, sekitar 217 tes di 32 spec, seed `db/scripts/reset_seed_dev.sql` | Tes email butuh Mailpit; dua tes ketahanan butuh `QMS_DOCKER_EXEC=1` |
 
-## 7. Belum dibangun
+## 6. Belum dibangun
 
 Rencana sebelumnya (counter, riwayat dan ekspor, papan publik, pembatalan, hapus nomor, pembayaran, lupa password, email) sudah selesai. Tersisa:
 

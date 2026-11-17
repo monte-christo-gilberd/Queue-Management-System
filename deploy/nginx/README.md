@@ -48,7 +48,7 @@ Nama host di `server.conf` adalah nama service di docker-compose:
 | `$qms_auth` | `auth-service:8094` | Login, registrasi, reset password, verifikasi email |
 | `$qms_frontend` | `frontend:80` | Aplikasi web |
 
-`qr-service` (port 8090), `notify-service`, `mail-service`, dan `mailpit` tidak punya rute publik. `/internal/` selalu dibalas 404, dan backend memanggilnya langsung lewat
+`notify-service`, `mail-service`, dan `mailpit` tidak punya rute publik. `/internal/` selalu dibalas 404, dan backend memanggilnya langsung lewat
 jaringan Docker. Upstream memakai variabel dan `resolver 127.0.0.11`, sehingga nginx tetap bisa start walaupun sebuah
 service belum jalan, dan tidak 502 terus setelah service direstart.
 
@@ -92,7 +92,7 @@ mencatat `$uri_masked` (token diganti `***`) dan tidak pernah mencatat query str
 butuh format log khusus.
 
 Request ID: nginx membuat `$request_id` untuk setiap request (nilai kiriman klien selalu ditimpa), meneruskannya ke
-upstream sebagai `X-Request-Id`, dan mengembalikannya di header respons. Backend, auth-service, dan qr-service (lewat
+upstream sebagai `X-Request-Id`, dan mengembalikannya di header respons. Backend, dan auth-service (lewat
 backend) mencatat ID yang sama sebagai `request_id`. Location yang punya `proxy_set_header` atau `add_header` sendiri
 (SSE, halaman layar, reset password, `@auth_unavailable`) mengulang header ini karena direktif di location
 menggantikan yang di `server{}`.
@@ -116,7 +116,7 @@ docker compose up --build   # nginx terbuka di ${QMS_HTTP_PORT:-8080}
 ```
 
 Hanya ada satu `docker-compose.yml` (mode development, hot reload). Hanya nginx yang membuka port ke host (selain Mailpit,
-yang hanya diikat ke `127.0.0.1`); `db`, `backend`, `auth-service`, `qr-service`, `notify-service`, `mail-service` dan
+yang hanya diikat ke `127.0.0.1`); `db`, `backend`, `auth-service`, `notify-service`, `mail-service` dan
 `frontend` hanya terjangkau lewat jaringan Docker. Psql:
 `docker compose exec db psql -U qms -d qms_db`.
 

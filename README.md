@@ -36,7 +36,7 @@ Diagram dan detail lengkap ada di [FLOW.md](docs/FLOW.md).
 
 - Layanan tatap muka: customer hadir langsung dan membawa HP. Owner memanggil nomor satu per satu.
 - Customer wajib login dan memverifikasi email sebelum bergabung. Tidak ada join anonim. Verifikasi hanya membuktikan kepemilikan email lewat tautan; domain email tidak diperiksa (tanpa cek MX atau allowlist).
-- Join hanya lewat token QR atau tautan. Token statis bisa diganti owner, token dinamis kedaluwarsa.
+- Join hanya lewat kode join 6 karakter dari QR atau tautan (dibuat backend). Kode statis bisa diganti owner; kode dinamis berganti setelah ada yang join dan kedaluwarsa setelah 120 detik.
 - Owner butuh langganan aktif untuk membuat antrian. User biasa menjadi owner lewat pembayaran QRIS BorderPay untuk 1 bulan (30 hari).
 - Layar publik hanya menampilkan nomor, tanpa nama customer (privasi).
 - Riwayat dan antrian tidak pernah dihapus permanen (keputusan produk 31 Okt 2026).
@@ -46,7 +46,7 @@ Diagram dan detail lengkap ada di [FLOW.md](docs/FLOW.md).
 
 ### Status
 
-Proyek capstone. Hasil pembacaan seluruh kode: backend, frontend, dan keempat service (auth, qr, notify, mail) sudah terhubung ujung ke ujung, tanpa stub dan tanpa TODO di backend maupun service. Login Google tersambung lewat auth-service dan menyala hanya bila `GOOGLE_CLIENT_IDS` diisi. Sisanya adalah ketahanan dan operasional (lihat [bagian 4](#4-what-was-deferred-and-why) dan [bagian 7](#7-next-steps)).
+Proyek capstone. Hasil pembacaan seluruh kode: backend, frontend, dan keempat service pendukung (auth, notify, mail, payment) sudah terhubung ujung ke ujung, tanpa stub dan tanpa TODO di backend maupun service. Login Google tersambung lewat auth-service dan menyala hanya bila `GOOGLE_CLIENT_IDS` diisi. Sisanya adalah ketahanan dan operasional (lihat [bagian 4](#4-what-was-deferred-and-why) dan [bagian 7](#7-next-steps)).
 
 ### Dokumen lain
 
@@ -90,22 +90,11 @@ go run ./cmd/auth-service  # http://localhost:8094
 
 Melayani login, registrasi, login Google, reset password, dan verifikasi email. Konfigurasi dibaca dari environment; `../.env` dimuat bila ada.
 
-#### 4. qr-service
-
-```bash
-cd qr-service
-# Env: JOIN_LINK_SECRET (>=32 byte) + QR_SERVICE_TOKEN
-go run ./cmd/qr-service  # http://localhost:8090
-```
-
-`JOIN_LINK_SECRET` hanya dipegang qr-service. Backend memanggil endpoint internal
-`/internal/v1/join-token` dan `/internal/v1/join-token/verify` dengan header `X-Service-Token`.
-
-#### 5. Backend
+#### 4. Backend
 
 ```bash
 cd backend
-# Env: DATABASE_URL, JWT_PUBLIC_KEY_FILE, ALLOWED_ORIGINS + variabel QR (../.env dimuat bila ada)
+# Env: DATABASE_URL, JWT_PUBLIC_KEY_FILE, ALLOWED_ORIGINS (../.env dimuat bila ada)
 go run ./cmd/server
 ```
 
@@ -120,15 +109,13 @@ Variabel penting:
 | `PORT` | Port HTTP backend |
 | `ALLOWED_ORIGINS` | Origin frontend yang diizinkan (dipisah koma) |
 | `PUBLIC_APP_URL` | Origin frontend untuk `join_url`, mis. `http://localhost:8080` (lewat nginx) |
-| `QR_SERVICE_URL` | Alamat qr-service, mis. `http://localhost:8090` |
-| `QR_SERVICE_TOKEN` | Sama dengan `QR_SERVICE_TOKEN` milik qr-service |
-| `QR_HTTP_TIMEOUT` | Timeout panggilan internal (detik, default 1) |
+| `QR_HTTP_TIMEOUT` | Timeout panggilan internal ke payment-service (detik, default 1) |
 | `EMAIL_VERIFICATION_REQUIRED` | Guard verifikasi email di backend. Kosong = nyala; `false` mematikan (semua akun dianggap terverifikasi). Harus sama dengan nilai di auth-service (di sana kosong = nyala bila `MAIL_SERVICE_URL` terisi, dan `true` tanpa mail-service ditolak saat start) |
 | `SHUTDOWN_TIMEOUT` | Detik menunggu request selesai saat backend berhenti (default 8; compose dev 2). Harus lebih kecil dari `stop_grace_period` |
 
 Catatan: `PUBLIC_APP_URL` harus bisa dibuka dari HP yang memindai QR (jangan `localhost` untuk uji perangkat).
 
-#### 6. Frontend
+#### 5. Frontend
 
 ```bash
 cd frontend
@@ -149,9 +136,8 @@ go test ./... -count=1
 # Integration backend (butuh DATABASE_URL yang bisa diakses; memakai schema sementara)
 go test -tags integration ./internal/test/integration_test/ -count=1 -v
 
-# auth-service, qr-service, notify-service, mail-service (masing-masing modul Go sendiri)
+# auth-service, notify-service, mail-service (masing-masing modul Go sendiri)
 cd auth-service && go test ./...
-cd qr-service && go test ./...
 cd notify-service && go test ./...
 cd mail-service && go test ./...
 
@@ -160,7 +146,7 @@ cd frontend
 npm run test:unit
 ```
 
-Tes tiap modul Go ada di `internal/test/<lapisan>_test/` (di notify-service juga `cmd/notify-service/main_test.go`). Hasil terakhir: backend 457 tes lulus, auth-service 131, qr-service 34, notify-service 43, mail-service 57. Cakupan statement (`go test ./... -coverpkg=./...`): backend 70,0%, auth-service 85,7%, qr-service 72,0%, notify-service 88,1%, mail-service 75,9%. Unit test frontend: 193 lulus.
+Tes tiap modul Go ada di `internal/test/<lapisan>_test/` (di notify-service juga `cmd/notify-service/main_test.go`). Hasil terakhir: backend 457 tes lulus, auth-service 131, notify-service 43, mail-service 57. Cakupan statement (`go test ./... -coverpkg=./...`): backend 70,0%, auth-service 85,7%, notify-service 88,1%, mail-service 75,9%. Unit test frontend: 193 lulus.
 
 End-to-end memakai Playwright di `frontend/playwright/` (`npm run e2e`): 246 tes dalam 33 file spec. Tes ini butuh backend dan frontend yang berjalan.
 
@@ -172,25 +158,25 @@ docker compose up --build
 ```
 
 Buka `http://localhost:8080` (atau `QMS_PUBLIC_ORIGIN`). Hanya nginx yang membuka port ke host;
-`qr-service` tidak punya `ports:` sehingga `/internal/v1/*` hanya bisa diakses dari jaringan Docker.
+Layanan internal (auth, notify, mail) tidak punya `ports:` sehingga endpoint internal-nya hanya bisa diakses dari jaringan Docker.
 
 | Layanan | Dockerfile | Catatan |
 |---|---|---|
 | db | `db/Dockerfile` | `postgres:16-alpine`, skema dan index dijalankan otomatis saat data directory kosong |
 | auth-service | `auth-service/Dockerfile` | Target `dev`, hanya di jaringan internal (:8094). Login, registrasi, login Google, reset password, verifikasi email. Satu-satunya pemegang kunci privat JWT; role database `auth_rw` |
-| qr-service | `qr-service/Dockerfile` | Target `dev` (`go run`, restart manual), hanya di jaringan internal |
 | notify-service | `notify-service/Dockerfile` | Target `dev`, hanya di jaringan internal. LISTEN ke Postgres (role `notify_ro`), kirim Web Push (VAPID). Tidak bergantung pada email |
 | mail-service | `mail-service/Dockerfile` | Target `dev`, hanya di jaringan internal (:8092). Satu-satunya pengirim email: API `POST /internal/v1/send` (`X-Service-Token`), templat, SMTP, coba ulang |
+| payment-service | `payment-service/Dockerfile` | Target `dev`, hanya di jaringan internal. Pembayaran langganan QRIS lewat BorderPay; webhook publik masuk lewat nginx di `/api/v1/webhooks/borderpay` |
 | mailpit | `axllent/mailpit:v1.31.6` | Hanya dev. Server SMTP palsu: menangkap semua email dari mail-service. SMTP dan UI hanya diikat ke 127.0.0.1 (`:1025` dan `:8025`), tidak lewat nginx; mail-service memakai `mailpit:1025` lewat jaringan internal |
 | backend | `backend/Dockerfile` | Target `dev` (`go run`, restart manual), healthcheck `/health`, hanya di jaringan internal |
 | frontend | `frontend/Dockerfile` | Target `dev` (Metro, hot reload) di port 80 internal |
 | nginx | `deploy/nginx/Dockerfile` | Reverse proxy, satu-satunya yang membuka port (80) |
 
-Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot reload; Go perlu `docker compose restart backend` (atau `auth-service`, `qr-service`, `notify-service`, `mail-service`) setelah ubah kode. Untuk demo/produksi pakai `docker-compose.prod.yml` (lihat bawah).
-Kredensial (`POSTGRES_PASSWORD`, `JOIN_LINK_SECRET`, `QR_SERVICE_TOKEN`, dan kata sandi role database) tidak dibakar ke image; kunci privat JWT di-mount dari `keys-dev/` (dev) atau `keys/` (prod).
+Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot reload; Go perlu `docker compose restart backend` (atau `auth-service`, `notify-service`, `mail-service`) setelah ubah kode. Untuk demo/produksi pakai `docker-compose.prod.yml` (lihat bawah).
+Kredensial (`POSTGRES_PASSWORD` dan kata sandi role database) tidak dibakar ke image; kunci privat JWT di-mount dari `keys-dev/` (dev) atau `keys/` (prod).
 Frontend memanggil API di origin halaman (`EXPO_PUBLIC_API_URL=origin`), jadi mengganti `QMS_PUBLIC_ORIGIN` tidak butuh build ulang frontend.
 
-Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) atau `make tunnel` (HTTPS publik, kamera HP jalan); `make down` untuk berhenti. Perintah lain: `make restart` (backend, auth-service, qr-service, notify-service, mail-service), `make seed`, `make logs`. Lihat `Makefile` dan `deploy/nginx/README.md`.
+Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) atau `make tunnel` (HTTPS publik, kamera HP jalan); `make down` untuk berhenti. Perintah lain: `make restart` (backend, auth-service, notify-service, mail-service), `make seed`, `make logs`. Lihat `Makefile` dan `deploy/nginx/README.md`.
 
 ### Demo/produksi di belakang Cloudflare Tunnel
 
@@ -362,11 +348,11 @@ Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat
 - Memakai image baru? Pin versi di `docker-compose.yml` dan `docker-compose.prod.yml`; pull dari jaringan yang memeriksa sertifikat (proxy) bisa gagal, ulangi dari jaringan lain.
 
 #### Log dan request ID
-Semua service Go (backend, auth, qr, mail, notify) menulis **satu baris JSON per kejadian** ke stdout lewat `slog`, dengan atribut `service`. Level diatur `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; bawaan `info`). nginx menulis log akses JSON sendiri (lihat `deploy/nginx/README.md`).
+Semua service Go (backend, auth, mail, notify) menulis **satu baris JSON per kejadian** ke stdout lewat `slog`, dengan atribut `service`. Level diatur `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; bawaan `info`). nginx menulis log akses JSON sendiri (lihat `deploy/nginx/README.md`).
 
-- **Log akses** (backend, auth, qr, mail): `request_id`, `method`, `route`, `status`, `latency_ms`, `bytes`, `client_ip`, dan `user_id` (angka saja, backend dan auth). `route` adalah **templat** (`/api/v1/display/:token`), bukan path mentah; rute yang tidak ada dicatat `unmatched`. Probe `/health` dan `/ready` dicatat di level `debug`. Panic dicatat sebagai `panic recovered` (dengan stack) dan klien menerima 500 `INTERNAL_ERROR`.
-- **Request ID:** nginx membuat `X-Request-Id` untuk tiap request (nilai dari klien ditimpa) dan meneruskannya ke backend dan auth-service. Backend meneruskannya lagi ke qr-service. ID dari luar yang kosong, lebih dari 128 karakter, atau berisi karakter selain huruf, angka, `-`, `_`, `.` diganti ID baru. Cari satu request di semua service dengan `docker compose logs | grep <request_id>`.
-- **Kebijakan isi log.** Tidak boleh masuk log (termasuk log nginx dan, nanti, atribut span): JWT dan header `Authorization`, password, token layar publik, token reset password, token verifikasi email, token join/QR, token Web Push, isi body request, query string, dan alamat email penuh. Catat id angka (`user_id`, `ticket_id`, `queue_id`) atau templat route, bukan nilainya. Saat menambah log baru, jangan memasukkan error mentah dari pustaka yang bisa memuat URL atau kredensial tanpa memeriksanya.
+- **Log akses** (backend, auth, mail): `request_id`, `method`, `route`, `status`, `latency_ms`, `bytes`, `client_ip`, dan `user_id` (angka saja, backend dan auth). `route` adalah **templat** (`/api/v1/display/:token`), bukan path mentah; rute yang tidak ada dicatat `unmatched`. Probe `/health` dan `/ready` dicatat di level `debug`. Panic dicatat sebagai `panic recovered` (dengan stack) dan klien menerima 500 `INTERNAL_ERROR`.
+- **Request ID:** nginx membuat `X-Request-Id` untuk tiap request (nilai dari klien ditimpa) dan meneruskannya ke backend dan auth-service. ID dari luar yang kosong, lebih dari 128 karakter, atau berisi karakter selain huruf, angka, `-`, `_`, `.` diganti ID baru. Cari satu request di semua service dengan `docker compose logs | grep <request_id>`.
+- **Kebijakan isi log.** Tidak boleh masuk log (termasuk log nginx dan, nanti, atribut span): JWT dan header `Authorization`, password, token layar publik, token reset password, token verifikasi email, kode join, token Web Push, isi body request, query string, dan alamat email penuh. Catat id angka (`user_id`, `ticket_id`, `queue_id`) atau templat route, bukan nilainya. Saat menambah log baru, jangan memasukkan error mentah dari pustaka yang bisa memuat URL atau kredensial tanpa memeriksanya.
 
 #### Observability (opsional: log, metrik, trace, alert)
 Overlay `docker-compose.observability.yml` menambah OpenTelemetry Collector, Loki, dan Grafana. Aplikasi tidak bergantung padanya: tidak ada `depends_on` ke arah sana, dan bila overlay mati antrian, login, SSE, dan langganan tetap jalan.
@@ -374,11 +360,11 @@ Overlay `docker-compose.observability.yml` menambah OpenTelemetry Collector, Lok
 1. Isi `GRAFANA_ADMIN_PASSWORD` di `.env` (dev) atau `.env.prod` (prod). Wajib, tanpa nilai bawaan. `GRAFANA_PORT` dan `OBS_LOG_RETENTION` opsional.
 2. `make obs-up` (dev) atau `make obs-up OBS_TARGET=prod`. Pertama kali, service aplikasi dibuat ulang sekali karena blok `logging:` berubah (volume dan database tetap). Di dev, nilai `QMS_PUBLIC_ORIGIN` backend yang sedang jalan dipakai ulang.
 3. `make obs-url` menampilkan alamat Grafana: `http://localhost:3000`, **hanya di 127.0.0.1**. Dari perangkat lain pakai `ssh -L 3000:127.0.0.1:3000 <user>@<server>`. Login `admin` dan password tadi.
-4. Dashboard **QMS: Log** (folder Grafana "Log", di-provision dari `observability/grafana/dashboards/Log/logs.json`; folder dibuat per jenis: Log, Metrik, Trace): jumlah log, ERROR, WARN, nginx 5xx, volume per service dan level, request nginx per kelas status, p95 latensi backend per route, route dengan 4xx/5xx, serta panel log dengan filter service, level, teks, dan `request_id`. Dashboard hanya diubah lewat berkas JSON di repo. Untuk query bebas: Grafana > Explore > Loki, contoh `{service="backend"} | json` atau `{service="nginx", level="ERROR"}`. Label Loki hanya `service` dan `level`; `request_id`, `route`, `status`, dan lainnya adalah structured metadata (`{service="backend"} | request_id="..."`). Satu `request_id` bisa dicari dari nginx sampai backend dan qr-service.
+4. Dashboard **QMS: Log** (folder Grafana "Log", di-provision dari `observability/grafana/dashboards/Log/logs.json`; folder dibuat per jenis: Log, Metrik, Trace): jumlah log, ERROR, WARN, nginx 5xx, volume per service dan level, request nginx per kelas status, p95 latensi backend per route, route dengan 4xx/5xx, serta panel log dengan filter service, level, teks, dan `request_id`. Dashboard hanya diubah lewat berkas JSON di repo. Untuk query bebas: Grafana > Explore > Loki, contoh `{service="backend"} | json` atau `{service="nginx", level="ERROR"}`. Label Loki hanya `service` dan `level`; `request_id`, `route`, `status`, dan lainnya adalah structured metadata (`{service="backend"} | request_id="..."`). Satu `request_id` bisa dicari dari nginx sampai backend dan auth-service.
 5. Verifikasi: `make obs-check` menjalankan pemeriksaan isolasi statis dan tes kebocoran rahasia (butuh stack jalan dengan `obs`). Jalankan setelah mengubah compose, nginx, atau kode logging/tracing.
 6. Metrik (Prometheus): dashboard di folder "Metrik": **Ikhtisar (RED)** per service, **Antrian**, **Langganan dan email** (termasuk push), **Auth**, **Infrastruktur** (host, container, service Go), **PostgreSQL**, dan **nginx** (termasuk kelas status dan lonjakan 429 dari log). Tiap dashboard punya menu "Dashboard QMS" di kiri atas untuk pindah antar dashboard. Tiap service Go membuka `/metrics` di port **:9100 terpisah** (`METRICS_ADDR`, `off` mematikannya), tidak dipublikasikan ke host dan tidak melewati nginx; hanya Prometheus di jaringan `internal` yang mengambilnya. Bila port itu tidak bisa dipakai (mis. menjalankan beberapa service di satu host tanpa Docker), service tetap jalan dan hanya mencatat peringatan. Role database `metrics_ro` (hanya `pg_monitor`, tanpa akses ke data) dibuat otomatis oleh `make obs-up`; butuh `METRICS_DB_PASSWORD`. Retensi metrik 7 hari (`OBS_METRICS_RETENTION`), maks 1 GB.
 7. Batasan: cAdvisor berjalan **tanpa `docker.sock`** (sesuai plan), jadi container dikenali dari id (12 karakter pertama sama dengan `docker ps`), bukan nama service. Memori per service Go ada di panel tersendiri lewat `process_resident_memory_bytes`. node_exporter memantau host (CPU, memori, disk), tetapi statistik jaringan yang terlihat milik container.
-8. Trace (Tempo): dashboard **QMS: Trace** (folder "Trace") berisi peta service, laju/galat/latensi dari trace, daftar trace, dan log yang tertaut. Backend, auth, qr, dan mail mengirim span ke collector (OTLP gRPC, jaringan internal) **hanya bila `OTEL_EXPORTER_OTLP_ENDPOINT` terisi**, yang diatur otomatis oleh overlay; tanpa overlay tracing no-op dan aplikasi start seperti biasa. Satu request join antrian menghasilkan satu trace: span request backend, span query database, span klien HTTP, lalu span qr-service sebagai anaknya. Sampling head: 10% di prod; di dev `make up obs`, `make tunnel obs`, dan `make obs-up` memakai 100% (semua trace) bila `OTEL_TRACES_SAMPLER_ARG` tidak diisi di `.env`, supaya dashboard Trace langsung terisi (nilai yang diisi eksplisit tetap dihormati); trace dari request yang error belum dipaksa 100% (tail sampling di luar cakupan). Retensi trace 3 hari (`OBS_TRACE_RETENTION`). Dari satu baris log, klik `trace_id` untuk membuka trace-nya; dari trace, tombol "Logs" membuka log service terkait. Pagar privasi: path mentah, query string, header, dan alamat klien dibuang dari span di aplikasi, nilai yang tersisa disamarkan (JWT, Bearer, token join, `token=`), dan collector menyamarkan sekali lagi; query database hanya templat (`$1`, `$2`), tanpa nilai parameter. Probe `/health` dan koneksi SSE tidak dilacak. nginx tidak menghasilkan span (image tanpa modul otel): trace dimulai di backend dan `X-Request-Id` dari nginx dicatat sebagai atribut span `request_id`.
+8. Trace (Tempo): dashboard **QMS: Trace** (folder "Trace") berisi peta service, laju/galat/latensi dari trace, daftar trace, dan log yang tertaut. Backend, auth, dan mail mengirim span ke collector (OTLP gRPC, jaringan internal) **hanya bila `OTEL_EXPORTER_OTLP_ENDPOINT` terisi**, yang diatur otomatis oleh overlay; tanpa overlay tracing no-op dan aplikasi start seperti biasa. Satu request join antrian menghasilkan satu trace: span request backend dan span query database. Sampling head: 10% di prod; di dev `make up obs`, `make tunnel obs`, dan `make obs-up` memakai 100% (semua trace) bila `OTEL_TRACES_SAMPLER_ARG` tidak diisi di `.env`, supaya dashboard Trace langsung terisi (nilai yang diisi eksplisit tetap dihormati); trace dari request yang error belum dipaksa 100% (tail sampling di luar cakupan). Retensi trace 3 hari (`OBS_TRACE_RETENTION`). Dari satu baris log, klik `trace_id` untuk membuka trace-nya; dari trace, tombol "Logs" membuka log service terkait. Pagar privasi: path mentah, query string, header, dan alamat klien dibuang dari span di aplikasi, nilai yang tersisa disamarkan (JWT, Bearer, token join, `token=`), dan collector menyamarkan sekali lagi; query database hanya templat (`$1`, `$2`), tanpa nilai parameter. Probe `/health` dan koneksi SSE tidak dilacak. nginx tidak menghasilkan span (image tanpa modul otel): trace dimulai di backend dan `X-Request-Id` dari nginx dicatat sebagai atribut span `request_id`.
 9. Alert (Grafana, Alerting > Alert rules, folder "QMS Alert"): 11 aturan sebagai kode di `observability/grafana/provisioning/alerting/rules.yaml`: service mati, container start ulang berulang, rasio 5xx, latensi p95, antrean email menumpuk, login gagal melonjak, lonjakan langganan ditolak email belum diverifikasi, koneksi PostgreSQL, disk, memori host, dan lonjakan 429. Statusnya (Normal, Pending, Firing) terlihat di UI, tetapi **tidak ada notifikasi yang dikirim**: semua ditahan jadwal senyap `selalu-senyap` (`mutetimings.yaml`, `policies.yaml`). Ambang adalah tebakan awal dan disetel setelah ada data nyata. Mengirim notifikasi (email, Slack) menyusul: buat contact point di `contactpoints.yaml`, arahkan policy ke sana, lalu hapus `mute_time_intervals`. Perhatian: berkas alerting yang tidak valid membuat Grafana gagal start (modul provisioning gagal), jadi uji perubahan di sana dengan `docker compose ... up grafana` dan periksa lognya.
 10. `make obs-down` menghapus container observability saja; log dan data Grafana tersimpan di volume `obs_*`. `make down` dan `make prod-down` ikut membersihkannya (`--remove-orphans`).
 
@@ -393,7 +379,6 @@ Rincian: log Docker (`json-file`, maks 3 x 10 MB per container) dibaca collector
 | Backend (Go, Gin) | Lengkap dan terhubung | Semua route punya handler, service, dan repository. Tanpa stub dan tanpa TODO. 457 tes lulus (`go test ./... -count=1 -v`), cakupan 70,0% (`-coverpkg=./...`). Tes ada di `internal/test/<lapisan>_test/`. |
 | Frontend (Expo) | Lengkap dan terhubung | Semua layar memakai API nyata. 193 unit test dan 246 tes Playwright (33 spec). Login Google tersambung ke auth-service. |
 | auth-service | Lengkap | Login, registrasi, login Google, reset password, verifikasi email, token RS256. 131 tes lulus, cakupan 85,7%. |
-| qr-service | Lengkap | Token join HMAC, verifikasi, dan render QR. `/health` dan `/ready`. 34 tes lulus, cakupan 72,0%. |
 | notify-service | Lengkap | LISTEN Postgres, Web Push, coba ulang, dan `/health`. Tanpa outbox. 43 tes lulus, cakupan 88,1%. |
 | mail-service | Lengkap | Outbox dengan coba ulang dan backoff, sembilan templat (`joined`, `cancelled`, `removed`, `completed`, `queue-closed`, `email-verify`, `email-verified`, `password-reset`, `test`), SMTP. 57 tes lulus, cakupan 75,9%. |
 | Database | Lengkap | 14 tabel, trigger notifikasi dan outbox email, role terpisah per service. |
@@ -407,7 +392,7 @@ Rincian: log Docker (`json-file`, maks 3 x 10 MB per container) dibaca collector
 | Verifikasi email | Tautan verifikasi saat registrasi, halaman publik `/verify-email`, banner dan tombol kirim ulang di Profil. Belum terverifikasi: tidak bisa bergabung ke antrian atau membuat antrian. Dev lewat Mailpit, prod lewat `MAIL_MODE`. |
 | Antrian | Owner membuat antrian (butuh langganan aktif), mengubah nama dan deskripsi, dan menutup antrian. |
 | Panggilan nomor | Owner memakai Next, Skip (dengan aturan nomor yang dilewati), dan Panggil ulang. Customer bisa membatalkan tiketnya, dan owner bisa menghapus tiket. |
-| QR dan tautan join | QR statis atau dinamis dengan token dari `qr-service`, penggantian kode statis, dan salin tautan join. Customer hanya bisa join lewat token. |
+| QR dan tautan join | QR statis atau dinamis dengan kode join 6 karakter dari backend, penggantian kode statis, dan salin tautan join. Customer hanya bisa join lewat kode join. |
 | Customer | Bergabung lewat QR atau tautan, melihat nomor yang sedang dilayani dan posisi di depan, serta riwayat tiket. |
 | Catatan | Owner menulis catatan untuk nomor yang sedang dilayani. |
 | Counter | Owner menambah, mengganti nama, dan menghapus counter per antrian lewat UI (`CounterBar`). Layar publik menampilkan satu kartu per counter. |
@@ -440,7 +425,6 @@ queue-management-system/
 │       ├── imageproc/        validasi, crop, dan perkecil foto profil
 │       ├── middleware/       verifikasi JWT (kunci publik), CORS, pencabutan sesi
 │       ├── model/            struct data
-│       ├── qrclient/         klien HTTP ke qr-service
 │       ├── repository/       akses data ke PostgreSQL
 │       ├── router/           pendaftaran rute HTTP
 │       ├── service/          logika bisnis dan aturan antrian
@@ -452,9 +436,6 @@ queue-management-system/
 │   └── internal/             apperror, config, database, dto, handler, httpserver, middleware, model, repository, router, service, validator,
 │                             google (verifikasi ID token Google), mailclient (klien HTTP ke mail-service), test/<lapisan>_test
 ├── frontend/                 aplikasi Expo: src/app (rute), components, hooks, lib, store, utils, constants, types
-├── qr-service/               token join QR (HMAC) dan render QR, :8090, hanya jaringan internal
-│   ├── cmd/qr-service/       titik masuk
-│   └── internal/             apperror, config, dto, handler, httpserver, logging, middleware, model, router, service (tanpa repository), test/<lapisan>_test
 ├── notify-service/           Web Push (LISTEN Postgres), /health :8091
 │   ├── cmd/notify-service/   titik masuk (+ main_test.go)
 │   └── internal/             apperror, config, dto, httpserver, model, repository, service,
@@ -503,7 +484,6 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 |---|---|
 | Backend | Go 1.27, Gin, sqlx + pgx, verifikasi JWT RS256 (kunci publik) |
 | auth-service | Go 1.27, Gin, sqlx + pgx, penerbit JWT RS256 (kunci privat), bcrypt, verifikasi ID token Google |
-| qr-service | Go 1.27, Gin (tanpa database), token join HMAC (internal, tidak dipublikasikan nginx) |
 | notify-service | Go 1.27, sqlx + pgx, LISTEN Postgres (pgx langsung), Web Push (VAPID); `/health` memakai `net/http` |
 | mail-service | Go 1.27, Gin, sqlx + pgx, LISTEN Postgres (pgx langsung), SMTP, templat HTML dan teks, outbox di Postgres |
 | Database | PostgreSQL |
@@ -521,13 +501,13 @@ nginx ── frontend statis (dist)
    │                         ─► auth-service :8094 ─► PostgreSQL (role auth_rw)
    │                                 └─► mail-service :8092 (email verifikasi, terverifikasi, reset password)
    └─ /api/ (lainnya)        ─► backend (Gin) :8080 ─► PostgreSQL (qms_db)
-                                    └─► qr-service :8090   (token join, HTTP internal)
 
 PostgreSQL ─ pg_notify('queue_events') ─► notify-service :8091 ─► Web Push ke browser
 PostgreSQL ─ notification_outbox       ─► mail-service :8092 ─► SMTP (Mailpit di dev)
+BorderPay ─ webhook payment.paid ─► nginx ─► payment-service ─► PostgreSQL (payment_rw)
 ```
 
-Hanya nginx yang membuka port ke host. `auth-service`, `qr-service`, `notify-service`, dan `mail-service` berada di jaringan internal Docker.
+Hanya nginx yang membuka port ke host. `auth-service`, `notify-service`, dan `mail-service` berada di jaringan internal Docker.
 
 ### Lapisan backend
 
@@ -542,12 +522,11 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 - **service** berisi semua aturan bisnis: kepemilikan, langganan, urutan antrian, join ulang.
 - **repository** berisi SQL dan tidak tahu aturan bisnis.
 - **dto** adalah bentuk JSON ke klien; model database tidak pernah dikirim langsung.
-- Setiap lapisan mendefinisikan interface yang dibutuhkannya sendiri, dan perakitannya manual di `cmd/server/main.go`. auth-service, qr-service, notify-service, dan mail-service memakai pola berlapis yang sama (`cmd` hanya merangkai; `internal/` berisi apperror, config, model, dto, repository, service, handler, middleware, router, dan paket khusus per service). Akibatnya service bisa diuji dengan fake repository tanpa database.
+- Setiap lapisan mendefinisikan interface yang dibutuhkannya sendiri, dan perakitannya manual di `cmd/server/main.go`. auth-service, notify-service, dan mail-service memakai pola berlapis yang sama (`cmd` hanya merangkai; `internal/` berisi apperror, config, model, dto, repository, service, handler, middleware, router, dan paket khusus per service). Akibatnya service bisa diuji dengan fake repository tanpa database.
 
 ### Real-time dan komunikasi antar-layanan
 
 - **SSE**: tiap antrian punya satu hub di memori. Service memberi tahu hub setelah transaksi selesai (join, next, skip, update, close), lalu hub menyebar event ke klien di antrian itu. Heartbeat tiap 25 detik. Klien memakai `fetch` stream agar header `Authorization` tetap dikirim.
-- **qr-service**: backend memanggil `/internal/v1/join-token` dan `/internal/v1/join-token/verify` dengan header `X-Service-Token`. Rahasia `JOIN_LINK_SECRET` hanya dipegang qr-service.
 - **notify-service**: trigger Postgres memancarkan `pg_notify`; service mendengarkan lalu mengirim Web Push. Tidak ada panggilan langsung dari backend.
 - **auth-service**: nginx meneruskan rute login, registrasi, Google, reset password, dan verifikasi email ke sini. Backend tidak memanggilnya; ia memverifikasi JWT RS256 secara lokal dengan kunci publik. Bila auth-service mati, user yang sudah login tetap bisa memakai aplikasi (nginx menjawab 503 `AUTH_UNAVAILABLE` untuk rute auth).
 - **mail-service**: trigger menulis ke `notification_outbox` dalam transaksi yang sama dengan perubahan tiket atau penutupan antrian; worker mengirim dan mencoba ulang. Email auth (verifikasi, `email-verified`, reset password) dikirim auth-service lewat `POST /internal/v1/send`.
@@ -559,7 +538,7 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 | Keputusan | Manfaat | Harga yang dibayar |
 |---|---|---|
 | Hub SSE di memori | Sederhana, event langsung tanpa infrastruktur tambahan | Hanya satu instance backend; scale-out butuh pub/sub bersama |
-| Dipecah menjadi service terpisah (auth, qr, notify, mail) | Hak database dibatasi per service, dan kegagalan terisolasi (auth mati, user yang sudah login tetap memakai antrian) | Lebih banyak container, token internal, role DB, dan konfigurasi |
+| Dipecah menjadi service terpisah (auth, notify, mail, payment) | Hak database dibatasi per service, dan kegagalan terisolasi (auth mati, user yang sudah login tetap memakai antrian) | Lebih banyak container, token internal, role DB, dan konfigurasi |
 | Push tanpa outbox, email dengan outbox | Push cepat dan sederhana | Push yang terjadi saat service mati hilang; email terjamin tetapi butuh tabel outbox, worker, dan backoff |
 | Join ulang mengembalikan tiket yang ada, bukan error | Scan dua kali atau double-tap aman | Klien tidak lagi mendapat sinyal "sudah bergabung" (`ALREADY_JOINED` tidak dikirim) |
 | `sort_key` dengan gap 65536 | Penyisipan di tengah tanpa menulis ulang baris lain | Nilai maksimum harus dihitung dari semua tiket, bukan hanya `waiting`, karena `UNIQUE (queue_id, sort_key)` (pernah jadi bug) |

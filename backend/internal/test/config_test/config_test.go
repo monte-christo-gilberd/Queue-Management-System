@@ -16,7 +16,7 @@ import (
 	"qms/internal/config"
 )
 
-const strong = "0123456789abcdef0123456789abcdef-strong"
+// const strong = "0123456789abcdef0123456789abcdef-strong"
 
 // writePEM menulis blok PEM bertipe typ berisi der ke berkas sementara dan mengembalikan path-nya.
 func writePEM(t *testing.T, typ string, der []byte) string {
@@ -47,9 +47,9 @@ func setEnv(t *testing.T, kv map[string]string) {
 	base := map[string]string{
 		"APP_ENV": "production", "DATABASE_URL": "postgres://u:p@db/x",
 		"JWT_PUBLIC_KEY_FILE": publicKeyFile(t),
-		"QR_SERVICE_TOKEN":    strong,
+		// "QR_SERVICE_TOKEN":    strong,
 		"ALLOWED_ORIGINS":     "https://qms.example", "PUBLIC_APP_URL": "https://qms.example",
-		"QR_SERVICE_URL": "http://qr:8090",
+		// "QR_SERVICE_URL": "http://qr:8090",
 	}
 	for k, v := range kv {
 		base[k] = v
@@ -68,7 +68,7 @@ func TestProductionValid(t *testing.T) {
 
 func TestProductionRejects(t *testing.T) {
 	cases := map[string]map[string]string{
-		"default token":   {"QR_SERVICE_TOKEN": "change-me-service-token-at-least-32-bytes"},
+		// "default token":   {"QR_SERVICE_TOKEN": "change-me-service-token-at-least-32-bytes"},
 		"wildcard origin": {"ALLOWED_ORIGINS": "*"},
 		"http origin":     {"ALLOWED_ORIGINS": "http://qms.example"},
 		"http public url": {"PUBLIC_APP_URL": "http://qms.example"},

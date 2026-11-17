@@ -24,8 +24,8 @@ scrape_configs:
         labels: {service: backend}
       - targets: ["auth-service:9100"]
         labels: {service: auth-service}
-      - targets: ["qr-service:9100"]
-        labels: {service: qr-service}
+      # - targets: ["qr-service:9100"]
+      #   labels: {service: qr-service}
       - targets: ["mail-service:9100"]
         labels: {service: mail-service}
       - targets: ["notify-service:9100"]

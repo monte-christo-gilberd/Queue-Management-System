@@ -88,32 +88,32 @@ services:
       - internal
 
   # qr-service: membuat dan memverifikasi token join QR. Hanya dipanggil backend lewat jaringan internal.
-  qr-service:
-    build:
-      context: ./qr-service
-      # target dev: go run dari kode yang di-mount, tanpa binary hasil build.
-      target: dev
-    environment:
-      PORT: "8090"
-      JOIN_LINK_SECRET: ${JOIN_LINK_SECRET:?set JOIN_LINK_SECRET in .env}
-      QR_DYNAMIC_TTL_SECONDS: ${QR_DYNAMIC_TTL_SECONDS:-120}
-      QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-    volumes:
-      # Kode sumber (hot edit via restart). Cache build dan modul Go di volume bersama.
-      - ./qr-service:/src
-      - go_build_cache:/root/.cache/go-build
-      - go_mod_cache:/go/pkg/mod
-    # `go run` tidak selalu meneruskan SIGTERM ke proses anak; jangan tunggu 10 detik.
-    stop_grace_period: 3s
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 40
-    networks:
-      - internal
-    restart: unless-stopped
+  # qr-service:
+  #   build:
+  #     context: ./qr-service
+  #     # target dev: go run dari kode yang di-mount, tanpa binary hasil build.
+  #     target: dev
+  #   environment:
+  #     PORT: "8090"
+  #     JOIN_LINK_SECRET: ${JOIN_LINK_SECRET:?set JOIN_LINK_SECRET in .env}
+  #     QR_DYNAMIC_TTL_SECONDS: ${QR_DYNAMIC_TTL_SECONDS:-120}
+  #     QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
+  #     LOG_LEVEL: ${LOG_LEVEL:-info}
+  #   volumes:
+  #     # Kode sumber (hot edit via restart). Cache build dan modul Go di volume bersama.
+  #     - ./qr-service:/src
+  #     - go_build_cache:/root/.cache/go-build
+  #     - go_mod_cache:/go/pkg/mod
+  #   # `go run` tidak selalu meneruskan SIGTERM ke proses anak; jangan tunggu 10 detik.
+  #   stop_grace_period: 3s
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/health || exit 1"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 40
+  #   networks:
+  #     - internal
+  #   restart: unless-stopped
 
   # notify-service: Web Push. Mendengarkan event tiket lewat LISTEN Postgres dengan role notify_ro (baca saja).
   # Tidak bergantung pada mail-service, Mailpit, atau SMTP (dijaga scripts/check-service-isolation.sh).
@@ -272,8 +272,8 @@ services:
       # Hanya nginx di jaringan internal yang boleh menentukan IP klien (X-Forwarded-For).
       # [SINKRON] Harus sama dengan subnet networks.internal di bawah.
       TRUSTED_PROXIES: 172.28.0.0/16
-      QR_SERVICE_URL: http://qr-service:8090
-      QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
+      # QR_SERVICE_URL: http://qr-service:8090
+      # QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
 
       # Checkout langganan lewat payment-service (profil "payments"). Tanpa payment-service, checkout membalas 503.
       PAYMENT_SERVICE_URL: http://payment-service:8095
@@ -304,8 +304,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      qr-service:
-        condition: service_healthy
+      # qr-service:
+      #   condition: service_healthy
     networks:
       - internal
     restart: unless-stopped
@@ -344,8 +344,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-      qr-service:
-        condition: service_healthy
+      # qr-service:
+      #   condition: service_healthy
       frontend:
         condition: service_started
     networks:

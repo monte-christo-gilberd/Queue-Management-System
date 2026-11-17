@@ -66,7 +66,7 @@ groups:
         for: 2m
         annotations:
           summary: "Service {{ $labels.service }} tidak bisa di-scrape"
-          description: "Prometheus gagal mengambil /metrics dari {{ $labels.service }} selama 2 menit: service mati atau tidak terjangkau. Antrian bisa terganggu (backend, qr-service) atau fitur terkait mati (auth: login baru, mail: email, notify: push)."
+          description: "Prometheus gagal mengambil /metrics dari {{ $labels.service }} selama 2 menit: service mati atau tidak terjangkau. Antrian bisa terganggu (backend) atau fitur terkait mati (auth: login baru, mail: email, notify: push)."
         labels:
           severity: critical
           system: qms
