@@ -57,7 +57,7 @@ CREATE INDEX IF NOT EXISTS idx_tickets_user_created_at
 -- queue_history
 -- ----------------------------------------------------------------------------
 
--- Dipakai Go untuk dua hal: (1) daftar riwayat satu owner, terbaru dulu; (2) COUNT(DISTINCT original_queue_id)
+-- Disiapkan untuk dua hal (belum dipakai kode Go saat ini): (1) daftar riwayat satu owner, terbaru dulu; (2) COUNT(DISTINCT original_queue_id)
 -- per owner, untuk memutuskan apakah sudah lewat 10 antrian dan perlu DELETE.
 CREATE INDEX IF NOT EXISTS idx_queue_history_owner_closed
     ON queue_history (owner_id, queue_closed_at);

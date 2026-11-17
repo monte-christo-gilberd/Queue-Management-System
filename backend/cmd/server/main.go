@@ -7,8 +7,8 @@
 // Binary ini hanya menyambungkan komponen dan menjalankan HTTP server. Logika ada di internal/service,
 // akses data di internal/repository, dan endpoint di internal/handler. Login, registrasi, reset password, dan
 // verifikasi email ada di auth-service (backend hanya memverifikasi tokennya secara lokal, tanpa memanggilnya).
-// Hanya qr-service yang dipanggil backend lewat HTTP; layanan notifikasi, email, dan pembayaran berjalan terpisah
-// dan bekerja lewat database.
+// Satu-satunya layanan yang dipanggil backend lewat HTTP adalah payment-service (checkout langganan); layanan notifikasi dan
+// email berjalan terpisah dan bekerja lewat database. Kode join QR dibuat dan diverifikasi di backend sendiri.
 package main
 
 import (

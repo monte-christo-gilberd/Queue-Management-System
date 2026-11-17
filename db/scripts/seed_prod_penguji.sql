@@ -130,7 +130,7 @@ CROSS JOIN (VALUES
 INSERT INTO _q (kunci, id)
 SELECT ticket_prefix, id FROM queues WHERE owner_id = (SELECT owner_id FROM _ctx);
 
--- Pengaturan: skip "kembali ke belakang" hanya di antrian S. Lainnya default (hapus).
+-- Pengaturan: skip "kembali ke belakang" hanya di antrian S. Lainnya 'remove' (hapus dari antrian).
 INSERT INTO queue_settings (queue_id, skip_fallback, skip_max_returns)
 SELECT id, CASE kunci WHEN 'S' THEN 'back' ELSE 'remove' END, 1
 FROM _q;

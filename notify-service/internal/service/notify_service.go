@@ -53,7 +53,7 @@ type PushSender interface {
 type NotifyService struct {
 	// repo: sumber data tiket dan langganan.
 	repo NotifyRepository
-	// sender: pengirim push ke browser.
+	// sender: pengirim push ke perangkat (Web Push ke browser dan FCM ke aplikasi Android).
 	sender PushSender
 }
 

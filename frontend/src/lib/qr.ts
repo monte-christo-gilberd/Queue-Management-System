@@ -43,7 +43,7 @@ export async function replaceQueueQR(queueId: number): Promise<QueueQR> {
 
 /**
  * GET /api/v1/join/preview?t=<token> — info publik antrian dari token join (login diperlukan).
- * Token salah/expired -> error (QR_INVALID/QR_EXPIRED/QR_UNAVAILABLE).
+ * Token salah/expired -> error (QR_INVALID/QR_EXPIRED). Backend masih memetakan QR_UNAVAILABLE (sisa qr-service yang sudah dihapus), tetapi cabang itu tidak tercapai.
  */
 export async function previewJoin(token: string): Promise<PublicQueue> {
   const data = await apiFetch<{ action: 'join_preview'; queue: PublicQueue }>(
@@ -55,7 +55,7 @@ export async function previewJoin(token: string): Promise<PublicQueue> {
 /**
  * POST /api/v1/join {t} — customer bergabung ke antrian lewat token join.
  * Token valid -> tiket. 409 ALREADY_JOINED / QUEUE_CLOSED, 404 QR_INVALID,
- * 410 QR_EXPIRED, 503 QR_UNAVAILABLE.
+ * 410 QR_EXPIRED. (503 QR_UNAVAILABLE sisa qr-service yang sudah dihapus; tidak lagi dikirim backend.)
  */
 export async function joinByToken(token: string): Promise<Ticket> {
   const ticket = await apiFetch<Ticket>('/api/v1/join', { method: 'POST', body: { t: token } });

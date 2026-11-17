@@ -1,5 +1,5 @@
 // Package repository berisi akses data ke PostgreSQL: setiap query SQL untuk tabel antrian, tiket, counter,
-// user, riwayat, layar publik, catatan, token, dan foto profil. Service memanggil repository, dan repository
+// user, riwayat, layar publik, catatan, sesi, status verifikasi, dan foto profil. Service memanggil repository, dan repository
 // tidak pernah memanggil service.
 //
 // Aturan yang dipakai di semua repository:
@@ -18,13 +18,13 @@
 //   - queue_repo.go: QueueRepository, yaitu antrian, pengaturan skip, QR, dan counter default.
 //   - ticket_repo.go: TicketRepository, yaitu tiket, pengurutan sort_key, dan status tiket.
 //   - counter_repo.go: CounterRepository, yaitu counter per antrian dan nomor yang sedang dilayani.
-//   - user_repo.go: UserRepository, yaitu akun dan pencarian login.
+//   - user_repo.go: UserRepository, yaitu profil akun dan pengaturan notifikasi.
 //   - owner_repo.go: SubscriptionChecker, yaitu cek langganan owner aktif.
 //   - history_repo.go: HistoryRepository, yaitu riwayat antrian yang sudah ditutup dan riwayat tiket customer.
 //   - display_repo.go: DisplayRepository, yaitu konfigurasi layar publik.
 //   - note_repo.go: NoteRepository, yaitu catatan per tiket.
-//   - password_reset_repo.go dan email_verification_repo.go: token sekali pakai untuk reset password dan
-//     verifikasi email.
+//   - session_repo.go: SessionRepository, yaitu pembacaan waktu penggantian password untuk pencabutan sesi.
+//   - verification_repo.go: VerificationRepository, yaitu pembacaan status verifikasi email (ditulis auth-service).
 //   - avatar_repo.go: AvatarRepository, yaitu foto profil yang disimpan di database.
 //   - push_repo.go: PushRepository, yaitu langganan Web Push (push_subscriptions) dan token FCM perangkat Android
 //     (push_devices: UpsertDevice, DeleteDevice).

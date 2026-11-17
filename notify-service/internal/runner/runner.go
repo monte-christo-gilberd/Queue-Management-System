@@ -105,7 +105,7 @@ func (r *Runner) dispatch(
 }
 
 // Run mendengarkan event sampai ctx batal, lalu menunggu proses kirim yang masih berjalan (maksimal 10 detik).
-// Koneksi putus: sambung ulang setelah 3 detik. Sinyal selama putus hilang (outbox menyusul).
+// Koneksi putus: sambung ulang setelah 3 detik. Sinyal selama putus hilang dan tidak dikirim ulang (belum ada outbox untuk push).
 func (r *Runner) Run(
 	ctx context.Context,
 ) {

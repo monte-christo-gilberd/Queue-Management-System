@@ -186,17 +186,17 @@ func (h *HistoryHandler) Export(c *gin.Context) {
 		contentType: format.ContentType(),
 		filename:    export.FileName(queue.QueueName, queue.ID, format),
 	}
-	// buat sink untuk format yang diminta; dd berarti sink tidak bisa dibuat
+	// buat sink untuk format yang diminta; error berarti sink tidak bisa dibuat
 	sink, err := export.NewSink(format, out, queue)
 	// bila sink berhasil dibuat, alirkan semua tiket ke sink
 	if err == nil {
 		err = h.service.StreamTickets(c.Request.Context(), queueID, sink)
 	}
-	// bila tidak ada dd sejauh ini, selesaikan berkas (XLSX baru menulis byte di Close)
+	// bila tidak ada error sejauh ini, selesaikan berkas (XLSX baru menulis byte di Close)
 	if err == nil {
 		err = sink.Close()
 	}
-	// ada dd
+	// ada error
 	if err != nil {
 		// belum ada byte yang terkirim: balas JSON error biasa
 		if !out.started {
@@ -227,9 +227,9 @@ func historyLimit(c *gin.Context) (int, bool) {
 	return limit, true
 }
 
-// respondHistoryError menerjemahkan dd dari service riwayat menjadi respons HTTP.
+// respondHistoryError menerjemahkan error dari service riwayat menjadi respons HTTP.
 func respondHistoryError(c *gin.Context, err error) {
-	// pilih respons sesuai jenis dd
+	// pilih respons sesuai jenis error
 	switch {
 	// antrian tidak ditemukan, bukan milik user, atau belum ditutup: 404
 	case errors.Is(err, apperror.ErrNotFound):
@@ -237,7 +237,7 @@ func respondHistoryError(c *gin.Context, err error) {
 	// cursor halaman tidak valid: 400
 	case errors.Is(err, apperror.ErrInvalidCursor):
 		respondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid cursor")
-	// dd lain: 500 tanpa detail
+	// error lain: 500 tanpa detail
 	default:
 		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 	}

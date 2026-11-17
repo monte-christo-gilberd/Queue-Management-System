@@ -1,5 +1,5 @@
 // Package google memverifikasi ID token Google (Sign-In) di sisi server. Ini klien eksternal yang berdiri sendiri
-// (seperti qrclient di backend): hasilnya model.GoogleIdentity dan package ini tidak mengimpor service.
+// (tanpa dependensi ke paket lain di service ini): hasilnya model.GoogleIdentity dan package ini tidak mengimpor service.
 //
 // Isinya:
 //   - verifier.go: Verifier, yang mengambil kunci publik Google (JWKS), memeriksa tanda tangan RS256, lalu issuer,

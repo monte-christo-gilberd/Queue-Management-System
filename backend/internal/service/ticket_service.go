@@ -275,8 +275,8 @@ const SortKeyGap int64 = 65536
 // maxRetries: jumlah percobaan maksimal bila terjadi tabrakan (sort_key atau UNIQUE). Setelah itu ErrRetryExhausted.
 const maxRetries int = 3
 
-// JoinQueue memberi user nomor baru di belakang antrian. Join ulang mengembalikan tiket yang sudah ada (tidak
-// membuat nomor kedua). Antrian harus aktif. Email harus terverifikasi bila verifikasi dinyalakan. Tabrakan
+// JoinQueue memberi user nomor baru di belakang antrian. Join ulang mengembalikan tiket aktif yang sudah ada (tidak
+// membuat nomor kedua, ErrAlreadyJoined tidak dipakai di jalur ini; handler membalas 200). Antrian harus aktif. Email harus terverifikasi bila verifikasi dinyalakan. Tabrakan
 // diulang sampai maxRetries kali. Event ticket_joined dikirim setelah tiket dibuat.
 func (s *TicketService) JoinQueue(
 	ctx context.Context,
@@ -300,7 +300,8 @@ func (s *TicketService) JoinQueue(
 
 	// Ulangi pembuatan nomor selama belum melewati batas percobaan (maxRetries) akibat tabrakan.
 	for retry < maxRetries {
-		// Tabel tickets membatasi 1 tiket per (queue, user), jadi tabrakan UNIQUE bisa berarti
+		// Indeks unik parsial (queue_id, user_id) hanya untuk status waiting/currently_served membatasi 1 tiket aktif
+		// per akun per antrian, jadi tabrakan UNIQUE bisa berarti
 		// "sudah join" (bukan tabrakan nomor). Dicek di tiap percobaan: kalau dua join user yang
 		// sama berebut, percobaan ulang akan menemukan tiket yang sudah dibuat pemenangnya.
 		// Cek apakah user ini sudah punya tiket di antrian ini.
@@ -897,7 +898,7 @@ func (s *TicketService) InsertTicket(
 		if !errors.Is(err, apperror.ErrDuplicate) {
 			return model.Ticket{}, err
 		}
-		// Bentrok sort_key: coba lagi. Bentrok UNIQUE (queue, user) berarti akun itu baru saja ikut antrian.
+		// Bentrok sort_key: coba lagi. Bentrok indeks unik parsial (queue, user; hanya tiket waiting/currently_served) berarti akun itu baru saja ikut antrian.
 		// Cek ulang apakah akun itu sudah punya tiket di antrian ini.
 		joined, err := s.repository.HasTicket(ctx, queueID, userID)
 		// Gagal mengecek: kembalikan error.

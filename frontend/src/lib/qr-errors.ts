@@ -8,7 +8,7 @@
  */
 import { ApiError } from './api';
 
-/** Satu peta kode error QR (backend) ke pesan. Dipakai layar owner dan customer. */
+/** Satu peta kode error QR (backend) ke pesan. QR_UNAVAILABLE sisa qr-service (sudah dihapus dari backend); dipertahankan hanya sebagai jaga-jaga. Dipakai layar owner dan customer. */
 const QR_MESSAGES: Record<string, string> = {
   QR_INVALID: 'This QR link is invalid or no longer valid. Scan the latest QR from the queue owner.',
   QR_EXPIRED: 'This QR link has expired. Scan the latest QR again.',

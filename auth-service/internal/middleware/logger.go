@@ -10,8 +10,8 @@ import (
 // Logger mencatat satu baris JSON per request setelah request selesai. Yang dicatat: request_id, method, route,
 // status, latency_ms, bytes, client_ip, dan user_id (angka saja, bila request sudah login).
 //
-// route adalah TEMPLAT rute (mis. /api/v1/display/:token), bukan path mentah, dan query string tidak pernah dicatat.
-// Dengan begitu token layar publik, token join, dan token reset tidak masuk log, dan jumlah nilai route tetap kecil.
+// route adalah TEMPLAT rute (mis. /api/v1/users/login), bukan path mentah, dan query string tidak pernah dicatat.
+// Dengan begitu token (reset password, verifikasi email) yang terbawa di path atau query tidak masuk log, dan jumlah nilai route tetap kecil.
 func Logger(
 	logger *slog.Logger,
 ) gin.HandlerFunc {
@@ -56,7 +56,8 @@ func Logger(
 		// status 4xx: kesalahan dari klien, catat sebagai warning
 		case status >= 400:
 			logger.WarnContext(ctx, "request", attrs...)
-		// probe liveness dipanggil terus-menerus oleh Docker; turunkan ke debug agar log tidak penuh
+		// probe liveness /health dipanggil terus-menerus oleh Docker; turunkan ke debug agar log tidak penuh
+		// (auth-service tidak punya rute /ready; pencocokan itu sisa salinan dari backend)
 		case route == "/health" || route == "/ready":
 			logger.DebugContext(ctx, "request", attrs...)
 		// status lain: catat sebagai info

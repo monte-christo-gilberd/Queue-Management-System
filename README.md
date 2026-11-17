@@ -582,8 +582,6 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 
 ## 7. Next steps
 
-1. **Push notification untuk android**: buat sistem push notification android.
-2. **Backup otomatis** dengan jadwal, retensi, salinan di luar mesin, dan role database ikut tercakup.
-3. **Kebersihan kode dan tes**: hapus `handler_interface.go` dan `database.TxRunnerInterface` yang tidak dipakai.
-4. **Plan langganan tambahan** (2 bulan, 3 bulan, 6 bulan, 12 bulan) dan penagihan berulang bila dibutuhkan produk.
-5. **Aplikasi ios**: agar bisa di download oleh user ios.
+1. **Backup otomatis** dengan jadwal, retensi, salinan di luar mesin, dan role database ikut tercakup.
+2. **Plan langganan tambahan** (2 bulan, 3 bulan, 6 bulan, 12 bulan) dan penagihan berulang bila dibutuhkan produk.
+3. **Aplikasi ios**: agar bisa di download oleh user ios.

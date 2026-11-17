@@ -35,8 +35,7 @@ const fixedColors = {
 
 /**
  * Warna BERTEMA — dipakai halaman selain auth lewat variabel CSS (`bg-background`, `text-foreground`, ...).
- * `light` aktif sekarang. `dark` sudah disiapkan untuk nanti; aktifkan dengan ENABLE_DARK_MODE
- * di tailwind.config.js setelah mekanisme toggle (state tema) dibuat.
+ * `light` dan `dark` sama-sama aktif (ENABLE_DARK_MODE = true di tailwind.config.js); mode dipilih pengguna lewat hooks/use-theme-mode.ts.
  */
 const themedColors = {
   background: { light: '#E5E7EB', dark: '#121417' }, // latar halaman

@@ -241,7 +241,7 @@ func (h *TicketHandler) respondJoinTokenError(
 	case errors.Is(err, apperror.ErrQRExpired):
 		respondError(c, http.StatusGone, "QR_EXPIRED", "qr token expired")
 		return
-	// qr-service tidak bisa dihubungi: 503
+	// jalur lama (qr-service sudah dihapus): tidak ada service yang mengembalikan ErrQRUnavailable lagi, cabang ini tidak tercapai: 503
 	case errors.Is(err, apperror.ErrQRUnavailable):
 		respondError(c, http.StatusServiceUnavailable, "QR_UNAVAILABLE", "qr service is unavailable")
 		return

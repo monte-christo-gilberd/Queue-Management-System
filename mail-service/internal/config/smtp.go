@@ -27,7 +27,7 @@ type SMTP struct {
 // Addr: host:port untuk dial.
 func (s SMTP) Addr() string { return fmt.Sprintf("%s:%d", s.Host, s.Port) }
 
-// LoadSMTP membaca SMTP_* dan gagal cepat bila tidak lengkap atau tidak masuk akal, sama seperti VAPID:
+// LoadSMTP membaca SMTP_* dan gagal cepat bila tidak lengkap atau tidak masuk akal, sama seperti variabel VAPID_* di notify-service:
 // lebih baik service menolak start daripada email diam-diam tidak pernah terkirim.
 func LoadSMTP() (SMTP, error) {
 	// Baca variabel SMTP dari environment, dengan spasi di tepi dibuang.

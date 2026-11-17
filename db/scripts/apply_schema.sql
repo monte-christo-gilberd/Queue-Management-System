@@ -1,5 +1,6 @@
 -- Penyesuaian skema idempoten untuk DB yang SUDAH berjalan (tidak ada migration runner).
--- Aman dijalankan berulang, dan tidak menyentuh data. Untuk DB baru, db/migrations/01*.sql sudah lengkap.
+-- Aman dijalankan berulang. Skema saja yang diubah, kecuali beberapa UPDATE data yang idempoten (menutup antrian lama,
+-- menandai email terverifikasi, mengosongkan kode QR lama). Untuk DB baru, db/migrations/01*.sql sudah lengkap.
 --   dev:  docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql
 --   prod: docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T db \
 --           psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql
@@ -86,7 +87,7 @@ CREATE TRIGGER tickets_notify_trg
     AFTER UPDATE OF status, called_at, recalled_at, skip_count ON tickets
     FOR EACH ROW EXECUTE FUNCTION tickets_notify();
 
--- Status currently_served dan deleted (deleted belum dipakai kode; hanya disiapkan).
+-- Status currently_served dan deleted (deleted dipakai saat owner menghapus tiket dari antrian; trigger email mencatatnya sebagai 'removed').
 ALTER TABLE tickets DROP CONSTRAINT IF EXISTS tickets_status_check;
 ALTER TABLE tickets ADD CONSTRAINT tickets_status_check
     CHECK (status IN ('waiting', 'currently_served', 'completed', 'cancelled', 'skipped', 'deleted'));

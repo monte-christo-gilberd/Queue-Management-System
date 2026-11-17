@@ -5,13 +5,15 @@
 -- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
 -- ============================================================================
 
+-- CATATAN: saat ini tidak ada kode Go yang membaca atau menulis tabel ini (hanya seed_prod_penguji.sql yang mengisinya).
+-- Riwayat yang tampil di aplikasi dibaca dari queues/tickets. Rancangan di bawah adalah rencana arsip, belum diterapkan.
 -- Tabel KHUSUS, terpisah dari queues/tickets yang operasional. Sengaja TIDAK punya FK ke queues(id) atau
 -- tickets(id):
---   1. Antrian aktif tidak pernah muncul di sini secara struktural. Baris hanya ada bila Go sengaja menulisnya
---      (sekali, saat antrian ditutup).
+--   1. Antrian aktif tidak pernah muncul di sini secara struktural. Baris hanya ada bila sengaja ditulis
+--      (rencana: sekali, saat antrian ditutup).
 --   2. Tanpa FK balik, baris live (queues/tickets) bebas dibersihkan tanpa memengaruhi arsip. Data operasional
 --      (harus cepat dan selalu konsisten, NFR #2) sengaja dipisah dari data historis.
---   3. Tidak ada trigger penghapusan. Retensi "simpan 10 terbaru per owner" dan ekspor CSV/Excel murni logika Go.
+--   3. Tidak ada trigger penghapusan. Retensi "simpan 10 terbaru per owner" dan ekspor CSV/Excel direncanakan sebagai logika Go (belum ada).
 -- Denormalisasi: satu baris = satu tiket, sudah termasuk nama customer dan catatan, supaya ekspor cukup SELECT
 -- tanpa JOIN.
 

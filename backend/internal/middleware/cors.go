@@ -10,7 +10,7 @@ import (
 // Origin lain tidak mendapat header CORS (browser akan menolak). "*" di daftar
 // berarti semua origin diizinkan dan hanya boleh dipakai di dev.
 //
-// Daftar origin diproses sekali saat CORS dipanggil di main, lalu fungsi yang dikembalikan dipakai untuk setiap request.
+// Daftar origin diproses sekali saat CORS dipanggil (di router), lalu fungsi yang dikembalikan dipakai untuk setiap request.
 // Dipasang di router (internal/router/router.go) sebelum rute lain.
 func CORS(
 	allowedOrigins []string,

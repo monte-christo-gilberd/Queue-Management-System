@@ -1,6 +1,6 @@
 #!/bin/sh
 # Role untuk notify-service: hanya baca data antrian, dan hapus langganan push yang kedaluwarsa.
-# Dijalankan otomatis saat data directory kosong (bersama 01 dan 02). Dev saja.
+# Dijalankan otomatis saat data directory kosong (bersama 01 dan 02), baik di dev maupun prod (image db yang sama).
 set -e
 psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<SQL
 CREATE ROLE notify_ro LOGIN PASSWORD '$NOTIFY_DB_PASSWORD';

@@ -6,7 +6,7 @@ import "encoding/json"
 type OutboxItem struct {
 	// ID: id baris outbox.
 	ID int64
-	// Kind: jenis email, sekaligus nama templatnya (mis. ticket-called).
+	// Kind: jenis email, sekaligus nama templatnya (mis. joined, completed, queue-closed; tidak ada ticket-called).
 	Kind string
 	// Email: alamat penerima, diambil dari tabel users.
 	Email string

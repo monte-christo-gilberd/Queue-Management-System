@@ -111,6 +111,7 @@ func (p *Postgres) MarkPaid(ctx context.Context, referenceID string, amount int6
 
 	// Buat baris owners bila belum ada (calon owner pertama kali berlangganan), atau perpanjang yang sudah ada.
 	// Perpanjangan dihitung dari sekarang atau dari akhir langganan yang masih berjalan, mana yang lebih besar.
+	// Ini satu-satunya penulis perpanjangan langganan; endpoint extend/MOCK di backend sudah tidak ada.
 	var expiresAt time.Time
 	err = tx.GetContext(ctx, &expiresAt,
 		`INSERT INTO owners (user_id, subscription_expires_at)

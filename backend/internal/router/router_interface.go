@@ -106,7 +106,6 @@ type FCMPushHandler interface {
 	Unregister(c *gin.Context)
 }
 
-// SubscriptionHandler adalah handler untuk penambahan masa langganan owner (30 hari, tanpa pembayaran).
 // SubscriptionCheckoutHandler: rute checkout pembayaran langganan (POST /owners/subscription/checkout).
 type SubscriptionCheckoutHandler interface {
 	// Checkout membuat pesanan pembayaran dan mengembalikan pay_url.

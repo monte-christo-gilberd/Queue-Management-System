@@ -19,7 +19,7 @@
 //   - display_dto.go: konfigurasi dan snapshot layar publik.
 //   - history_dto.go: riwayat antrian dan riwayat tiket customer, termasuk cursor halaman.
 //   - note_dto.go: catatan tiket.
-//   - user_dto.go: registrasi, login, profil, dan reset password.
+//   - user_dto.go: profil (MeResponse) dan pembaruan profil/preferensi.
 //   - push_dto.go: langganan Web Push dan token FCM perangkat Android (FCMRegisterRequest, FCMUnregisterRequest).
 //
 // Package ini tidak berisi aturan bisnis. Validasi aturan (mis. panjang nama, batas jumlah) ada di service,

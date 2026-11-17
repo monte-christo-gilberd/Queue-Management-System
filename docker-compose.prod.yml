@@ -20,10 +20,10 @@
 #   nginx          :80    -> 127.0.0.1:${QMS_HTTP_PORT:-8080}  (target cloudflared)
 #   frontend       build statis (bukan dev server)
 #   backend        :8080  API Go
-#   qr-service     :8090  token join QR, hanya jaringan internal
 #   notify-service :8091  Web Push
 #   mail-service   :8092  pengirim email (SMTP nyata atau Mailpit), hanya jaringan internal
 #   auth-service   :8094  login, registrasi, reset password, verifikasi email (penerbit JWT RS256), hanya internal
+#   payment-service:8095  pembayaran BorderPay (profil `payments`), hanya jaringan internal
 #   db             :5432  PostgreSQL 16, tidak dipetakan ke host
 #   mailpit        :8025  UI, hanya 127.0.0.1 (profile mailpit saja)
 #
@@ -39,7 +39,7 @@
 #             - TRUSTED_PROXIES di backend (bawah),
 #             - set_real_ip_from di deploy/nginx/nginx.prod.conf.
 #             Bila diubah di satu tempat saja, IP klien dan rate limit rusak.
-#   [SINKRON] Port internal (8090/8091/8092/8093/8080) harus sama dengan PORT di service dan dengan
+#   [SINKRON] Port internal (8080/8091/8092/8094/8095) harus sama dengan PORT di service dan dengan
 #             upstream di deploy/nginx/nginx.prod.conf.
 #   [SINKRON] MAIL_MODE (dibaca make prod-up dan scripts/check-mail-mode.sh) menentukan
 #             profile mailpit dan nilai SMTP_* (diatur Makefile lewat export).
@@ -62,7 +62,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-qms}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-qms_db}
-      # Password role per service. Dibaca oleh skrip init (db/migrations/03..05_*.sh).
+      # Password role per service. Dibaca oleh skrip init (db/migrations/03..08_*.sh).
       NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?set NOTIFY_DB_PASSWORD in .env}
       MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}
       # Wajib diisi agar role auth_rw (db/migrations/06_auth_role.sh) selalu dibuat; tanpanya tidak ada yang bisa login.
@@ -83,22 +83,6 @@ services:
     networks:
       - internal
     restart: unless-stopped
-
-  # qr-service: membuat dan memverifikasi token join QR. Hanya dipanggil backend lewat jaringan internal.
-  # qr-service:
-  #   build:
-  #     context: ./qr-service
-  #     # target prod: binary statis hasil build, bukan `go run`.
-  #     target: prod
-  #   environment:
-  #     PORT: "8090"
-  #     JOIN_LINK_SECRET: ${JOIN_LINK_SECRET:?set JOIN_LINK_SECRET in .env}
-  #     QR_DYNAMIC_TTL_SECONDS: ${QR_DYNAMIC_TTL_SECONDS:-120}
-  #     QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
-  #     LOG_LEVEL: ${LOG_LEVEL:-info}
-  #   networks:
-  #     - internal
-  #   restart: unless-stopped
 
   # mail-service: satu-satunya pengirim email. SMTP nyata (tanpa Mailpit di produksi); service menolak start
   # bila SMTP_* atau MAIL_SERVICE_TOKEN tidak lengkap.
@@ -207,7 +191,8 @@ services:
       target: prod
     environment:
       DATABASE_URL: postgresql://notify_ro:${NOTIFY_DB_PASSWORD}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
-      # Opsional di prod: bila kosong, Web Push tidak aktif, tetapi service tetap start.
+      # Wajib diisi: config.Load notify-service menolak start bila VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, atau VAPID_SUBJECT
+      # kosong. Di backend hanya VAPID_PUBLIC_KEY yang dipakai (opsional).
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
@@ -249,13 +234,12 @@ services:
       # Hanya nginx (jaringan internal) yang boleh menentukan IP klien.
       # [SINKRON] Harus sama dengan subnet networks.internal di bawah dan set_real_ip_from di nginx.prod.conf.
       TRUSTED_PROXIES: 172.29.0.0/16
-      # QR_SERVICE_URL: http://qr-service:8090
-      # QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
 
       # Checkout langganan lewat payment-service (profil "payments"). Tanpa payment-service, checkout membalas 503.
       PAYMENT_SERVICE_URL: http://payment-service:8095
       PAYMENT_SERVICE_TOKEN: ${PAYMENT_SERVICE_TOKEN:-}
       SUBSCRIPTION_PRICE_IDR: ${SUBSCRIPTION_PRICE_IDR:-15000}
+      # Nama lama dari qr-service (sudah dihapus); kini batas waktu (detik) klien backend ke payment-service.
       QR_HTTP_TIMEOUT: ${QR_HTTP_TIMEOUT:-1}
       # Batas menunggu request selesai saat berhenti; harus lebih kecil dari stop_grace_period di bawah.
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-8}
@@ -280,8 +264,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # qr-service:
-      #   condition: service_healthy
     networks:
       - internal
     restart: unless-stopped
@@ -304,7 +286,7 @@ services:
     restart: unless-stopped
 
   # nginx: satu-satunya pintu masuk. Mengatur IP klien dari CF-Connecting-IP (Cloudflare), rate limit, dan
-  # meneruskan request ke frontend, backend, dan qr-service. Konfigurasi prod dipilih lewat build args.
+  # meneruskan request ke frontend, backend, auth-service, dan webhook payment-service. Konfigurasi prod dipilih lewat build args.
   nginx:
     build:
       context: ./deploy/nginx
@@ -316,19 +298,16 @@ services:
       # Hanya loopback: cloudflared di host menjangkau ini; LAN tidak bisa
       # (mencegah pemalsuan CF-Connecting-IP dan melewati aturan WAF).
       - "127.0.0.1:${QMS_HTTP_PORT:-8080}:80"
-    # Menunggu backend dan qr-service sehat sebelum menerima trafik. Frontend cukup sudah start.
+    # Menunggu backend sehat sebelum menerima trafik. Frontend cukup sudah start.
     depends_on:
       backend:
         condition: service_healthy
-      # qr-service:
-      #   condition: service_healthy
       frontend:
         condition: service_started
     networks:
       - internal
     restart: unless-stopped
 
-# Volume bernama. Terpisah dari dev. Bertahan saat container dibuat ulang.
   # payment-service: membuat pembayaran BorderPay (checkout internal) dan menerima webhook-nya. Hanya aktif dengan
   # profil "payments" (docker compose --profile payments up -d payment-service), supaya `make up` tidak berubah.
   # Konfigurasi wajib (BORDERPAY_API_KEY, dll.) dibaca layanan saat start; kosong = layanan berhenti dengan pesan jelas.
@@ -353,6 +332,7 @@ services:
       - internal
     restart: unless-stopped
 
+# Volume bernama. Terpisah dari dev. Bertahan saat container dibuat ulang.
 volumes:
   # Data PostgreSQL prod. Kosongkan (down -v) hanya bila ingin menghapus seluruh data.
   db_data_prod:

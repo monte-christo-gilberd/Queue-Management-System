@@ -16,7 +16,7 @@ const maxRequestIDLen = 128
 
 // RequestID memberi setiap request id untuk korelasi log. Nilai dari header X-Request-Id (diisi nginx) dipakai bila
 // ada dan bentuknya wajar, selain itu dibuat baru. ID disimpan di context Gin (kunci "request_id"), di context
-// request (untuk diteruskan ke qr-service), dan dikirim kembali di header respons.
+// request (untuk lapisan bawah yang butuh korelasi log), dan dikirim kembali di header respons.
 func RequestID() gin.HandlerFunc {
 	// handler dijalankan untuk setiap request
 	return func(c *gin.Context) {
@@ -28,7 +28,7 @@ func RequestID() gin.HandlerFunc {
 		}
 		// simpan ID di konteks Gin agar Logger dan Recovery bisa mencatatnya
 		c.Set("request_id", id)
-		// simpan juga di context request supaya qrclient bisa meneruskannya ke qr-service
+		// simpan juga di context request supaya lapisan bawah bisa membaca ID yang sama
 		c.Request = c.Request.WithContext(requestid.With(c.Request.Context(), id))
 		// catat ID sebagai atribut span (no-op bila tidak ada span), supaya trace bisa dicari lewat request_id
 		trace.SpanFromContext(c.Request.Context()).SetAttributes(attribute.String("request_id", id))

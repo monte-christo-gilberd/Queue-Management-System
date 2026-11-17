@@ -38,7 +38,8 @@ CREATE TABLE owners (
 );
 
 -- Jejak tiap pembayaran langganan. owners.subscription_expires_at hanya menyimpan tanggal aktif SEKARANG;
--- tabel ini menyimpan pembayaran yang membentuk tanggal itu. Ditulis oleh backend (POST /api/v1/owners/subscription/extend, amount 0).
+-- tabel ini menyimpan pembayaran yang membentuk tanggal itu. Ditulis oleh payment-service (role payment_rw) setelah pembayaran BorderPay berhasil; backend hanya memulai checkout
+-- (POST /api/v1/owners/subscription/checkout).
 CREATE TABLE payments (
     id                       BIGSERIAL PRIMARY KEY,
     owner_id                 BIGINT NOT NULL REFERENCES owners(user_id),

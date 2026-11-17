@@ -3,7 +3,7 @@
  *
  * Rute        : /profile.
  * Akses       : butuh login (AuthGate dari (user)/_layout.tsx).
- * Dipakai oleh: menu panel (case profile di utils/menu) dan redirect dari /profile/edit.
+ * Dipakai oleh: menu panel (case profile di utils/menu).
  * Bergantung  : Profile, getMe/updateMe/uploadAvatar (lib/users), useAvatarSource, useAvatarStore, lib/email-verification, lib/password-reset.
  * Catatan     : Bagian langganan hanya untuk owner. Calon owner (belum pernah bayar) melihat tawaran menjadi owner.
  */

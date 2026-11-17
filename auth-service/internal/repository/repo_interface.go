@@ -10,7 +10,7 @@ import (
 // UserRepositoryInterface menggambarkan bentuk UserRepository (tabel users). Dipakai terutama oleh tes untuk
 // membuat fake dalam memori.
 type UserRepositoryInterface interface {
-	// Create menyimpan user baru; apperror.ErrDuplicate bila email atau username sudah dipakai.
+	// Create menyimpan user baru; apperror.ErrDuplicate bila email sudah dipakai (username tidak UNIQUE).
 	Create(
 		ctx context.Context,
 		email,

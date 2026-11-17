@@ -68,7 +68,7 @@ type QueueService interface {
 	) (model.SkipSettings, error)
 }
 
-// QueueQRService adalah logika kode QR antrian (dipenuhi oleh service yang berbicara dengan qr-service).
+// QueueQRService adalah logika kode QR antrian (dipenuhi QRService: kode join dibuat dan dicari langsung di database).
 type QueueQRService interface {
 	// GetQR mengambil status QR operator untuk antrian.
 	GetQR(
@@ -663,7 +663,7 @@ func (h *QueueHandler) respondQRError(
 	case errors.Is(err, apperror.ErrQRReplaceNotAllowed):
 		respondError(c, http.StatusConflict, "QR_REPLACE_NOT_ALLOWED", "qr replacement is only allowed for static qr")
 		return
-	// qr-service tidak bisa dihubungi: 503
+	// jalur lama (qr-service sudah dihapus): tidak ada service yang mengembalikan ErrQRUnavailable lagi, cabang ini tidak tercapai: 503
 	case errors.Is(err, apperror.ErrQRUnavailable):
 		respondError(c, http.StatusServiceUnavailable, "QR_UNAVAILABLE", "qr service is unavailable")
 		return

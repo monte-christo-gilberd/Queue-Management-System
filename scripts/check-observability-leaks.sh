@@ -20,7 +20,7 @@
 # Efek samping: hanya request yang ditolak (404/401/400); tidak ada data yang dibuat. Menambah beberapa angka di metrik
 # login gagal dan 404. Hanya Grafana (127.0.0.1) yang dipakai untuk membaca Loki, Tempo, dan Prometheus.
 #
-# Kode keluar: 0 bersih, 1 ada kebocoran, 2 stack observability tidak terjangkau.
+# Kode keluar: 0 bersih, 1 ada kebocoran, 2 stack observability tidak terjangkau, 3 tidak ada log nginx baru di Loki (pemeriksaan tidak bisa dipercaya).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

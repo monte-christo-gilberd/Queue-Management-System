@@ -11,10 +11,10 @@
 #   nginx          :80    -> host ${QMS_HTTP_PORT:-8080}  (satu-satunya pintu masuk)
 #   frontend       Metro  (hot reload, tidak dibuka ke host)
 #   backend        :8080  API Go (go run, kode di-mount)
-#   qr-service     :8090  token join QR (HMAC), hanya jaringan internal
 #   notify-service :8091  Web Push (LISTEN Postgres)
 #   mail-service   :8092  pengirim email (outbox + SMTP), hanya jaringan internal
 #   auth-service   :8094  login, registrasi, reset password, verifikasi email (penerbit JWT RS256)
+#   payment-service:8095  pembayaran BorderPay (profil `payments`), hanya jaringan internal
 #   db             :5432  PostgreSQL 16, tidak dipetakan ke host
 #   mailpit        :1025 (SMTP), :8025 (UI), hanya di 127.0.0.1 host
 #
@@ -24,7 +24,7 @@
 #
 #   cp .env.example .env     # isi secret
 #   docker compose up --build
-#   -> http://localhost:${QMS_HTTP_PORT:-8080}   (/ frontend, /api backend, /qr qr-service)
+#   -> http://localhost:${QMS_HTTP_PORT:-8080}   (/ frontend, /api backend)
 #
 # Saat ada perubahan, periksa:
 #   [SINKRON] Subnet 172.28.0.0/16 (networks.internal) harus sama dengan
@@ -34,7 +34,7 @@
 #             sudah login tetap bisa memakai aplikasi. Dijaga scripts/check-service-isolation.sh.
 #   [PENTING] Kunci dibuat `scripts/gen-auth-keys.sh` (otomatis oleh `make up`). Kunci privat hanya di-mount ke
 #             auth-service.
-#   [SINKRON] Port internal (8090/8091/8092/8093/8094/8080) harus sama dengan PORT di
+#   [SINKRON] Port internal (8080/8091/8092/8094/8095) harus sama dengan PORT di
 #             environment service dan dengan upstream di deploy/nginx/server.conf.
 #   [SINKRON] MAILPIT_UI_PORT dibaca Makefile (target up, tunnel, mailpit) untuk
 #             menampilkan link Mailpit. Ubah di .env, bukan di Makefile.
@@ -43,8 +43,8 @@
 #   [PENTING] Volume dev (db_data, metro_cache, ...) berbeda dengan prod (db_data_prod).
 #             Mengganti nama volume membuat data lama tidak terpakai.
 #
-# Kode di-mount. Frontend hot reload (Metro). Go (backend, qr-service) memakai `go run`: setelah ubah kode,
-#   docker compose restart backend      # atau qr-service; cache build di volume, jadi hanya beberapa detik
+# Kode di-mount. Frontend hot reload (Metro). Go (backend, auth, notify, mail, payment) memakai `go run`: setelah ubah kode,
+#   docker compose restart backend      # atau auth-service dst.; cache build di volume, jadi hanya beberapa detik
 # HTTPS untuk uji dari HP: make tunnel (Cloudflare quick tunnel).
 # Akses db/psql lewat kontainer:
 #   docker compose exec db psql -U qms -d qms_db
@@ -56,7 +56,7 @@ name: qms
 
 services:
   # PostgreSQL 16. Skema dibuat otomatis dari db/migrations/*.sql saat volume db_data
-  # masih kosong (lihat db/Dockerfile). Role per service dibuat oleh 03/04/05_*.sh.
+  # masih kosong (lihat db/Dockerfile). Role per service dibuat oleh 03/04/06/07/08_*.sh.
   db:
     build: ./db
     restart: unless-stopped
@@ -64,10 +64,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-qms}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-qms_db}
-      # Password role per service. Dibaca oleh skrip init (db/migrations/03..05_*.sh).
+      # Password role per service. Dibaca oleh skrip init (db/migrations/03..08_*.sh).
       NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?set NOTIFY_DB_PASSWORD in .env}
       MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:?set MAIL_DB_PASSWORD in .env}
-      # terhubung, database dan antrian tetap start.
       # Kosong = role auth_rw tidak dibuat (db/migrations/06_auth_role.sh): auth-service tidak bisa terhubung, login baru gagal.
       # Wajib diisi agar kelalaian ini ketahuan sejak `up`, bukan saat user tidak bisa login.
       AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
@@ -86,34 +85,6 @@ services:
     # Hanya jaringan internal. Port 5432 tidak dipetakan ke host.
     networks:
       - internal
-
-  # qr-service: membuat dan memverifikasi token join QR. Hanya dipanggil backend lewat jaringan internal.
-  # qr-service:
-  #   build:
-  #     context: ./qr-service
-  #     # target dev: go run dari kode yang di-mount, tanpa binary hasil build.
-  #     target: dev
-  #   environment:
-  #     PORT: "8090"
-  #     JOIN_LINK_SECRET: ${JOIN_LINK_SECRET:?set JOIN_LINK_SECRET in .env}
-  #     QR_DYNAMIC_TTL_SECONDS: ${QR_DYNAMIC_TTL_SECONDS:-120}
-  #     QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
-  #     LOG_LEVEL: ${LOG_LEVEL:-info}
-  #   volumes:
-  #     # Kode sumber (hot edit via restart). Cache build dan modul Go di volume bersama.
-  #     - ./qr-service:/src
-  #     - go_build_cache:/root/.cache/go-build
-  #     - go_mod_cache:/go/pkg/mod
-  #   # `go run` tidak selalu meneruskan SIGTERM ke proses anak; jangan tunggu 10 detik.
-  #   stop_grace_period: 3s
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/health || exit 1"]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 40
-  #   networks:
-  #     - internal
-  #   restart: unless-stopped
 
   # notify-service: Web Push dan FCM (Android). Mendengarkan event tiket lewat LISTEN Postgres dengan role notify_ro (baca saja).
   # Tidak bergantung pada mail-service, Mailpit, atau SMTP (dijaga scripts/check-service-isolation.sh).
@@ -240,9 +211,9 @@ services:
       - internal
     restart: unless-stopped
 
-  # Mailpit: server SMTP palsu untuk development. Menangkap semua email dari notify-service dan menampilkannya
+  # Mailpit: server SMTP palsu untuk development. Menangkap semua email dari mail-service dan menampilkannya
   # di UI web. Di host, SMTP (1025) dan UI (8025) hanya diikat ke 127.0.0.1 dan TIDAK lewat nginx, jadi tidak
-  # terjangkau dari luar mesin ini; notify-service memakai mailpit:1025 lewat jaringan internal.
+  # terjangkau dari luar mesin ini; mail-service memakai mailpit:1025 lewat jaringan internal.
   # Port 1025 adalah bawaan umum Mailpit: bila proyek lain di mesin ini juga memakainya, ubah MAILPIT_SMTP_PORT. Pesan hilang saat container dibuat ulang (tanpa volume, disengaja).
   # Produksi memakai SMTP nyata dan tidak punya service ini (docker-compose.prod.yml).
   mailpit:
@@ -262,7 +233,7 @@ services:
       - internal
     restart: unless-stopped
 
-  # backend: API utama (Gin). Mengelola antrian, tiket, SSE, profil, dan memanggil qr-service. Login ada di auth-service.
+  # backend: API utama (Gin). Mengelola antrian, tiket, SSE, profil, dan memulai checkout langganan lewat payment-service. Login ada di auth-service.
   backend:
     build:
       context: ./backend
@@ -279,13 +250,12 @@ services:
       # Hanya nginx di jaringan internal yang boleh menentukan IP klien (X-Forwarded-For).
       # [SINKRON] Harus sama dengan subnet networks.internal di bawah.
       TRUSTED_PROXIES: 172.28.0.0/16
-      # QR_SERVICE_URL: http://qr-service:8090
-      # QR_SERVICE_TOKEN: ${QR_SERVICE_TOKEN:?set QR_SERVICE_TOKEN in .env}
 
       # Checkout langganan lewat payment-service (profil "payments"). Tanpa payment-service, checkout membalas 503.
       PAYMENT_SERVICE_URL: http://payment-service:8095
       PAYMENT_SERVICE_TOKEN: ${PAYMENT_SERVICE_TOKEN:-}
       SUBSCRIPTION_PRICE_IDR: ${SUBSCRIPTION_PRICE_IDR:-15000}
+      # Nama lama dari qr-service (sudah dihapus); kini batas waktu (detik) klien backend ke payment-service.
       QR_HTTP_TIMEOUT: ${QR_HTTP_TIMEOUT:-1}
       # Batas menunggu request selesai saat berhenti; harus lebih kecil dari stop_grace_period di bawah.
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-2}
@@ -313,8 +283,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # qr-service:
-      #   condition: service_healthy
     networks:
       - internal
     restart: unless-stopped
@@ -342,26 +310,23 @@ services:
       - internal
     restart: unless-stopped
 
-  # nginx: satu-satunya pintu masuk. Meneruskan / ke frontend, /api ke backend, dan /qr ke qr-service,
+  # nginx: satu-satunya pintu masuk. Meneruskan / ke frontend dan /api ke backend (juga auth-service dan webhook payment-service),
   # serta menerapkan rate limit. Konfigurasi ada di deploy/nginx/.
   nginx:
     build: ./deploy/nginx
     # Dipetakan ke semua antarmuka host (LAN bisa mengakses). Port bisa diubah lewat QMS_HTTP_PORT.
     ports:
       - "${QMS_HTTP_PORT:-8080}:80"
-    # Menunggu backend dan qr-service sehat sebelum menerima trafik. Frontend cukup sudah start.
+    # Menunggu backend sehat sebelum menerima trafik. Frontend cukup sudah start.
     depends_on:
       backend:
         condition: service_healthy
-      # qr-service:
-      #   condition: service_healthy
       frontend:
         condition: service_started
     networks:
       - internal
     restart: unless-stopped
 
-# Volume bernama. Data bertahan saat container dibuat ulang; hapus dengan `docker compose down -v`.
   # payment-service: membuat pembayaran BorderPay (checkout internal) dan menerima webhook-nya. Hanya aktif dengan
   # profil "payments" (docker compose --profile payments up -d payment-service), supaya `make up` tidak berubah.
   # Konfigurasi wajib (BORDERPAY_API_KEY, dll.) dibaca layanan saat start; kosong = layanan berhenti dengan pesan jelas.
@@ -390,10 +355,11 @@ services:
       - internal
     restart: unless-stopped
 
+# Volume bernama. Data bertahan saat container dibuat ulang; hapus dengan `docker compose down -v`.
 volumes:
   # Data PostgreSQL (dev).
   db_data:
-  # Cache build Go (go-build) dan modul Go (/go/pkg/mod) untuk backend, qr-service, notify-service, mail-service,
+  # Cache build Go (go-build) dan modul Go (/go/pkg/mod) untuk backend, auth-service, notify-service, mail-service, payment-service.
   # Mempercepat `go run` setelah restart.
   go_build_cache:
   go_mod_cache:

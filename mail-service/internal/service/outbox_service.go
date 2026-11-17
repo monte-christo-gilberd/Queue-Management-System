@@ -73,7 +73,7 @@ func (c OutboxConfig) withDefaults() OutboxConfig {
 	}
 	// Batas percobaan tidak diisi: 8.
 	if c.MaxAttempts <= 0 {
-		// Delapan percobaan dengan backoff berlipat kira-kira menutup gangguan SMTP beberapa jam.
+		// Delapan percobaan dengan backoff berlipat kira-kira menutup gangguan SMTP sekitar satu jam (total jeda ±61,5 menit dengan bawaan).
 		c.MaxAttempts = 8
 	}
 	// Ukuran batch tidak diisi: 20 baris.
@@ -314,7 +314,7 @@ func (w *OutboxService) backoff(
 }
 
 // Label membuat label nomor tiket untuk email, mis. "A-001". Prefix kosong dianggap "A".
-// Sama dengan notify-service dan frontend.
+// Dimaksudkan sama dengan label di notify-service dan frontend (masing-masing punya salinan sendiri).
 func Label(
 	prefix string,
 	number int,

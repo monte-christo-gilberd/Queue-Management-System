@@ -1,3 +1,5 @@
+// Catatan: interface di file ini adalah sisa lama dan tidak dipakai di mana pun; router memakai interface di
+// router/router_interface.go.
 package handler
 
 import "github.com/gin-gonic/gin"

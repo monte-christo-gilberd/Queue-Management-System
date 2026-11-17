@@ -37,7 +37,7 @@ type App struct {
 // guard-nya (pemeriksa hak akses) menolak akses, bukan membukanya. Push notification hanya dipasang ke router
 // bila config-nya diisi. Koneksi database dimiliki pemanggil, yang juga menutupnya.
 func Wire(cfg *config.Config, db *sqlx.DB) *App {
-	// membuat hub SSE (pengelola koneksi SSE per antrian dan penyebar event
+	// membuat hub SSE (satu hub untuk seluruh proses, dengan room per antrian; pengelola koneksi SSE dan penyebar event
 	// SSE = koneksi satu arah dari server ke browser)
 	hub := sse.NewHub()
 

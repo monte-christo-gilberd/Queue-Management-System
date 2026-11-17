@@ -17,7 +17,8 @@ import (
 	"qms/payment-service/internal/order"
 )
 
-// Event yang dikirim BorderPay di header x-borderpay-event.
+// Nama event yang dikirim BorderPay di header x-borderpay-event. Konstanta ini tidak dipakai oleh kode: handler
+// tidak membaca header maupun field event, hanya data.status (lihat ServeHTTP).
 const (
 	EventPaid    = "payment.paid"
 	EventExpired = "payment.expired"
@@ -82,7 +83,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Hanya status paid yang mengubah data. Event lain dibalas 200 agar BorderPay tidak mengulang.
+	// Yang menentukan adalah data.status = "paid" (bukan nama event payment.paid). Status lain, termasuk expired dan
+	// failed, tidak mengubah data dan dibalas 200 agar BorderPay tidak mengulang.
 	if payload.Data.Status != "paid" {
 		w.WriteHeader(http.StatusOK)
 		return

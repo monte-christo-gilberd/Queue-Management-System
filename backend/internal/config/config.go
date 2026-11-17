@@ -23,10 +23,10 @@ import (
 //
 // Wajib diisi: DATABASE_URL, JWT_PUBLIC_KEY_FILE, ALLOWED_ORIGINS, PUBLIC_APP_URL.
 // Opsional: VAPID_PUBLIC_KEY, FCM_PROJECT_ID, APP_ENV, TRUSTED_PROXIES, dan PORT (bawaan 8080).
-// Opsional dengan nilai bawaan dalam detik: QR_HTTP_TIMEOUT (1; kini hanya batas waktu klien payment-service, nama lama dari qr-service) dan SHUTDOWN_TIMEOUT (8).
+// Opsional dengan nilai bawaan dalam detik: QR_HTTP_TIMEOUT (1; nama lama dari masa qr-service, kini hanya batas waktu klien payment-service) dan SHUTDOWN_TIMEOUT (8).
 // EMAIL_VERIFICATION_REQUIRED: bawaan true. Harus sama dengan nilai di auth-service.
 type Config struct {
-	// Env: APP_ENV. Bila "production", validateProduction() menolak secret lemah (terlalu pendek atau nilai contoh) dan origin/URL yang tidak https.
+	// Env: APP_ENV. Bila "production", validateProduction() menolak origin/URL yang tidak https dan wildcard * di ALLOWED_ORIGINS. Pemeriksaan secret lemah sudah tidak aktif (dikomentari) sejak qr-service dihapus.
 	Env string
 	// URL koneksi ke PostgreSQL (DATABASE_URL), dipakai database.Connect.
 	DatabaseURL string
@@ -43,22 +43,21 @@ type Config struct {
 	// lewat header X-Forwarded-For (header yang ditambahkan proxy seperti nginx untuk mencatat IP asal). Kosong = tidak ada proxy yang dipercaya.
 	TrustedProxies []string
 
-	// URL publik aplikasi frontend (PUBLIC_APP_URL). Dipakai untuk membuat tautan join QR dan tautan reset password.
+	// URL publik aplikasi frontend (PUBLIC_APP_URL). Dipakai untuk membuat tautan join QR.
 	PublicAppURL string
-	// URL dasar qr-service (QR_SERVICE_URL). qr-service adalah microservice terpisah yang membuat dan memverifikasi
-	// token join QR. Backend memanggil endpoint internalnya, /internal/v1/*, yang tidak dibuka lewat nginx.
+	// (tidak aktif) bekas URL dasar qr-service (QR_SERVICE_URL). qr-service sudah dihapus; kode join QR kini dibuat
+	// dan diverifikasi backend sendiri. Field ini dan env-nya tidak lagi dibaca.
 	// QRServiceURL string
-	// token autentikasi antarservice dari backend ke qr-service (QR_SERVICE_TOKEN), dikirim sebagai header
-	// X-Service-Token. Ini bukan token login user.
+	// (tidak aktif) bekas token antarservice ke qr-service (QR_SERVICE_TOKEN). Tidak lagi dibaca.
 	// QRServiceToken string
-	// batas waktu tiap panggilan ke payment-service dalam detik (QR_HTTP_TIMEOUT; nama lama dari qr-service yang sudah dihapus). Bila kosong atau nilai <= 0, 1 detik.
+	// batas waktu tiap panggilan ke payment-service dalam detik (QR_HTTP_TIMEOUT; nama env lama dari masa qr-service, dipertahankan untuk payment-service). Bila kosong atau nilai <= 0, 1 detik.
 	// Nilai yang bukan angka membuat Load() gagal.
 	QRHTTPTimeout time.Duration
 	// URL dasar payment-service (PAYMENT_SERVICE_URL). Kosong = checkout langganan tidak dipasang.
 	PaymentServiceURL string
 	// token antarservice ke payment-service (PAYMENT_SERVICE_TOKEN), dikirim sebagai X-Service-Token.
 	PaymentServiceToken string
-	// harga paket bulanan dalam rupiah (SUBSCRIPTION_PRICE_IDR). Bawaan 15000.
+	// harga paket bulanan dalam rupiah. Saat ini tetap 15000 (di-hardcode di Load); env SUBSCRIPTION_PRICE_IDR tidak dibaca.
 	SubscriptionPriceIDR int64
 	// batas waktu menunggu request yang sedang berjalan selesai saat server berhenti (SHUTDOWN_TIMEOUT, detik).
 	// Bila kosong atau nilai <= 0, 8 detik. Harus lebih kecil dari stop_grace_period backend di compose.
@@ -100,7 +99,7 @@ func Load() (Config, error) {
 	_ = godotenv.Load("../.env")
 
 	// mengisi Config dari environment variable. ALLOWED_ORIGINS dan TRUSTED_PROXIES memakai parser daftar koma yang sama.
-	// URL publik dan URL qr-service dibuang '/' di akhirnya agar tidak menghasilkan '//' saat digabung dengan path.
+	// URL publik dan URL payment-service dibuang '/' di akhirnya agar tidak menghasilkan '//' saat digabung dengan path.
 	cfg := Config{
 		Env:            strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV"))),
 		DatabaseURL:    firstEnv("BACKEND_DATABASE_URL", "DATABASE_URL"),
@@ -109,7 +108,7 @@ func Load() (Config, error) {
 		TrustedProxies: parseOrigins(os.Getenv("TRUSTED_PROXIES")),
 
 		PublicAppURL:         strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/"),
-		// QRServiceURL:         strings.TrimRight(os.Getenv("QR_SERVICE_URL"), "/"),
+		// (tidak aktif) QRServiceURL:         strings.TrimRight(os.Getenv("QR_SERVICE_URL"), "/"),
 		// QRServiceToken:       os.Getenv("QR_SERVICE_TOKEN"),
 		PaymentServiceURL:    strings.TrimRight(os.Getenv("PAYMENT_SERVICE_URL"), "/"),
 		PaymentServiceToken:  os.Getenv("PAYMENT_SERVICE_TOKEN"),
@@ -151,12 +150,12 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("missing required env var: PUBLIC_APP_URL")
 	}
 
-	// pengecekan apakah cfg.QRServiceURL ada
+	// (tidak aktif; qr-service sudah dihapus) pengecekan apakah cfg.QRServiceURL ada
 	// if cfg.QRServiceURL == "" {
 	// 	return Config{}, fmt.Errorf("missing required env var: QR_SERVICE_URL")
 	// }
 
-	// pengecekan apakah cfg.QRServiceToken ada
+	// (tidak aktif; qr-service sudah dihapus) pengecekan apakah cfg.QRServiceToken ada
 	// if cfg.QRServiceToken == "" {
 	// 	return Config{}, fmt.Errorf("missing required env var: QR_SERVICE_TOKEN")
 	// }
@@ -211,7 +210,7 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-// nilai contoh dari .env.example (change-me-...) dan kata umum (secret, password) yang tidak boleh dipakai sebagai secret atau token saat production
+// (tidak aktif; ikut dikomentari bersama penghapusan qr-service) nilai contoh dan kata umum yang tidak boleh dipakai sebagai secret saat production
 // var weakSecrets = map[string]bool{
 // 	"change-me-jwt-secret":                      true,
 // 	"change-me-service-token-at-least-32-bytes": true,
@@ -219,10 +218,11 @@ func Load() (Config, error) {
 // 	"password": true,
 // }
 
-// validateProduction menolak konfigurasi yang tidak aman saat APP_ENV=production.
+// validateProduction menolak konfigurasi yang tidak aman saat APP_ENV=production. Saat ini hanya memeriksa origin
+// (bukan *, harus https) dan PUBLIC_APP_URL; pemeriksaan secret lemah sudah dikomentari.
 func (c Config) validateProduction() error {
 
-	// pengecekan apakah c.QRServiceToken lebih pendek dari 32 atau ada di weakSecrets
+	// (tidak aktif) pengecekan apakah c.QRServiceToken lebih pendek dari 32 atau ada di weakSecrets
 	// if len(c.QRServiceToken) < 32 || weakSecrets[c.QRServiceToken] {
 	// 	return fmt.Errorf("production: QR_SERVICE_TOKEN must be at least 32 chars and not a default value")
 	// }

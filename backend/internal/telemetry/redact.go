@@ -39,7 +39,7 @@ var secretPatterns = []struct {
 	{regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._~+/=-]+`), "Bearer ***"},
 	// JWT: tiga bagian base64url dipisah titik, diawali eyJ
 	{regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*`), "***jwt***"},
-	// token join QR buatan qr-service: v1.<payload>.<tanda tangan>
+	// token join QR buatan backend: v1.<payload>.<tanda tangan>
 	{regexp.MustCompile(`\bv1\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`), "***join-token***"},
 	// token=..., password=..., secret=... di query string atau teks bebas
 	{regexp.MustCompile(`(?i)(token|password|secret)=[^&\s"]+`), "${1}=***"},

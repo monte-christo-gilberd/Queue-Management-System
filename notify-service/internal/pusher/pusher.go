@@ -91,6 +91,7 @@ func (w *Sender) once(
 	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 		return fmt.Errorf("%w: status %d", apperror.ErrTemporaryPush, resp.StatusCode)
 	}
-	// Status lain (sukses): tidak ada galat.
+	// Status lain dianggap sukses: tidak ada galat. Ini termasuk 4xx selain 404/410/429 (mis. 403 karena kunci VAPID
+	// tidak cocok), yang tidak diulang dan tidak menghapus langganan.
 	return nil
 }

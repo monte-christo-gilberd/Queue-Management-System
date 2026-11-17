@@ -2,7 +2,7 @@
 -- RESET + SEED DATA DEVELOPMENT (DEV/TEST SAJA)
 --
 -- 1) Menghapus SEMUA data: semua akun (users, owners) dan semua data antrian.
--- 2) Mengisi seed: 2 akun owner dan 10 akun user. Semua password = "password".
+-- 2) Mengisi seed: 3 akun owner dan 10 akun user. Semua password = "password".
 --
 -- Akun seed:
 --   owner1@test.com  (username owner1)  owner, langganan aktif 30 hari
@@ -32,7 +32,8 @@ BEGIN
 END $$;
 
 -- Kosongkan semua tabel yang punya data. Semua tabel yang mereferensi users/owners ikut dalam daftar,
--- sehingga tidak perlu CASCADE. Tanpa CASCADE, jika ada tabel lain yang bergantung, TRUNCATE gagal
+-- sehingga tidak perlu CASCADE. CATATAN: payment_orders (FK ke users) belum ada di daftar ini; bila tabel itu berisi baris,
+-- TRUNCATE ditolak sampai barisnya dihapus lebih dulu. Tanpa CASCADE, jika ada tabel lain yang bergantung, TRUNCATE gagal
 -- dan tidak ada yang berubah. RESTART IDENTITY mengembalikan id mulai dari 1.
 TRUNCATE TABLE
     notification_outbox,

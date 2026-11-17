@@ -35,6 +35,7 @@ var (
 	ErrCounterStateChanged = errors.New("counter state changed since the device last read it")
 	ErrCounterLimit        = errors.New("a queue can have at most 10 counters")
 	ErrDefaultCounter      = errors.New("the default counter cannot be deleted")
+	// ErrTooManyDisplays belum dipakai: DisplayHandler membuat respons 429 TOO_MANY_DISPLAYS sendiri.
 	ErrTooManyDisplays     = errors.New("too many public displays are connected to this queue")
 	ErrTooManyVerifyEmails = errors.New("too many verification emails requested, try again later")
 
@@ -43,7 +44,7 @@ var (
 	ErrEmailNotVerified     = errors.New("email is not verified")
 
 	// 6. Autentikasi token dan QR: token atau kode tidak valid, kedaluwarsa, atau tidak boleh dipakai untuk aksi itu.
-	// ErrInvalidResetToken dipakai bersama oleh reset password dan verifikasi email (token sekali pakai yang sama bentuknya).
+	// ErrInvalidResetToken: sisa dari fitur reset password/verifikasi email yang kini ada di auth-service; backend tidak memakainya lagi.
 	ErrInvalidResetToken   = errors.New("reset token is invalid, expired or already used")
 	ErrQRInvalid           = errors.New("qr token invalid")
 	ErrQRExpired           = errors.New("qr token expired")
@@ -51,6 +52,7 @@ var (
 	ErrQRReplaceNotAllowed = errors.New("qr replacement not allowed")
 
 	// 7. Kegagalan layanan / infrastruktur: layanan eksternal tidak bisa dihubungi atau retry sudah habis (kesalahan server).
+	// (jalur mati) qr-service sudah dihapus; tidak ada service yang mengembalikan ErrQRUnavailable lagi, hanya masih dipetakan di handler.
 	ErrQRUnavailable = errors.New("qr service unavailable")
 
 	// ErrPaymentUnavailable: payment-service tidak bisa dihubungi atau gagal sementara (503).

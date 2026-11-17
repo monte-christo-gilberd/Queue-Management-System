@@ -59,7 +59,7 @@ func (v *TokenVerifier) Verify(raw string) (jwt.MapClaims, error) {
 // RequireAuthWithRevocation memeriksa JWT, ditambah pencabutan sesi. Bila checker nil, hanya JWT yang diperiksa
 // (tanpa akses database; dipakai di tes). Dengan checker, token yang terbit (klaim `iat`, waktu token dibuat dalam
 // detik Unix) sebelum password diganti ditolak. Token tanpa `iat` (terbitan sebelum fitur ini) tetap sah sampai `exp` dan tidak
-// memicu query. Biayanya satu query per request untuk token ber-`iat`; diukur di item 13.
+// memicu query. Biayanya satu query per request untuk token ber-`iat`.
 //
 // Hasilnya fungsi middleware: bila token valid, user_id disimpan di context lalu request diteruskan; bila tidak,
 // request dihentikan dengan status 401 (atau 500 bila pengecekan pencabutan gagal karena database).

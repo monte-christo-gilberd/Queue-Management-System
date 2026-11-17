@@ -75,9 +75,10 @@ func SetupRouter(
 	gin.SetMode(gin.ReleaseMode)
 	// gin.New tanpa logger bawaan Gin (teks, memuat nilai parameter route); log akses dicatat middleware slog di bawah
 	engine := gin.New()
-	// RequestID paling awal agar semua log request memuat request_id (nilainya dari X-Request-Id yang diisi nginx)
 	// tracing paling awal: span server mencakup semua middleware di bawahnya, dan span aktif sudah ada saat
-	// RequestID, Logger, dan Recovery berjalan (atribut request_id dan trace_id di log)
+	// RequestID, Logger, dan Recovery berjalan (atribut request_id dan trace_id di log).
+	// RequestID menyusul tepat setelahnya agar semua log request memuat request_id (nilainya dari X-Request-Id yang
+	// diisi nginx)
 	if router.tracingMiddleware != nil {
 		engine.Use(router.tracingMiddleware)
 	}

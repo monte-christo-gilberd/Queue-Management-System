@@ -5,14 +5,14 @@
 #   dev : docker compose -f docker-compose.yml      -f docker-compose.observability.yml ...
 #   prod: docker compose -f docker-compose.prod.yml -f docker-compose.observability.yml --env-file .env.prod ...
 # Isi: collector (OTel), loki, grafana, dan blok `logging:` untuk service aplikasi (Fase 2); prometheus, cadvisor,
-# node-exporter, postgres-exporter, nginx-exporter (Fase 3); tempo dan pengiriman trace dari backend, auth, qr, mail
+# node-exporter, postgres-exporter, nginx-exporter (Fase 3); tempo dan pengiriman trace dari backend, auth, mail
 # (Fase 4). Lihat docs/plan-observability-tracing.md.
 #
 # [PENTING] ISOLASI: TIDAK ADA depends_on dari service aplikasi ke komponen observability, dan service aplikasi
 #           tidak memakai variabel observability. Observability mati (atau overlay tidak dipakai) tidak boleh
 #           mengganggu antrian. Jangan menambah depends_on di sini ke arah itu.
 # [PENTING] Tracing hanya aktif di service yang mendapat OTEL_EXPORTER_OTLP_ENDPOINT dari overlay ini (backend, auth,
-#           qr, mail). Tanpa overlay variabel itu kosong, jadi tracing no-op dan aplikasi start seperti biasa. Pengiriman
+#           mail). Tanpa overlay variabel itu kosong, jadi tracing no-op dan aplikasi start seperti biasa. Pengiriman
 #           span asinkron dan terbatas: collector atau Tempo mati tidak pernah menahan request.
 # [PENTING] Listener metrik service Go (:9100) dan exporter TIDAK dipublikasikan ke host dan tidak melewati nginx.
 # [PENTING] Hanya Grafana yang membuka port ke host, dan hanya di 127.0.0.1 (akses jauh lewat SSH tunnel):
@@ -45,14 +45,14 @@ x-app-logging: &app-logging
     labels-regex: "^com\\.docker\\.compose\\.(project|service)$"
 
 # Pengiriman trace dari service Go ke collector (OTLP gRPC, jaringan internal). Hanya service yang dipasangi SDK
-# (backend, auth, qr, mail). Nilai kosong/hilang = tracing mati. Tidak ada depends_on ke collector.
+# (backend, auth, mail). Nilai kosong/hilang = tracing mati. Tidak ada depends_on ke collector.
 x-otel-env: &otel-env
   OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4317
   OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
 
 services:
   # ---------------------------------------------------------------------------
-  # Service aplikasi: hanya menambah blok logging dan (backend, auth, qr, mail) pengiriman trace.
+  # Service aplikasi: hanya menambah blok logging dan (backend, auth, mail) pengiriman trace.
   # ---------------------------------------------------------------------------
   backend:
     logging: *app-logging
@@ -60,9 +60,6 @@ services:
   auth-service:
     logging: *app-logging
     environment: *otel-env
-  # qr-service:
-  #   logging: *app-logging
-  #   environment: *otel-env
   mail-service:
     logging: *app-logging
     environment: *otel-env

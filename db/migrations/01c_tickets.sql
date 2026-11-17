@@ -15,7 +15,7 @@ CREATE TABLE tickets (
     -- Kunci urutan gap-based (fractional indexing ala Figma/Jira LexoRank): diberi jarak besar saat insert
     -- (kelipatan 65536) supaya requeue/fallback (FR 4.14) cukup menyisipkan satu nilai baru di antara dua
     -- sort_key yang ada, TANPA menulis ulang baris tiket lain. "Posisi ke berapa" dihitung saat baca lewat
-    -- ROW_NUMBER() OVER (PARTITION BY queue_id, status ORDER BY sort_key), bukan disimpan.
+    -- COUNT(*) tiket berstatus sama dengan sort_key lebih kecil di antrian yang sama, bukan disimpan.
     sort_key           BIGINT NOT NULL,
 
     -- Customer wajib login (revisi FR 4.2; sebelumnya anonim lewat device_token). Anti-double-join berbasis akun

@@ -9,7 +9,7 @@ import (
 
 // UserRepository: akses tabel users. Dipenuhi repository.UserRepository.
 type UserRepository interface {
-	// Create menyimpan user baru; apperror.ErrDuplicate bila email atau username sudah dipakai.
+	// Create menyimpan user baru; apperror.ErrDuplicate bila email sudah dipakai (username tidak UNIQUE).
 	Create(
 		ctx context.Context,
 		email,

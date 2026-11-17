@@ -2,7 +2,8 @@
 //
 // Wajib: DATABASE_URL (atau AUTH_DATABASE_URL), PUBLIC_APP_URL, AUTH_JWT_PRIVATE_KEY_FILE.
 // Opsional: MAIL_SERVICE_URL dan MAIL_SERVICE_TOKEN (keduanya atau tidak sama sekali), EMAIL_VERIFICATION_REQUIRED,
-// AUTH_JWT_KID, PORT (bawaan 8094), SHUTDOWN_TIMEOUT (bawaan 8 detik), APP_ENV, TRUSTED_PROXIES.
+// AUTH_JWT_KID, GOOGLE_CLIENT_IDS (kosong = login Google mati), GOOGLE_CERTS_URL, AUTH_PORT atau PORT (bawaan 8094),
+// SHUTDOWN_TIMEOUT (bawaan 8 detik), APP_ENV, TRUSTED_PROXIES.
 package config
 
 import (

@@ -1,5 +1,5 @@
 // Package service berisi logika bisnis backend: aturan antrian, tiket, counter, riwayat, layar publik, QR,
-// akun, reset password, dan verifikasi email. Handler HTTP memanggil service, lalu service memanggil repository.
+// profil akun, checkout langganan, dan guard verifikasi email. Handler HTTP memanggil service, lalu service memanggil repository.
 //
 // Aturan yang dipakai di semua service:
 //   - Service tidak mengenal HTTP. Ia menerima context dan ID, lalu mengembalikan model atau apperror.
@@ -16,7 +16,7 @@
 //
 // Pola konstruktor: New...Service menerima dependency wajib. Dependency opsional dipasang lewat With...
 // (mis. WithQueueGuard, WithNotifier, WithVerificationGuard). Dengan pola ini, fitur yang tidak dipasang
-// di main.go tidak aktif tanpa mengubah konstruktor.
+// di internal/app tidak aktif tanpa mengubah konstruktor.
 //
 // Isinya:
 //   - service_interface.go: interface service yang dipakai handler (QueueServiceInterface, TicketServiceInterface,
@@ -28,9 +28,10 @@
 //   - history_service.go: HistoryService, yaitu riwayat antrian yang sudah ditutup, riwayat tiket customer, dan ekspor.
 //   - note_service.go: NoteService, yaitu catatan owner per tiket.
 //   - qr_service.go: QRService, yaitu QR statis dan dinamis serta verifikasi token join.
-//   - user_service.go: UserService, yaitu registrasi, login, profil, foto profil, dan username.
-//   - password_reset_service.go dan email_verification_service.go: token sekali pakai untuk reset password dan
-//     verifikasi email (token mentah hanya dikirim lewat email, di database hanya hash-nya).
+//   - user_service.go: UserService, yaitu profil, foto profil, username, dan preferensi notifikasi email. Registrasi, login, reset password, dan
+//     verifikasi email ada di auth-service.
+//   - subscription_checkout.go: SubscriptionCheckout, yaitu checkout langganan lewat payment-service (paymentclient).
+//   - verification_guard.go: VerificationGuard, yaitu pemeriksaan email terverifikasi (status ditulis auth-service).
 //   - notifier.go: EventNotifier, nama event, dan notifyEvent.
 //   - tx_runner.go: TxRunner, kontrak transaksi yang dipenuhi database.SqlxTxRunner.
 //

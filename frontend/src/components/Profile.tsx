@@ -187,7 +187,7 @@ export default function Profile({
             </View>
           </View>
 
-          {/* Status subscription: hanya untuk owner. Link ke halaman Subscription selalu ada; di sana owner menambah masa langganan 30 hari (tanpa pembayaran). */}
+          {/* Status subscription: hanya untuk owner. Link ke halaman Subscription selalu ada; di sana owner membayar satu bulan langganan lewat checkout BorderPay (QRIS). */}
           {isOwner ? (
             <View className="gap-2 rounded-card border border-line p-4">
               <View className="flex-row items-center justify-between">
@@ -220,7 +220,7 @@ export default function Profile({
             </View>
           ) : null}
 
-          {/* Ajakan Jadi Owner: hanya untuk user biasa yang profilnya sudah dimuat (canBecomeOwner). Di halaman Subscription, 30 hari pertama langsung menjadikan akun owner (tanpa pembayaran). */}
+          {/* Ajakan Jadi Owner: hanya untuk user biasa yang profilnya sudah dimuat (canBecomeOwner). Di halaman Subscription, pembayaran langganan pertama lewat checkout BorderPay (QRIS) menjadikan akun owner setelah webhook mengonfirmasi lunas. */}
           {canBecomeOwner ? (
             <View className="gap-2 rounded-card border border-line p-4">
               <Text className="text-[14px] font-bold text-foreground">Jadi Owner</Text>

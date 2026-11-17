@@ -85,7 +85,7 @@ function QueueDetailEditor({
   const [closing, setClosing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
 
-  // QR antrian: token statis/dinamis + countdown + penggantian kode (qr-service lewat backend).
+  // QR antrian: token statis/dinamis + countdown + penggantian kode (dibuat dan disimpan backend).
   const qr = useQueueQR(queue.id);
   const skipCfg = useSkipSettings(queue.id);
   const display = useDisplayConfig(queue.id);

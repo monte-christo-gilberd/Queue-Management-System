@@ -41,7 +41,8 @@ import { handleMenuItemPress } from '@/utils/menu';
 const DASHBOARD_QUEUE_COUNT = 2;
 
 /**
- * Modal gabung antrian memakai expo-camera (pemindai QR). Dimuat terpisah agar library kamera tidak ikut di bundle beranda.
+ * Modal gabung antrian memakai expo-camera (pemindai QR). Dimuat dengan lazy() agar library kamera idealnya tidak ikut di bundle beranda, tetapi
+ * ResponsiveScreenLayout juga mengimpor modul ini secara statis, jadi pemisahan itu kemungkinan besar tidak tercapai.
  */
 const JoinQueueModals = lazy(() =>
   import('@/components/ui/JoinQueueModals').then((m) => ({ default: m.JoinQueueModals })),

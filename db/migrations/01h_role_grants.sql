@@ -5,7 +5,7 @@
 -- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
 -- ============================================================================
 
--- Role per service dibuat oleh 03..05_*_role.sh SETELAH file ini, dan skrip itu memberi hak sendiri. Blok ini
+-- Role per service dibuat oleh skrip 03_*_role.sh dan seterusnya (03, 04, 06, 07, 08) SETELAH file ini, dan skrip itu memberi hak sendiri. Blok ini
 -- hanya berlaku bila role mail_rw SUDAH ada saat file ini dijalankan (mis. database dengan role yang tersisa),
 -- jadi pada init database kosong ia tidak melakukan apa-apa. Daftar hak mail_rw sama dengan 04_mail_role.sh.
 DO $$

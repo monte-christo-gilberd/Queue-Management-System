@@ -76,7 +76,7 @@ func outcome(
 	}
 	// kode galat aplikasi yang dicatat respondError
 	if code := c.GetString("error_code"); code != "" {
-		// huruf kecil agar label konsisten dan mudah ditulis di query (mis. invalid_credentials)
+		// huruf kecil agar label konsisten dan mudah ditulis di query (mis. unauthorized, conflict)
 		return strings.ToLower(code)
 	}
 	// galat tanpa kode (mis. dari middleware atau panic)

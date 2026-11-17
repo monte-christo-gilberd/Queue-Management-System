@@ -11,7 +11,7 @@ import (
 // "<script>" tidak lolos. Ini pemeriksaan sederhana: hanya memeriksa dua karakter itu, bukan
 // mem-parse HTML, dan tidak membersihkan (sanitize) isinya.
 //
-// Dipasang di cmd/server/main.go lewat RegisterValidation. Dipakai sebagai tag pada struct request.
+// Dipasang di internal/app lewat RegisterValidation. Dipakai sebagai tag pada struct request.
 func NoHTMLTags(
 	fl validator.FieldLevel,
 ) bool {

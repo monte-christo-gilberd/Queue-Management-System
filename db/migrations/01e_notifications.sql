@@ -16,8 +16,8 @@ CREATE TABLE push_subscriptions (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Outbox email (item 8): ke pemilik tiket, dan ke owner saat antriannya ditutup (kind queue-closed). Trigger tickets_email_outbox menulis baris di sini DALAM transaksi
--- yang sama dengan perubahan tiket (atau status antrian), jadi email tidak hilang walau mail-service mati. Worker di mail-service
+-- Outbox email (item 8): ke pemilik tiket, dan ke owner saat antriannya ditutup (kind queue-closed). Trigger tickets_email_outbox (perubahan tiket) dan queues_email_outbox (antrian ditutup) menulis baris di sini
+-- DALAM transaksi yang sama dengan perubahannya, jadi email tidak hilang walau mail-service mati. Worker di mail-service
 -- (role mail_rw) mengirimnya dan mencoba ulang. Terpisah dari push: push tidak bergantung pada email sama sekali.
 CREATE TABLE notification_outbox (
     id               BIGSERIAL PRIMARY KEY,

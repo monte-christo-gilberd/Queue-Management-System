@@ -31,9 +31,9 @@ type Backend struct {
 	ticketsServed prometheus.Counter
 	// subInactive: penolakan 402 SUBSCRIPTION_INACTIVE, per route.
 	subInactive *prometheus.CounterVec
-	// subExtend: hasil tambah langganan (ok, email_not_verified, error).
+	// subExtend: hasil checkout langganan (ok, email_not_verified, error). Nama "extend" warisan dari endpoint lama.
 	subExtend *prometheus.CounterVec
-	// emailRejected: penolakan EMAIL_NOT_VERIFIED, per aksi (queue_create, join, subscription_extend).
+	// emailRejected: penolakan EMAIL_NOT_VERIFIED, per aksi (queue_create, join, subscription_extend; yang terakhir = checkout langganan).
 	emailRejected *prometheus.CounterVec
 }
 
