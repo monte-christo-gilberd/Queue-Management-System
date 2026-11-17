@@ -1,7 +1,7 @@
 /**
  * use-is-wide: penanda layar lebar untuk memilih tata letak desktop atau ponsel. Menanggapi perubahan ukuran jendela.
  *
- * Dipakai oleh : src/app/(owner)/dashboard.tsx, src/components/HistoryDetail.tsx, src/components/History.tsx,
+ * Dipakai oleh : src/app/(user)/dashboard.tsx, src/components/HistoryDetail.tsx, src/components/History.tsx,
  *                src/components/layout/ResponsiveScreenLayout.tsx, src/components/Profile.tsx, src/components/QueueLiveScreen.tsx,
  *                src/components/ui/Toast.tsx.
  * Bergantung   : react-native (useWindowDimensions), constants/app-theme (Layout.wideBreakpoint).

@@ -53,7 +53,7 @@ export default function ForgotPasswordScreen({
         </Text>
         {/* replace: kembali ke login mengganti layar konfirmasi, bukan menumpuknya di riwayat. */}
         <View className="mt-2.5">
-          <PrimaryAuthButton label="Kembali ke Login" onPress={() => router.replace('/')} loading={false} />
+          <PrimaryAuthButton label="Kembali ke Login" onPress={() => router.replace('/login')} loading={false} />
         </View>
       </AuthLayout>
     );
@@ -78,7 +78,7 @@ export default function ForgotPasswordScreen({
         <PrimaryAuthButton label="Kirim" onPress={onSubmit} loading={loading} />
       </View>
 
-      <Pressable onPress={() => router.replace('/')} className="mt-2 items-center">
+      <Pressable onPress={() => router.replace('/login')} className="mt-2 items-center">
         <Text className="text-[12px] text-placeholder">
           Ingat password? <Text className="font-bold text-white">Login</Text>
         </Text>

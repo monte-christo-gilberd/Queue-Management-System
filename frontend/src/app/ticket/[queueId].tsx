@@ -3,7 +3,7 @@
  *
  * Rute        : /ticket/[queueId] (queueId = id antrian).
  * Akses       : butuh login (AuthGate mode required).
- * Dipakai oleh: Antrian Saya (antrian.tsx), JoinQueueModals setelah berhasil gabung antrian.
+ * Dipakai oleh: Antrian Saya (antrian.tsx), JoinQueueModals dan app/join.tsx setelah berhasil gabung antrian.
  * Bergantung  : useTicketQueue, CustomerQueueScreen, canCancelTicket (lib/tickets).
  * Catatan     : Tidak ada tombol join. Tombol kembali menuju /dashboard. Batal hanya untuk nomor aktif di antrian yang masih buka.
  */
@@ -17,7 +17,7 @@ import { formatTicketNumber } from '@/utils/format';
 
 /**
  * Status tiket saya di satu antrian (dibuka dari "Antrian Saya" / "Riwayat").
- * Tidak ada tombol join di sini: bergabung hanya lewat pindai QR di aplikasi (token ada di /join?t=...).
+ * Tidak ada tombol join di sini: bergabung lewat pindai QR di aplikasi atau halaman /join?t=....
  */
 export default function TicketQueueRoute() {
   return (

@@ -1,7 +1,7 @@
 /**
  * QueueList: daftar semua antrian aktif milik owner dalam bentuk kartu.
  *
- * Dipakai oleh : app/(owner)/queues/index.tsx
+ * Dipakai oleh : app/(user)/queues/index.tsx
  * Bergantung   : ui/Toast, ui/EmptyState, ui/Icon, layout/ResponsiveScreenLayout, hooks/use-is-wide, hooks/use-theme-mode, utils/format
  * Peran        : owner
  * Catatan      : TODO di bawah masih berlaku: route hanya mengisi `queue`, sehingga nomor saat ini dan nama counter belum terisi (lihat types/api.ts).
@@ -15,7 +15,7 @@ import type { QueueListItem } from "@/types/api";
 import { cn } from "@/utils/cn";
 import { formatTicketNumber } from "@/utils/format";
 import ResponsiveScreenLayout, {
-  type OwnerMenuItem,
+  type MenuItem,
   type ShellProps,
 } from "@/components/layout/ResponsiveScreenLayout";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -27,7 +27,7 @@ export type QueueListProps = {
   /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
   /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
-  onMenuItemPress?: (item: OwnerMenuItem) => void;
+  onMenuItemPress?: (item: MenuItem) => void;
   /** Antrian yang ditampilkan (route memberi hanya yang aktif; yang sudah ditutup ada di Riwayat). */
   items: QueueListItem[];
   /** true saat daftar sedang dimuat; teks "Memuat antrian..." tampil. Default false. */

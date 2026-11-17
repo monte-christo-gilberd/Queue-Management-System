@@ -1,7 +1,7 @@
 /**
  * MyHistoryList: riwayat tiket milik customer, dengan popup detail per tiket.
  *
- * Dipakai oleh : app/(owner)/riwayat.tsx
+ * Dipakai oleh : app/(user)/riwayat.tsx
  * Bergantung   : ui/AppButton, ui/ModalCard, types/api (MyHistoryTicket), utils/format, utils/history
  * Peran        : customer
  * Catatan      : hanya baca; catatan owner tidak ditampilkan kepada customer.

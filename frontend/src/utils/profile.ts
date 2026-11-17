@@ -2,7 +2,7 @@
  * profile: validasi nama pengguna dan foto profil, status langganan, dan pemetaan galat profil. Fungsi murni
  * kecuali describeProfileError yang hanya membaca ApiError.
  *
- * Dipakai oleh : src/app/(owner)/profile/index.tsx, src/app/(owner)/subscription.tsx, src/components/Profile.tsx.
+ * Dipakai oleh : src/app/(user)/profile/index.tsx, src/app/(user)/subscription.tsx, src/components/Profile.tsx.
  * Bergantung   : lib/api.ts (ApiError), utils/format.ts (formatDate).
  * Alur         : PUT /api/v1/users/me (ubah nama) dan PUT /api/v1/users/me/avatar (foto) memakai helper ini
  *                untuk validasi awal dan pesan galat.

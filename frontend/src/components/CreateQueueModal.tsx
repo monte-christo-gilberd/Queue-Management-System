@@ -1,7 +1,7 @@
 /**
  * CreateQueueModal: popup form untuk membuat antrian baru (nama, deskripsi, awalan nomor).
  *
- * Dipakai oleh : app/(owner)/dashboard.tsx
+ * Dipakai oleh : app/(user)/dashboard.tsx
  * Bergantung   : ui/Toast (useErrorToast), ui/AppButton, ui/FormField, ui/ModalCard
  * Peran        : owner
  * Catatan      : awalan nomor dinormalisasi saat diketik; validasi nama dan pembuatan antrian dilakukan di route.

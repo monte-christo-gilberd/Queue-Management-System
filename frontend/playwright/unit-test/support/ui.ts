@@ -36,7 +36,7 @@ export function field(page: Page, placeholder: string) {
 
 /** Login lewat form UI. */
 export async function signInThroughUi(page: Page, identifier: string, password: string) {
-  await page.goto(`${WEB_URL}/`);
+  await page.goto(`${WEB_URL}/login`);
   await field(page, 'EMAIL ATAU USERNAME').fill(identifier);
   await field(page, 'PASSWORD').fill(password);
   await action(page, 'Login').click();
@@ -47,7 +47,7 @@ export async function signInThroughUi(page: Page, identifier: string, password: 
  * Dipakai agar tes tidak mengulang login UI di setiap langkah.
  */
 export async function signInWithToken(page: Page, token: string, displayName: string, path = '/dashboard') {
-  await page.goto(`${WEB_URL}/`);
+  await page.goto(`${WEB_URL}/login`);
   await page.evaluate(
     ([key, value]) => window.localStorage.setItem(key, value),
     [AUTH_STORAGE_KEY, JSON.stringify({ state: { token, displayName }, version: 0 })],

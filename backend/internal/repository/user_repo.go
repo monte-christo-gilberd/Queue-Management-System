@@ -59,45 +59,6 @@ func (r *UserRepository) FindByLogin(
 	return users, nil
 }
 
-// FindByEmail mengambil satu user berdasarkan email.
-// Mengembalikan ErrNotFound bila email tidak terdaftar.
-func (r *UserRepository) FindByEmail(
-	ctx context.Context,
-	email string,
-) (model.User, error) {
-
-	const query = `
-		SELECT
-			id,
-			email,
-			username,
-			password_hash,
-			google_id,
-			created_at
-		FROM users
-		WHERE email=$1
-	`
-	var user model.User
-
-	// Ambil satu user yang email-nya cocok dengan email; hasilnya diisi ke user.
-	err := r.db.GetContext(
-		ctx,
-		&user,
-		query,
-		email,
-	)
-	// Jika query gagal, periksa dulu apakah karena tidak ada baris.
-	if err != nil {
-		// Tidak ada user dengan email itu; kembalikan ErrNotFound.
-		if errors.Is(err, sql.ErrNoRows) {
-			return model.User{}, apperror.ErrNotFound
-		}
-		// Error lain dibungkus dengan konteks "find user by email".
-		return model.User{}, fmt.Errorf("find user by email: %w", err)
-	}
-	return user, nil
-}
-
 // FindByID mengembalikan user berdasarkan id.
 func (r *UserRepository) FindByID(
 	ctx context.Context,

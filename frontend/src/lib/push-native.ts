@@ -31,7 +31,8 @@ export const nativePush = createNativePush({
       description: 'Pemberitahuan saat nomor Anda dipanggil atau hampir dipanggil',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#208AEF',
+      // Warna lampu notifikasi (perangkat yang punya LED) = biru logo.
+      lightColor: '#42BFF5',
     });
   },
   // Status izin POST_NOTIFICATIONS tanpa menampilkan dialog (Android 12 ke bawah selalu granted).

@@ -6,7 +6,7 @@ import "context"
 // (kunci bertipe privat tidak pernah sama dengan kunci paket lain, walau namanya mirip).
 type ctxKey struct{}
 
-// With mengembalikan salinan ctx yang membawa request ID, supaya lapisan bawah (mis. qrclient) bisa meneruskannya.
+// With mengembalikan salinan ctx yang membawa request ID, supaya lapisan bawah bisa membacanya.
 func With(
 	ctx context.Context,
 	id string,

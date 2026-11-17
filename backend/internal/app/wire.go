@@ -155,7 +155,7 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 		ticketService.WithVerificationGuard(verification)
 	}
 
-	// inisialisasi layer handler ticket dengan qr-service
+	// inisialisasi layer handler ticket dengan layanan QR (verifikasi kode join langsung di database)
 	ticketHandler := handler.
 		NewTicketHandlerWithQR(
 			ticketService,

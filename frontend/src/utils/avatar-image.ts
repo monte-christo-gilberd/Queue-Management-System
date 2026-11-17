@@ -1,7 +1,7 @@
 /**
  * avatar-image: memperkecil foto profil di browser sebelum diunggah. Berjalan hanya di web.
  *
- * Dipakai oleh : src/app/(owner)/profile/index.tsx.
+ * Dipakai oleh : src/app/(user)/profile/index.tsx.
  * Bergantung   : API browser (createImageBitmap, document, canvas). Tidak ada di native.
  * Catatan      : Dipanggil setelah validateAvatarPick (utils/profile.ts) lolos; bila hasilnya null, pemanggil
  *                mengunggah berkas asli.

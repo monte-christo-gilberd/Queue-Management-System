@@ -33,19 +33,47 @@ You can start developing by editing the files inside the **src/app** directory. 
 
 > Catatan: perintah `npm run reset-project` (template Expo) sudah dihapus dari proyek ini karena tidak dipakai. Jangan dijalankan ulang: ia memindahkan `src/` dan `scripts/` ke `example/`.
 
+## Perintah
+
+| Perintah | Fungsi |
+| --- | --- |
+| `npm start` | Dev server Expo. |
+| `npm run web` / `npm run web:lan` | Dev server web (lan: bisa dibuka dari perangkat lain). |
+| `npm run android` / `npm run ios` | Build native lokal (`expo run:android` / `expo run:ios`). |
+| `npm run lint` | `expo lint`. |
+| `npm run test:unit` | Tes unit (Node test runner). |
+| `npm run e2e` / `npm run e2e:report` | Tes E2E Playwright dan laporannya. |
+| `npm run icons` | Membuat ulang semua ikon PNG di `assets/images/` dari `logo/logo.svg` (`scripts/gen-icons.mjs`, memakai Chromium Playwright). Ikon ada di dalam APK, jadi build ulang APK setelahnya. |
+
+## Struktur folder
+
+- `src/app/`: rute (Expo Router). Publik/auth: `index.tsx`, `login`, `register`, `forgot-password`, `reset-password`, `verify-email`, `link-google`, `join`, `ticket/[queueId]`, `display/[token]`. Grup `(user)/` (setelah login; sebelumnya `(owner)`): `dashboard`, `antrian`, `riwayat`, `history/` (`index`, `[queueId]`), `queues/` (`index`, `[queueId]/index`, `[queueId]/live`), `profile/`, `subscription`.
+- `src/components/` (layar dan kartu; `ui/` berisi komponen dasar seperti `AppButton`, `Toast`, `ConfirmModal`, `UserAvatar`), `src/hooks/`, `src/lib/` (klien API, SSE, push), `src/store/`, `src/utils/` (mis. `menu.ts`), `src/types/`, `src/constants/`.
+- `tests/unit/` (tes unit), `playwright/` (E2E dan test case), `scripts/` (`gen-icons.mjs`), `logo/`, `assets/`.
+
 ## Tes
 
-- Tes unit: `npm run test:unit` (folder `tests/unit/`, 193 tes pada pengecekan terakhir).
-- Tes E2E Playwright: `npm run e2e` (folder `playwright/unit-test/`, 246 tes di 33 file spec menurut `npx playwright test --list`). Cara menjalankan
+- Tes unit: `npm run test:unit` (folder `tests/unit/`, 208 tes di 27 berkas `*.test.ts`, semua lulus pada pengecekan terakhir).
+- Tes E2E Playwright: `npm run e2e` (folder `playwright/unit-test/`, 247 tes di 33 file spec menurut `npx playwright test --list`). Cara menjalankan
   dan prasyaratnya ada di [`playwright/unit-test/README.md`](playwright/unit-test/README.md).
+
+## Build dan notifikasi
+
+- Web: `Dockerfile` (target `dev`, `build`, `prod`): `expo export` lalu disajikan nginx (`nginx.conf`). `EXPO_PUBLIC_API_URL` dibakar ke bundle saat build.
+- Android (APK): profil di `eas.json` (`development`, `preview`, `production`; keduanya APK). Build: `npx eas-cli@latest build --platform android --profile production`.
+  Env `EXPO_PUBLIC_API_URL` dan client ID Google untuk profil production diisi di `eas.json`.
+- Push: Web memakai Web Push (`src/lib/push.ts`); Android memakai FCM (`src/lib/push-native*.ts`, kanal `queue-turn`, token didaftarkan ke
+  `POST /api/v1/push/fcm/register`). FCM butuh `google-services.json`: di EAS unggah sebagai file env `GOOGLE_SERVICES_JSON`
+  (`eas env:create --name GOOGLE_SERVICES_JSON --type file --visibility secret ...`); lokal taruh di `frontend/` (di-gitignore).
+  `app.config.js` yang menyambungkannya. Tanpa berkas itu build tetap jalan, tetapi notifikasi Android tidak aktif.
 
 ## Catatan perilaku layar
 
 - Halaman Daftar dan Reset Password: pesan "Password tidak sama" tampil inline di bawah field konfirmasi, hanya setelah field itu
   ditinggalkan atau tombol kirim ditekan, dan hilang saat isinya sama.
 - Kartu profil: foto bisa diketuk untuk membuka popup foto yang diperbesar (tombol X menutupnya). Tanpa foto, tidak ada yang bisa diketuk.
-- Layar langganan owner (`src/app/(owner)/subscription.tsx`) adalah MOCK: satu tombol menambah masa langganan 30 hari lewat
-  `POST /api/v1/owners/subscription/extend`, tanpa pembayaran.
+- Layar langganan owner (`src/app/(user)/subscription.tsx`) membuat pesanan pembayaran QRIS BorderPay lewat
+  `POST /api/v1/owners/subscription/checkout` (satu bulan langganan, 30 hari).
 
 ## Learn more
 

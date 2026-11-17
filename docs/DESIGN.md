@@ -1,7 +1,7 @@
 # Design: Queue Management System
 
 Dokumen ini menjelaskan arsitektur, keputusan desain, dan batasan sistem. Untuk bentuk request dan response
-lihat [api-contract.md](api-contract.md). Untuk alur pengguna lihat [FLOW.md](FLOW.md).
+lihat [api-contract.md](api-contract.md). Untuk alur pengguna lihat [FLOW.md](FLOW.md). Penjelasan kode per komponen ada di [dokumentasi-teknis/README.md](dokumentasi-teknis/README.md).
 
 ## 1. Gambaran sistem
 
@@ -21,6 +21,8 @@ Sistem terdiri dari lima service Go (backend antrian, `auth-service`, `notify-se
         │  /api/v1/users/ (login, register, google, forgot/reset password, verify-email)
         │          ──────────────►  auth-service :8094 ──► PostgreSQL (auth_rw)
         │                              └──► mail-service :8092 (email reset password, verifikasi)
+        │  /api/v1/webhooks/borderpay ─► payment-service :8095 ──► PostgreSQL (payment_rw) + BorderPay
+        │     (backend memanggil payment-service lewat /internal/v1/payments untuk checkout)
 
    PostgreSQL ─ pg_notify('queue_events') ─► notify-service :8091 ─► Web Push / FCM
    PostgreSQL ─ notification_outbox       ─► mail-service         ─► SMTP
@@ -48,11 +50,11 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 - **repository** (`internal/repository`): SQL. Tidak tahu aturan bisnis.
 - **dto** (`internal/dto`): bentuk JSON ke klien. Model database tidak pernah dikirim langsung.
 
-Pola lapisan yang sama (`handler`, `service`, `repository`, `dto`, `model`, `router`, `config`, `apperror`, `httpserver`, tes di `internal/test`) dipakai backend, `auth-service`, `notify-service`, dan `mail-service`; paket yang tidak diperlukan tidak ada. Paket khusus: `notify-service` punya `listener`, `pusher`, dan `runner`; `mail-service` punya `mailer` dan `mailtemplate`; `auth-service` punya `google` dan `mailclient`.
+Pola lapisan yang sama (`handler`, `service`, `repository`, `dto`, `model`, `router`, `config`, `apperror`, `httpserver`, tes di `internal/test`) dipakai backend, `auth-service`, `notify-service`, dan `mail-service`; paket yang tidak diperlukan tidak ada. Backend juga punya `app` (wiring), `logging`, `metrics`, `telemetry`, `requestid`, dan `paymentclient` (klien ke payment-service). `payment-service` lebih kecil: `borderpay`, `checkout`, `webhook`, `order`, `store`, `config`, memakai `net/http` tanpa Gin dan tanpa JWT (hanya `X-Service-Token` dan token webhook). Paket khusus: `notify-service` punya `listener`, `pusher`, dan `runner`; `mail-service` punya `mailer` dan `mailtemplate`; `auth-service` punya `google` dan `mailclient`.
 
 Setiap lapisan mendefinisikan interface yang dibutuhkannya sendiri (mis. `TicketRepository` di paket service).
 Akibatnya service bisa diuji dengan fake repository tanpa database, dan wiring dilakukan manual di
-`cmd/server/main.go`.
+`internal/app/wire.go` (`app.Wire`) dan `internal/app/engine.go`, yang dipanggil dari `cmd/server/main.go`.
 
 ### 2.2 Autentikasi dan otorisasi
 
@@ -63,7 +65,7 @@ Akibatnya service bisa diuji dengan fake repository tanpa database, dan wiring d
 - **Reset password (item 9):** `POST /users/forgot-password` selalu 202 (tanpa enumerasi; pengiriman di goroutine, maksimal 32 bersamaan, selebihnya 503). Token 32 byte acak, hanya hash SHA-256-nya di `user_action_tokens` (30 menit, sekali pakai, token baru membatalkan yang lama, maksimal 3 per akun per jam). auth-service memanggil `mail-service` (`POST /internal/v1/send`, templat `password-reset`) lewat `internal/mailclient`; `MAIL_SERVICE_URL` dan `MAIL_SERVICE_TOKEN` diisi berpasangan, kosong = rute forgot/reset/verify tidak dipasang. `POST /users/reset-password` mengonsumsi token, mengganti password, mengisi `password_changed_at`, dan membatalkan token lain dalam satu transaksi; password diperiksa sebelum token disentuh. nginx: zona `reset_zone` (1 r/s, burst 5), log halaman `/reset-password` memakai format tanpa query (`qms_masked`) supaya token tidak tercatat, dan `Referrer-Policy: no-referrer`. `notify_ro` dan `mail_rw` tidak punya hak apa pun di `user_action_tokens`. Tabel yang sama disiapkan untuk verifikasi ganti email (`purpose = 'email_change'`), yang belum dibangun.
 - Login menerima email atau username. Pesan gagal login tidak membedakan mana yang salah.
 - **Login Google:** `POST /users/google {id_token}` menukar ID token Google (diperiksa auth-service sendiri terhadap JWKS Google; hanya aktif bila `GOOGLE_CLIENT_IDS` terisi) dengan token QMS. Akun tertaut lewat `google_id`; email baru membuat akun tanpa password yang sudah terverifikasi; email yang sudah terdaftar dengan password dijawab 409 `GOOGLE_LINK_REQUIRED` beserta `link_token` (JWT 5 menit, sekali pakai) dan **tidak** ditautkan otomatis: pemilik harus membuktikan password lewat `POST /users/google/link`. Di frontend tombol Google tidak tampil bila client ID belum dikonfigurasi.
-- **Verifikasi email:** `EMAIL_VERIFICATION_REQUIRED` (bawaan: menyala bila `MAIL_SERVICE_URL` terisi; nilainya harus sama di auth-service dan backend; menyalakannya tanpa mail-service membuat service menolak start). Registrasi mengirim tautan (`email-verify`, `/verify-email?token=`, berlaku 24 jam, maks 3 per jam per akun) memakai `user_action_tokens` (`purpose = 'email_verify'`) dan kolom `users.email_verified_at`. `POST /users/verify-email {token}` (publik; token tidak sah, kedaluwarsa, atau terpakai: 400 `INVALID_TOKEN`), `POST /users/me/verify-email/resend` (202 netral, 429 bila terlalu sering). Setelah verifikasi berhasil auth-service mengirim email konfirmasi `email-verified` di goroutine (best effort: gagal hanya masuk log, hasil verifikasi tidak berubah). `GET /users/me` (backend) memuat `email_verified` (selalu `true` bila fitur mati). Guard `RequireVerified` di backend membaca database pada tiap panggilan (bukan klaim JWT) dan menolak 403 `EMAIL_NOT_VERIFIED` untuk buat antrian dan join nomor baru (join ulang yang mengembalikan tiket lama tidak ditolak). Frontend: halaman publik `/verify-email` dan banner dengan tombol kirim ulang di Profil. Email verifikasi dikirim sinkron-lepas: `Register` mengirimnya di goroutine (gagal hanya masuk log, registrasi tetap 200). Dev: email masuk Mailpit. Prod: ikut `MAIL_MODE` (`smtp` bawaan, mis. Gmail, atau `mailpit`; `scripts/check-mail-mode.sh` memperingatkan bahwa pengguna baru tidak bisa memverifikasi di mode `mailpit`, dan `make verify-user` menandai satu akun). Migrasi DB lama (`db/scripts/apply_schema.sql`) menambah kolom, memperluas CHECK `purpose`, dan memverifikasi semua akun yang sudah ada sekali saja (kolom belum ada), supaya tidak ada yang terkunci. Seed dan akun demo dibuat sudah terverifikasi. Tidak ada cek MX atau allowlist domain: bukti kepemilikan email adalah klik tautan.
+- **Verifikasi email:** `EMAIL_VERIFICATION_REQUIRED` (bawaan: menyala bila `MAIL_SERVICE_URL` terisi; nilainya harus sama di auth-service dan backend; menyalakannya tanpa mail-service membuat service menolak start). Registrasi mengirim tautan (`email-verify`, `/verify-email?token=`, berlaku 24 jam, maks 3 per jam per akun) memakai `user_action_tokens` (`purpose = 'email_verify'`) dan kolom `users.email_verified_at`. `POST /users/verify-email {token}` (publik; token tidak sah, kedaluwarsa, atau terpakai: 400 `INVALID_TOKEN`), `POST /users/me/verify-email/resend` (202 netral, 429 bila terlalu sering). Setelah verifikasi berhasil auth-service mengirim email konfirmasi `email-verified` di goroutine (best effort: gagal hanya masuk log, hasil verifikasi tidak berubah). `GET /users/me` (backend) memuat `email_verified` (selalu `true` bila fitur mati). Guard `RequireVerified` di backend membaca database pada tiap panggilan (bukan klaim JWT) dan menolak 403 `EMAIL_NOT_VERIFIED` untuk buat antrian, checkout langganan, dan join nomor baru (join ulang yang mengembalikan tiket lama tidak ditolak). Frontend: halaman publik `/verify-email` dan banner dengan tombol kirim ulang di Profil. Email verifikasi dikirim sinkron-lepas: registrasi mengirimnya di goroutine (gagal hanya masuk log, registrasi tetap 200). Dev: email masuk Mailpit. Prod: ikut `MAIL_MODE` (`mailpit` bawaan, atau `smtp` untuk SMTP nyata, mis. Gmail; `scripts/check-mail-mode.sh` memperingatkan bahwa pengguna baru tidak bisa memverifikasi di mode `mailpit`, dan `make verify-user` menandai satu akun). Migrasi DB lama (`db/scripts/apply_schema.sql`) menambah kolom, memperluas CHECK `purpose`, dan memverifikasi semua akun yang sudah ada sekali saja (kolom belum ada), supaya tidak ada yang terkunci. Seed dan akun demo dibuat sudah terverifikasi. Tidak ada cek MX atau allowlist domain: bukti kepemilikan email adalah klik tautan.
 - Foto profil: lihat 6c.
 
 Aturan akses:
@@ -102,7 +104,8 @@ Semua tabel di skema kini dipakai (16 tabel; peta per file di `db/migrations/REA
 | `queue_displays` | Token dan pengaturan layar publik |
 
 Batasan penting di `tickets`:
-- `UNIQUE (queue_id, user_id)`: satu user hanya punya satu tiket per antrian, termasuk setelah tiketnya selesai.
+- Indeks unik parsial `tickets_queue_id_user_id_active_key` pada `(queue_id, user_id) WHERE status IN ('waiting','currently_served')`: satu user hanya punya satu tiket aktif per antrian; setelah tiketnya selesai atau dibatalkan ia boleh join lagi dan mendapat nomor baru.
+- Indeks unik parsial `tickets_one_serving_per_counter`: satu counter hanya melayani satu nomor.
 - `UNIQUE (queue_id, sort_key)`: dua tiket tidak boleh punya urutan yang sama, termasuk yang sudah selesai.
 
 ### 2.4 Urutan antrian (sort_key)
@@ -144,8 +147,8 @@ Tampilan customer memakai angka ini langsung dari `GET /status`. Papan owner ber
 
 ### 2.7 Real-time (SSE)
 
-- Setiap antrian punya satu *hub* di memori. Klien yang tersambung ke `/queues/:id/event` didaftarkan ke hub itu.
-- Service memanggil `notifier` setelah transaksi selesai (join, next, skip, cancel, remove, counter, update, close, QR). Event: `ticket_joined`, `ticket_next`, `ticket_skipped`, `ticket_cancelled`, `ticket_removed`, `counter_updated`, `queue_closed`, `queue_updated`, `queue_qr_updated`, dan `display_changed` (hanya ke room layar publik, lihat 6d). Hub mengirim event ke semua klien di antrian itu.
+- Backend punya **satu hub** di memori (`sse.NewHub()` di `app.Wire`) yang menyimpan *room* per antrian (kunci `queue_id`; layar publik memakai room `-queueID`). Klien yang tersambung ke `/queues/:id/event` didaftarkan ke room antrian itu.
+- Service memanggil `notifier` setelah transaksi selesai (join, next, skip, cancel, remove, counter, update, close, QR). Event: `ticket_joined`, `ticket_next`, `ticket_skipped`, `ticket_cancelled`, `ticket_removed`, `counter_updated`, `queue_closed`, `queue_updated`, `queue_qr_updated`, dan `display_changed` (hanya ke room layar publik, lihat 6d). Hub mengirim event ke semua klien di room antrian itu.
 - Setiap ~25 detik dikirim heartbeat `: ping` agar koneksi tidak diputus proxy. Header `X-Accel-Buffering: no` mematikan buffering di nginx.
 - Klien yang putus dibersihkan dari hub (`defer Unsubscribe`).
 - Event hanya membawa data yang perlu untuk tampilan. `user_id` dan `sort_key` dibuang dari `TicketEvent`, karena penerima bisa
@@ -187,11 +190,11 @@ dan dirombak tanpa menyentuh data.
 
 ### 3.3 Routing dan penjagaan
 
-- `(owner)/` dijaga `AuthGate` mode `required`. Tanpa token, user diarahkan ke login dengan parameter `next`.
+- `(user)/` dijaga `AuthGate` mode `required`. Tanpa token, user diarahkan ke login dengan parameter `next`.
 - `join` (`/join?t=<token>`) juga memakai `required`: user harus login sebelum bergabung. `AuthGate`
   menerima `nextPath` eksplisit agar query token tidak hilang saat diarahkan ke login.
 - `display/[token]` publik (tanpa `AuthGate`): layar untuk monitor ruang tunggu.
-- Login ada di `/` (mode `guest`); rute lama `/login` hanya mengarahkan ke `/`. `forgot-password`, `reset-password`, dan `verify-email` publik (tanpa `AuthGate`, karena tautan sering dibuka di perangkat yang belum masuk); `link-google` memakai `guest` dan hanya bisa dipakai bila ada link token yang menunggu di memori (selain itu kembali ke login). `(owner)/` juga memuat riwayat, profil, `subscription`, dan `queues/[queueId]/live`.
+- Login ada di `/login` (mode `guest`); `/` hanya pintu masuk yang meneruskan ke `/login` (tamu) atau `next`/`/dashboard` (sudah login). `forgot-password`, `reset-password`, dan `verify-email` publik (tanpa `AuthGate`, karena tautan sering dibuka di perangkat yang belum masuk); `link-google` memakai `guest` dan hanya bisa dipakai bila ada link token yang menunggu di memori (selain itu kembali ke login). `(user)/` juga memuat riwayat, profil, `subscription`, dan `queues/[queueId]/live`.
 - `ticket/[queueId]` menampilkan status tiket yang sudah dimiliki (dibuka dari Antrian Saya/Riwayat).
 - Login dan register memakai `guest`: user yang sudah login langsung dibawa ke `next` atau dashboard.
 - `subscription`: layar langganan memanggil `POST /api/v1/owners/subscription/checkout` (metode `qris`), lalu membuka `pay_url` BorderPay. User biasa melihat kartu "Jadi Owner"; pembayaran pertama menjadikannya owner. Status langganan dimuat ulang lewat tombol REFRESH setelah webhook diterapkan.
@@ -230,8 +233,8 @@ Dengan nginx, `EXPO_PUBLIC_API_URL` harus diisi dengan origin nginx. Kalau tidak
 - Stack berjalan lewat Docker Compose: `docker-compose.yml` (dev, kode di-mount, hot reload; termasuk Mailpit) dan `docker-compose.prod.yml` (demo/produksi di belakang Cloudflare Tunnel, env dari `.env.prod`, nginx hanya di `127.0.0.1:8080`, frontend statis). Layanan: `db`, `notify-service`, `mail-service`, `auth-service`, `payment-service`, `backend`, `frontend`, `nginx` (dan `mailpit` pada mode tertentu). Keduanya tidak bisa jalan bersamaan (port 8080).
 - Hanya nginx yang membuka port. Service internal tidak punya `ports:`; `auth-service` hanya terjangkau lewat rute `/api/v1/users/...` tertentu di nginx (503 JSON `AUTH_UNAVAILABLE` bila mati) dan sengaja tanpa `depends_on` dari backend atau nginx. Kunci publik JWT (`keys/` untuk prod, `keys-dev/` untuk dev) dipasang ke backend dan kunci privatnya hanya ke auth-service (`scripts/gen-auth-keys.sh`).
 - nginx meneruskan `/api/` ke backend, memakai rute SSE tanpa buffer (antrian dan layar publik), rate limit (login dan registrasi, join, reset password, avatar, layar publik), menyamarkan token di log, dan memblokir `/internal/`. Konfigurasinya ada di `deploy/nginx/`. TLS dipegang Cloudflare; nginx hanya HTTP.
-- Backend menolak start di `APP_ENV=production` bila rahasia lemah atau origin bukan https. Shutdown rapi: SIGINT/SIGTERM menutup SSE, menuntaskan request (`SHUTDOWN_TIMEOUT`), lalu menutup database.
-- Skema DB: `db/migrations/01*.sql` (satu file per domain; peta di `db/migrations/README.md`) hanya jalan pada data directory kosong; DB yang sudah berjalan memakai `db/scripts/apply_schema.sql` (idempoten) dan skrip role `03`-`05`. Perintah harian lewat `Makefile` dan `scripts/` (backup, akun demo, `check-service-isolation.sh`, `check-mail-mode.sh`).
+- Backend menolak start di `APP_ENV=production` bila `ALLOWED_ORIGINS` berisi `*` atau origin bukan https, atau `PUBLIC_APP_URL` bukan https (pemeriksaan rahasia lemah di backend saat ini dikomentari; auth-service memeriksa `PUBLIC_APP_URL` https dan `MAIL_SERVICE_TOKEN` minimal 32 karakter). Shutdown rapi: SIGINT/SIGTERM menutup SSE, menuntaskan request (`SHUTDOWN_TIMEOUT`), lalu menutup database.
+- Skema DB: `db/migrations/01*.sql` (satu file per domain; peta di `db/migrations/README.md`) hanya jalan pada data directory kosong; DB yang sudah berjalan memakai `db/scripts/apply_schema.sql` (idempoten) dan skrip role (`03_notify_role.sh`, `04_mail_role.sh`, `06_auth_role.sh`, `07_metrics_role.sh`, `08_payment_role.sh`). Perintah harian lewat `Makefile` dan `scripts/` (backup, akun demo, `check-service-isolation.sh`, `check-mail-mode.sh`).
 - Semua variabel sensitif diisi saat container dijalankan. Tidak ada rahasia di dalam image.
 
 ## 5. Keputusan desain
@@ -256,7 +259,7 @@ Dengan nginx, `EXPO_PUBLIC_API_URL` harus diisi dengan origin nginx. Kalau tidak
 
 | Lapisan | Alat | Lokasi |
 |---|---|---|
-| Unit backend | `go test` dengan fake repository, stub service, spy notifier, dan mock | `backend/internal/test/*_test`, `backend/internal/dto_test` |
+| Unit backend | `go test` dengan fake repository, stub service, spy notifier, dan mock | `backend/internal/test/<lapisan>_test` (dto, handler, service, repository, router, middleware, sse, config, dan lain-lain) |
 | Integration backend | `go test -tags integration` pada PostgreSQL (schema sementara) | `backend/internal/test/integration_test` |
 | Unit frontend | `node --test` (`npm run test:unit`) untuk logika murni | `frontend/tests/unit` |
 | Unit service lain | `go test ./...` di tiap service | `auth-service`, `mail-service`, `notify-service`, `payment-service` |
@@ -278,7 +281,7 @@ Email dikirim oleh **`mail-service`**, bukan notify-service. Pemisahannya diseng
 - **Paket `internal/mailer`** (dipanggil `service`): pesan MIME `multipart/alternative` (teks dan HTML, quoted-printable, subjek UTF-8), satu tenggat per percakapan SMTP (dial 5 detik, total 15 detik, ikut batal bersama `context`), mode TLS `none`/`starttls`/`tls` (`PlainAuth` menolak kata sandi lewat koneksi tanpa TLS ke host selain localhost), coba ulang 3 kali dengan backoff 1 dan 2 detik untuk kegagalan sementara (dial, 4xx); 5xx dan input tidak sah tidak diulang (`ErrPermanent`); `To` dan `Subject` dengan CR atau LF ditolak.
 - **Templat** (`internal/mailtemplate/templates`, embed): templat yang ada `joined`, `cancelled`, `removed`, `completed`, `queue-closed`, `email-verify`, `email-verified`, `password-reset`, dan `test`. Tiap templat terdiri dari `<nama>.subject.tmpl`, `.txt.tmpl`, `.html.tmpl` plus `layout.html.tmpl` bersama. HTML lewat `html/template` (nilai pengguna otomatis di-escape); `missingkey=error` membuat data yang kurang menjadi galat, bukan "<no value>" yang terkirim; nama templat divalidasi (`^[a-z0-9][a-z0-9-]*$`).
 - **Konfigurasi** divalidasi saat start (`config.Load`): `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`/`SMTP_PASSWORD` (berpasangan), `SMTP_TLS`, `MAIL_SERVICE_TOKEN`; konektivitas tidak diperiksa saat start. `mail-service send-test <alamat>` mengirim email uji.
-- **Dev:** Mailpit (`axllent/mailpit`, versi dipin): SMTP 1025 dan UI 8025 diikat ke 127.0.0.1 di host (ubah lewat `MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT`), tidak lewat nginx; mail-service memakai `mailpit:1025` lewat jaringan internal. **Produksi** memilih lewat `MAIL_MODE` (`.env.prod` atau `make prod-up MAIL_MODE=...`): `smtp` (bawaan) memakai SMTP nyata dan mewajibkan `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `MAIL_SERVICE_TOKEN`; `mailpit` menyalakan Mailpit lewat compose profile `mailpit` (UI hanya 127.0.0.1, pesan di volume) dan memaksa `SMTP_*` ke Mailpit, untuk demo atau uji tanpa mengirim email sungguhan. `scripts/check-mail-mode.sh` menolak konfigurasi yang salah sebelum stack berjalan.
+- **Dev:** Mailpit (`axllent/mailpit`, versi dipin): SMTP 1025 dan UI 8025 diikat ke 127.0.0.1 di host (ubah lewat `MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT`), tidak lewat nginx; mail-service memakai `mailpit:1025` lewat jaringan internal. **Produksi** memilih lewat `MAIL_MODE` (`.env.prod` atau `make prod-up MAIL_MODE=...`): `smtp` memakai SMTP nyata dan mewajibkan `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `MAIL_SERVICE_TOKEN`; `mailpit` (**bawaan** bila `MAIL_MODE` kosong) menyalakan Mailpit lewat compose profile `mailpit` (UI hanya 127.0.0.1, pesan di volume) dan memaksa `SMTP_*` ke Mailpit, untuk demo atau uji tanpa mengirim email sungguhan. `scripts/check-mail-mode.sh` menolak konfigurasi yang salah sebelum stack berjalan.
 
 
 ### Outbox email (item 8)
@@ -321,15 +324,16 @@ Layar tanpa login untuk monitor ruang tunggu: satu kartu per counter, nomor beri
 
 Belum dibangun:
 - Ganti alamat email (`email_change`) belum dibangun; kolom `purpose` sudah menyiapkannya.
-- Observability (metrik, log terpusat, dashboard, alert) dan uji beban.
+- Uji beban. (Observability sudah ada: OpenTelemetry, Prometheus, Loki, Tempo, Grafana, dan 11 aturan alert sebagai overlay `docker-compose.observability.yml`; alert belum mengirim notifikasi. payment-service belum punya log JSON, metrik, maupun trace.)
 - Outbox untuk push (Web Push dan FCM), notifikasi iOS native, migration runner, backup otomatis, HSTS dan Cloudflare Access.
 - QR join di layar publik (kolom `show_qr` belum ada); plan langganan selain satu bulan (30 hari) lewat QRIS BorderPay, serta penagihan berulang.
 - Dihapus dari produk (31 Okt 2026): `registration_limit`, batas harian QR, batas riwayat, dan penghapusan permanen (riwayat selalu ada).
 
-Sudah dibangun sejak versi sebelumnya dokumen ini: pembatalan oleh customer, hapus nomor oleh owner, counter kustom, sisip posisi, antrian ulang (fallback Skip), catatan, riwayat dan ekspor, layar publik, foto profil, lupa password, email notifikasi, login Google (butuh `GOOGLE_CLIENT_IDS`), verifikasi email, dan langganan MOCK 30 hari.
+Sudah dibangun sejak versi sebelumnya dokumen ini: pembatalan oleh customer, hapus nomor oleh owner, counter kustom, sisip posisi, antrian ulang (fallback Skip), catatan, riwayat dan ekspor, layar publik, foto profil, lupa password, email notifikasi, login Google (butuh `GOOGLE_CLIENT_IDS`), verifikasi email, dan langganan 30 hari lewat QRIS BorderPay (menggantikan langganan MOCK).
 
 Batasan teknis:
 - Hub SSE di memori (lihat 2.7): backend hanya satu instance.
 - Deploy demo: `docker-compose.prod.yml` di belakang Cloudflare Tunnel; backend `APP_ENV=production` memvalidasi rahasia dan origin https.
 - Push tidak punya outbox; email punya (at-least-once, bisa terkirim dua kali bila proses mati tepat setelah SMTP menerima).
-- `ALREADY_JOINED` tidak lagi dikirim. Kode dan penanganan frontend dibiarkan agar tidak merusak klien lama.
+- `ALREADY_JOINED` tidak lagi dikirim oleh join (join ulang mengembalikan tiket yang ada). Handler join masih memetakan `ErrAlreadyJoined` dan frontend masih menanganinya agar tidak merusak klien lama; kode itu hanya aktif untuk sisip owner (`POST /insert`, 409 `ALREADY_JOINED`).
+- Harga langganan tetap Rp15.000 (konstanta di `backend/internal/config/config.go`); `SUBSCRIPTION_PRICE_IDR` tidak dibaca dari env.

@@ -1,7 +1,7 @@
 /**
  * MyTicketModal: popup ringkasan tiket milik customer di satu antrian.
  *
- * Dipakai oleh : app/(owner)/dashboard.tsx
+ * Dipakai oleh : app/(user)/dashboard.tsx
  * Bergantung   : components/CustomerQueueScreen (STATUS_LABEL, tipe CustomerTicketStatus), components/ui/ModalCard,
  *                components/ui/AppButton, constants/theme (Fonts)
  * Catatan      : Data seluruhnya dari props; popup ini tidak mengambil data sendiri.

@@ -80,7 +80,7 @@ export type TicketEntry = {
 
 /**
  * QueueListItem: antrian + data tambahan untuk daftar "Semua Antrian".
- * TODO: currentTicketNumber dan counterName belum diisi. app/(owner)/queues/index.tsx hanya mengisi queue,
+ * TODO: currentTicketNumber dan counterName belum diisi. app/(user)/queues/index.tsx hanya mengisi queue,
  * sedangkan QueueList.tsx sudah siap menampilkan keduanya bila diisi.
  */
 export type QueueListItem = {

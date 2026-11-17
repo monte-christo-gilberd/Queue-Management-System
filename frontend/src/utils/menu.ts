@@ -1,20 +1,20 @@
 /**
- * owner-menu: navigasi menu profil owner, dipakai bersama oleh semua route owner (HP dan desktop).
+ * menu: navigasi item menu panel profil dan navbar, dipakai bersama oleh semua route grup (user) (HP dan desktop).
  *
- * Dipakai oleh : src/app/(owner)/* (dashboard, queues, history, profile, antrian, riwayat, subscription).
+ * Dipakai oleh : src/app/(user)/* (dashboard, queues, history, profile, antrian, riwayat, subscription).
  * Bergantung   : expo-router (router), lib/push-channel (releasePushForLogout: Web Push di web, token FCM di Android), store/authStore.ts (logout).
- * Alur         : item 'logout' -> lepas push -> authStore.logout() (membersihkan sesi) -> router.replace('/').
+ * Alur         : item 'logout' -> lepas push -> authStore.logout() (membersihkan sesi) -> router.replace('/login').
  * Catatan      : Item 'join' tidak dinavigasi di sini karena popup masuk antrian dibuka oleh layout sendiri.
  */
 
 import { router } from 'expo-router';
 
-import type { OwnerMenuItem } from '@/components/layout/ResponsiveScreenLayout';
+import type { MenuItem } from '@/components/layout/ResponsiveScreenLayout';
 import { releasePushForLogout } from '@/lib/push-channel';
 import { useAuthStore } from '@/store/authStore';
 
-/** Navigasi menu profil — dipakai bersama oleh semua route owner (HP dan desktop). */
-export function handleOwnerMenuItemPress(item: OwnerMenuItem) {
+/** Navigasi menu panel profil, dipakai bersama oleh semua route grup (user) (HP dan desktop). Item khusus owner (queues, history) hanya tampil bila isOwner. */
+export function handleMenuItemPress(item: MenuItem) {
   switch (item) {
     case 'create-queue':
       // Dashboard membuka popup buat antrian saat parameter create=1 ada.
@@ -45,7 +45,7 @@ export function handleOwnerMenuItemPress(item: OwnerMenuItem) {
       // releasePushForLogout tidak pernah melempar, jadi finally selalu lanjut ke logout walau push gagal dilepas.
       void releasePushForLogout().finally(() => {
         useAuthStore.getState().logout();
-        router.replace('/');
+        router.replace('/login');
       });
       break;
   }

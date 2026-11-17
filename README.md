@@ -13,12 +13,14 @@ Isi dokumen:
 6. [Trade-offs](#6-trade-offs): mengapa berbentuk begitu, dan apa harganya.
 7. [Next steps](#7-next-steps): apa yang dikerjakan bila ada waktu lebih.
 
+Dokumentasi teknis lengkap per komponen (arsitektur, tech stack, keputusan desain, penjelasan kode backend, tiap service, database, frontend, deployment, observability, dan testing) ada di [docs/dokumentasi-teknis/README.md](docs/dokumentasi-teknis/README.md). Bila ada beda antara dokumen ini dan kode, kode yang benar.
+
 ## 1. Overview and assumptions
 
 ### Alur pengguna
 
 **Owner**
-1. Daftar, verifikasi email lewat tautan yang dikirim (lihat catatan di bawah), lalu buat antrian baru. Membuat antrian butuh email terverifikasi dan langganan aktif.
+1. Daftar, verifikasi email lewat tautan yang dikirim (lihat catatan di bawah), lalu buat antrian baru. Membuat antrian butuh email terverifikasi dan langganan aktif (checkout langganan juga butuh email terverifikasi).
 2. Di detail antrian, bagikan QR atau tautan join ke customer. QR statis berisi kode tetap yang bisa diganti; QR dinamis kodenya berubah berkala.
 3. Di Dashboard, tekan **Next** untuk memanggil nomor berikutnya. **Skip** melewati nomor yang sedang dilayani, dan **Panggil ulang** mengulang panggilan.
 4. Tutup antrian saat layanan selesai. Customer yang belum bergabung tidak bisa join lagi.
@@ -50,9 +52,11 @@ Proyek capstone. Hasil pembacaan seluruh kode: backend, frontend, dan keempat se
 
 ### Dokumen lain
 
+- [docs/dokumentasi-teknis/README.md](docs/dokumentasi-teknis/README.md): dokumentasi teknis lengkap hasil pembacaan kode (14 dokumen: arsitektur, tech stack, ADR, backend, auth, notify, mail, payment, database, frontend, deployment, observability, testing).
 - [DESIGN.md](docs/DESIGN.md): arsitektur, keputusan desain, dan batasan.
 - [FLOW.md](docs/FLOW.md): alur pengguna dan diagram urutan.
 - [api-contract.md](docs/api-contract.md): kontrak HTTP dan SSE.
+- [panduan-sse-backend.md](docs/panduan-sse-backend.md): panduan package `sse` di backend untuk yang belum familiar dengan Server-Sent Events: konsep, alur, cara mengirim event baru, dan cara mencobanya.
 - [deploy/nginx/README.md](deploy/nginx/README.md): pemasangan nginx.
 
 ## 2. Setup and run
@@ -136,19 +140,20 @@ go test ./... -count=1
 # Integration backend (butuh DATABASE_URL yang bisa diakses; memakai schema sementara)
 go test -tags integration ./internal/test/integration_test/ -count=1 -v
 
-# auth-service, notify-service, mail-service (masing-masing modul Go sendiri)
+# auth-service, notify-service, mail-service, payment-service (masing-masing modul Go sendiri)
 cd auth-service && go test ./...
 cd notify-service && go test ./...
 cd mail-service && go test ./...
+cd payment-service && go test ./...
 
 # Unit frontend
 cd frontend
 npm run test:unit
 ```
 
-Tes tiap modul Go ada di `internal/test/<lapisan>_test/` (di notify-service juga `cmd/notify-service/main_test.go`). Hasil terakhir: backend 500 tes lulus, auth-service 131, notify-service 59, mail-service 57. Cakupan statement (`go test ./... -coverpkg=./...`): backend 70,2%, auth-service 85,7%, notify-service 84,1%, mail-service 75,9%. Unit test frontend: 208 lulus.
+Tes tiap modul Go ada di `internal/test/<lapisan>_test/` (di notify-service juga `cmd/notify-service/main_test.go`; payment-service menaruh `*_test.go` di sebelah kodenya). Jumlah fungsi `Test*` per modul (dihitung dari kode): backend 516, auth-service 158, mail-service 83, notify-service 59, payment-service 22. Unit test frontend: 208. Angka cakupan statement (`go test ./... -coverpkg=./...`) terakhir diukur sebelum refactor terbaru (backend sekitar 70%, auth-service sekitar 86%, notify-service sekitar 84%, mail-service sekitar 76%); ukur ulang bila dibutuhkan.
 
-End-to-end memakai Playwright di `frontend/playwright/` (`npm run e2e`): 246 tes dalam 33 file spec. Tes ini butuh backend dan frontend yang berjalan.
+End-to-end memakai Playwright di `frontend/playwright/` (`npm run e2e`): sekitar 254 pemanggilan `test(` dalam 33 file spec. Tes ini butuh backend dan frontend yang berjalan.
 
 ### Docker Compose
 
@@ -193,7 +198,7 @@ make prod-reset             # RESET TOTAL: hapus semua akun dan data prod, mulai
 
 Tunnel `qms-ta` adalah service systemd yang **manual**: `sudo systemctl start cloudflared` sebelum demo, `sudo systemctl stop cloudflared` sesudahnya (tidak hidup saat boot, berhenti otomatis saat laptop mati). Akses dibatasi aturan WAF Cloudflare berdasarkan IP WiFi. Webhook BorderPay wajib dikecualikan dari aturan itu; lihat [Langganan owner dan pembayaran BorderPay](#langganan-owner-dan-pembayaran-borderpay). Berkas `docs/setup-perintah-manual.md` dan `docs/petunjuk-mentor.md` (perintah tanpa `make` dan panduan mentor) tidak ada di repo ini.
 
-Nginx hanya terikat ke `127.0.0.1:8080`; `cloudflared` di host menunjuk ke `http://localhost:8080`. IP klien dibaca dari `CF-Connecting-IP`. Backend dan auth-service dengan `APP_ENV=production` menolak start bila rahasia lemah atau origin bukan https. Database prod memakai volume sendiri tanpa seed. Backend berjalan satu instance (hub SSE di memori). Catatan domain, WAF, dan rencana live (`docs/setup-domain.md`, `docs/setup-waf-wifi.md`, `docs/plan-live.md`) tidak ada di repo ini.
+Nginx hanya terikat ke `127.0.0.1:8080`; `cloudflared` di host menunjuk ke `http://localhost:8080`. IP klien dibaca dari `CF-Connecting-IP`. Dengan `APP_ENV=production`, backend menolak start bila `ALLOWED_ORIGINS` berisi `*` atau origin bukan https, atau `PUBLIC_APP_URL` bukan https; auth-service menolak start bila `PUBLIC_APP_URL` bukan https atau `MAIL_SERVICE_TOKEN` kurang dari 32 karakter. Pemeriksaan rahasia lemah (nilai contoh atau terlalu pendek) di backend saat ini dinonaktifkan (dikomentari di `backend/internal/config/config.go`); kekuatan rahasia dijaga oleh `make prod-up` (`scripts/check-*.sh`). Database prod memakai volume sendiri tanpa seed. Backend berjalan satu instance (hub SSE di memori). Catatan domain, WAF, dan rencana live (`docs/setup-domain.md`, `docs/setup-waf-wifi.md`, `docs/plan-live.md`) tidak ada di repo ini.
 
 ### Daftar script
 
@@ -212,7 +217,7 @@ Semua script berada di `scripts/` (dijalankan dari akar `queue-management-system
 | `db/scripts/apply_schema.sql` | Penyesuaian skema yang idempoten untuk database yang sudah berjalan. Tidak menyentuh data. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql`. Prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`. Lalu restart backend, notify-service, dan mail-service. | Manual (lihat [Notifikasi](#notifikasi-notify-service) dan [Email](#email-mailpit-atau-smtp-nyata)) |
 | `db/scripts/reset_seed_dev.sql` | Mengembalikan database dev ke data seed. Ditolak di prod setelah `make prod-guard`. | `make seed` | `make seed`, tes Playwright |
 | `db/scripts/backfill_currently_served.sql` | Backfill sekali jalan: tiket `completed` terakhir di antrian aktif menjadi `currently_served`. Berakhir dengan `ROLLBACK`: periksa jumlah baris, lalu ganti ke `COMMIT`. Jalankan setelah backup dan `apply_schema.sql`. | Dev: `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/backfill_currently_served.sql` | Manual |
-| `db/migrations/*.sh` (`03`, `04`, `06`) | Membuat role database `notify_ro`, `mail_rw`, dan `auth_rw`. | **Tidak dijalankan manual.** Docker menjalankannya saat volume database masih kosong (lihat `db/Dockerfile`). | Docker `initdb` |
+| `db/migrations/*.sh` (`03`, `04`, `06`, `07`) | Membuat role database `notify_ro`, `mail_rw`, `auth_rw`, dan `metrics_ro` (`07`, dilewati tanpa `METRICS_DB_PASSWORD`). | **Tidak dijalankan manual.** Docker menjalankannya saat volume database masih kosong (lihat `db/Dockerfile`). | Docker `initdb` |
 | `db/migrations/08_payment_role.sh` | Membuat atau memperbarui role `payment_rw` (payment-service) dan grant-nya. Idempoten. | **Dijalankan ulang otomatis oleh `make prod-up`**, karena database prod yang sudah ada tidak menerima initdb. Hak-haknya diperiksa `db/scripts/check_payment_grants.sql`. | `make prod-up`, `make prod-payment-check` |
 
 **Script yang sudah dihapus**
@@ -257,9 +262,9 @@ Catatan:
 
 #### Langganan owner dan pembayaran BorderPay
 
-Owner membayar **1 bulan langganan (30 hari)** lewat QRIS BorderPay. Harga di `SUBSCRIPTION_PRICE_IDR` (bawaan 15000). Alur:
+Owner membayar **1 bulan langganan (30 hari)** lewat QRIS BorderPay. Harga tetap Rp15.000 per bulan: `SubscriptionPriceIDR` di `backend/internal/config/config.go` diisi konstanta 15000 dan **tidak dibaca dari env** (`SUBSCRIPTION_PRICE_IDR` di compose dan `.env.prod.example` tidak berefek). Alur:
 
-1. Frontend memanggil `POST /api/v1/owners/subscription/checkout` (butuh JWT, metode `qris`). Backend menentukan harga dan membuat `reference_id` (`SUB-<owner>-<unix>-<acak>`).
+1. Frontend memanggil `POST /api/v1/owners/subscription/checkout` (butuh JWT dan email terverifikasi, metode `qris`). Backend menentukan harga dan membuat `reference_id` (`SUB-<owner>-<unix>-<acak>`).
 2. Backend memanggil payment-service di `/internal/v1/payments` dengan `X-Service-Token`. payment-service mencatat pesanan `pending` di `payment_orders`, lalu membuat transaksi di BorderPay dan menyimpan `pay_url`.
 3. Frontend membuka `pay_url`. Customer membayar di halaman BorderPay.
 4. BorderPay mengirim `payment.paid` ke `https://<domain>/api/v1/webhooks/borderpay` dengan header `x-borderpay-token`. payment-service memverifikasi token, lalu dalam **satu transaksi**: pesanan menjadi `paid`, `owners.subscription_expires_at = GREATEST(now(), berakhir) + 30 hari` (baris `owners` dibuat untuk calon owner pertama), dan satu baris `payments` dicatat. Webhook kembar tidak menerapkan pembayaran dua kali (idempoten).
@@ -358,14 +363,14 @@ Mailpit hanya diikat ke `127.0.0.1` (UI `:8025`, SMTP `:1025`) dan **tidak lewat
 - Memakai image baru? Pin versi di `docker-compose.yml` dan `docker-compose.prod.yml`; pull dari jaringan yang memeriksa sertifikat (proxy) bisa gagal, ulangi dari jaringan lain.
 
 #### Log dan request ID
-Semua service Go (backend, auth, mail, notify) menulis **satu baris JSON per kejadian** ke stdout lewat `slog`, dengan atribut `service`. Level diatur `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; bawaan `info`). nginx menulis log akses JSON sendiri (lihat `deploy/nginx/README.md`).
+Service Go backend, auth, mail, dan notify menulis **satu baris JSON per kejadian** ke stdout lewat `slog`, dengan atribut `service`. payment-service belum: ia memakai paket `log` standar (teks), tanpa log akses JSON, metrik, maupun trace. Level diatur `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; bawaan `info`). nginx menulis log akses JSON sendiri (lihat `deploy/nginx/README.md`).
 
 - **Log akses** (backend, auth, mail): `request_id`, `method`, `route`, `status`, `latency_ms`, `bytes`, `client_ip`, dan `user_id` (angka saja, backend dan auth). `route` adalah **templat** (`/api/v1/display/:token`), bukan path mentah; rute yang tidak ada dicatat `unmatched`. Probe `/health` dan `/ready` dicatat di level `debug`. Panic dicatat sebagai `panic recovered` (dengan stack) dan klien menerima 500 `INTERNAL_ERROR`.
 - **Request ID:** nginx membuat `X-Request-Id` untuk tiap request (nilai dari klien ditimpa) dan meneruskannya ke backend dan auth-service. ID dari luar yang kosong, lebih dari 128 karakter, atau berisi karakter selain huruf, angka, `-`, `_`, `.` diganti ID baru. Cari satu request di semua service dengan `docker compose logs | grep <request_id>`.
 - **Kebijakan isi log.** Tidak boleh masuk log (termasuk log nginx dan, nanti, atribut span): JWT dan header `Authorization`, password, token layar publik, token reset password, token verifikasi email, kode join, token Web Push dan token FCM, isi body request, query string, dan alamat email penuh. Catat id angka (`user_id`, `ticket_id`, `queue_id`) atau templat route, bukan nilainya. Saat menambah log baru, jangan memasukkan error mentah dari pustaka yang bisa memuat URL atau kredensial tanpa memeriksanya.
 
 #### Observability (opsional: log, metrik, trace, alert)
-Overlay `docker-compose.observability.yml` menambah OpenTelemetry Collector, Loki, dan Grafana. Aplikasi tidak bergantung padanya: tidak ada `depends_on` ke arah sana, dan bila overlay mati antrian, login, SSE, dan langganan tetap jalan.
+Overlay `docker-compose.observability.yml` menambah OpenTelemetry Collector, Loki, Prometheus, Tempo, dan Grafana (log, metrik, trace, dan alert; cakupannya backend, auth, mail, dan notify, bukan payment-service). Aplikasi tidak bergantung padanya: tidak ada `depends_on` ke arah sana, dan bila overlay mati antrian, login, SSE, dan langganan tetap jalan.
 
 1. Isi `GRAFANA_ADMIN_PASSWORD` di `.env` (dev) atau `.env.prod` (prod). Wajib, tanpa nilai bawaan. `GRAFANA_PORT` dan `OBS_LOG_RETENTION` opsional.
 2. `make obs-up` (dev) atau `make obs-up OBS_TARGET=prod`. Pertama kali, service aplikasi dibuat ulang sekali karena blok `logging:` berubah (volume dan database tetap). Di dev, nilai `QMS_PUBLIC_ORIGIN` backend yang sedang jalan dipakai ulang.
@@ -386,11 +391,12 @@ Rincian: log Docker (`json-file`, maks 3 x 10 MB per container) dibaca collector
 
 | Komponen | Status | Catatan |
 |---|---|---|
-| Backend (Go, Gin) | Lengkap dan terhubung | Semua route punya handler, service, dan repository. Tanpa stub dan tanpa TODO. 457 tes lulus (`go test ./... -count=1 -v`), cakupan 70,0% (`-coverpkg=./...`). Tes ada di `internal/test/<lapisan>_test/`. |
-| Frontend (Expo) | Lengkap dan terhubung | Semua layar memakai API nyata. 208 unit test dan 246 tes Playwright (33 spec). Login Google tersambung ke auth-service. |
-| auth-service | Lengkap | Login, registrasi, login Google, reset password, verifikasi email, token RS256. 131 tes lulus, cakupan 85,7%. |
-| notify-service | Lengkap | LISTEN Postgres, Web Push, FCM untuk aplikasi Android, coba ulang, dan `/health`. Tanpa outbox. 59 tes lulus, cakupan 84,1%. |
-| mail-service | Lengkap | Outbox dengan coba ulang dan backoff, sembilan templat (`joined`, `cancelled`, `removed`, `completed`, `queue-closed`, `email-verify`, `email-verified`, `password-reset`, `test`), SMTP. 57 tes lulus, cakupan 75,9%. |
+| Backend (Go, Gin) | Lengkap dan terhubung | Semua route punya handler, service, dan repository. Tanpa stub dan tanpa TODO. 516 fungsi tes (`go test ./... -count=1`). Tes ada di `internal/test/<lapisan>_test/`. |
+| Frontend (Expo) | Lengkap dan terhubung | Semua layar memakai API nyata. 208 unit test dan sekitar 254 tes Playwright (33 spec). Login Google tersambung ke auth-service. |
+| auth-service | Lengkap | Login, registrasi, login Google, reset password, verifikasi email, token RS256. 158 fungsi tes. |
+| notify-service | Lengkap | LISTEN Postgres, Web Push, FCM untuk aplikasi Android, coba ulang, dan `/health`. Tanpa outbox. 59 fungsi tes. |
+| mail-service | Lengkap | Outbox dengan coba ulang dan backoff, sembilan templat (`joined`, `cancelled`, `removed`, `completed`, `queue-closed`, `email-verify`, `email-verified`, `password-reset`, `test`), SMTP. 83 fungsi tes. |
+| payment-service | Lengkap (tanpa log JSON, metrik, dan trace) | Checkout langganan QRIS lewat BorderPay (`/internal/v1/payments`, `X-Service-Token`) dan webhook `payment.paid` idempoten. Tidak memverifikasi JWT: hanya backend yang melakukannya, payment-service dijangkau lewat token layanan. 22 fungsi tes. |
 | Database | Lengkap | 16 tabel, trigger notifikasi dan outbox email, role terpisah per service. |
 | Deployment | Berjalan | Compose dev dan prod, nginx dengan rate limit, tunnel Cloudflare manual, Makefile dan skrip bantu. |
 
@@ -423,8 +429,9 @@ Yang belum ada dan alasannya ada di [bagian 4](#4-what-was-deferred-and-why).
 ```
 queue-management-system/
 ├── backend/                  API Go (Gin, sqlx): antrian, tiket, counter, riwayat, SSE, langganan dan checkout
-│   ├── cmd/server/           titik masuk (main.go): hanya merangkai komponen
+│   ├── cmd/server/           titik masuk (main.go): membaca config lalu memanggil app.Wire dan app.NewEngine
 │   └── internal/
+│       ├── app/              pemasangan dependensi (Wire) dan engine Gin (NewEngine), dipanggil dari cmd/server
 │       ├── apperror/         error bersama (sentinel) untuk repository, service, dan handler
 │       ├── config/           membaca dan memvalidasi env var
 │       ├── database/         koneksi PostgreSQL dan pembungkus transaksi (WithTx)
@@ -433,12 +440,17 @@ queue-management-system/
 │       ├── handler/          endpoint HTTP
 │       ├── httpserver/       pembuatan dan shutdown server HTTP
 │       ├── imageproc/        validasi, crop, dan perkecil foto profil
+│       ├── logging/          log JSON (slog)
+│       ├── metrics/          metrik Prometheus
 │       ├── middleware/       verifikasi JWT (kunci publik), CORS, pencabutan sesi
 │       ├── model/            struct data
+│       ├── paymentclient/    klien HTTP ke payment-service (checkout langganan)
 │       ├── repository/       akses data ke PostgreSQL
+│       ├── requestid/        pembuatan dan penerusan ID request
 │       ├── router/           pendaftaran rute HTTP
 │       ├── service/          logika bisnis dan aturan antrian
-│       ├── sse/              hub Server-Sent Events (di memori)
+│       ├── sse/              hub Server-Sent Events (di memori, satu hub, room per antrian)
+│       ├── telemetry/        tracing OpenTelemetry (no-op bila tanpa OTEL_EXPORTER_OTLP_ENDPOINT)
 │       ├── validator/        aturan validasi kustom, mis. no_html_tags
 │       └── test/             tes per lapisan: <lapisan>_test/ (termasuk integration_test)
 ├── auth-service/             login, registrasi, Google, reset password, verifikasi email, :8094
@@ -455,6 +467,9 @@ queue-management-system/
 │   ├── cmd/mail-service/     titik masuk
 │   └── internal/             apperror, config, dto, handler, middleware, model, repository, router, service,
 │                             mailer (SMTP), mailtemplate (templat), test/<lapisan>_test
+├── payment-service/          checkout langganan QRIS BorderPay dan webhook, :8095
+│   ├── cmd/payment-service/  titik masuk
+│   └── internal/             borderpay (klien API), checkout, webhook, order, store, config; tes di sebelah kode
 ├── db/                       Dockerfile, migrations (skema, indeks, role per service), dan scripts (apply_schema, reset_seed_dev, backfill)
 ├── deploy/nginx/             konfigurasi nginx (reverse proxy, rate limit)
 ├── observability/            overlay opsional: otel-collector, loki, prometheus, tempo, grafana (dashboard dan alert sebagai kode)
@@ -493,13 +508,14 @@ Kolom "Pilihan?" menandai apakah penundaan itu keputusan yang tercatat (Ya) atau
 
 | Bagian | Teknologi |
 |---|---|
-| Backend | Go 1.27, Gin, sqlx + pgx, verifikasi JWT RS256 (kunci publik) |
+| Backend | Go 1.27, Gin, sqlx + pgx, verifikasi JWT RS256 (kunci publik), slog, metrik Prometheus, tracing OpenTelemetry |
 | auth-service | Go 1.27, Gin, sqlx + pgx, penerbit JWT RS256 (kunci privat), bcrypt, verifikasi ID token Google |
-| notify-service | Go 1.27, sqlx + pgx, LISTEN Postgres (pgx langsung), Web Push (VAPID); `/health` memakai `net/http` |
+| notify-service | Go 1.27, sqlx + pgx, LISTEN Postgres (pgx langsung), Web Push (VAPID), FCM HTTP v1; `/health` memakai `net/http` |
 | mail-service | Go 1.27, Gin, sqlx + pgx, LISTEN Postgres (pgx langsung), SMTP, templat HTML dan teks, outbox di Postgres |
-| Database | PostgreSQL |
+| payment-service | Go 1.27, `net/http` (tanpa Gin), sqlx + pgx, klien BorderPay QRIS |
+| Database | PostgreSQL 16 |
 | Frontend | Expo SDK 57 (Expo Router, web static), React Native, NativeWind, Zustand |
-| Deploy | Docker Compose, nginx (reverse proxy + rate limit login dan `/join`) |
+| Deploy | Docker Compose, nginx (reverse proxy + rate limit login dan `/join`); observability opsional: OpenTelemetry Collector, Prometheus, Loki, Tempo, Grafana |
 
 ### Gambaran sistem
 
@@ -513,9 +529,10 @@ nginx ── frontend statis (dist)
    │                                 └─► mail-service :8092 (email verifikasi, terverifikasi, reset password)
    └─ /api/ (lainnya)        ─► backend (Gin) :8080 ─► PostgreSQL (qms_db)
 
-PostgreSQL ─ pg_notify('queue_events') ─► notify-service :8091 ─► Web Push ke browser
+PostgreSQL ─ pg_notify('queue_events') ─► notify-service :8091 ─► Web Push (browser) dan FCM (Android)
 PostgreSQL ─ notification_outbox       ─► mail-service :8092 ─► SMTP (Mailpit di dev)
-BorderPay ─ webhook payment.paid ─► nginx ─► payment-service ─► PostgreSQL (payment_rw)
+BorderPay ─ webhook payment.paid ─► nginx ─► payment-service :8095 ─► PostgreSQL (payment_rw)
+backend ─ POST /internal/v1/payments (X-Service-Token) ─► payment-service (checkout langganan)
 ```
 
 Hanya nginx yang membuka port ke host. `auth-service`, `notify-service`, dan `mail-service` berada di jaringan internal Docker.
@@ -537,12 +554,12 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 
 ### Real-time dan komunikasi antar-layanan
 
-- **SSE**: tiap antrian punya satu hub di memori. Service memberi tahu hub setelah transaksi selesai (join, next, skip, update, close), lalu hub menyebar event ke klien di antrian itu. Heartbeat tiap 25 detik. Klien memakai `fetch` stream agar header `Authorization` tetap dikirim.
-- **notify-service**: trigger Postgres memancarkan `pg_notify`; service mendengarkan lalu mengirim Web Push. Tidak ada panggilan langsung dari backend.
+- **SSE**: satu hub di memori untuk seluruh backend, dengan satu *room* per antrian (layar publik punya room sendiri). Service memberi tahu hub setelah transaksi selesai (join, next, skip, update, close), lalu hub menyebar event ke klien di room antrian itu. Heartbeat tiap 25 detik. Klien memakai `fetch` stream agar header `Authorization` tetap dikirim.
+- **notify-service**: trigger Postgres memancarkan `pg_notify`; service mendengarkan lalu mengirim Web Push (browser) dan FCM (aplikasi Android). Tidak ada panggilan langsung dari backend.
 - **auth-service**: nginx meneruskan rute login, registrasi, Google, reset password, dan verifikasi email ke sini. Backend tidak memanggilnya; ia memverifikasi JWT RS256 secara lokal dengan kunci publik. Bila auth-service mati, user yang sudah login tetap bisa memakai aplikasi (nginx menjawab 503 `AUTH_UNAVAILABLE` untuk rute auth).
 - **mail-service**: trigger menulis ke `notification_outbox` dalam transaksi yang sama dengan perubahan tiket atau penutupan antrian; worker mengirim dan mencoba ulang. Email auth (verifikasi, `email-verified`, reset password) dikirim auth-service lewat `POST /internal/v1/send`.
 - **Langganan**: `POST /api/v1/owners/subscription/checkout` di backend memanggil payment-service (`/internal/v1/payments`, dengan token layanan). Pembayaran lunas diterapkan lewat webhook BorderPay.
-- **Keamanan akses data**: tiap service memakai role database sendiri dengan hak minimal (`notify_ro`, `mail_rw`, `auth_rw`); backend memakai role aplikasi utama.
+- **Keamanan akses data**: tiap service memakai role database sendiri dengan hak minimal (`notify_ro`, `mail_rw`, `auth_rw`, `payment_rw`, dan `metrics_ro` untuk observability); backend memakai role aplikasi utama.
 
 ## 6. Trade-offs
 
@@ -551,7 +568,7 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 | Hub SSE di memori | Sederhana, event langsung tanpa infrastruktur tambahan | Hanya satu instance backend; scale-out butuh pub/sub bersama |
 | Dipecah menjadi service terpisah (auth, notify, mail, payment) | Hak database dibatasi per service, dan kegagalan terisolasi (auth mati, user yang sudah login tetap memakai antrian) | Lebih banyak container, token internal, role DB, dan konfigurasi |
 | Push tanpa outbox, email dengan outbox | Push cepat dan sederhana | Push yang terjadi saat service mati hilang; email terjamin tetapi butuh tabel outbox, worker, dan backoff |
-| Join ulang mengembalikan tiket yang ada, bukan error | Scan dua kali atau double-tap aman | Klien tidak lagi mendapat sinyal "sudah bergabung" (`ALREADY_JOINED` tidak dikirim) |
+| Join ulang mengembalikan tiket yang ada, bukan error | Scan dua kali atau double-tap aman | Klien tidak lagi mendapat sinyal "sudah bergabung" saat join (`ALREADY_JOINED` tidak dikirim oleh join; hanya sisip oleh owner yang masih menjawab 409 `ALREADY_JOINED`) |
 | `sort_key` dengan gap 65536 | Penyisipan di tengah tanpa menulis ulang baris lain | Nilai maksimum harus dihitung dari semua tiket, bukan hanya `waiting`, karena `UNIQUE (queue_id, sort_key)` (pernah jadi bug) |
 | SSE lewat `fetch` stream | Header `Authorization` tetap dikirim, token tidak masuk URL | Tidak memakai `EventSource` bawaan browser |
 | 404 untuk akses yang tidak diizinkan | Keberadaan data orang lain tidak bocor | Pesan error tidak membedakan "tidak ada" dari "bukan milik Anda" |

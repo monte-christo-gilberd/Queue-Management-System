@@ -18,14 +18,14 @@ sequenceDiagram
 ```
 
 - **Daftar**: email, username, password (minimal 8 karakter), dan konfirmasi password wajib diisi. Email atau username yang sudah dipakai ditolak (409). Bila konfirmasi berbeda dari password, pesan "Password tidak sama" tampil inline di bawah field konfirmasi (bukan toast), dan baru muncul setelah field itu kehilangan fokus atau tombol Daftar ditekan; pesan hilang saat isinya sudah sama. Login dan pendaftaran dilayani `auth-service` (nginx meneruskan `/api/v1/users/login`, `register`, dan seterusnya ke sana); backend hanya memverifikasi token dengan kunci publik.
-- **Masuk**: halaman masuk ada di `/` (rute lama `/login` hanya mengarahkan ke sana). Bisa memakai email atau username. Kalau salah, pesan yang sama untuk kedua kasus.
+- **Masuk**: halaman masuk ada di `/login`; `/` hanya pintu masuk yang mengarahkan tamu ke `/login` (dan user yang sudah masuk ke `next` atau `/dashboard`). Bisa memakai email atau username. Kalau salah, pesan yang sama untuk kedua kasus.
 - **Masuk atau daftar dengan Google**: tombol Google tampil hanya bila client ID Google dikonfigurasi. Email Google yang belum terdaftar membuat akun baru yang sudah terverifikasi. Bila email itu sudah terdaftar dengan password, user dibawa ke `/link-google` dan harus memasukkan password akunnya untuk menautkan (tidak ditautkan otomatis; link token hanya hidup 5 menit dan di memori, jadi membuka `/link-google` langsung atau me-refresh mengembalikan ke halaman masuk).
 - **Sesi**: token disimpan di perangkat. Refresh halaman tidak membuat user keluar.
 - **Sesi habis**: API membalas 401, sesi dihapus, dan user diarahkan ke halaman masuk. Setelah masuk lagi, user dibawa kembali ke halaman yang tadi dibuka (`next`).
 - **Keluar**: lewat panel profil (menu "Keluar").
-- **Profil**: ubah username, foto profil (privat, hanya terlihat oleh pemiliknya; tombol "Unggah Foto" atau "Ganti Foto" dan "Hapus Foto" dengan konfirmasi), dan sakelar "Notifikasi email" (`/profile`, `/profile/edit`). Bila foto sudah ada, mengetuk foto profil membuka popup foto yang diperbesar; popup ditutup dengan tombol X kecil di pojok foto, dengan mengetuk di luar kartu, atau tombol back perangkat. Tanpa foto (hanya ikon) tidak ada popup.
+- **Profil**: ubah username, foto profil (privat, hanya terlihat oleh pemiliknya; tombol "Unggah Foto" atau "Ganti Foto" dan "Hapus Foto" dengan konfirmasi), dan sakelar "Notifikasi email" (satu halaman `/profile`; rute `/profile/edit` sudah dihapus). Bila foto sudah ada, mengetuk foto profil membuka popup foto yang diperbesar; popup ditutup dengan tombol X kecil di pojok foto, dengan mengetuk di luar kartu, atau tombol back perangkat. Tanpa foto (hanya ikon) tidak ada popup.
 - **Lupa atau ganti password**: halaman `forgot-password` meminta tautan lewat email (jawaban selalu netral, tautan berlaku 30 menit dan sekali pakai); tautan membuka `/reset-password`, yang memakai aturan konfirmasi password yang sama dengan Daftar (pesan inline "Password tidak sama"). Setelah password diganti, sesi lain dicabut (401 berikutnya, lalu keluar otomatis). Tombol "Minta Ganti Password" di profil mengirim tautan yang sama. Rute ini hanya ada bila `mail-service` dipasang.
-- **Verifikasi email**: bila `EMAIL_VERIFICATION_REQUIRED` menyala (bawaan: ikut adanya mail-service), registrasi mengirim tautan verifikasi (`email-verify`, berlaku 24 jam, sekali pakai) ke `/verify-email?token=`. Halaman itu publik (tautan sering dibuka di perangkat yang belum masuk) dan menampilkan hasilnya: "Email Terverifikasi", "Tautan Tidak Berlaku", atau "Verifikasi Gagal" (tombol "Coba Lagi"). Setelah verifikasi berhasil, auth-service juga mengirim email konfirmasi `email-verified` (best effort: gagal kirim tidak mengubah hasil verifikasi). Selama belum terverifikasi, login tetap bisa, tetapi **membuat antrian** dan **join dengan nomor baru** ditolak 403 `EMAIL_NOT_VERIFIED` (pesan mengarahkan ke Profil). **Halaman Profil** menampilkan banner "Email belum diverifikasi" dengan tombol "Kirim Ulang Email Verifikasi" (`POST /users/me/verify-email/resend`, maks 3 per jam per akun); banner hilang setelah verifikasi. Di dev email masuk Mailpit; di prod ikut `MAIL_MODE` (`smtp` = inbox asli seperti Gmail, `mailpit` = ditangkap Mailpit, tidak terkirim; jalan keluarnya `make verify-user EMAIL=... STACK=prod`). Akun yang sudah ada saat fitur dipasang dan akun seed/demo dianggap sudah terverifikasi.
+- **Verifikasi email**: bila `EMAIL_VERIFICATION_REQUIRED` menyala (di auth-service bawaannya ikut adanya mail-service; di backend bawaannya menyala), registrasi mengirim tautan verifikasi (`email-verify`, berlaku 24 jam, sekali pakai) ke `/verify-email?token=`. Halaman itu publik (tautan sering dibuka di perangkat yang belum masuk) dan menampilkan hasilnya: "Email Terverifikasi", "Tautan Tidak Berlaku", atau "Verifikasi Gagal" (tombol "Coba Lagi"). Setelah verifikasi berhasil, auth-service juga mengirim email konfirmasi `email-verified` (best effort: gagal kirim tidak mengubah hasil verifikasi). Selama belum terverifikasi, login tetap bisa, tetapi **membuat antrian** dan **join dengan nomor baru** ditolak 403 `EMAIL_NOT_VERIFIED` (pesan mengarahkan ke Profil). **Halaman Profil** menampilkan banner "Email belum diverifikasi" dengan tombol "Kirim Ulang Email Verifikasi" (`POST /users/me/verify-email/resend`, maks 3 per jam per akun); banner hilang setelah verifikasi. Di dev email masuk Mailpit; di prod ikut `MAIL_MODE` (bawaan `mailpit` bila kosong = ditangkap Mailpit, tidak terkirim ke siapa pun; `smtp` = inbox asli seperti Gmail; jalan keluarnya `make verify-user EMAIL=... STACK=prod`). Akun yang sudah ada saat fitur dipasang dan akun seed/demo dianggap sudah terverifikasi.
 
 ## 2. Owner: membuat antrian
 
@@ -126,7 +126,7 @@ sequenceDiagram
     FE->>BE: POST /api/v1/join {t}
     alt kode valid, antrian aktif, belum punya tiket
         BE-->>FE: 200 tiket waiting baru
-    else sudah punya tiket
+    else sudah punya tiket aktif
         BE-->>FE: 200 tiket yang sudah ada
     else antrian ditutup
         BE-->>FE: 409 QUEUE_CLOSED
@@ -138,7 +138,7 @@ sequenceDiagram
 ```
 
 - Customer harus login sebelum bisa bergabung. Setelah login, halaman join dibuka lagi dengan kode utuh.
-- Scan atau tekan Gabung berulang kali tidak membuat tiket kedua. Layar hanya menampilkan nomor yang sudah ada.
+- Scan atau tekan Gabung berulang kali selama tiketnya masih aktif (`waiting` atau `currently_served`) tidak membuat tiket kedua: join membalas 200 dengan tiket yang ada. Setelah tiket itu selesai, dibatalkan, dilewati, atau dihapus, join membuat tiket baru dengan nomor baru.
 - Join hanya lewat kode join; `POST /queues/:id/join` sudah dihapus. Kode statis yang sudah diganti ditolak.
 - **Kode join**: 6 karakter huruf dan angka tanpa 0, O, 1, I, L (sekitar satu miliar kombinasi), dibuat backend dan unik di seluruh antrian. Pengunjung bisa memindai QR atau mengetik kodenya di popup "Masuk Ke Antrian" (huruf kecil diterima). Kode disimpan di `queue_settings.qr_current_code`; hanya kode aktif yang berlaku.
 - **Kode statis** berlaku sampai owner menekan "Ganti kode". **Kode dinamis** berlaku 120 detik dan diganti otomatis setelah ada yang berhasil join (kode lama langsung tidak berlaku), atau saat kedaluwarsa dan owner membuka QR. Join yang gagal (misalnya sudah pernah join) tidak mengganti kode.
@@ -216,7 +216,7 @@ sequenceDiagram
     BE-->>FE: 200 { pay_url, reference_id, amount }
     FE-->>U: Buka halaman BorderPay
     U->>BB: Bayar QRIS
-    BB->>PS: webhook payment.paid (x-borderpay-token) ke /api/v1/webhooks/borderpay
+    BB->>PS: webhook status paid (x-borderpay-token) ke /api/v1/webhooks/borderpay
     PS->>PS: tandai lunas, upsert owners +30 hari, catat payments (idempoten)
     FE-->>U: Tekan REFRESH untuk melihat langganan aktif
 ```

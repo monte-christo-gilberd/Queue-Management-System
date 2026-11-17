@@ -2,7 +2,7 @@
  * subscription: langganan owner: status aktif, tombol bayar satu bulan, dan tombol jadi owner untuk calon owner.
  *
  * Rute        : /subscription.
- * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx).
+ * Akses       : butuh login (AuthGate dari (user)/_layout.tsx).
  * Dipakai oleh: Profil (tombol langganan atau Jadi Owner).
  * Bergantung  : startSubscriptionCheckout dan describeSubscriptionError (lib/subscription), getMe (lib/users), Subscription.
  * Catatan     : Tombol membuat pesanan lalu membuka halaman BorderPay. Langganan diperbarui oleh webhook setelah lunas.
@@ -13,7 +13,7 @@ import { Linking, Platform } from 'react-native';
 import Subscription from '@/components/Subscription';
 import { describeSubscriptionError, startSubscriptionCheckout } from '@/lib/subscription';
 import { getMe, type Me } from '@/lib/users';
-import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
+import { handleMenuItemPress } from '@/utils/menu';
 import { useAuthStore } from '@/store/authStore';
 import { subscriptionStatus } from '@/utils/profile';
 
@@ -100,7 +100,7 @@ export default function SubscriptionRoute() {
       errorMessage={errorMessage}
       onRefresh={onRefresh}
       refreshing={refreshing}
-      onMenuItemPress={handleOwnerMenuItemPress}
+      onMenuItemPress={handleMenuItemPress}
     />
   );
 }

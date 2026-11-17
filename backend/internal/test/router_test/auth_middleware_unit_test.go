@@ -24,7 +24,7 @@ func authProbe(t *testing.T, header string) (*httptest.ResponseRecorder, bool, i
 	reached := false
 	var gotID int64
 	e := gin.New()
-	e.GET("/api/v1/queues", middleware.RequireAuth(testVerifier()), func(c *gin.Context) {
+	e.GET("/api/v1/queues", middleware.RequireAuthWithRevocation(testVerifier(), nil), func(c *gin.Context) {
 		reached = true
 		gotID = c.GetInt64("user_id")
 		c.Status(http.StatusOK)

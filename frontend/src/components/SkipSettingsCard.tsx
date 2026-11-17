@@ -1,7 +1,7 @@
 /**
  * SkipSettingsCard: kartu pengaturan apa yang terjadi pada nomor yang dilewati (dihapus, mundur, atau mundur N nomor).
  *
- * Dipakai oleh : app/(owner)/queues/[queueId]/index.tsx
+ * Dipakai oleh : app/(user)/queues/[queueId]/index.tsx
  * Bergantung   : ui/Toast, ui/AppButton, ui/FormField, lib/skip-settings (validateSkipSettings), types/api, utils/cn
  * Peran        : owner
  * Catatan      : validasi dilakukan lokal sebelum onSave; penyimpanan ke server dilakukan oleh route.

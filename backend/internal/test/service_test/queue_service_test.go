@@ -150,21 +150,6 @@ func (f *fakeQueueRepo) RotateDynamicQRCode(
 	return false, nil
 }
 
-func (f *fakeQueueRepo) CreateDefaultCounter(
-	ctx context.Context,
-	queueID int64,
-	name string,
-) (model.Counter, error) {
-	return model.Counter{ID: 1, QueueID: queueID, Name: name, IsDefault: true}, nil
-}
-
-func (f *fakeQueueRepo) GetCounterByQueue(
-	ctx context.Context,
-	queueID int64,
-) (model.Counter, error) {
-	return model.Counter{ID: 1, QueueID: queueID, Name: "Counter 1", IsDefault: true}, nil
-}
-
 type fakeSubscription struct {
 	active bool
 	err    error

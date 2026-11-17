@@ -78,7 +78,7 @@ export default function ResetPasswordScreen({
           Password berhasil diganti. Sesi di perangkat lain sudah dikeluarkan.
         </Text>
         <View className="mt-2.5">
-          <PrimaryAuthButton label="Ke Halaman Login" onPress={() => router.replace('/')} loading={false} />
+          <PrimaryAuthButton label="Ke Halaman Login" onPress={() => router.replace('/login')} loading={false} />
         </View>
       </AuthLayout>
     );

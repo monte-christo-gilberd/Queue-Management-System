@@ -1,7 +1,7 @@
 /**
  * LoginScreen: layar login dengan email atau username dan password.
  *
- * Dipakai oleh : app/index.tsx
+ * Dipakai oleh : app/login.tsx
  * Bergantung   : ui/Toast (useErrorToast), ui/Icon, constants/app-theme, expo-router,
  *                components/auth/* (AuthLayout, AuthInput, AuthButtons, GoogleSignInSection)
  * Peran        : publik

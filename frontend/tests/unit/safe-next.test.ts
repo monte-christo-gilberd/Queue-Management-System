@@ -43,6 +43,8 @@ test('nilai bukan string atau kosong memakai fallback', () => {
 test('beranda dan parameter login tidak dipakai sebagai tujuan (hindari loop login)', () => {
   assert.equal(sanitizeNext('/'), DEFAULT_AFTER_LOGIN);
   assert.equal(sanitizeNext('/?next=%2Fqueues'), DEFAULT_AFTER_LOGIN);
+  assert.equal(sanitizeNext('/login'), DEFAULT_AFTER_LOGIN);
+  assert.equal(sanitizeNext('/login?next=%2Fqueues'), DEFAULT_AFTER_LOGIN);
 });
 
 test('fallback yang diberikan pemanggil dipakai, termasuk string kosong', () => {

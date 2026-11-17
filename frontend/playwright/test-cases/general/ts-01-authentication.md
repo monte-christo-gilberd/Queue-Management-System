@@ -97,5 +97,5 @@
 |---|---|
 | **Priority** | P1 |
 | **Sumber** | Keamanan (open redirect) |
-| **Steps** | 1. Buka `/?next=https://evil.example` 2. Login |
+| **Steps** | 1. Buka `/login?next=https://evil.example` 2. Login |
 | **Expected Result** | Setelah login, pengguna tetap di aplikasi (halaman Dashboard), bukan di situs lain |

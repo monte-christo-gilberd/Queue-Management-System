@@ -2,8 +2,8 @@
  * riwayat: riwayat saya: satu baris per tiket customer (selesai, dilewati, dibatalkan, dihapus, atau antrian ditutup).
  *
  * Rute        : /riwayat.
- * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx).
- * Dipakai oleh: menu owner (case riwayat-saya di owner-menu) dan tab riwayat pada ResponsiveScreenLayout.
+ * Akses       : butuh login (AuthGate dari (user)/_layout.tsx).
+ * Dipakai oleh: menu panel (case riwayat-saya di utils/menu) dan tab riwayat pada ResponsiveScreenLayout.
  * Bergantung  : useMyHistory (lib/history), MyHistoryList, EmptyState.
  * Catatan     : Bila belum ada riwayat, EmptyState ditampilkan setelah pemuatan selesai.
  */
@@ -17,7 +17,7 @@ import { useErrorToast } from '@/components/ui/Toast';
 import { useMyHistory } from '@/hooks/use-history';
 import { useThemeColor } from '@/hooks/use-theme-mode';
 import { useAuthStore } from '@/store/authStore';
-import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
+import { handleMenuItemPress } from '@/utils/menu';
 
 /** Riwayat tiket saya: satu baris per tiket (selesai, dilewati, dibatalkan, dihapus, atau antrian ditutup). */
 export default function RiwayatSayaRoute() {
@@ -30,7 +30,7 @@ export default function RiwayatSayaRoute() {
     <ResponsiveScreenLayout
       title="Riwayat"
       userName={displayName ?? undefined}
-      onMenuItemPress={handleOwnerMenuItemPress}
+      onMenuItemPress={handleMenuItemPress}
       activeTab="riwayat">
       {history.loading ? <Text className="text-[13px] text-muted">Memuat riwayat...</Text> : null}
       {!history.loading && history.items.length === 0 ? (

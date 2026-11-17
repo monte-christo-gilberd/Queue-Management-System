@@ -1,7 +1,7 @@
 /**
  * Dashboard: kerangka halaman dashboard yang dipakai owner dan customer.
  *
- * Dipakai oleh : app/(owner)/dashboard.tsx
+ * Dipakai oleh : app/(user)/dashboard.tsx
  * Bergantung   : components/layout/ResponsiveScreenLayout, components/ui/Toast (useErrorToast)
  * Peran        : owner dan customer
  * Catatan      : komponen ini hanya pembungkus layout dan state kosong; logika utama (memuat antrian, memilih peran) ada di route.
@@ -10,7 +10,7 @@ import { useErrorToast } from '@/components/ui/Toast';
 import { Text, View } from "react-native";
 
 import ResponsiveScreenLayout, {
-  type OwnerMenuItem,
+  type MenuItem,
   type ShellProps,
 } from "@/components/layout/ResponsiveScreenLayout";
 
@@ -19,7 +19,7 @@ export type DashboardProps = {
   /** Konteks shell layout; saat ini hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
   /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
-  onMenuItemPress?: (item: OwnerMenuItem) => void;
+  onMenuItemPress?: (item: MenuItem) => void;
   /** Papan antrian owner (satu kartu per antrian aktif terbaru). Dirender oleh route. */
   boards?: React.ReactNode;
   /** true bila ada antrian aktif yang ditampilkan lewat `boards`. */

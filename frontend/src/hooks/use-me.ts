@@ -1,7 +1,7 @@
 /**
  * use-me: profil user yang sedang login, dan penanda apakah user adalah owner.
  *
- * Dipakai oleh : src/app/(owner)/dashboard.tsx, src/app/(owner)/_layout.tsx.
+ * Dipakai oleh : src/app/(user)/dashboard.tsx, src/app/(user)/_layout.tsx.
  * Bergantung   : lib/users (getMe, tipe Me).
  * Alur         : muat saat hook dipasang. Pemasangan yang bersamaan berbagi satu request (fetchMeShared); tidak ada cache setelah selesai.
  * Catatan      : Galat tidak ditampilkan. `me` tetap null dan `loaded` menjadi true, sehingga pemanggil menganggap user bukan owner.
@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { getMe, type Me } from '@/lib/users';
 
 /**
- * Request GET /users/me yang sedang berjalan. Pemanggil yang mount bersamaan (mis. layout (owner) dan dashboard)
+ * Request GET /users/me yang sedang berjalan. Pemanggil yang mount bersamaan (mis. layout (user) dan dashboard)
  * berbagi satu request. Dibersihkan begitu selesai, sehingga pemasangan berikutnya tetap mengambil data terbaru.
  */
 let inflightMe: Promise<Me> | null = null;
@@ -24,22 +24,6 @@ function fetchMeShared(): Promise<Me> {
     });
   }
   return inflightMe;
-}
-
-/** Pemanggil useMe yang sedang terpasang; semuanya diberi profil baru saat refreshMe dipanggil. */
-const listeners = new Set<(me: Me) => void>();
-
-/**
- * refreshMe: ambil ulang profil lalu perbarui semua useMe yang terpasang (mis. menu owner di panel kanan berubah
- * langsung setelah user berhasil menjadi owner). Galat diabaikan; data lama tetap dipakai.
- */
-export async function refreshMe(): Promise<void> {
-  try {
-    const data = await getMe();
-    listeners.forEach((fn) => fn(data));
-  } catch {
-    // data lama tetap dipakai
-  }
 }
 
 /**
@@ -68,13 +52,8 @@ export function useMe() {
         if (active) setLoaded(true);
       },
     );
-    const listener = (data: Me) => {
-      if (active) setMe(data);
-    };
-    listeners.add(listener);
     return () => {
       active = false;
-      listeners.delete(listener);
     };
   }, []);
 

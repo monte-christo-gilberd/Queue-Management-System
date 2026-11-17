@@ -1,7 +1,7 @@
 /**
  * AppendNoteModal: popup untuk menulis atau mengubah catatan pada satu nomor antrian.
  *
- * Dipakai oleh : app/(owner)/dashboard.tsx, app/(owner)/queues/[queueId]/index.tsx
+ * Dipakai oleh : app/(user)/dashboard.tsx, app/(user)/queues/[queueId]/index.tsx
  * Bergantung   : components/ui/ModalCard, components/ui/AppButton, components/ui/Toast (useErrorToast)
  * Alur         : isian -> onSubmit(note) -> induk menyimpan lalu menutup popup bila berhasil
  */

@@ -1,7 +1,7 @@
 /**
  * CounterBar: tab counter untuk satu antrian, dengan popup buat, ganti nama, dan tutup counter.
  *
- * Dipakai oleh : app/(owner)/queues/[queueId]/index.tsx, app/(owner)/dashboard.tsx
+ * Dipakai oleh : app/(user)/queues/[queueId]/index.tsx, app/(user)/dashboard.tsx
  * Bergantung   : hooks/use-counter-session (tipe CounterSession), lib/counters (MAX_COUNTERS, validasi dan saran nama), ui/AppButton, ui/ModalCard, ui/Toast, utils/format
  * Peran        : owner
  * Catatan      : tidak mengimpor store (sesuai ZUSTAND_GUIDE). Impor lib/counters berisi konstanta dan validasi, bukan store; logika sesi tetap di hook.

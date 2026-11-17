@@ -1,7 +1,7 @@
 /**
  * use-my-tickets: daftar tiket milik akun ini di semua antrian, untuk daftar "Antrian Saya".
  *
- * Dipakai oleh : src/app/(owner)/antrian.tsx, src/app/(owner)/dashboard.tsx.
+ * Dipakai oleh : src/app/(user)/antrian.tsx, src/app/(user)/dashboard.tsx.
  * Bergantung   : lib/tickets (listMyTickets, tipe MyTicket).
  * Alur         : muat sekali saat dipasang. `reload` dipanggil pemanggil setelah tiket berubah.
  * Catatan      : Daftar ini tambahan, bukan inti halaman, sehingga galat diabaikan dan daftar dikosongkan.

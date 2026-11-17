@@ -3,7 +3,7 @@
  *
  * Rute        : /register (query next opsional).
  * Akses       : guest-only (AuthGate mode guest).
- * Dipakai oleh: tautan Daftar di halaman login (/), yang membawa next bila ada.
+ * Dipakai oleh: tautan Daftar di halaman login (/login), yang membawa next bila ada.
  * Bergantung  : RegisterScreen, useAuthStore (register), validatePassword (utils/password),
  *               getConfirmPasswordError (utils/confirm-password), sanitizeNext.
  * Catatan     : Validasi password dan konfirmasinya dilakukan di route, bukan di komponen tampilan. Pesan "Password tidak
@@ -92,7 +92,7 @@ export default function RegisterRoute() {
         confirmPasswordError={confirmPasswordError}
         onSubmit={handleSubmit}
         next={safeNext}
-        loginHref={safeNext ? `/?next=${encodeURIComponent(safeNext)}` : '/'}
+        loginHref={safeNext ? `/login?next=${encodeURIComponent(safeNext)}` : '/login'}
         loading={loading}
         errorMessage={errorMessage}
       />

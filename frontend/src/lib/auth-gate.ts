@@ -4,7 +4,7 @@
  * Dipakai oleh : components/auth/AuthGate.tsx.
  * Bergantung   : lib/safe-next.ts (sanitizeNext).
  * Alur         : AuthGate memanggil decideAuthGate dengan status hidrasi dan token. Mode `required` yang belum
- *                login diarahkan ke `/?next=<path>`; mode `guest` yang sudah login diarahkan ke `next` yang aman.
+ *                login diarahkan ke `/login?next=<path>`; mode `guest` yang sudah login diarahkan ke `next` yang aman.
  * Catatan      : lihat AUTH_GATE_GUIDE.md.
  */
 
@@ -28,13 +28,15 @@ export type AuthGateDecision =
   | { kind: 'redirect'; to: string };
 
 /** LOGIN_PATH: route halaman login. */
-export const LOGIN_PATH = '/';
-/** HOME_PATH: halaman utama owner, tujuan default setelah login. */
+export const LOGIN_PATH = '/login';
+/** ENTRY_PATH: pintu masuk "/" yang meneruskan ke login atau dashboard; tidak perlu dijadikan `next`. */
+const ENTRY_PATH = '/';
+/** HOME_PATH: beranda setelah login (owner dan customer), tujuan default setelah login. */
 export const HOME_PATH = '/dashboard';
 
 /**
  * decideAuthGate memutuskan apakah AuthGate menunggu, merender, atau mengarahkan.
- * Contoh: mode `required`, hydrated true, token null, path `/dashboard` menghasilkan redirect ke `/?next=%2Fdashboard`.
+ * Contoh: mode `required`, hydrated true, token null, path `/dashboard` menghasilkan redirect ke `/login?next=%2Fdashboard`.
  * Mode `guest` dengan token terisi dan next `/dashboard` menghasilkan redirect ke `/dashboard`.
  */
 export function decideAuthGate(input: {
@@ -63,8 +65,9 @@ export function decideAuthGate(input: {
     if (loggedIn) return { kind: 'render' };
     // nextPath eksplisit menang agar query (mis. `?t=<token>`) tidak hilang.
     const path = input.nextPath || input.path;
-    // Simpan halaman asal supaya bisa kembali setelah login. Tidak untuk `/` (sudah di login).
-    if (path && path !== LOGIN_PATH) {
+    // Simpan halaman asal supaya bisa kembali setelah login. Tidak untuk /login atau "/" (pintu masuk): setelah login
+    // user toh diarahkan ke HOME_PATH.
+    if (path && path !== LOGIN_PATH && path !== ENTRY_PATH) {
       return { kind: 'redirect', to: `${LOGIN_PATH}?next=${encodeURIComponent(path)}` };
     }
     return { kind: 'redirect', to: LOGIN_PATH };

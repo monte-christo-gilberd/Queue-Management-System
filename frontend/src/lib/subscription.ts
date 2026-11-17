@@ -1,7 +1,7 @@
 /**
  * subscription.ts: membuat pesanan pembayaran langganan owner (BorderPay lewat backend) dan pemetaan galat ke pesan.
  *
- * Dipakai oleh : app/(owner)/subscription.tsx
+ * Dipakai oleh : app/(user)/subscription.tsx
  * Bergantung   : lib/api.ts (ApiError, apiFetch)
  * Catatan      : Langganan diperpanjang oleh webhook BorderPay setelah pembayaran lunas, bukan oleh aplikasi.
  */

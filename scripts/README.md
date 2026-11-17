@@ -18,14 +18,14 @@ Prasyarat umum: `bash`, `docker` dengan `docker compose`. `check-service-isolati
 | [`verify-user.sh`](#verify-usersh) | Menandai email satu akun terverifikasi langsung di database | dev atau prod | `make verify-user` |
 | [`reset-demo.sh`](#reset-demosh) | RESET TOTAL database prod (semua akun dihapus) | prod | `make prod-reset` |
 | [`seed-prod-penguji.sh`](#seed-prod-penguji) | Membuat 1 akun penguji (owner + customer) dan mengisi data uji antrian | prod | `make prod-seed-penguji` |
-| [`backup-prod.sh`](#backup-prodsh) | Backup dan restore database prod | prod | `make prod-backup`, `make prod-reset` |
+| [`backup-prod.sh`](#backup-prodsh) | Backup dan restore database prod | prod | `make prod-backup`, `make prod-reset`, `seed-prod-penguji.sh` |
 
 Variabel lingkungan yang dibaca beberapa skrip:
 
 | Variabel | Arti | Bawaan |
 |---|---|---|
 | `QMS_ENV_FILE` | File env yang dipakai compose prod | `.env.prod` (`.env` untuk `backup-prod.sh` dan `check-service-isolation.sh`) |
-| `POSTGRES_USER`, `POSTGRES_DB` | Pengguna dan nama database | `qms`, `qms_db` |
+| `POSTGRES_USER`, `POSTGRES_DB` | Pengguna dan nama database (dibaca `backup-prod.sh`, `reset-demo.sh`, `seed-prod-penguji.sh`) | `qms`, `qms_db` |
 
 ---
 
@@ -67,7 +67,7 @@ Keluar dengan kode 1 dan pesan `GAGAL [...]` bila ada yang dilanggar.
 | `auth-service` | Tidak ada service lain yang punya `depends_on` ke sana, ia hanya bergantung pada `db`, dan **kunci privat JWT hanya di-mount ke `auth-service`**. Karena itu user yang sudah login tetap bisa memakai aplikasi saat ia mati |
 | Kode | `notify-service` tidak menyebut smtp atau mailer. `backend` tidak memanggil `auth-service` |
 | nginx | Upstream `auth-service` lewat variabel + resolver, supaya nginx tetap start bila salah satunya mati |
-| Observability: overlay | Dengan `docker-compose.observability.yml` (dev dan prod): tanpa `depends_on` dari service aplikasi ke komponen observability, hanya Grafana yang membuka port ke host (dan hanya di `127.0.0.1`), port internal (9100, 8081, 4317, 9090, 3100, 3200) tidak dipublikasikan, tanpa `docker.sock`, mount direktori host read-only, semua komponen punya `mem_limit`, `OTEL_EXPORTER_OTLP_ENDPOINT` hanya untuk backend, auth, qr, mail dan hanya ke collector |
+| Observability: overlay | Dengan `docker-compose.observability.yml` (dev dan prod): tanpa `depends_on` dari service aplikasi ke komponen observability, hanya Grafana yang membuka port ke host (dan hanya di `127.0.0.1`), port internal (9100, 8081, 4317, 9090, 3100, 3200) tidak dipublikasikan, tanpa `docker.sock`, mount direktori host read-only, semua komponen punya `mem_limit`, `OTEL_EXPORTER_OTLP_ENDPOINT` hanya untuk backend, auth, mail dan hanya ke collector |
 | Observability: compose dasar | Tanpa overlay, compose dasar tidak punya service observability dan tidak membawa variabel `OTEL_*`, jadi aplikasi start apa adanya |
 | Observability: nginx dan kode | nginx tidak meneruskan `/metrics` atau `:9100`, listener `stub_status` `:8081` punya `deny all`, dan kode Go tidak menulis alamat komponen observability secara keras |
 
@@ -84,7 +84,7 @@ keperluan parsing saja.
 
 ## check-observability-leaks.sh
 
-Tes kebocoran rahasia ke observability (tujuan 6 di `documentation/docs/plan-observability-tracing.md`). Mengirim request
+Tes kebocoran rahasia ke observability (tujuan 6 di `plan-observability-tracing.md`, folder `documentation/docs/` satu tingkat di atas `queue-management-system/`). Mengirim request
 yang ditolak (404/401/400) lewat nginx dengan **rahasia palsu yang unik per eksekusi**: token layar publik (path dan query),
 password dan email penuh di body login, token verifikasi email, token reset password, dan JWT palsu di header
 `Authorization`. Setelah pipeline sempat memproses (sekitar 45 detik), skrip mencari rahasia itu di:
@@ -107,7 +107,7 @@ LEAK_EXTRA_CANARY="teks-uji" scripts/check-observability-leaks.sh   # kontrol po
 ```
 
 Prasyarat: stack jalan dengan overlay (`make up obs`), `curl`, `openssl`, `python3`. Membaca `GRAFANA_ADMIN_PASSWORD`,
-`GRAFANA_PORT`, dan `QMS_HTTP_PORT` dari `.env` (atau `QMS_ENV_FILE`). Dijalankan juga oleh `make obs-check`.
+`GRAFANA_PORT`, dan `QMS_HTTP_PORT` dari `.env` (atau `QMS_ENV_FILE`). Variabel lain: `QMS_BASE_URL` (alamat nginx, bawaan `http://localhost:<QMS_HTTP_PORT>`) dan `LEAK_ROUNDS` (bawaan 40). Dijalankan juga oleh `make obs-check`.
 
 ---
 
@@ -204,7 +204,7 @@ make verify-user EMAIL=budi@mail.com STACK=prod
 ```
 
 Hasil: `OK` (diubah), `Sudah terverifikasi` (tidak ada yang diubah), atau `GAGAL` (email tidak ada, kode keluar 1).
-Email dikirim sebagai variabel psql, bukan disisipkan ke teks SQL.
+Email dikirim sebagai variabel psql, bukan disisipkan ke teks SQL. Argumen kedua hanya boleh `prod`; selain itu skrip keluar dengan kode 1.
 
 ---
 
@@ -263,7 +263,7 @@ make prod-seed-penguji        # atau: scripts/seed-prod-penguji.sh [-y]
   lewat API. Bila sudah ada, sandinya diganti lewat hash bcrypt. Kredensial ditulis ke `~/qms-penguji-account.txt`
   (mode 600, di luar repo) dan **ditimpa** setiap run. Setiap run juga mencabut sesi login lama akun penguji.
   Email dan username bisa diganti lewat `PENGUJI_EMAIL` dan `PENGUJI_USERNAME`. Email verifikasi dari pendaftaran
-  ikut terkirim sesuai `MAIL_MODE`. Skrip ini juga mengembalikan data uji ke kondisi seed, jadi tidak perlu
+  ikut terkirim sesuai `MAIL_MODE`. `QMS_API` (bawaan `http://localhost:8080`) menentukan alamat API untuk pendaftaran, dan `PENGUJI_FILE` mengganti lokasi berkas kredensial. Skrip ini juga mengembalikan data uji ke kondisi seed, jadi tidak perlu
   skrip restore terpisah.
 - Skrip membuat backup database (`scripts/backup-prod.sh`) lebih dulu dan meminta konfirmasi (`ketik 'ya'`) kecuali
   memakai `-y`. Butuh modul Python `bcrypt` di host.
@@ -300,5 +300,29 @@ make prod-backup
 
 Bukan di folder ini, tetapi sering dibutuhkan bersama skrip di atas: `db/scripts/apply_schema.sql` (penyesuaian skema
 idempoten untuk database yang sudah berjalan), `db/scripts/reset_seed_dev.sql` (data seed dev, `make seed`), dan
-`db/scripts/backfill_currently_served.sql`, dan `db/scripts/check_payment_grants.sql` (hanya membaca: memastikan role `payment_rw` punya semua hak yang dibutuhkan payment-service; dipanggil `make prod-up` dan `make prod-payment-check`). Role per service dibuat oleh `db/migrations/03_notify_role.sh`, `04_mail_role.sh`, dan `06_auth_role.sh`; `08_payment_role.sh` untuk `payment_rw` juga dijalankan ulang oleh `make prod-up`. Untuk
+`db/scripts/backfill_currently_served.sql`, dan `db/scripts/check_payment_grants.sql` (hanya membaca: memastikan role `payment_rw` punya semua hak yang dibutuhkan payment-service; dipanggil `make prod-up` dan `make prod-payment-check`). Role per service dibuat oleh `db/migrations/03_notify_role.sh`, `04_mail_role.sh`, `06_auth_role.sh`, dan `07_metrics_role.sh` (`metrics_ro` untuk postgres_exporter, dijalankan ulang oleh target observability); `08_payment_role.sh` untuk `payment_rw` juga dijalankan ulang oleh `make prod-up`. Untuk
 database lama yang belum punya role `auth_rw`, jalankan `06_auth_role.sh` seperti dijelaskan di `.env.example`.
+
+---
+
+## Target Makefile terkait
+
+Ringkasan target yang memanggil skrip di atas atau menggantikan langkah manual. `make up obs` (atau `obs=1`) menambahkan overlay observability.
+
+| Target | Fungsi |
+|---|---|
+| `make up`, `make tunnel` | Stack dev (LAN atau Cloudflare quick tunnel). Membuat kunci `keys-dev/`, memeriksa Google, membersihkan cache Metro bila perlu |
+| `make down` | Hentikan tunnel dan semua container dev, hapus `keys-dev/` dan penanda Metro |
+| `make restart`, `make logs`, `make ps` | Restart `backend`, `auth-service`, `notify-service`, `mail-service` (tidak termasuk payment-service); ikuti log; status container dev |
+| `make seed` | Reset database dev ke data seed (`db/scripts/reset_seed_dev.sql`) |
+| `make verify-user EMAIL=... [STACK=prod]` | Lihat [`verify-user.sh`](#verify-usersh) |
+| `make prod-up` | `gen-auth-keys.sh`, `check-mail-mode.sh`, `check-google-config.sh`, `check-payment-config.sh`, naikkan `db`, jalankan `08_payment_role.sh` dan `check_payment_grants.sql` (galat menghentikan target), lalu naikkan seluruh stack (profil `payments` selalu aktif) |
+| `make prod-up-mailpit`, `make prod-up-smtp` | Pintasan `prod-up` dengan `MAIL_MODE` tertentu |
+| `make prod-payment-check` | `check-payment-config.sh`, `check_payment_grants.sql`, dan status `payment-service`, tanpa mengubah apa pun |
+| `make prod-down` | Hentikan stack prod (termasuk Mailpit dan orphan) |
+| `make prod-guard` | Membuat tabel `_no_seed_guard` di DB prod agar seed/reset dev ditolak (sudah dilakukan `reset-demo.sh`) |
+| `make prod-backup`, `make prod-reset`, `make prod-seed-penguji` | Lihat [`backup-prod.sh`](#backup-prodsh), [`reset-demo.sh`](#reset-demosh), [`seed-prod-penguji`](#seed-prod-penguji) |
+| `make obs-up`, `make obs-down`, `make obs-url`, `make obs-check` | Observability: naikkan overlay dan role `metrics_ro`, hentikan komponennya saja, cetak alamat Grafana, jalankan `check-service-isolation.sh` dan `check-observability-leaks.sh`. `OBS_TARGET=prod` untuk stack prod |
+| `make mailpit` | Cetak link Mailpit dev dan prod serta `MAIL_MODE` prod yang aktif (bawaan `mailpit`) |
+
+`PROD_ENV` (bawaan `.env.prod`) mengganti file env prod untuk semua target `prod-*`.

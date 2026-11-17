@@ -127,10 +127,6 @@ type TicketRepository interface {
 		queueID,
 		userID int64,
 	) (model.Ticket, error)
-	CurrentServedNumber(
-		ctx context.Context,
-		queueID int64,
-	) (number int, ok bool, err error)
 	RecentCompletedNumbers(
 		ctx context.Context,
 		queueID int64,

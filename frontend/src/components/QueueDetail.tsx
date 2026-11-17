@@ -1,7 +1,7 @@
 /**
  * QueueDetail: halaman detail antrian untuk owner (operasional, QR, layar publik, pengaturan, dan tutup antrian).
  *
- * Dipakai oleh : app/(owner)/queues/[queueId]/index.tsx
+ * Dipakai oleh : app/(user)/queues/[queueId]/index.tsx
  * Bergantung   : hooks/use-is-wide, hooks/use-theme-mode, layout/ResponsiveScreenLayout, ui/* (AppButton, Icon, EmptyState, FormField, ConfirmModal, ModalCard, InsertTicketModal, Toast), components/MySpotCard, components/QueueTimeline, utils/notes, utils/cn
  * Peran        : owner
  * Catatan      : kartu QR, layar publik, dan pengaturan Skip dirender route lewat slot props; kartu "spot" memakai tampilan customer.
@@ -15,7 +15,7 @@ import { useIsTriple, useIsWide } from "@/hooks/use-is-wide";
 import type { Queue } from "@/types/api";
 import { cn } from "@/utils/cn";
 import ResponsiveScreenLayout, {
-  type OwnerMenuItem,
+  type MenuItem,
   type ShellProps,
 } from "@/components/layout/ResponsiveScreenLayout";
 import { useThemeColor } from "@/hooks/use-theme-mode";
@@ -35,7 +35,7 @@ export type QueueDetailProps = {
   /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
   /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
-  onMenuItemPress?: (item: OwnerMenuItem) => void;
+  onMenuItemPress?: (item: MenuItem) => void;
   /** Data antrian yang sedang dibuka; `status` menentukan apakah kontrol operasional tampil. */
   queue: Queue;
   /** Nama antrian di form pengaturan; diedit langsung dan disimpan lewat `onSave`. */

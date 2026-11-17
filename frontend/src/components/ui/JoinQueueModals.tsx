@@ -1,11 +1,11 @@
 /**
  * JoinQueueModals: popup "Masuk ke Antrian" untuk customer, memindai QR dengan kamera atau menempel tautan antrian.
  *
- * Dipakai oleh : app/(owner)/dashboard.tsx, components/layout/ResponsiveScreenLayout.tsx
+ * Dipakai oleh : app/(user)/dashboard.tsx, components/layout/ResponsiveScreenLayout.tsx
  * Bergantung   : expo-camera, expo-router, lib/qr (joinByToken), lib/qr-scan (parseJoinToken),
  *                lib/queue-errors (describeQueueError), components/ui/ModalCard, components/ui/AppButton
  * Alur         : QR terbaca / tautan ditempel -> joinByToken -> popup tutup -> router.replace ke /ticket/[queueId]
- * Catatan      : Satu-satunya jalur join dari UI. Halaman /join?t= tidak melakukan join sendiri.
+ * Catatan      : Jalur join lewat kamera aplikasi. QR yang dipindai di luar aplikasi membuka halaman /join?t= (app/join.tsx).
  */
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
@@ -29,8 +29,8 @@ type JoinQueueModalsProps = {
 /**
  * Popup "Masuk ke Antrian": memindai QR antrian dengan kamera perangkat, atau menempel tautan antrian
  * (`<origin>/join?t=...`) di form. Begitu QR terbaca, `POST /join` dipanggil otomatis tanpa klik; tautan
- * yang ditempel diproses saat tombol Masuk (atau Enter) ditekan. Halaman `/join?t=` sendiri tidak
- * melakukan join, jadi popup ini satu-satunya jalur join dari UI.
+ * yang ditempel diproses saat tombol Masuk (atau Enter) ditekan. QR yang dipindai di luar aplikasi membuka
+ * halaman `/join?t=` (app/join.tsx), yang menampilkan info antrian lalu join setelah dikonfirmasi.
  */
 export function JoinQueueModals({ visible, onClose }: JoinQueueModalsProps) {
   return (

@@ -3,7 +3,7 @@
  *
  * Dipakai oleh : components/ui/JoinQueueModals.tsx.
  * Alur         : QR berisi `<origin>/join?t=<kode>`, atau pengunjung mengetik kode 6 karakter ->
- *                parseJoinToken -> kode -> previewJoin (lib/qr.ts).
+ *                parseJoinToken -> kode -> joinByToken (lib/qr.ts).
  */
 
 /** MAX_TOKEN_LENGTH: batas panjang token join (karakter), supaya isi QR yang sangat panjang langsung ditolak. */

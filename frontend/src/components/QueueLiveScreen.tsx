@@ -1,7 +1,7 @@
 /**
  * QueueLiveScreen: layar live antrian owner untuk memanggil nomor (Skip dan Next).
  *
- * Dipakai oleh : app/(owner)/queues/[queueId]/live.tsx
+ * Dipakai oleh : app/(user)/queues/[queueId]/live.tsx
  * Bergantung   : layout/ResponsiveScreenLayout, ui/AppButton, ui/Icon, hooks/use-is-wide, constants/app-theme, constants/theme (Fonts), utils/cn
  * Peran        : owner
  * Catatan      : layout dipilih dari lebar layar (timeline di HP, papan gelap di PC). Konfirmasi Skip dan Next dilakukan route, bukan komponen ini.
@@ -15,7 +15,7 @@ import { Fonts } from '@/constants/theme';
 import { cn } from '@/utils/cn';
 import { useIsWide } from '@/hooks/use-is-wide';
 import ResponsiveScreenLayout, {
-  type OwnerMenuItem,
+  type MenuItem,
 } from '@/components/layout/ResponsiveScreenLayout';
 import { AppButton } from '@/components/ui/AppButton';
 import { Icon } from '@/components/ui/Icon';
@@ -41,7 +41,7 @@ export type QueueLiveScreenProps = {
   /** Dipanggil saat tombol Next ditekan; konfirmasi dilakukan pemanggil. Default tidak melakukan apa pun. */
   onNext?: () => void;
   /** Navigasi menu profil untuk ResponsiveScreenLayout (diteruskan dari route). */
-  onMenuItemPress?: (item: OwnerMenuItem) => void;
+  onMenuItemPress?: (item: MenuItem) => void;
 };
 
 // Pengecualian yang disengaja: papan display gelap + titik hijau status "live" (token board*, liveGreen).

@@ -2,7 +2,7 @@
  * Icon: ikon glyph Unicode (Icon) dan ikon yang digambar dengan View (PersonIcon, LockIcon, ScanIcon, AtIcon).
  *
  * Dipakai oleh : banyak layar dan komponen, mis. components/layout/ResponsiveScreenLayout.tsx,
- *                components/ui/SearchBar.tsx, components/ui/UserAvatar.tsx, components/LoginScreen.tsx
+ *                components/ui/UserAvatar.tsx, components/LoginScreen.tsx
  * Catatan      : Glyph Unicode masih placeholder (lihat TODO di GLYPHS). expo-symbols sudah ada di package.json.
  */
 import { Text, View } from 'react-native';

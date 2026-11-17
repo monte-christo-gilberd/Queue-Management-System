@@ -1,7 +1,7 @@
 /**
  * EmptyState: kartu tengah untuk daftar atau layar yang belum berisi data.
  *
- * Dipakai oleh : app/(owner)/riwayat.tsx, app/(owner)/antrian.tsx, components/History.tsx
+ * Dipakai oleh : app/(user)/riwayat.tsx, app/(user)/antrian.tsx, components/History.tsx
  * Catatan      : Tanpa aksi. Ikon dirender apa adanya, jadi pemanggil menentukan gambarnya.
  */
 import { Text, View } from 'react-native';

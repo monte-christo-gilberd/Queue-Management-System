@@ -1,7 +1,7 @@
 /**
  * use-theme-mode: pilihan mode tema terang atau gelap milik pengguna, yang disimpan di perangkat.
  *
- * Dipakai oleh : src/app/_layout.tsx (restoreThemeMode), src/app/(owner)/antrian.tsx, src/app/(owner)/riwayat.tsx,
+ * Dipakai oleh : src/app/_layout.tsx (restoreThemeMode), src/app/(user)/antrian.tsx, src/app/(user)/riwayat.tsx,
  *                src/components/History.tsx, src/components/layout/ResponsiveScreenLayout.tsx, src/components/QueueQRCard.tsx,
  *                src/components/ui/AppButton.tsx.
  * Bergantung   : @react-native-async-storage/async-storage, nativewind (colorScheme, useColorScheme), constants/tokens (themedColors), store/safe-storage.

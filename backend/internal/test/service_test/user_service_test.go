@@ -87,13 +87,6 @@ func (r *fakeUserRepo) Create(
 	return r.createUser, r.createErr
 }
 
-func (r *fakeUserRepo) FindByEmail(
-	ctx context.Context,
-	email string,
-) (model.User, error) {
-	return r.findUser, r.findErr
-}
-
 func TestProfile_ReportsOwnerFlag(t *testing.T) {
 	svc := service.NewUserService(&fakeUserRepo{isOwner: true})
 	p, err := svc.Profile(context.Background(), 7)

@@ -87,15 +87,6 @@ type QueueRepository interface {
 		newCode string,
 		expiresAt time.Time,
 	) (bool, error)
-	CreateDefaultCounter(
-		ctx context.Context,
-		queueID int64,
-		name string,
-	) (model.Counter, error)
-	GetCounterByQueue(
-		ctx context.Context,
-		queueID int64,
-	) (model.Counter, error)
 }
 
 // SubscriptionChecker: mengecek apakah owner punya langganan aktif. Dipenuhi repository (owner_repo.go).
@@ -249,26 +240,6 @@ func (s *QueueService) SetTicketPrefix(
 	// Kirim event queue_updated agar klien yang terhubung tahu prefix sudah berubah.
 	notifyEvent(s.notifier, queueID, EventQueueUpdated, map[string]interface{}{"queue_id": queueID})
 	return nil
-}
-
-// CreateDefaultCounter membuat counter bernama tertentu; dipakai bila queue
-// lama (dibuat sebelum counter default otomatis) belum punya counter.
-func (s *QueueService) CreateDefaultCounter(
-	ctx context.Context,
-	queueID int64,
-	name string,
-) (model.Counter, error) {
-	// Teruskan pembuatan counter default ke repository dan kembalikan hasilnya apa adanya.
-	return s.repository.CreateDefaultCounter(ctx, queueID, name)
-}
-
-// GetCounterByQueue mengambil counter default milik queue (is_default atau satu saja).
-func (s *QueueService) GetCounterByQueue(
-	ctx context.Context,
-	queueID int64,
-) (model.Counter, error) {
-	// Ambil counter milik antrian dari repository dan kembalikan hasilnya.
-	return s.repository.GetCounterByQueue(ctx, queueID)
 }
 
 // GetQueue mengembalikan antrian hanya untuk owner-nya. Dipakai sebagai QueueGuard oleh service lain.

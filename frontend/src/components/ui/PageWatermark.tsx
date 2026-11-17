@@ -1,5 +1,5 @@
 /**
- * PageWatermark: latar dekoratif samar untuk kerangka layar owner.
+ * PageWatermark: latar dekoratif samar untuk kerangka layar setelah login (ResponsiveScreenLayout).
  *
  * Dipakai oleh : components/layout/ResponsiveScreenLayout.tsx
  * Bergantung   : auth/LogoMark, constants/app-theme

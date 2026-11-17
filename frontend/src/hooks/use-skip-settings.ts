@@ -1,7 +1,7 @@
 /**
  * use-skip-settings: pengaturan Skip satu antrian untuk owner (muat dan simpan).
  *
- * Dipakai oleh : src/app/(owner)/queues/[queueId]/index.tsx.
+ * Dipakai oleh : src/app/(user)/queues/[queueId]/index.tsx.
  * Bergantung   : lib/skip-settings (getSkipSettings, updateSkipSettings), lib/queue-errors (describeQueueError), types/api (SkipSettings).
  * Alur         : queueId -> getSkipSettings -> settings. save -> updateSkipSettings -> settings baru.
  * Catatan      : Pengaturan dimuat sekali per queueId. Galat muat dan simpan masuk ke `error`.

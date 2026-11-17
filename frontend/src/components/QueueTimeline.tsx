@@ -1,7 +1,7 @@
 /**
  * QueueTimeline: kartu gelap berisi timeline nomor antrian dan tombol Skip, Next, serta catatan untuk owner.
  *
- * Dipakai oleh : app/(owner)/dashboard.tsx, components/QueueDetail.tsx, app/(owner)/queues/[queueId]/index.tsx
+ * Dipakai oleh : app/(user)/dashboard.tsx, components/QueueDetail.tsx, app/(user)/queues/[queueId]/index.tsx
  * Bergantung   : utils/cn
  * Peran        : owner
  * Catatan      : komponen presentasi; aksi Skip dan Next dijalankan oleh pemanggil, dan nomor sudah diformat sebelum masuk.

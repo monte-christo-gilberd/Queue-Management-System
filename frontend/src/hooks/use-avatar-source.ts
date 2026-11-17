@@ -1,7 +1,7 @@
 /**
  * use-avatar-source: sumber gambar foto profil milik akun ini, dengan cara berbeda di native dan di web.
  *
- * Dipakai oleh : src/app/(owner)/profile/index.tsx, src/components/Profile.tsx, src/components/ui/UserAvatar.tsx.
+ * Dipakai oleh : src/app/(user)/profile/index.tsx, src/components/Profile.tsx, src/components/ui/UserAvatar.tsx.
  * Bergantung   : react-native (Platform), store/authStore (token), lib/users (avatarUrl, fetchAvatarBlob).
  * Alur         : updatedAt + token -> native: URI dengan header Authorization. Web: fetchAvatarBlob -> object URL.
  * Catatan      : Platform.OS membedakan dua jalur karena `<img>` di web tidak bisa mengirim header. Object URL dilepas saat berganti atau unmount.

@@ -1,10 +1,12 @@
 # ERD Database QMS
 
 Diagram entitas-relasi untuk skema PostgreSQL Queue Management System. Diagram dibuat dari berkas migrasi
-di `db/migrations/` (`01a` sampai `01i` dan `02_Indexes.sql`). Salinan SQL asli ada di folder `sql/` di sebelah berkas ini.
+di `db/migrations/` (`01a` sampai `01j` dan `02_Indexes.sql`). Salinan SQL asli ada di bagian "SQL asli" di bawah
+(isinya sama persis dengan berkas migrasi; tidak ada folder `sql/` terpisah).
 
 > Catatan: tidak ada berkas ERD terpisah yang diunggah. Sumber kebenaran diagram ini adalah SQL di bawah.
-> Bila `db/scripts/apply_schema.sql` memuat perubahan tambahan, periksa ulang diagram terhadap database yang berjalan.
+> `db/scripts/apply_schema.sql` adalah jalur upgrade untuk database yang sudah berjalan. Database hasil upgrade bisa berbeda
+> tipis dari database baru (lihat "Keterbatasan dan ketidaksesuaian yang diketahui"); periksa ulang terhadap database yang berjalan.
 
 ## Diagram
 
@@ -173,6 +175,66 @@ erDiagram
   sampai pembayaran lunas. Migrasi `08_payment_role.sh` memperbaiki FK ini di database lama.
 - `notification_outbox` punya dua jenis: email tiket memakai `ticket_id`, email `queue-closed` memakai `queue_id`.
 - `payment_orders.reference_id` tidak direferensikan tabel lain; hubungannya ke `payments` ada di level aplikasi.
+- `payments` ditulis oleh payment-service saat pesanan lunas (`INSERT INTO payments`, role `payment_rw`). Komentar di `01a_accounts.sql`
+  yang menyebut endpoint `POST /api/v1/owners/subscription/extend` (amount 0) sudah usang: endpoint itu tidak ada.
+- Constraint penting, selain PK/UK/FK pada diagram:
+  - `users`: `CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL)`; `email` UNIQUE, `username` tidak unik.
+  - `queues.ticket_prefix`: `CHECK ~ '^[A-Z0-9]{1,3}$'`, default `'A'`; `queues.status`: `active` atau `closed`.
+  - `counters`: `UNIQUE (queue_id, name)` (`counters_queue_id_name_key`).
+  - `tickets.status`: `waiting`, `currently_served`, `completed`, `cancelled`, `skipped`, `deleted`; `UNIQUE (queue_id, ticket_number)`
+    dan `UNIQUE (queue_id, sort_key)`.
+  - `tickets_serving_has_counter`: `CHECK (status <> 'currently_served' OR called_counter_id IS NOT NULL)`.
+  - `queue_settings`: `skip_fallback` (`remove`/`back`/`after_n`, default `back`), `skip_fallback_n >= 1` atau NULL, `skip_max_returns >= 1` (default 1),
+    `qr_type` (`static`/`dynamic`).
+  - `queue_displays`: `upcoming_count` 0-10 (default 5), `skipped_count` 0-10 (default 0), `token` UNIQUE.
+  - `user_avatars.data`: maksimal 153600 byte; `user_action_tokens.purpose`: `password_reset`, `email_verify`, `email_change` (yang terakhir belum dipakai kode).
+  - `notification_outbox.kind`: `joined`, `cancelled`, `removed`, `completed`, `queue-closed`; `UNIQUE (kind, ticket_id)`.
+  - `payments.plan_type`/`payment_orders.plan_type`: `monthly`, `yearly`, `one_time`; `payment_orders.status`: `pending`, `paid`, `expired`, `failed`; `payment_orders.amount > 0`.
+- Hapus berantai (`ON DELETE CASCADE`): `queue_settings`, `queue_displays`, `counters`, `tickets` (dari `queues`); `ticket_notes` (dari `tickets`);
+  `notification_outbox` (dari `tickets`, `queues`, `users`); `push_subscriptions`, `push_devices`, `user_avatars`, `user_action_tokens` (dari `users`).
+  `tickets.called_counter_id` memakai `ON DELETE SET NULL`. FK lain (`owners`, `queues.owner_id`, `tickets.user_id`, `payments`,
+  `payment_orders`, `queue_history`, `ticket_notes.created_by/updated_by`) tanpa aksi hapus (NO ACTION).
+- Index unik parsial penegak aturan bisnis (di `01c_tickets.sql`):
+  - `tickets_queue_id_user_id_active_key` pada `(queue_id, user_id)` hanya untuk `status IN ('waiting', 'currently_served')`: satu akun satu tiket aktif per antrian.
+  - `tickets_one_serving_per_counter` pada `(called_counter_id)` hanya untuk `status = 'currently_served'`: satu counter melayani satu nomor.
+  - `queue_settings_qr_current_code_key` (kode join unik, `WHERE qr_current_code IS NOT NULL`) dan `uq_outbox_kind_queue` (`(kind, queue_id) WHERE queue_id IS NOT NULL`).
+- Index non-unik ada di `02_Indexes.sql`: `idx_payments_owner_paid_at`, `idx_queues_owner_created_at`, `idx_tickets_queue_waiting_sort_key` (parsial `waiting`),
+  `idx_tickets_queue_completed` (parsial `completed`), `idx_tickets_user_created_at`, `idx_queue_history_owner_closed`, `idx_push_subscriptions_user`,
+  `idx_push_devices_user`, `idx_outbox_pending` (parsial, belum terkirim dan belum gagal), `user_action_tokens_user_idx`.
+- `queue_history` ada di skema tetapi tidak dipakai kode Go backend (hanya muncul di metrik); arsip riwayat belum ditulis oleh aplikasi.
+- Tidak ada trigger `updated_at`: kolom `updated_at` (`queue_settings`, `ticket_notes`, `user_avatars`, `payment_orders`, `push_devices`) harus diisi oleh aplikasi.
+
+## Trigger dan fungsi
+
+| Trigger | Tabel dan kejadian | Fungsi | Efek |
+|---|---|---|---|
+| `tickets_notify_trg` | `tickets`, `AFTER UPDATE OF status, called_at, recalled_at, skip_count` | `tickets_notify()` | `pg_notify('queue_events', ...)` dengan kind `requeued`, `skipped`, `called`, `recalled` |
+| `tickets_email_outbox_trg` | `tickets`, `AFTER INSERT OR UPDATE OF status` | `tickets_email_outbox()` | menulis `notification_outbox` (`joined`, `cancelled`, `removed`, `completed`), lalu `pg_notify('mail_outbox')`; hanya bila `users.email_notifications` |
+| `queues_email_outbox_trg` | `queues`, `AFTER UPDATE OF status` | `queues_email_outbox()` | untuk `active` menjadi `closed`, menulis `queue-closed` ke owner, lalu `pg_notify('mail_outbox')` |
+
+## Role database dan hak
+
+Dibuat oleh skrip `.sh` di `db/migrations/` (hanya saat volume kosong; `01h_role_grants.sql` hanya memberi hak `mail_rw` bila role sudah ada).
+
+| Role | Skrip | Hak |
+|---|---|---|
+| `qms` (pengguna utama) | bawaan image | pemilik skema; dipakai backend (`DATABASE_URL`) |
+| `notify_ro` | `03_notify_role.sh` | `SELECT` pada `tickets`, `queues`, `counters`, `push_subscriptions`, `push_devices`; `DELETE` pada `push_subscriptions`, `push_devices` |
+| `mail_rw` | `04_mail_role.sh` | `SELECT` `notification_outbox`; `UPDATE (sent_at, attempts, last_error, next_attempt_at, failed_at)`; `SELECT (id, email, username, email_notifications)` pada `users` |
+| `auth_rw` | `06_auth_role.sh` | kolom terbatas pada `users` (SELECT/INSERT/UPDATE); `SELECT, INSERT` dan `UPDATE (used_at)` pada `user_action_tokens`; tanpa DELETE |
+| `metrics_ro` | `07_metrics_role.sh` | hanya `pg_monitor` dan `CONNECT`; dilewati bila `METRICS_DB_PASSWORD` kosong |
+| `payment_rw` | `08_payment_role.sh` | `owners`: `SELECT`/`INSERT (user_id, subscription_expires_at)`, `UPDATE (subscription_expires_at)`; `payment_orders`: `SELECT, INSERT`, `UPDATE (status, pay_url, paid_at, updated_at)`; `payments`: `INSERT` dan sequence; dilewati bila `PAYMENT_DB_PASSWORD` kosong |
+
+Tidak ada skrip `05_*`; tabel `payment_webhook_events` dan `payment_session_credits` yang mungkin disebut dokumen lama tidak ada di skema.
+`db/scripts/check_payment_grants.sql` memeriksa hak `payment_rw`.
+
+## Keterbatasan dan ketidaksesuaian yang diketahui
+
+- `tickets_serving_has_counter` dipasang `NOT VALID` oleh `apply_schema.sql` pada database yang di-upgrade (baris lama tidak dipindai); pada database baru constraint ini valid.
+- Badan `tickets_notify()` di `01g_triggers.sql` memuat satu baris komentar ("Transisi sementara ...") yang tidak ada di `apply_schema.sql`;
+  logikanya sama, tetapi katalog database baru dan hasil upgrade berbeda satu baris komentar.
+- `db/scripts/reset_seed_dev.sql` tidak men-`TRUNCATE` `payment_orders`; baris pesanan dapat tertinggal setelah reset (padahal `users` dikosongkan; FK ke `users` akan membuat `TRUNCATE` gagal bila baris itu ada).
+- Kolom `queue_settings` yang tidak dipakai kode: lihat `db/migrations/README.md`.
 
 ## SQL asli
 

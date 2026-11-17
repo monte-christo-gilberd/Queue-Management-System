@@ -1,7 +1,7 @@
 /**
  * use-display-config: konfigurasi layar publik sebuah antrian untuk owner (aktifkan, atur jumlah, putar token, nonaktifkan).
  *
- * Dipakai oleh : src/app/(owner)/queues/[queueId]/index.tsx.
+ * Dipakai oleh : src/app/(user)/queues/[queueId]/index.tsx.
  * Bergantung   : lib/display (getDisplayConfig, saveDisplayConfig, rotateDisplay, disableDisplay, describeDisplayError).
  * Alur         : queueId -> getDisplayConfig saat muat awal. Setiap aksi -> lib/display -> config baru menggantikan state.
  * Catatan      : Satu aksi berjalan pada satu waktu lewat `busy`. Tidak ada cache lintas antrian.

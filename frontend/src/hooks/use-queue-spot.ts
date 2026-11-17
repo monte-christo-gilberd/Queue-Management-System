@@ -1,7 +1,7 @@
 /**
  * use-queue-spot: status satu antrian untuk kartu "nomor saya" di dashboard, diperbarui lewat SSE.
  *
- * Dipakai oleh : src/app/(owner)/dashboard.tsx (kartu nomor yang dipegang akun ini).
+ * Dipakai oleh : src/app/(user)/dashboard.tsx (kartu nomor yang dipegang akun ini).
  * Bergantung   : hooks/use-queue-events (SSE), lib/tickets (getQueueStatus), types/api (QueueStatus).
  * Alur         : queueId -> getQueueStatus -> status. Event SSE yang mengubah antrean memicu muat ulang (debounce 300 ms) dan callback onChanged.
  * Catatan      : Dibedakan dari use-queue-board (papan owner). Hook ini hanya membaca status, tidak mengubah apa pun.

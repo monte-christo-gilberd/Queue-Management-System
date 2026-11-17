@@ -1,7 +1,7 @@
 /**
  * HistoryDetail: detail satu antrian yang sudah ditutup, berisi daftar nomor dan ekspor CSV/Excel.
  *
- * Dipakai oleh : app/(owner)/history/[queueId].tsx
+ * Dipakai oleh : app/(user)/history/[queueId].tsx
  * Bergantung   : layout/ResponsiveScreenLayout, ui/AppButton, ui/Toast, hooks/use-is-wide, lib/history (ExportFormat), utils/history, utils/format
  * Peran        : owner
  * Catatan      : ekspor dan pengambilan data dilakukan oleh route; komponen hanya memicu callback dan menampilkan statusnya.
@@ -16,7 +16,7 @@ import { cn } from '@/utils/cn';
 import { formatDateTime, formatTicketNumber } from '@/utils/format';
 import { outcomeLabel, summarizeHistoryQueue, ticketTimeline } from '@/utils/history';
 import ResponsiveScreenLayout, {
-  type OwnerMenuItem,
+  type MenuItem,
   type ShellProps,
 } from '@/components/layout/ResponsiveScreenLayout';
 import { AppButton } from '@/components/ui/AppButton';
@@ -27,7 +27,7 @@ export type HistoryDetailProps = {
   /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
   /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
-  onMenuItemPress?: (item: OwnerMenuItem) => void;
+  onMenuItemPress?: (item: MenuItem) => void;
   /** Ringkasan antrian yang sudah ditutup; null selama dimuat atau bila tidak ditemukan. */
   queue?: HistoryQueue | null;
   /** Nomor-nomor pada antrian ini, satu kartu per nomor, dalam urutan array yang diterima. Kosong berarti belum ada atau tidak ada nomor. */

@@ -2,7 +2,7 @@
  * push-channel.ts: facade notifikasi giliran untuk WEB (Web Push). Versi Android ada di push-channel.native.ts;
  * Metro memilih file .native.ts di native, dan file ini di web.
  *
- * Dipakai oleh : components/PushToggle.tsx, utils/owner-menu.ts (releasePushForLogout).
+ * Dipakai oleh : components/PushToggle.tsx, utils/menu.ts (releasePushForLogout).
  * Bergantung   : lib/push.ts (diteruskan apa adanya; perilaku Web Push tidak berubah).
  * Catatan      : kedua file harus mengekspor nama yang sama.
  */

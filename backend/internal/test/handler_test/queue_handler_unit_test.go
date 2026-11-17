@@ -19,7 +19,7 @@ const specOwner int64 = 7
 
 func specQueueEngine(svc *specQueueSvc, userID int64) *gin.Engine {
 	e := specEngine(userID)
-	h := handler.NewQueueHandler(svc)
+	h := handler.NewQueueHandlerWithQR(svc, nil)
 	e.POST("/queues", h.Create)
 	e.GET("/queues", h.List)
 	e.GET("/queues/:queue_id", h.Get)

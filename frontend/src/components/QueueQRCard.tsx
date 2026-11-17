@@ -1,7 +1,7 @@
 /**
  * QueueQRCard: kartu QR join untuk owner, dengan mode statis atau dinamis (token berhitung mundur).
  *
- * Dipakai oleh : app/(owner)/queues/[queueId]/index.tsx
+ * Dipakai oleh : app/(user)/queues/[queueId]/index.tsx
  * Bergantung   : ui/Toast, ui/AppButton, ui/Icon, ui/ModalCard, ui/QrCode, hooks/use-theme-mode, lib/qr-matrix (renderQrPngDataUrl), lib/web-origin (copyToClipboard), types/api (QueueQR)
  * Peran        : owner
  * Catatan      : QR digambar dari `join_url`; token dinamis diganti otomatis setelah kedaluwarsa, dan token statis berlaku sampai kode diganti.

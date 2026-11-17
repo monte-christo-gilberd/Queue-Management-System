@@ -1,7 +1,7 @@
 /**
  * History: daftar antrian yang sudah ditutup (riwayat) milik owner, dengan paginasi.
  *
- * Dipakai oleh : app/(owner)/history/index.tsx
+ * Dipakai oleh : app/(user)/history/index.tsx
  * Bergantung   : layout/ResponsiveScreenLayout, ui/AppButton, ui/EmptyState, ui/Icon, ui/Toast, hooks/use-theme-mode, hooks/use-is-wide, utils/history, utils/format
  * Peran        : owner
  * Catatan      : hanya menampilkan antrian yang sudah ditutup; antrian aktif tidak pernah masuk riwayat.
@@ -16,7 +16,7 @@ import { cn } from '@/utils/cn';
 import { formatDateTime } from '@/utils/format';
 import { summarizeHistoryQueue } from '@/utils/history';
 import ResponsiveScreenLayout, {
-  type OwnerMenuItem,
+  type MenuItem,
   type ShellProps,
 } from '@/components/layout/ResponsiveScreenLayout';
 import { AppButton } from '@/components/ui/AppButton';
@@ -29,7 +29,7 @@ export type HistoryProps = {
   /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
   /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
-  onMenuItemPress?: (item: OwnerMenuItem) => void;
+  onMenuItemPress?: (item: MenuItem) => void;
   /** Antrian yang sudah ditutup, terbaru dulu. Antrian aktif tidak pernah masuk riwayat. */
   items: HistoryQueue[];
   /** true saat data pertama sedang dimuat; teks "Memuat riwayat..." tampil. Default false. */

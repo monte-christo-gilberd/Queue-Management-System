@@ -454,18 +454,6 @@ func rankStatus(status string) int {
 	}
 }
 
-// CurrentServedNumber: ticket_number tiket yang sedang dilayani di queue ini.
-func (m *memTicketRepo) CurrentServedNumber(_ context.Context, queueID int64) (int, bool, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, t := range m.tickets {
-		if t.QueueID == queueID && t.Status == "currently_served" {
-			return t.TicketNumber, true, nil
-		}
-	}
-	return 0, false, nil
-}
-
 func (m *memTicketRepo) RecentCompletedNumbers(_ context.Context, queueID int64, n int) ([]int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -658,25 +646,6 @@ func (m *memQueueRepo) CloseQueue(_ context.Context, queueID int64) error {
 	q.ClosedAt = sql.NullTime{Time: time.Now(), Valid: true}
 	m.queues[queueID] = q
 	return nil
-}
-
-func (m *memQueueRepo) CreateDefaultCounter(
-	_ context.Context,
-	queueID int64,
-	name string,
-) (model.Counter, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	counter := model.Counter{ID: m.nextID + 1, QueueID: queueID, Name: name, IsDefault: false}
-	m.counters = append(m.counters, counter)
-	return counter, nil
-}
-
-func (m *memQueueRepo) GetCounterByQueue(
-	_ context.Context,
-	queueID int64,
-) (model.Counter, error) {
-	return model.Counter{}, apperror.ErrNotFound
 }
 
 func (m *memQueueRepo) GetQueueSettings(_ context.Context, queueID int64) (model.QueueSettings, error) {

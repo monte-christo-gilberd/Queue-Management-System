@@ -20,7 +20,7 @@ grep -rn "\[GANTI" deploy/nginx
 
 | Berkas | Fungsi |
 |---|---|
-| `nginx.conf` | Konfigurasi **dev** (`docker-compose.yml`): http{}, zona rate limit, format log, `server_name localhost`. Jadi `/etc/nginx/nginx.conf` pada image bawaan. |
+| `nginx.conf` | Konfigurasi **dev** (`docker-compose.yml`): http{}, zona rate limit (`limit_req_status 429`), format log, listener `stub_status` `:8081` untuk observability, `server_name localhost`. Jadi `/etc/nginx/nginx.conf` pada image bawaan. |
 | `nginx.prod.conf` | Konfigurasi **prod/demo** di belakang Cloudflare Tunnel: sama dengan dev, ditambah `set_real_ip_from` dan `real_ip_header CF-Connecting-IP`, serta `server_tokens off`. |
 | `server.conf` | Isi `server{}` bersama (routing, rate limit per rute, header). Di-include oleh kedua konfigurasi di atas. |
 | `frontend-upgrade.dev.conf` | Header WebSocket untuk HMR Metro. **Hanya dev.** |
@@ -47,8 +47,10 @@ Nama host di `server.conf` adalah nama service di docker-compose:
 | `$qms_backend` | `backend:8080` | API, SSE, health |
 | `$qms_auth` | `auth-service:8094` | Login, registrasi, reset password, verifikasi email |
 | `$qms_frontend` | `frontend:80` | Aplikasi web |
+| `$qms_payment` | `payment-service:8095` | Hanya webhook BorderPay. Service ini aktif hanya dengan profil compose `payments` (selalu aktif di `make prod-up`) |
 
-`notify-service`, `mail-service`, dan `mailpit` tidak punya rute publik. `/internal/` selalu dibalas 404, dan backend memanggilnya langsung lewat
+`notify-service`, `mail-service`, dan `mailpit` tidak punya rute publik. `payment-service` hanya punya satu rute publik (webhook); checkout-nya
+(`/internal/...`) hanya dipanggil backend. `/internal/` selalu dibalas 404, dan backend memanggil service internal langsung lewat
 jaringan Docker. Upstream memakai variabel dan `resolver 127.0.0.11`, sehingga nginx tetap bisa start walaupun sebuah
 service belum jalan, dan tidak 502 terus setelah service direstart.
 
@@ -64,17 +66,20 @@ Urutan `location` penting: regex diperiksa lebih dulu daripada prefix, dan `loca
 | `/api/v1/users/verify-email`, `/me/verify-email/resend` | auth-service | `auth_zone` 10 r/s, burst 20 |
 | `/api/v1/users/forgot-password`, `/reset-password` | auth-service | `reset_zone` 1 r/s, burst 5 (batas per akun ada di auth-service) |
 | `/reset-password` (halaman) | frontend | Token disamarkan di log, `Referrer-Policy no-referrer`, `no-store` |
+| `/api/v1/webhooks/borderpay` | payment-service | Dicocokkan persis, tanpa batas laju. Diverifikasi dengan `x-borderpay-token` di payment-service. Bila payment-service mati: 502 bawaan nginx (tidak ada fallback JSON) |
 | `/api/v1/display/:token/event` | backend | SSE tanpa buffer, `display_zone` 20 r/s, burst 40, token disamarkan di log |
 | `/api/v1/display/:token` | backend | `display_zone`, token disamarkan di log |
 | `/display/:token` (halaman) | frontend | Sama seperti `/reset-password` |
 | `/api/v1/join`, `/api/v1/join/preview` | backend | `join_zone` 10 r/s, burst 20 |
 | `/api/v1/users/me/avatar` | backend | Body sampai 6 MB (hanya rute ini), `avatar_zone` 5 r/s, burst 10 |
 | `/health` | backend | Log akses dimatikan |
-| `/api/` | backend | Timeout 60s. Termasuk `POST /api/v1/owners/subscription/extend` (langganan MOCK, tambah 30 hari tanpa pembayaran), yang tidak punya aturan khusus |
+| `/api/` | backend | Timeout 60s. Termasuk `POST /api/v1/owners/subscription/checkout` (backend memanggil payment-service; bila mati, backend sendiri membalas 503 `PAYMENT_UNAVAILABLE`), yang tidak punya aturan khusus |
 | `/internal/` | - | Selalu 404 |
 | `/` | frontend | Aplikasi web (fallback) |
 
-`Retry-After: 30`. Jalur antrian, login, dan SSE tidak terpengaruh.
+Fallback `@auth_unavailable` (502/503/504 dari auth-service) membalas JSON 503 `AUTH_UNAVAILABLE` dengan `Retry-After: 30`. Hanya kode ini yang
+dibuat nginx; `PAYMENT_UNAVAILABLE` dibuat backend. Melewati batas laju dibalas 429. Jalur antrian dan SSE tidak terpengaruh, dan user yang sudah
+login tetap jalan karena backend memverifikasi JWT secara lokal.
 
 Batas ukuran body default `client_max_body_size 1m` berlaku untuk semua rute, kecuali avatar.
 
@@ -92,10 +97,16 @@ mencatat `$uri_masked` (token diganti `***`) dan tidak pernah mencatat query str
 butuh format log khusus.
 
 Request ID: nginx membuat `$request_id` untuk setiap request (nilai kiriman klien selalu ditimpa), meneruskannya ke
-upstream sebagai `X-Request-Id`, dan mengembalikannya di header respons. Backend, dan auth-service (lewat
-backend) mencatat ID yang sama sebagai `request_id`. Location yang punya `proxy_set_header` atau `add_header` sendiri
+upstream sebagai `X-Request-Id`, dan mengembalikannya di header respons. Backend dan auth-service mencatat ID yang sama sebagai `request_id`. Location yang punya `proxy_set_header` atau `add_header` sendiri
 (SSE, halaman layar, reset password, `@auth_unavailable`) mengulang header ini karena direktif di location
 menggantikan yang di `server{}`.
+
+## Listener `stub_status` (observability)
+
+Selain `server{}` utama (port 80), `nginx.conf` dan `nginx.prod.conf` punya `server{}` kedua di port `8081` yang hanya
+menyajikan `/stub_status` untuk `nginx-exporter` (overlay `docker-compose.observability.yml`). Hanya jaringan privat
+(`10/8`, `172.16/12`, `192.168/16`) yang diizinkan, sisanya `deny all`, dan path lain 404. Port ini tidak dipetakan ke host dan tidak
+ada di `server.conf`, sehingga tidak ada rute publik ke `/metrics` atau `stub_status`. `scripts/check-service-isolation.sh` memeriksanya.
 
 ## Saat pindah domain atau topologi
 
@@ -115,7 +126,8 @@ cp .env.example .env        # isi secret dan QMS_PUBLIC_ORIGIN
 docker compose up --build   # nginx terbuka di ${QMS_HTTP_PORT:-8080}
 ```
 
-Hanya ada satu `docker-compose.yml` (mode development, hot reload). Hanya nginx yang membuka port ke host (selain Mailpit,
+`docker-compose.yml` adalah mode development (hot reload); stack prod memakai `docker-compose.prod.yml` (`make prod-up`), dan
+`docker-compose.observability.yml` adalah overlay opsional. Hanya nginx yang membuka port ke host (selain Mailpit,
 yang hanya diikat ke `127.0.0.1`); `db`, `backend`, `auth-service`, `notify-service`, `mail-service` dan
 `frontend` hanya terjangkau lewat jaringan Docker. Psql:
 `docker compose exec db psql -U qms -d qms_db`.
@@ -167,5 +179,6 @@ make mailpit  # tampilkan link Mailpit (dev) tanpa menjalankan apa pun
 - `/` menampilkan halaman login, dan `/dashboard` tidak 404.
 - `/api/v1/queues` tanpa token membalas 401 (502 berarti backend mati).
 - `/internal/v1/join-token` membalas 404.
+- `POST /api/v1/webhooks/borderpay` tanpa payment-service membalas 502 (profil `payments` belum jalan).
 - Banyak request cepat ke `/api/v1/users/login` akhirnya dibalas 429.
 - Owner menekan Next dan layar customer berubah tanpa refresh (SSE tidak tertahan buffer).

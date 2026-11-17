@@ -1,7 +1,7 @@
 # Migrasi database
 
 Skema PostgreSQL Queue Management System, dipecah per domain. Folder ini hanya untuk **database kosong**.
-Database yang sudah berjalan memakai [`../scripts/apply_schema.sql`](../scripts/apply_schema.sql): berkas itu idempoten dan memuat semua perubahan skema belakangan ini (kolom dan constraint tabel, `notification_outbox` dengan `queue_id`, `ticket_id` nullable, `uq_outbox_kind_queue` dan `kind` `queue-closed`, serta fungsi dan trigger `tickets_notify`, `tickets_email_outbox`, `queues_email_outbox`). Jalankan dengan `psql -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql` (perintah lengkap dev dan prod ada di kepala berkasnya), lalu restart `backend` dan `notify-service`. Backup dulu di prod.
+Database yang sudah berjalan memakai [`../scripts/apply_schema.sql`](../scripts/apply_schema.sql): berkas itu idempoten dan memuat semua perubahan skema belakangan ini (kolom dan constraint tabel, `notification_outbox` dengan `queue_id`, `ticket_id` nullable, `uq_outbox_kind_queue` dan `kind` `queue-closed`, serta fungsi dan trigger `tickets_notify`, `tickets_email_outbox`, `queues_email_outbox`, `push_devices`, `payment_orders` dan FK-nya ke `users`). Jalankan dengan `psql -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql` (perintah lengkap dev dan prod ada di kepala berkasnya), lalu restart `backend` dan `notify-service`. Backup dulu di prod.
 
 ## Urutan dan peta file
 
@@ -17,7 +17,7 @@ Docker menjalankan file di `/docker-entrypoint-initdb.d` menurut urutan nama, ha
 | `01e_notifications.sql` | `push_subscriptions`, `notification_outbox` (`ticket_id` boleh NULL, kolom `queue_id`, index unik parsial `uq_outbox_kind_queue`, `kind` termasuk `queue-closed`) | 01a, 01b, 01c |
 | `01f_profile_security.sql` | `user_avatars`, `user_action_tokens` | 01a |
 | `01g_triggers.sql` | fungsi dan trigger `tickets_notify`, `tickets_email_outbox`, `queues_email_outbox` (email ke owner saat antrian berubah dari `active` ke `closed`, mengikuti `users.email_notifications`) | 01a, 01b, 01c, 01e |
-| `01i_payment_orders.sql` | `payment_orders` (pesanan checkout BorderPay; `status` pending, paid, expired, failed) | 01a |
+| `01i_payment_orders.sql` | `payment_orders` (pesanan checkout BorderPay; `status` pending, paid, expired, failed; `owner_id` mereferensi `users(id)`) | 01a |
 | `01j_push_devices.sql` | `push_devices` (token FCM perangkat Android; satu token satu baris, dipindah ke akun yang terakhir login) | 01a |
 | `01h_role_grants.sql` | blok `GRANT` bersyarat untuk role `mail_rw` | 01a, 01e |
 | `02_Indexes.sql` | semua index non-unik, dikelompokkan per tabel | seluruh `01*` |
@@ -25,6 +25,7 @@ Docker menjalankan file di `/docker-entrypoint-initdb.d` menurut urutan nama, ha
 | `04_mail_role.sh` | role `mail_rw` (mail-service) | seluruh `01*` |
 | `06_auth_role.sh` | role `auth_rw` (auth-service): `users` dan `user_action_tokens` saja | seluruh `01*` |
 | `07_metrics_role.sh` | role `metrics_ro` (postgres_exporter): hanya `pg_monitor`, tanpa akses ke tabel data. Dilewati bila `METRICS_DB_PASSWORD` kosong; `make obs-up` menjalankannya idempoten di database yang sudah ada | - |
+| `08_payment_role.sh` | role `payment_rw` (payment-service): `owners` (SELECT/INSERT/UPDATE kolom langganan), `payment_orders` (SELECT, INSERT, UPDATE kolom status/pay_url/paid_at/updated_at), `payments` (INSERT). Juga memperbaiki FK `payment_orders.owner_id` ke `users(id)` di database lama. Dilewati bila `PAYMENT_DB_PASSWORD` kosong. Tidak ada `05_*`; hak diperiksa `../scripts/check_payment_grants.sql` | seluruh `01*` |
 
 Menjalankan manual di database kosong (tanpa Docker):
 
@@ -46,7 +47,7 @@ for f in db/migrations/01*.sql db/migrations/02_Indexes.sql; do psql -d qms_db -
   satu karakter di badan fungsi berarti mengubah skema dan perlu diterapkan juga ke `apply_schema.sql`.
 - Tes integrasi backend memuat semua `01*.sql` lalu `02_Indexes.sql` ke schema sementara (urut menurut nama). Jangan
   memakai nama berawalan schema (`public.xxx`) atau perintah tingkat database (`CREATE DATABASE`, `\connect`).
-- Skrip role (`03..07`) memberi hak sendiri. Tabel berisi data sensitif (`user_avatars`, `user_action_tokens`,
+- Skrip role (`03..08`) memberi hak sendiri. Tabel berisi data sensitif (`user_avatars`, `user_action_tokens`,
   `queue_displays`) sengaja tidak diberi hak ke role mana pun selain pemilik, kecuali `user_action_tokens` untuk `auth_rw`.
 
 ## Menambah atau mengubah skema
@@ -57,6 +58,15 @@ for f in db/migrations/01*.sql db/migrations/02_Indexes.sql; do psql -d qms_db -
 3. Bila tabel atau kolom baru dibaca service lain, perbarui hak di skrip role yang bersangkutan.
 4. Buktikan bahwa database baru dan database yang sudah di-upgrade punya katalog yang sama (bandingkan `pg_dump
    --schema-only` keduanya).
+
+## Keterbatasan
+
+- `apply_schema.sql` memasang `tickets_serving_has_counter` sebagai `NOT VALID` (database baru: valid). Jalankan `VALIDATE CONSTRAINT` setelah data dipastikan bersih.
+- Badan `tickets_notify` di `01g_triggers.sql` punya satu baris komentar ("Transisi sementara ...") yang tidak ada di `apply_schema.sql`; logika sama.
+- `01h_role_grants.sql` menyebut skrip role `03..05`, dan komentar `payments` di `01a_accounts.sql` menyebut endpoint extend; keduanya usang (role payment = `08_payment_role.sh`, `payments` ditulis payment-service).
+- `queue_history` ada tetapi tidak dipakai kode Go. Tidak ada trigger `updated_at`.
+- `../scripts/reset_seed_dev.sql` tidak men-`TRUNCATE` `payment_orders`.
+- Backend terhubung sebagai pengguna utama `qms`, bukan role terbatas; role terbatas hanya untuk notify, mail, auth, metrics, dan payment.
 
 ## Kolom yang ada tetapi tidak dipakai kode
 

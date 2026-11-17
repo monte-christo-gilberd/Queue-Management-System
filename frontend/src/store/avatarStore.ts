@@ -1,8 +1,8 @@
 /**
  * avatarStore.ts: penanda cache foto profil user yang sedang login.
  *
- * Dipakai oleh : components/ui/UserAvatar.tsx (membaca), app/(owner)/_layout.tsx (OwnerProvider, mengisi),
- *                app/(owner)/profile/index.tsx (mengisi setelah unggah atau hapus foto).
+ * Dipakai oleh : components/ui/UserAvatar.tsx (membaca), app/(user)/_layout.tsx (UserSessionProvider, mengisi),
+ *                app/(user)/profile/index.tsx (mengisi setelah unggah atau hapus foto).
  * Bergantung   : zustand.
  * Alur         : diisi dari avatar_updated_at (GET /api/v1/users/me); dikosongkan oleh authStore.logout().
  */

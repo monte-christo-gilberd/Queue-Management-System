@@ -43,7 +43,7 @@ export default function LinkGoogleRoute() {
   // Tanpa link token yang menunggu tidak ada yang bisa dikonfirmasi. Sudah login (token terisi) ditangani AuthGate.
   useEffect(() => {
     // replace agar halaman tanpa link token tidak tersisa di riwayat.
-    if (!pending && !token) router.replace('/');
+    if (!pending && !token) router.replace('/login');
   }, [pending, token]);
 
   /** Kirim password untuk menautkan akun Google; berhasil pindah ke tujuan, gagal tampilkan pesan. */
@@ -83,7 +83,7 @@ export default function LinkGoogleRoute() {
     // Buang link token agar tidak tertinggal di memori.
     clearPending();
     // replace agar layar penautan tidak bisa dibuka lagi lewat tombol kembali.
-    router.replace('/');
+    router.replace('/login');
   }
 
   // Guest-only: pengguna yang sudah login tidak perlu menaut akun.

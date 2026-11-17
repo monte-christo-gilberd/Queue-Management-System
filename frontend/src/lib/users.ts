@@ -1,8 +1,8 @@
 /**
  * users.ts: panggilan API profil user yang sedang login (me), preferensi notifikasi, dan foto profil.
  *
- * Dipakai oleh : hooks/use-me.ts, hooks/use-avatar-source.ts, app/(owner)/profile/index.tsx,
- *                app/(owner)/subscription.tsx
+ * Dipakai oleh : hooks/use-me.ts, hooks/use-avatar-source.ts, app/(user)/profile/index.tsx,
+ *                app/(user)/subscription.tsx
  * Bergantung   : lib/api.ts (apiFetch, apiUpload, apiDownload, API_BASE_URL)
  * Catatan      : Semua rute /users/me/* butuh login (dijaga middleware auth backend). Foto profil dibaca lewat
  *                apiDownload karena butuh header Authorization.

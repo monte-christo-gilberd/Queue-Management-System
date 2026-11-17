@@ -43,7 +43,7 @@ Beberapa endpoint (join, next) membalas objek tiket langsung di dalam `data`, ta
 | 409 | `CONFLICT` | Email atau username sudah terdaftar (register) |
 | 409 | `QUEUE_CLOSED` | Antrian sudah ditutup (join) |
 | 409 | `QUEUE_EMPTY` | Tidak ada tiket yang menunggu (next) |
-| 409 | `ALREADY_JOINED` | Join ulang mengembalikan tiket yang sudah ada dengan 200; kode ini hanya muncul di `insert` (akun sudah punya tiket aktif) |
+| 409 | `ALREADY_JOINED` | Join ulang (tiket aktif) mengembalikan tiket yang sudah ada dengan 200, jadi `POST /join` tidak pernah menjawab kode ini walau handler memetakannya; kode ini hanya muncul di `insert` (akun sudah punya tiket aktif) |
 | 409 | `AMBIGUOUS_ACCOUNT` | Username pada `insert` dipakai lebih dari satu akun |
 | 409 | `NOTHING_TO_SKIP` / `NOTHING_TO_RECALL` | Counter tidak sedang melayani nomor |
 | 409 | `RECALL_TOO_SOON` / `ALREADY_RECALLED` | Recall belum boleh (kurang dari 3 detik) atau sudah dipakai |
@@ -154,7 +154,7 @@ Request: `{ "token": "<dari tautan>", "password": "passwordbaru1" }`
 Error: 400 `WEAK_PASSWORD` (password diperiksa **sebelum** token disentuh, jadi token tidak habis), 400 `INVALID_TOKEN` (tidak ada, kedaluwarsa, atau sudah dipakai; satu pesan untuk ketiganya), 400 `BAD_REQUEST`, 429 dari nginx.
 
 ### POST /api/v1/users/verify-email
-Tanpa token (kredensialnya token di tautan email). Rute hanya dipasang bila verifikasi email menyala: `EMAIL_VERIFICATION_REQUIRED` (bila kosong, ikut ada-tidaknya `MAIL_SERVICE_URL`; `true` tanpa mail-service membuat backend gagal start).
+Tanpa token (kredensialnya token di tautan email). Dilayani `auth-service`; rute ini (bersama `forgot-password`, `reset-password`, dan `me/verify-email/resend`) hanya dipasang bila `MAIL_SERVICE_URL` terisi. Di auth-service `EMAIL_VERIFICATION_REQUIRED` kosong = ikut ada-tidaknya `MAIL_SERVICE_URL`, dan `true` tanpa mail-service membuat auth-service gagal start. Di backend, nilai kosong berarti `true` (guard menyala); nilainya harus sama di kedua service.
 
 Request: `{ "token": "<dari tautan>" }`
 
@@ -512,9 +512,9 @@ Customer bergabung lewat kode join. Body `{ "t": "K7M2QX" }`.
 
 - Kode join dicari ulang di server (jangan percaya `queue_id` dari klien).
 - Antrian belum punya tiket untuk user ini: tiket baru dibuat dengan `status` = `waiting`.
-- Sudah punya tiket: **tiket yang sudah ada dikembalikan** (bukan error, bukan tiket kedua). Ini juga berlaku setelah tiket itu `completed`.
+- Sudah punya tiket **aktif** (`waiting` atau `currently_served`): **tiket yang sudah ada dikembalikan** dengan 200 (bukan error, bukan tiket kedua). Pengecekan ini mendahului pengecekan verifikasi email, jadi scan ulang tidak berubah jadi galat.
 - Antrian ditutup: 409 `QUEUE_CLOSED`.
-- Tiket terakhir `completed`, `cancelled`, `skipped`, atau `deleted`: join membuat tiket baru dengan nomor baru (rejoin). Tiket `completed` lama tetap tidak berubah.
+- Tidak ada tiket aktif (tiket lama `completed`, `cancelled`, `skipped`, atau `deleted`): join membuat tiket baru dengan nomor baru (rejoin). Tiket lama tetap tidak berubah.
 
 200: objek tiket langsung di dalam `data`.
 ```json
@@ -607,7 +607,7 @@ nginx: zona laju `display_zone` (20 permintaan/detik per IP, burst 40) dan log a
 Dilayani backend, pembayaran lewat payment-service dan BorderPay.
 
 ### POST /api/v1/owners/subscription/checkout
-Butuh token. Body `{ "method": "qris" }` (hanya QRIS yang didukung). Membuat pesanan pembayaran satu bulan lewat payment-service dan BorderPay. Harga ditentukan server (`SUBSCRIPTION_PRICE_IDR`, bawaan 15000). Langganan **tidak** bertambah di sini: `owners.subscription_expires_at` diperpanjang 30 hari oleh webhook BorderPay `payment.paid` setelah pembayaran lunas. Calon owner otomatis menjadi owner pada pembayaran pertama yang lunas.
+Butuh token. Body `{ "method": "qris", "return_url": "https://..." }` (hanya QRIS yang didukung; `return_url` opsional, halaman tujuan setelah membayar, harus https). Membuat pesanan pembayaran satu bulan lewat payment-service dan BorderPay. Harga ditentukan server dan saat ini tetap 15000 (`SubscriptionPriceIDR` di `backend/internal/config/config.go` tidak dibaca dari environment; variabel `SUBSCRIPTION_PRICE_IDR` tidak berpengaruh). Langganan **tidak** bertambah di sini: `owners.subscription_expires_at` diperpanjang 30 hari oleh webhook BorderPay `payment.paid` setelah pembayaran lunas. Calon owner otomatis menjadi owner pada pembayaran pertama yang lunas.
 
 Respons 200:
 ```json
@@ -620,11 +620,12 @@ Error: 401 `UNAUTHORIZED` (tanpa token atau token tidak valid), 500 `INTERNAL_ER
 
 ### POST /api/v1/webhooks/borderpay
 
-Publik, tanpa JWT. Dipanggil BorderPay saat transaksi QRIS lunas. Header `x-borderpay-token` harus sama dengan `BORDERPAY_WEBHOOK_TOKEN`. Event yang diproses: `payment.paid`. Pesanan dicocokkan dengan `reference_id`. Idempoten: pengiriman ulang untuk pesanan yang sama tidak menerapkan pembayaran dua kali.
+Publik, tanpa JWT. Dipanggil BorderPay saat transaksi QRIS lunas. Header `x-borderpay-token` harus sama dengan `BORDERPAY_WEBHOOK_TOKEN` (token kosong = semua request ditolak). Hanya payload dengan `data.status` = `paid` yang mengubah data; status lain dijawab 200 tanpa efek. Pesanan dicocokkan dengan `reference_id`. Idempoten: pengiriman ulang untuk pesanan yang sama tidak menerapkan pembayaran dua kali.
 
 | Status | Arti |
 |---|---|
-| 200 | Diterapkan, sudah pernah diterapkan, atau `reference_id` tidak dikenal (diabaikan) |
+| 200 | Diterapkan (`{"status":"ok"}`), sudah pernah diterapkan, status bukan `paid`, atau `reference_id` tidak dikenal (diabaikan) |
+| 400 | Body terlalu besar atau bukan JSON, atau `reference_id` kosong |
 | 401 | `x-borderpay-token` tidak cocok dengan `BORDERPAY_WEBHOOK_TOKEN` |
 | 409 | Nominal webhook tidak sama dengan pesanan; pembayaran tidak diterapkan |
 | 500 | Penyimpanan ke database gagal; BorderPay mengirim ulang |

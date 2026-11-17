@@ -1,7 +1,7 @@
 /**
  * safe-next.ts: membersihkan parameter `next` agar tidak bisa dipakai untuk open redirect.
  *
- * Dipakai oleh : lib/auth-gate.ts, app/index.tsx, app/register.tsx.
+ * Dipakai oleh : lib/auth-gate.ts, app/index.tsx, app/login.tsx, app/register.tsx.
  * Alur         : `?next=` dari URL login/register -> sanitizeNext -> tujuan redirect setelah login.
  * Catatan      : DEFAULT_AFTER_LOGIN bernilai sama dengan HOME_PATH di lib/auth-gate.ts; ubah keduanya bersama.
  */
@@ -19,7 +19,7 @@ export const DEFAULT_AFTER_LOGIN = '/dashboard';
 
 /**
  * sanitizeNext mengembalikan `raw` bila berupa path internal yang aman, selain itu `fallback`.
- * Contoh: `/antrian?x=1` dikembalikan apa adanya; `//evil.com`, `https://evil.com`, dan `/` menghasilkan fallback.
+ * Contoh: `/antrian?x=1` dikembalikan apa adanya; `//evil.com`, `https://evil.com`, `/`, dan `/login` menghasilkan fallback.
  */
 export function sanitizeNext(raw: unknown, fallback: string = DEFAULT_AFTER_LOGIN): string {
   // fallback '' = "tidak ada next" (dipakai halaman login/register untuk meneruskan parameter)
@@ -28,7 +28,8 @@ export function sanitizeNext(raw: unknown, fallback: string = DEFAULT_AFTER_LOGI
   if (raw.startsWith('//')) return fallback;
   if (raw.includes('\\')) return fallback;
   if (/[\u0000-\u001f]/.test(raw)) return fallback;
-  // path yang kembali ke halaman login sendiri tidak berguna
+  // path yang kembali ke pintu masuk atau halaman login sendiri tidak berguna
   if (raw === '/' || raw.startsWith('/?')) return fallback;
+  if (raw === '/login' || raw.startsWith('/login?') || raw.startsWith('/login/')) return fallback;
   return raw;
 }

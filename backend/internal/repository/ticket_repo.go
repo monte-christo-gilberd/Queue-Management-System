@@ -740,38 +740,6 @@ func (r *TicketRepository) GetCounter(
 	return counter, nil
 }
 
-// CurrentServedNumber: ticket_number tiket yang sedang dilayani; ok=false bila belum ada.
-func (r *TicketRepository) CurrentServedNumber(
-	ctx context.Context,
-	queueID int64,
-) (number int, ok bool, err error) {
-
-	const query = `
-		SELECT ticket_number
-		FROM tickets
-		WHERE queue_id = $1 AND status = 'currently_served'
-		LIMIT 1
-	`
-
-	// Jalankan query nomor tiket yang sedang dilayani, hasilnya ke number.
-	err = r.db.GetContext(
-		ctx,
-		&number,
-		query,
-		queueID,
-	)
-	// belum ada nomor yang dilayani: kembalikan 0 dengan ok=false tanpa error.
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, false, nil
-	}
-	// error database lain: kembalikan error asli.
-	if err != nil {
-		return 0, false, err
-	}
-
-	return number, true, nil
-}
-
 // CountWaitingBefore: jumlah tiket waiting di queue ini dengan sort_key lebih kecil.
 func (r *TicketRepository) CountWaitingBefore(
 	ctx context.Context,

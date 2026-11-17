@@ -509,46 +509,6 @@ func (r *QueueRepository) UpdateQRCurrentCode(
 	return nil
 }
 
-// CreateDefaultCounter membuat counter baru (bukan default) dengan nama name untuk antrian queueID.
-func (r *QueueRepository) CreateDefaultCounter(
-	ctx context.Context,
-	queueID int64,
-	name string,
-) (model.Counter, error) {
-	var counter model.Counter
-	const counterQuery = `
-		INSERT INTO counters (queue_id, name, created_at, is_default)
-		VALUES ($1, $2, now(), FALSE)
-		RETURNING id, queue_id, name, created_at, is_default
-	`
-	// Jalankan INSERT counter baru dan ambil baris yang dibuat (RETURNING) ke counter; error dikembalikan bila gagal.
-	if err := r.db.GetContext(ctx, &counter, counterQuery, queueID, name); err != nil {
-		return model.Counter{}, err
-	}
-	return counter, nil
-}
-
-// GetCounterByQueue mengambil satu counter untuk antrian queueID.
-// Counter default diutamakan, lalu yang paling lama dibuat.
-func (r *QueueRepository) GetCounterByQueue(
-	ctx context.Context,
-	queueID int64,
-) (model.Counter, error) {
-	var counter model.Counter
-	const counterQuery = `
-		SELECT id, queue_id, name, created_at, is_default
-		FROM counters
-		WHERE queue_id = $1
-		ORDER BY is_default DESC, created_at ASC
-		LIMIT 1
-	`
-	// Ambil satu counter teratas untuk antrian queueID; error dikembalikan bila gagal.
-	if err := r.db.GetContext(ctx, &counter, counterQuery, queueID); err != nil {
-		return model.Counter{}, err
-	}
-	return counter, nil
-}
-
 // GetQueueSettingsByJoinCode mencari queue_settings dari kode join aktif. Mengembalikan ErrNotFound bila tidak ada.
 func (r *QueueRepository) GetQueueSettingsByJoinCode(
 	ctx context.Context,

@@ -1,7 +1,7 @@
 /**
  * email-verification.ts: panggilan API dan pesan galat untuk verifikasi email.
  *
- * Dipakai oleh : app/verify-email.tsx, app/(owner)/profile/index.tsx
+ * Dipakai oleh : app/verify-email.tsx, app/(user)/profile/index.tsx
  * Bergantung   : lib/api.ts (ApiError, apiFetch)
  * Catatan      : verifyEmail bersifat publik (token di tautan email). resendVerification butuh login.
  *                Galat 429 bisa datang dari backend (TOO_MANY_REQUESTS) atau nginx (tanpa body JSON).

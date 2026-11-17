@@ -1,7 +1,7 @@
 /**
  * DisplaySettingsCard: kartu pengaturan layar publik antrian di halaman detail owner.
  *
- * Dipakai oleh : app/(owner)/queues/[queueId]/index.tsx
+ * Dipakai oleh : app/(user)/queues/[queueId]/index.tsx
  * Bergantung   : ui/AppButton, ui/ConfirmModal, ui/Toast, lib/display (DISPLAY_MAX_COUNT, DisplayConfig), lib/display-url, lib/web-origin (copyToClipboard)
  * Peran        : owner
  * Catatan      : tautan layar bisa dibuka siapa pun yang memegangnya; mengganti atau mematikan layar langsung memutus layar yang terpasang.

@@ -1,7 +1,7 @@
 /**
  * queue-errors.ts: pesan untuk galat aksi antrian, counter, dan sisip customer.
  *
- * Dipakai oleh : app/(owner)/dashboard.tsx, app/(owner)/queues/[queueId]/index.tsx, hooks/use-queue-board.ts,
+ * Dipakai oleh : app/(user)/dashboard.tsx, app/(user)/queues/[queueId]/index.tsx, hooks/use-queue-board.ts,
  *                hooks/use-ticket-queue.ts, hooks/use-counter-session.ts, hooks/use-queues.ts,
  *                hooks/use-skip-settings.ts, hooks/use-history.ts, hooks/use-ticket-note.ts,
  *                components/ui/JoinQueueModals.tsx.

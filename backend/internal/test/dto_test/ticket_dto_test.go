@@ -32,12 +32,6 @@ func TestTicketResponse_JSONShape(t *testing.T) {
 	assert.NotContains(t, got, "ID")
 }
 
-func TestTicketResponses_EmptyIsJSONArray(t *testing.T) {
-	raw, err := json.Marshal(dto.NewTicketResponses(nil))
-	assert.NoError(t, err)
-	assert.JSONEq(t, `[]`, string(raw))
-}
-
 func TestQueueResponse_NullDescAndClosedAt(t *testing.T) {
 	q := model.Queue{
 		ID: 1, OwnerID: 2, QueueName: "A", Status: "active",

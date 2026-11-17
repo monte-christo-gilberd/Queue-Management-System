@@ -1,7 +1,7 @@
 /**
  * MyTicketsList: daftar tiket milik customer yang bisa dibuka statusnya.
  *
- * Dipakai oleh : app/(owner)/antrian.tsx
+ * Dipakai oleh : app/(user)/antrian.tsx
  * Bergantung   : lib/tickets (tipe MyTicket), utils/format (formatTicketNumber)
  * Peran        : customer
  * Catatan      : komponen presentasi murni, tidak memanggil API; data datang dari route.

@@ -85,15 +85,6 @@ type QueueRepositoryInterface interface {
 		newCode string,
 		expiresAt time.Time,
 	) (bool, error)
-	CreateDefaultCounter(
-		ctx context.Context,
-		queueID int64,
-		name string,
-	) (model.Counter, error)
-	GetCounterByQueue(
-		ctx context.Context,
-		queueID int64,
-	) (model.Counter, error)
 }
 
 // SubscriptionCheckerInterface menggambarkan method yang disediakan SubscriptionChecker (owner_repo.go): cek langganan owner aktif.
@@ -159,9 +150,5 @@ type UserRepositoryInterface interface {
 		email string,
 		username string,
 		passwordHash string,
-	) (model.User, error)
-	FindByEmail(
-		ctx context.Context,
-		email string,
 	) (model.User, error)
 }

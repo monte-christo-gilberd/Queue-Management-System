@@ -166,11 +166,11 @@ func TestUserRepository(t *testing.T) {
 	assert.Equal(t, "hash", u.PasswordHash.String)
 	assert.False(t, u.GoogleID.Valid)
 
-	got, err := repo.FindByEmail(ctx, "a@b.c")
+	got, err := repo.FindByID(ctx, u.ID)
 	require.NoError(t, err)
-	assert.Equal(t, u.ID, got.ID)
+	assert.Equal(t, "a@b.c", got.Email)
 
-	_, err = repo.FindByEmail(ctx, "nobody@b.c")
+	_, err = repo.FindByID(ctx, u.ID+1_000_000)
 	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
 

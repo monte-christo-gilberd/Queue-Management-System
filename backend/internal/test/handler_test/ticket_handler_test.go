@@ -260,7 +260,7 @@ func TestMyTickets_OK(t *testing.T) {
 		QueueStatus: "active",
 	}}}
 	e := gin.New()
-	e.GET("/users/me/tickets", handler.NewTicketHandler(svc).MyTickets)
+	e.GET("/users/me/tickets", handler.NewTicketHandlerWithQR(svc, nil).MyTickets)
 
 	w := httptest.NewRecorder()
 	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/users/me/tickets", nil))

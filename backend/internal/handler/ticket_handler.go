@@ -105,18 +105,8 @@ type JoinQRService interface {
 type TicketHandler struct {
 	// service berisi logika tiket dan antrian.
 	service TicketService
-	// qr memverifikasi token join. Nil bila dibuat lewat NewTicketHandler (tanpa fitur QR).
+	// qr memverifikasi token join. Boleh nil (tanpa fitur QR).
 	qr JoinQRService
-}
-
-// NewTicketHandler membuat TicketHandler tanpa fitur QR.
-func NewTicketHandler(
-	service TicketService,
-) *TicketHandler {
-	// isi handler dengan service saja; qr tetap nil
-	return &TicketHandler{
-		service: service,
-	}
 }
 
 // NewTicketHandlerWithQR membangun handler tiket dengan layanan QR yang

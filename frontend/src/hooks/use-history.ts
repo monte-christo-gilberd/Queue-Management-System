@@ -1,7 +1,7 @@
 /**
  * use-history: riwayat antrian dan tiket. Owner melihat antrian yang sudah ditutup dan nomor-nomornya. Customer melihat tiketnya sendiri.
  *
- * Dipakai oleh : src/app/(owner)/history/index.tsx, src/app/(owner)/history/[queueId].tsx, src/app/(owner)/riwayat.tsx.
+ * Dipakai oleh : src/app/(user)/history/index.tsx, src/app/(user)/history/[queueId].tsx, src/app/(user)/riwayat.tsx.
  * Bergantung   : lib/history (listHistoryQueues, getHistoryQueue, listMyHistory, downloadHistoryExport), lib/queue-errors, lib/api (ApiError).
  * Alur         : muat awal -> halaman pertama. `loadMore` mengambil halaman berikutnya memakai next_cursor dan menambahkannya ke daftar.
  * Catatan      : Pagination berbasis cursor. Setiap aksi memakai then() atau guard agar setState tidak sinkron di dalam effect dan tidak memuat dua halaman sekaligus.

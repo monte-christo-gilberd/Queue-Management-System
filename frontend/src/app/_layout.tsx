@@ -2,7 +2,7 @@
  * _layout: layout akar aplikasi: membungkus semua rute dengan tema, judul halaman, status bar, toast, dan Stack navigator.
  *
  * Rute        : semua rute (tidak punya URL sendiri).
- * Akses       : publik; tidak ada AuthGate di sini, penjagaan login ada di (owner)/_layout.tsx dan AuthGate per halaman.
+ * Akses       : publik; tidak ada AuthGate di sini, penjagaan login ada di (user)/_layout.tsx dan AuthGate per halaman.
  * Dipakai oleh: Expo Router sebagai pintu masuk setiap rute.
  * Bergantung  : ThemeProvider, Stack, ToastProvider dan ToastViewport, restoreThemeMode (hooks/use-theme-mode),
  *               usePushListeners (hooks/use-push-listeners, notifikasi Android), global.css (NativeWind).

@@ -2,8 +2,8 @@
  * antrian: antrian saya: daftar tiket customer yang masih aktif (menunggu atau sedang dilayani).
  *
  * Rute        : /antrian.
- * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx).
- * Dipakai oleh: menu owner (case antrian di owner-menu) dan tab antrian pada ResponsiveScreenLayout.
+ * Akses       : butuh login (AuthGate dari (user)/_layout.tsx).
+ * Dipakai oleh: menu panel (case antrian di utils/menu) dan tab antrian pada ResponsiveScreenLayout.
  * Bergantung  : useMyTickets, isOnHome (lib/tickets), MyTicketsList, ResponsiveScreenLayout.
  * Catatan     : Tap tiket membuka /ticket/[queueId]. Status yang dianggap aktif mengikuti isOnHome.
  */
@@ -17,7 +17,7 @@ import { useThemeColor } from '@/hooks/use-theme-mode';
 import { useMyTickets } from '@/hooks/use-my-tickets';
 import { isOnHome } from '@/lib/tickets';
 import { useAuthStore } from '@/store/authStore';
-import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
+import { handleMenuItemPress } from '@/utils/menu';
 
 /** Antrian saya: tiket customer yang masih aktif, yaitu menunggu atau sedang dilayani (lihat isOnHome). */
 export default function AntrianSayaRoute() {
@@ -31,7 +31,7 @@ export default function AntrianSayaRoute() {
     <ResponsiveScreenLayout
       title="Antrian Saya"
       userName={displayName ?? undefined}
-      onMenuItemPress={handleOwnerMenuItemPress}
+      onMenuItemPress={handleMenuItemPress}
       activeTab="antrian">
       {active.length === 0 ? (
         <EmptyState

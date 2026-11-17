@@ -2,7 +2,7 @@
  * queues/[queueId]/index: detail satu antrian owner: ubah nama dan pengaturan, QR, layar display, SKIP/NEXT, dan tutup antrian.
  *
  * Rute        : /queues/[queueId].
- * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx); hanya owner.
+ * Akses       : butuh login (AuthGate dari (user)/_layout.tsx); hanya owner.
  * Dipakai oleh: dashboard (tap papan atau setelah buat antrian) dan daftar antrian.
  * Bergantung  : useQueueDetail, useQueueBoard (SSE), useQueueQR, useDisplayConfig, useSkipSettings, QueueDetail.
  * Catatan     : Antrian yang sudah ditutup tidak menawarkan hapus nomor. Tutup antrian mengembalikan owner ke /dashboard.
@@ -33,7 +33,7 @@ import { closeQueue, updateQueue } from '@/lib/queues';
 import { useAuthStore } from '@/store/authStore';
 import type { Queue } from '@/types/api';
 import { formatTicketNumber } from '@/utils/format';
-import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
+import { handleMenuItemPress } from '@/utils/menu';
 
 /**
  * Entri rute: menunggu data antrian, lalu merender editor. Editor dipasang ulang dengan key per antrian agar isian form tidak terbawa dari antrian sebelumnya.
@@ -48,7 +48,7 @@ export default function QueueDetailRoute() {
       <ResponsiveScreenLayout
         title="Detail Antrian"
         userName={displayName ?? undefined}
-        onMenuItemPress={handleOwnerMenuItemPress}
+        onMenuItemPress={handleMenuItemPress}
         activeItem="queues"
         onBack={() => router.back()}
       >
@@ -166,7 +166,7 @@ function QueueDetailEditor({
     <>
     <QueueDetail
       shell={{ userName }}
-      onMenuItemPress={handleOwnerMenuItemPress}
+      onMenuItemPress={handleMenuItemPress}
       queue={queue}
       queueName={queueName}
       queueDescription={queueDescription}

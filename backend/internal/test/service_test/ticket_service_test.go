@@ -220,13 +220,6 @@ func (f *fakeTicketRepo) FindByUser(
 	return *f.myTicket, nil
 }
 
-func (f *fakeTicketRepo) CurrentServedNumber(
-	ctx context.Context,
-	queueID int64,
-) (int, bool, error) {
-	return f.currentServed, f.hasServed, nil
-}
-
 func (f *fakeTicketRepo) ListByUser(
 	ctx context.Context,
 	userID int64,

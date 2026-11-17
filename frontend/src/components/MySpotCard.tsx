@@ -1,7 +1,7 @@
 /**
  * MySpotCard: kartu posisi customer di antrian (nomor sedang dilayani, sebelumnya, dan berikutnya) dan kartu "tidak sedang mengantri".
  *
- * Dipakai oleh : components/QueueDetail.tsx (owner, showNeighbors=false), app/(owner)/dashboard.tsx (customer, juga NotQueuingCard)
+ * Dipakai oleh : components/QueueDetail.tsx (owner, showNeighbors=false), app/(user)/dashboard.tsx (customer, juga NotQueuingCard)
  * Bergantung   : ui/AppButton, constants/theme (Fonts)
  * Peran        : owner dan customer
  * Catatan      : gaya tampilan sama dengan papan layar live owner; semua nomor sudah diformat oleh pemanggil.

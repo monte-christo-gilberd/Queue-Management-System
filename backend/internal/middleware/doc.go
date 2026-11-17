@@ -4,7 +4,7 @@
 // Logger, Recovery, dan CORS).
 //
 // Isinya:
-//   - auth.go: RequireAuth dan RequireAuthWithRevocation untuk memeriksa JWT, serta interface SessionRevocationChecker
+//   - auth.go: RequireAuthWithRevocation untuk memeriksa JWT, serta interface SessionRevocationChecker
 //     untuk pencabutan sesi (token yang terbit sebelum password diganti ditolak).
 //   - request_id.go: RequestID, memberi setiap request id (dari X-Request-Id nginx, atau dibuat baru) untuk korelasi log.
 //   - logger.go: Logger, mencatat satu baris JSON per request (templat route, tanpa query string, user_id angka saja).

@@ -1,7 +1,7 @@
 /**
  * AuthGate: penjaga rute yang mengarahkan user sesuai status login.
  *
- * Dipakai oleh : app/index.tsx, app/join.tsx, app/register.tsx, app/link-google.tsx, app/(owner)/_layout.tsx, app/ticket/[queueId].tsx
+ * Dipakai oleh : app/index.tsx, app/login.tsx, app/join.tsx, app/register.tsx, app/link-google.tsx, app/(user)/_layout.tsx, app/ticket/[queueId].tsx
  * Bergantung   : hooks/use-auth-hydrated, lib/auth-gate (decideAuthGate), store/authStore
  * Alur         : hydrate selesai -> decideAuthGate -> wait (layar kosong) | redirect (Redirect) | render (children)
  * Catatan      : Hanya membaca token dari authStore. Komponen ini mengimpor store, berbeda dari aturan
@@ -19,7 +19,7 @@ type AuthGateProps = {
   /** Konten yang dirender bila keputusan akhirnya render. */
   children: React.ReactNode;
   /**
-   * `required` (default): hanya untuk yang sudah login (mis. area owner). Tanpa token → `/?next=<path>`
+   * `required` (default): hanya untuk yang sudah login (mis. grup (user)). Tanpa token → `/login?next=<path>`
    * (tanpa `next` bila path sudah `/`).
    * `guest`: hanya untuk yang belum login (login, register). Sudah punya token → `next` bila aman
    * (lib/safe-next), selain itu `/dashboard`.

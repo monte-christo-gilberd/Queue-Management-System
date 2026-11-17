@@ -1,7 +1,7 @@
 /**
  * CustomerQueueScreen: layar status antrian untuk customer (nomor saya, antrian di depan, bergabung, dan batal).
  *
- * Dipakai oleh : app/ticket/[queueId].tsx, app/(owner)/dashboard.tsx, components/ui/MyTicketModal.tsx
+ * Dipakai oleh : app/ticket/[queueId].tsx, app/(user)/dashboard.tsx, components/ui/MyTicketModal.tsx
  * Bergantung   : components/PushToggle, ui/AppButton, ui/ModalCard, ui/Toast, utils/cn
  * Peran        : customer
  * Catatan      : presentasi murni; semua data dan aksi datang dari props, sedangkan pemanggilan API ada di pemanggil.

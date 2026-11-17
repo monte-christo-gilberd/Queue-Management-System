@@ -11,7 +11,7 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
-/** TIDAK DIPAKAI: sisa template Expo. Satu-satunya pemakai adalah hooks/use-theme.ts, yang hanya dipakai berkas dead. */
+/** TIDAK DIPAKAI: sisa template Expo, tidak ada pemakai. */
 export const Colors = {
   light: {
     text: '#000000',
@@ -28,9 +28,6 @@ export const Colors = {
     textSecondary: '#B0B4BA',
   },
 } as const;
-
-/** TIDAK DIPAKAI: tipe kunci warna tema, hanya dipakai components/themed-text.tsx dan themed-view.tsx (dead). */
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 /** Keluarga font per platform. Nilai web memakai variabel CSS dari global.css. */
 export const Fonts = Platform.select({

@@ -137,7 +137,7 @@ test.describe('TS-01 Authentication', () => {
   test('TC-01-12 Parameter next ke situs lain diabaikan', async ({ page, request }) => {
     const account = await registerAccount(request, 'redir');
 
-    await page.goto(`${WEB_URL}/?next=${encodeURIComponent('https://evil.example')}`);
+    await page.goto(`${WEB_URL}/login?next=${encodeURIComponent('https://evil.example')}`);
     await field(page, 'EMAIL ATAU USERNAME').fill(account.email);
     await field(page, 'PASSWORD').fill(account.password);
     await action(page, 'Login').click();

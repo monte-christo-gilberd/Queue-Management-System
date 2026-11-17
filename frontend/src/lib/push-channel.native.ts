@@ -1,7 +1,7 @@
 /**
  * push-channel.native.ts: facade notifikasi giliran untuk ANDROID (FCM). Versi web ada di push-channel.ts.
  *
- * Dipakai oleh : components/PushToggle.tsx, utils/owner-menu.ts (releasePushForLogout).
+ * Dipakai oleh : components/PushToggle.tsx, utils/menu.ts (releasePushForLogout).
  * Bergantung   : lib/push-native.ts.
  * Catatan      : kedua file harus mengekspor nama yang sama.
  */

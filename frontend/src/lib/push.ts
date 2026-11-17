@@ -2,7 +2,7 @@
  * push.ts: langganan Web Push untuk owner di browser. Mengurus izin, berlangganan, sinkron ke akun, dan lepas langganan.
  *
  * Dipakai oleh : components/PushToggle.tsx (nyala, mati, sinkron), lib/qr.ts (enablePush),
- *                utils/owner-menu.ts (releasePushForLogout)
+ *                utils/menu.ts (releasePushForLogout)
  * Bergantung   : lib/api.ts (apiFetch), service worker /sw.js (dilayani nginx dari public/)
  * Alur         : enablePush dipanggil saat QR dibuat. releasePushForLogout dipanggil sebelum logout, selagi token
  *                masih ada. syncSubscription dipanggil PushToggle saat komponen dipasang, untuk memindahkan endpoint ke akun ini.

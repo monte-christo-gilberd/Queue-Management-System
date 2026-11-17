@@ -1,9 +1,9 @@
 /**
  * qr.ts: API QR antrian untuk owner dan join antrian lewat token QR untuk customer.
  *
- * Dipakai oleh : hooks/use-queue-qr.ts (owner), components/ui/JoinQueueModals.tsx (customer).
+ * Dipakai oleh : hooks/use-queue-qr.ts (owner), components/ui/JoinQueueModals.tsx dan app/join.tsx (customer).
  * Bergantung   : lib/api.ts (apiFetch), lib/push.ts (enablePush, pushSupported).
- * Alur         : customer memindai QR -> qr-scan.ts mengambil token -> previewJoin -> joinByToken -> tiket dan push.
+ * Alur         : popup kamera: qr-scan.ts mengambil token -> joinByToken. Halaman /join?t=: previewJoin -> joinByToken.
  * Catatan      : kode galat QR dipetakan ke pesan di qr-errors.ts.
  */
 import { apiFetch } from './api';

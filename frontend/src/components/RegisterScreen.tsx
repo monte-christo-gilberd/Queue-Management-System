@@ -50,7 +50,7 @@ export type RegisterScreenProps = {
   onSubmit: () => void;
   /** Tujuan setelah daftar/login Google berhasil (sudah disanitasi). Kosong = /dashboard. */
   next?: string;
-  /** Tujuan tautan "Login" (mis. `/?next=…`). Default `/`. */
+  /** Tujuan tautan "Login" (mis. `/login?next=…`). Default `/login`. */
   loginHref?: string;
   /** true selama permintaan pendaftaran berjalan; tombol Daftar menampilkan status loading. */
   loading: boolean;
@@ -72,7 +72,7 @@ export default function RegisterScreen({
   confirmPasswordError,
   onSubmit,
   next,
-  loginHref = '/',
+  loginHref = '/login',
   loading,
   errorMessage,
 }: RegisterScreenProps) {

@@ -1,7 +1,7 @@
 /**
  * auth-errors.ts: pesan untuk galat form login dan register.
  *
- * Dipakai oleh : app/index.tsx (login), app/register.tsx (register).
+ * Dipakai oleh : app/login.tsx (login), app/register.tsx (register).
  * Bergantung   : lib/api.ts (ApiError).
  */
 import { ApiError } from './api';

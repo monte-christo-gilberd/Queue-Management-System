@@ -2,8 +2,8 @@
  * profile/index: profil pengguna: nama, foto, notifikasi email, verifikasi email, ganti password, dan status langganan.
  *
  * Rute        : /profile.
- * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx).
- * Dipakai oleh: menu owner (case profile di owner-menu) dan redirect dari /profile/edit.
+ * Akses       : butuh login (AuthGate dari (user)/_layout.tsx).
+ * Dipakai oleh: menu panel (case profile di utils/menu) dan redirect dari /profile/edit.
  * Bergantung  : Profile, getMe/updateMe/uploadAvatar (lib/users), useAvatarSource, useAvatarStore, lib/email-verification, lib/password-reset.
  * Catatan     : Bagian langganan hanya untuk owner. Calon owner (belum pernah bayar) melihat tawaran menjadi owner.
  */
@@ -19,7 +19,7 @@ import { deleteAvatar, getMe, setEmailNotifications, updateMe, uploadAvatar, typ
 import { shrinkToJpeg } from '@/utils/avatar-image';
 import { useAuthStore } from '@/store/authStore';
 import { useAvatarStore } from '@/store/avatarStore';
-import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
+import { handleMenuItemPress } from '@/utils/menu';
 import {
   describeProfileError,
   subscriptionStatus,
@@ -216,7 +216,7 @@ export default function ProfileRoute() {
   return (
     <Profile
       shell={{ userName: displayName ?? undefined }}
-      onMenuItemPress={handleOwnerMenuItemPress}
+      onMenuItemPress={handleMenuItemPress}
       username={username}
       email={me?.email ?? ''}
       // Tampilkan banner hanya setelah profil dimuat dan server menyatakan belum terverifikasi.

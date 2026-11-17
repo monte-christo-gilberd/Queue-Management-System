@@ -1,7 +1,7 @@
 /**
- * ResponsiveScreenLayout: app shell semua halaman owner, responsif untuk HP dan layar lebar.
+ * ResponsiveScreenLayout: app shell semua halaman setelah login (owner dan customer), responsif untuk HP dan layar lebar.
  *
- * Dipakai oleh : app/(owner)/antrian.tsx, app/(owner)/riwayat.tsx, app/(owner)/queues/[queueId]/index.tsx,
+ * Dipakai oleh : app/(user)/antrian.tsx, app/(user)/riwayat.tsx, app/(user)/queues/[queueId]/index.tsx,
  *                components/History.tsx, components/HistoryDetail.tsx, components/QueueList.tsx,
  *                components/QueueLiveScreen.tsx, components/Profile.tsx, components/Subscription.tsx
  * Bergantung   : hooks/use-is-wide, hooks/use-hydrated, hooks/use-theme-mode, components/layout/owner-context,
@@ -43,7 +43,7 @@ import { UserAvatar } from '@/components/ui/UserAvatar';
 export type TabKey = 'home' | 'antrian' | 'riwayat' | 'profile';
 
 /** Kunci item menu yang dikirim ke onMenuItemPress (panel profil HP dan desktop memakai item yang sama). */
-export type OwnerMenuItem =
+export type MenuItem =
   | 'create-queue'
   | 'dashboard'
   | 'queues'
@@ -64,12 +64,12 @@ export type ShellProps = {
 export type ResponsiveScreenLayoutProps = {
   /** Judul di tengah header. */
   title: string;
-  /** Nama user di header dan panel. Default "Nama User" di desktop dan "Owner" di HP. */
+  /** Nama user di header dan panel. Default "Nama User". */
   userName?: string;
   /** Dipanggil dengan item menu yang dipilih (termasuk "profile" dan "logout"). Navigasi dan logout diurus induk. */
-  onMenuItemPress?: (item: OwnerMenuItem) => void;
+  onMenuItemPress?: (item: MenuItem) => void;
   /** Hanya desktop: link navigasi utama yang di-highlight di panel. */
-  activeItem?: OwnerMenuItem;
+  activeItem?: MenuItem;
   /** Hanya dipakai di HP: tombol back muncul kalau diberikan. */
   onBack?: () => void;
   /** Hanya dipakai di HP: tab bawah yang aktif. */
@@ -81,16 +81,16 @@ export type ResponsiveScreenLayoutProps = {
 };
 
 /** Menu khusus owner di panel profil (HP dan desktop). Customer tidak melihatnya. */
-const OWNER_MENU: { key: OwnerMenuItem; label: string }[] = [
+const OWNER_MENU: { key: MenuItem; label: string }[] = [
   { key: 'queues', label: 'Daftar Antrian' },
   { key: 'history', label: 'Riwayat Antrian' },
 ];
 
 /** Menu panel profil — dipakai SAMA di HP dan desktop. */
-const LOGOUT_ITEM: { key: OwnerMenuItem; label: string } = { key: 'logout', label: 'Keluar' };
+const LOGOUT_ITEM: { key: MenuItem; label: string } = { key: 'logout', label: 'Keluar' };
 
 /** Link navigasi utama, hanya tampil di panel desktop (di HP sudah ada bottom tab). Isinya sama dengan navbar bawah HP. */
-const NAV_ITEMS: { key: OwnerMenuItem; label: string }[] = [
+const NAV_ITEMS: { key: MenuItem; label: string }[] = [
   { key: 'dashboard', label: 'Beranda' },
   { key: 'antrian', label: 'Antrian Saya' },
   { key: 'join', label: 'Masuk Antrian' },
@@ -99,7 +99,7 @@ const NAV_ITEMS: { key: OwnerMenuItem; label: string }[] = [
 ];
 
 /** Tab navbar aktif -> item yang disorot di panel desktop. */
-const TAB_TO_ITEM: Record<TabKey, OwnerMenuItem> = {
+const TAB_TO_ITEM: Record<TabKey, MenuItem> = {
   home: 'dashboard',
   antrian: 'antrian',
   riwayat: 'riwayat-saya',
@@ -120,7 +120,7 @@ const TABS: { key: TabKey; label: string; icon: IconName; href: '/dashboard' | '
 
 
 /**
- * Kerangka semua halaman owner. Responsif secara internal:
+ * Kerangka semua halaman setelah login (owner dan customer). Responsif secara internal:
  * - lebar >= 1024: header dengan panel profil (sama dengan HP), konten maks 1200 ditengahkan, tanpa back/tab bar.
  * - lebih sempit: header HP (back + judul + profil), bottom tab bar, panel profil.
  */
@@ -306,7 +306,7 @@ function WideLayout({
 
 function MobileLayout({
   title,
-  userName = 'Owner',
+  userName = 'Nama User',
   onMenuItemPress,
   onBack,
   activeTab,

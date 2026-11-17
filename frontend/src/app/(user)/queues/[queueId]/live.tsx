@@ -2,7 +2,7 @@
  * queues/[queueId]/live: papan live satu antrian untuk layar petugas tanpa tab: nomor sebelumnya, sekarang, dan berikutnya.
  *
  * Rute        : /queues/[queueId]/live.
- * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx); hanya owner.
+ * Akses       : butuh login (AuthGate dari (user)/_layout.tsx); hanya owner.
  * Dipakai oleh: tidak ada tautan di kode frontend; dibuka langsung lewat URL.
  * Bergantung  : useQueueBoard (SSE), useCounterSession, useNextSkipConfirm, QueueLiveScreen.
  * Catatan     : Nama counter hanya tampil bila counter non-default yang memanggil.
@@ -16,7 +16,7 @@ import { useQueueBoard } from '@/hooks/use-queue-board';
 import { useQueueDetail } from '@/hooks/use-queues';
 import type { TicketEntry } from '@/types/api';
 import { formatTicketNumber } from '@/utils/format';
-import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
+import { handleMenuItemPress } from '@/utils/menu';
 
 /**
  * Papan live untuk layar petugas. Data dan aksi SKIP/NEXT sama dengan papan di dashboard.
@@ -50,7 +50,7 @@ export default function QueueLiveRoute() {
       nextTicket={toLive(next, queue?.ticket_prefix)}
       onSkip={confirm.requestSkip}
       onNext={confirm.requestNext}
-      onMenuItemPress={handleOwnerMenuItemPress}
+      onMenuItemPress={handleMenuItemPress}
     />
     {confirm.modal}
     </>

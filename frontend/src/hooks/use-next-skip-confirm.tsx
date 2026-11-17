@@ -1,7 +1,7 @@
 /**
  * use-next-skip-confirm: konfirmasi sebelum Next dan Skip di layar owner, lengkap dengan modal yang harus dirender.
  *
- * Dipakai oleh : src/app/(owner)/dashboard.tsx, src/app/(owner)/queues/[queueId]/index.tsx, src/app/(owner)/queues/[queueId]/live.tsx.
+ * Dipakai oleh : src/app/(user)/dashboard.tsx, src/app/(user)/queues/[queueId]/index.tsx, src/app/(user)/queues/[queueId]/live.tsx.
  * Bergantung   : components/ui/ConfirmModal (modal), utils/confirm-messages (confirmCopy, tipe ConfirmKind).
  * Alur         : requestNext/requestSkip -> state pending -> modal tampil -> confirm -> onNext atau onSkip.
  * Catatan      : Hook ini ikut merender JSX lewat `modal`, sehingga pemanggil harus menaruh `modal` sekali di layarnya. Tidak ada undo.

@@ -95,18 +95,8 @@ type QueueQRService interface {
 type QueueHandler struct {
 	// service berisi logika antrian.
 	service QueueService
-	// qr berisi logika QR. Nil bila dibuat lewat NewQueueHandler (tanpa fitur QR).
+	// qr berisi logika QR. Boleh nil (tanpa fitur QR).
 	qr QueueQRService
-}
-
-// NewQueueHandler membuat QueueHandler tanpa fitur QR.
-func NewQueueHandler(
-	service QueueService,
-) *QueueHandler {
-	// isi handler dengan service saja; qr tetap nil
-	return &QueueHandler{
-		service: service,
-	}
 }
 
 // NewQueueHandlerWithQR membuat QueueHandler lengkap dengan fitur QR.

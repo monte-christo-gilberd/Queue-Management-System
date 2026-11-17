@@ -1,7 +1,7 @@
 /**
  * use-queue-board: papan antrian owner, berisi daftar tiket dari server dan aksi counter (Next, Skip, Panggil ulang, hapus, sisip).
  *
- * Dipakai oleh : src/app/(owner)/dashboard.tsx, src/app/(owner)/queues/[queueId]/index.tsx, src/app/(owner)/queues/[queueId]/live.tsx.
+ * Dipakai oleh : src/app/(user)/dashboard.tsx, src/app/(user)/queues/[queueId]/index.tsx, src/app/(user)/queues/[queueId]/live.tsx.
  * Bergantung   : hooks/use-queue-events (SSE), lib/tickets, lib/api (ApiError), lib/queue-errors, utils/queue-view (deriveQueueView).
  * Alur         : queueId -> listTickets saat muat awal -> event SSE atau pemulihan koneksi -> debounce 300 ms -> listTickets. Aksi counter -> lib/tickets -> settleCounter -> muat ulang.
  * Catatan      : Setiap event memuat ulang seluruh daftar, bukan menerapkan delta, sehingga event yang terlewat tidak merusak tampilan. Pengaturan waktu tombol Panggil ulang dan Skip hanya tampilan; backend tetap menegakkan aturannya.

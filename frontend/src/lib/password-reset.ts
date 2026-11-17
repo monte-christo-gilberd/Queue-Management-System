@@ -1,7 +1,7 @@
 /**
  * password-reset.ts: panggilan API dan pesan galat untuk lupa dan reset password.
  *
- * Dipakai oleh : app/forgot-password.tsx, app/reset-password.tsx, app/(owner)/profile/index.tsx
+ * Dipakai oleh : app/forgot-password.tsx, app/reset-password.tsx, app/(user)/profile/index.tsx
  * Bergantung   : lib/api.ts (ApiError, apiFetch)
  * Catatan      : Kedua endpoint publik. requestPasswordReset selalu menjawab 202 (email terdaftar atau tidak), jadi
  *              pesan sukses tidak boleh menyiratkan bahwa email itu ada. Galat 429 bisa datang dari backend atau nginx.

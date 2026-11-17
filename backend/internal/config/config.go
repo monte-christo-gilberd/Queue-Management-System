@@ -19,11 +19,11 @@ import (
 // operasi atau container). File .env juga dibaca lewat godotenv, library Go untuk memuat file .env ke environment variable.
 //
 // Dibuat oleh Load() dan dipakai di main() (cmd/server/main.go) untuk merangkai database, service, klien
-// microservice (qrclient dan mailclient), dan router. Load() juga memvalidasi isinya.
+// microservice (paymentclient), dan router. Load() juga memvalidasi isinya.
 //
-// Wajib diisi: DATABASE_URL, JWT_PUBLIC_KEY_FILE, ALLOWED_ORIGINS, PUBLIC_APP_URL, QR_SERVICE_URL, QR_SERVICE_TOKEN.
+// Wajib diisi: DATABASE_URL, JWT_PUBLIC_KEY_FILE, ALLOWED_ORIGINS, PUBLIC_APP_URL.
 // Opsional: VAPID_PUBLIC_KEY, FCM_PROJECT_ID, APP_ENV, TRUSTED_PROXIES, dan PORT (bawaan 8080).
-// Opsional dengan nilai bawaan dalam detik: QR_HTTP_TIMEOUT (1) dan SHUTDOWN_TIMEOUT (8).
+// Opsional dengan nilai bawaan dalam detik: QR_HTTP_TIMEOUT (1; kini hanya batas waktu klien payment-service, nama lama dari qr-service) dan SHUTDOWN_TIMEOUT (8).
 // EMAIL_VERIFICATION_REQUIRED: bawaan true. Harus sama dengan nilai di auth-service.
 type Config struct {
 	// Env: APP_ENV. Bila "production", validateProduction() menolak secret lemah (terlalu pendek atau nilai contoh) dan origin/URL yang tidak https.
@@ -51,7 +51,7 @@ type Config struct {
 	// token autentikasi antarservice dari backend ke qr-service (QR_SERVICE_TOKEN), dikirim sebagai header
 	// X-Service-Token. Ini bukan token login user.
 	// QRServiceToken string
-	// batas waktu tiap panggilan ke qr-service dalam detik (QR_HTTP_TIMEOUT). Bila kosong atau nilai <= 0, 1 detik.
+	// batas waktu tiap panggilan ke payment-service dalam detik (QR_HTTP_TIMEOUT; nama lama dari qr-service yang sudah dihapus). Bila kosong atau nilai <= 0, 1 detik.
 	// Nilai yang bukan angka membuat Load() gagal.
 	QRHTTPTimeout time.Duration
 	// URL dasar payment-service (PAYMENT_SERVICE_URL). Kosong = checkout langganan tidak dipasang.

@@ -1,7 +1,7 @@
 /**
  * use-ticket-note: popup catatan (Append Note) untuk satu nomor tiket di layar owner.
  *
- * Dipakai oleh : src/app/(owner)/dashboard.tsx, src/app/(owner)/queues/[queueId]/index.tsx.
+ * Dipakai oleh : src/app/(user)/dashboard.tsx, src/app/(user)/queues/[queueId]/index.tsx.
  * Bergantung   : lib/notes (getTicketNote, saveTicketNote), lib/queue-errors (describeQueueError).
  * Alur         : open(ticketId) -> getTicketNote -> popup terisi. save(text) -> saveTicketNote -> close dan onSaved.
  * Catatan      : Target tiket dikunci saat open, sehingga pindahnya nomor yang dilayani saat popup terbuka tidak mengubah tujuan simpan.

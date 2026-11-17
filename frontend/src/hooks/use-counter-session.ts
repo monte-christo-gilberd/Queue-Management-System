@@ -1,7 +1,7 @@
 /**
  * use-counter-session: sesi counter satu antrian untuk satu perangkat owner (daftar, pilihan aktif, buat, ganti nama, hapus).
  *
- * Dipakai oleh : src/app/(owner)/dashboard.tsx, src/app/(owner)/queues/[queueId]/index.tsx, src/app/(owner)/queues/[queueId]/live.tsx, src/components/CounterBar.tsx.
+ * Dipakai oleh : src/app/(user)/dashboard.tsx, src/app/(user)/queues/[queueId]/index.tsx, src/app/(user)/queues/[queueId]/live.tsx, src/components/CounterBar.tsx.
  * Bergantung   : hooks/use-queue-events (SSE), lib/counters, lib/queue-errors (describeCounterError), utils/device-counter (baca dan tulis pilihan perangkat, resolveDeviceCounter, switchNotice).
  * Alur         : queueId -> listCounters -> counters. Pilihan perangkat dibaca dari localStorage kunci `qms-device-counter:<queueId>`. Event counter_updated memuat ulang daftar.
  * Catatan      : Pilihan yang baru dibuat disimpan di state dulu agar langsung berlaku sebelum localStorage terbaca ulang. Pilihan yang sudah tidak ada di daftar jatuh kembali ke counter default.

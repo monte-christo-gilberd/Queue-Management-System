@@ -169,18 +169,6 @@ func NewOwnerTicketResponses(tickets []model.Ticket) []OwnerTicketResponse {
 	return out
 }
 
-// NewTicketResponses mengubah daftar tiket menjadi daftar TicketResponse, dengan urutan yang sama.
-func NewTicketResponses(tickets []model.Ticket) []TicketResponse {
-	// Buat slice kosong dengan kapasitas sesuai jumlah tiket, supaya tidak perlu alokasi ulang saat append.
-	out := make([]TicketResponse, 0, len(tickets))
-	// Ubah setiap tiket dan tambahkan ke hasil.
-	for _, t := range tickets {
-		// Ubah satu tiket menjadi TicketResponse lalu tambahkan ke hasil.
-		out = append(out, NewTicketResponse(t))
-	}
-	return out
-}
-
 // nullTimePtr mengubah sql.NullTime menjadi pointer: nil bila tidak valid (null di database), selain itu pointer ke waktunya.
 func nullTimePtr(t sql.NullTime) *time.Time {
 	// Nilai NULL di database: kembalikan nil agar JSON menjadi null.

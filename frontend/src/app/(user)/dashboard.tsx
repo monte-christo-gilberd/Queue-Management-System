@@ -2,7 +2,7 @@
  * dashboard: beranda utama untuk owner dan customer: papan antrian untuk owner, kartu posisi saya untuk customer.
  *
  * Rute        : /dashboard (juga tujuan default setelah login, lihat DEFAULT_AFTER_LOGIN).
- * Akses       : butuh login (AuthGate dari (owner)/_layout.tsx).
+ * Akses       : butuh login (AuthGate dari (user)/_layout.tsx).
  * Dipakai oleh: redirect setelah login dan daftar, menu owner, dan tombol kembali dari halaman tiket.
  * Bergantung  : useMe, useQueueList, useMyTickets, useQueueBoard (SSE), Dashboard, CreateQueueModal, JoinQueueModals.
  * Catatan     : Parameter create=1 membuka popup buat antrian (dari menu). Antrian yang ditutup hilang dari papan lewat SSE queue_closed.
@@ -35,7 +35,7 @@ import { createQueue } from '@/lib/queues';
 import type { Queue } from '@/types/api';
 import { useAuthStore } from '@/store/authStore';
 import { formatTicketNumber } from '@/utils/format';
-import { handleOwnerMenuItemPress } from '@/utils/owner-menu';
+import { handleMenuItemPress } from '@/utils/menu';
 
 /** Jumlah antrian aktif yang tampil di Dashboard owner (yang terbaru). Sisanya ada di Daftar Antrian. */
 const DASHBOARD_QUEUE_COUNT = 2;
@@ -142,7 +142,7 @@ export default function DashboardRoute() {
     <>
       <Dashboard
         shell={{ userName: displayName ?? undefined }}
-        onMenuItemPress={handleOwnerMenuItemPress}
+        onMenuItemPress={handleMenuItemPress}
         boards={boards}
         hasActiveQueue={activeQueues.length > 0}
         errorMessage={queuesError}

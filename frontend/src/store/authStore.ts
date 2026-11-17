@@ -1,8 +1,8 @@
 /**
  * authStore.ts: store autentikasi (token dan nama tampilan) yang dipersist ke storage.
  *
- * Dipakai oleh : components/auth/AuthGate.tsx, app/index.tsx, app/register.tsx, hooks/use-auth-hydrated.ts,
- *                dan layar owner.
+ * Dipakai oleh : components/auth/AuthGate.tsx, app/login.tsx, app/register.tsx, hooks/use-auth-hydrated.ts,
+ *                dan layar di grup (user).
  * Bergantung   : lib/api.ts (apiFetch, setAuthToken, setOnUnauthorized), store/avatarStore.ts, store/safe-storage.ts.
  * Alur         : login/register -> set token -> setAuthToken (klien API). 401 dari API -> logout() ->
  *                AuthGate mengarahkan ke login. Login Google: loginWithGoogle -> token, atau `link_required` (email sudah

@@ -1,7 +1,7 @@
 /**
  * Profile: halaman profil user (nama, email, foto, notifikasi, password, dan status langganan untuk owner).
  *
- * Dipakai oleh : app/(owner)/profile/index.tsx
+ * Dipakai oleh : app/(user)/profile/index.tsx
  * Bergantung   : layout/ResponsiveScreenLayout, ui/ConfirmModal, ui/ModalCard, ui/Toast, ui/AppButton, ui/FormField, ui/Icon,
  *                hooks/use-avatar-source (tipe), hooks/use-is-wide, utils/profile (USERNAME_MAX), utils/avatar-preview,
  *                utils/cn, constants/app-theme, expo-image, expo-router
@@ -24,7 +24,7 @@ import { useIsWide } from '@/hooks/use-is-wide';
 import { getAvatarPreviewSize } from '@/utils/avatar-preview';
 import { cn } from '@/utils/cn';
 import ResponsiveScreenLayout, {
-  type OwnerMenuItem,
+  type MenuItem,
   type ShellProps,
 } from '@/components/layout/ResponsiveScreenLayout';
 import { AppButton } from '@/components/ui/AppButton';
@@ -37,7 +37,7 @@ export type ProfileProps = {
   /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
   /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
-  onMenuItemPress?: (item: OwnerMenuItem) => void;
+  onMenuItemPress?: (item: MenuItem) => void;
   /** Nilai nama user yang sedang diedit; dibatasi panjang maksimum `USERNAME_MAX`. */
   username: string;
   /** Email hanya ditampilkan; mengubahnya belum didukung (verifikasi ganti email belum dibangun). */

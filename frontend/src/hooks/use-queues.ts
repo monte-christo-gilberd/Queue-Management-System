@@ -1,7 +1,7 @@
 /**
  * use-queues: daftar antrian owner dan detail satu antrian.
  *
- * Dipakai oleh : src/app/(owner)/dashboard.tsx, src/app/(owner)/queues/index.tsx, src/app/(owner)/queues/[queueId]/index.tsx, src/app/(owner)/queues/[queueId]/live.tsx.
+ * Dipakai oleh : src/app/(user)/dashboard.tsx, src/app/(user)/queues/index.tsx, src/app/(user)/queues/[queueId]/index.tsx, src/app/(user)/queues/[queueId]/live.tsx.
  * Bergantung   : lib/queues (listQueues, getQueue), lib/queue-errors (describeQueueError), types/api (Queue).
  * Alur         : muat awal lewat effect. `reload` dipakai setelah membuat atau menutup antrian.
  * Catatan      : Hasil request dibungkus Result (ok atau message) supaya galat tidak dilempar keluar effect.

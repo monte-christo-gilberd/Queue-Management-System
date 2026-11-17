@@ -156,27 +156,6 @@ func (m *memQueues) RotateDynamicQRCode(_ context.Context, id int64, oldCode, ne
 	return false, nil
 }
 
-func (m *memQueues) CreateDefaultCounter(
-	_ context.Context,
-	queueID int64,
-	name string,
-) (model.Counter, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	counter := model.Counter{ID: m.nextID + 1, QueueID: queueID, Name: name, IsDefault: true}
-	m.counters = append(m.counters, counter)
-	return counter, nil
-}
-
-func (m *memQueues) GetCounterByQueue(_ context.Context, _ int64) (model.Counter, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if len(m.counters) == 0 {
-		return model.Counter{}, apperror.ErrNotFound
-	}
-	return m.counters[0], nil
-}
-
 // memSubs: langganan owner. Aktif bila expiry masa depan (data model 4.18).
 type memSubs struct {
 	expiry map[int64]time.Time
@@ -360,17 +339,6 @@ func (m *memUsers) Create(_ context.Context, email, username, hash string) (mode
 	return u, nil
 }
 
-func (m *memUsers) FindByEmail(_ context.Context, email string) (model.User, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, u := range m.rows {
-		if u.Email == email {
-			return u, nil
-		}
-	}
-	return model.User{}, apperror.ErrNotFound
-}
-
 func TestRepoFake_QueueLifecycleCreateCloseAndListFilter(t *testing.T) {
 	// 4.1 / 4.15: antrian baru aktif; setelah ditutup status closed dan closed_at terisi;
 	// daftar aktif tidak memuat antrian yang sudah ditutup.
@@ -501,7 +469,7 @@ func TestRepoFake_MarkCompletedUnknownTicketIsNotFound(t *testing.T) {
 }
 
 func TestRepoFake_UserEmailIsUnique(t *testing.T) {
-	// TC-01-07: email sudah terdaftar -> ErrDuplicate; pencarian email yang tidak ada -> ErrNotFound.
+	// TC-01-07: email sudah terdaftar -> ErrDuplicate.
 	ctx := context.Background()
 	repo := &memUsers{}
 
@@ -509,13 +477,6 @@ func TestRepoFake_UserEmailIsUnique(t *testing.T) {
 	require.NoError(t, err)
 	_, err = repo.Create(ctx, "a@example.com", "b", "hash2")
 	assert.ErrorIs(t, err, apperror.ErrDuplicate)
-
-	u, err := repo.FindByEmail(ctx, "a@example.com")
-	require.NoError(t, err)
-	assert.Equal(t, "a", u.Username)
-
-	_, err = repo.FindByEmail(ctx, "tidak@ada.com")
-	assert.ErrorIs(t, err, apperror.ErrNotFound)
 }
 
 func TestRepoFake_MarkCancelledKeepsCalledAt(t *testing.T) {

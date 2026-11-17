@@ -1,7 +1,7 @@
 /**
  * Subscription: halaman status dan pembayaran langganan owner.
  *
- * Dipakai oleh : app/(owner)/subscription.tsx
+ * Dipakai oleh : app/(user)/subscription.tsx
  * Bergantung   : layout/ResponsiveScreenLayout, ui/AppButton, ui/Icon, ui/Toast, constants/app-theme, utils/cn
  * Peran        : owner
  * Catatan      : Tombol membuat pesanan pembayaran lewat backend lalu membuka halaman BorderPay (lihat lib/subscription.ts).
@@ -12,7 +12,7 @@ import { Text, View } from 'react-native';
 import { AppColors } from '@/constants/app-theme';
 import { cn } from '@/utils/cn';
 import ResponsiveScreenLayout, {
-  type OwnerMenuItem,
+  type MenuItem,
   type ShellProps,
 } from '@/components/layout/ResponsiveScreenLayout';
 import { AppButton } from '@/components/ui/AppButton';
@@ -24,7 +24,7 @@ export type SubscriptionProps = {
     /** Konteks shell layout; hanya `userName` yang dipakai untuk header. Opsional. */
   shell?: ShellProps;
     /** Dipanggil saat item menu owner ditekan; opsional, tanpa nilai menu tidak ada aksi. */
-  onMenuItemPress?: (item: OwnerMenuItem) => void;
+  onMenuItemPress?: (item: MenuItem) => void;
   /** true jika langganan aktif (kartu hijau dengan ikon centang); false menampilkan kartu abu dengan ikon jam. */
   paid: boolean;
   /** Judul tagihan apa adanya, mis. "Tagihan Bulan 01/2025 Belum Dibayar". */

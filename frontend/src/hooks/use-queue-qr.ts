@@ -1,7 +1,7 @@
 /**
  * use-queue-qr: QR antrian untuk owner (muat, ganti mode statis atau dinamis, ganti kode, hitung mundur token dinamis).
  *
- * Dipakai oleh : src/app/(owner)/queues/[queueId]/index.tsx.
+ * Dipakai oleh : src/app/(user)/queues/[queueId]/index.tsx.
  * Bergantung   : lib/qr (getQueueQR, replaceQueueQR, setQueueQRType), lib/qr-errors (describeQrError), types/api (QueueQR), react-native (AppState).
  * Alur         : queueId -> getQueueQR -> qr. Hitung mundur dari expires_at. Saat kedaluwarsa, reload dicoba tiap 3 detik sampai token baru datang.
  * Catatan      : Hitung mundur dan timer hanya berjalan saat app aktif. Ref `wasActive` mendeteksi kembali dari background supaya reload tidak dipicu tiap perubahan state.

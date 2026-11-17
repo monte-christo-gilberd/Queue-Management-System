@@ -3,7 +3,7 @@
  * (gabung, batal, daftar tiket saya), beserta aturan tombol yang bergantung pada status tiket.
  *
  * Dipakai oleh : hooks/use-queue-board.ts, hooks/use-ticket-queue.ts, hooks/use-queue-spot.ts, hooks/use-my-tickets.ts,
- *                components/MyTicketsList.tsx, components/ui/InsertTicketModal.tsx, app/(owner)/antrian.tsx,
+ *                components/MyTicketsList.tsx, components/ui/InsertTicketModal.tsx, app/(user)/antrian.tsx,
  *                app/ticket/[queueId].tsx
  * Bergantung   : lib/api.ts (apiFetch), types/api.ts (Ticket, PublicQueue, QueueStatus)
  * Catatan      : Galat 409 (QUEUE_EMPTY, NOTHING_TO_SKIP, QUEUE_CLOSED, dll.) dibaca dari ApiError.code, bukan dari status saja.

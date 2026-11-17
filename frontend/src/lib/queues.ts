@@ -1,7 +1,7 @@
 /**
  * queues.ts: panggilan API antrian untuk owner (daftar, detail, buat, ubah, tutup).
  *
- * Dipakai oleh : hooks/use-queues.ts, app/(owner)/dashboard.tsx, app/(owner)/queues/[queueId]/index.tsx
+ * Dipakai oleh : hooks/use-queues.ts, app/(user)/dashboard.tsx, app/(user)/queues/[queueId]/index.tsx
  * Bergantung   : lib/api.ts (apiFetch), types/api.ts (Queue)
  * Catatan      : Semua fungsi butuh login owner. Galat dibaca dari ApiError (lib/api.ts).
  */
