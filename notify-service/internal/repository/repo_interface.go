@@ -28,9 +28,9 @@ type NotifyRepositoryInterface interface {
 		ctx context.Context,
 		userID int64,
 	) ([]model.Subscription, error)
-	// DeleteSubscription: menghapus langganan yang sudah tidak berlaku.
+	// DeleteSubscription: menghapus langganan yang sudah tidak berlaku, dari tabel sesuai jenisnya.
 	DeleteSubscription(
 		ctx context.Context,
-		endpoint string,
+		sub model.Subscription,
 	) error
 }

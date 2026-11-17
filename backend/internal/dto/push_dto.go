@@ -18,3 +18,17 @@ type PushUnsubscribeRequest struct {
 	// Endpoint: alamat layanan push langganan yang akan dihentikan.
 	Endpoint string `json:"endpoint" binding:"required"`
 }
+
+// FCMRegisterRequest: body POST /push/fcm/register (token FCM perangkat dari expo-notifications).
+type FCMRegisterRequest struct {
+	// Token: token FCM perangkat (getDevicePushTokenAsync). Dipakai sebagai identitas perangkat.
+	Token string `json:"token" binding:"required,max=4096"`
+	// Platform: jenis perangkat. Saat ini hanya "android".
+	Platform string `json:"platform" binding:"required,oneof=android"`
+}
+
+// FCMUnregisterRequest: body POST /push/fcm/unregister.
+type FCMUnregisterRequest struct {
+	// Token: token FCM perangkat yang akan dilepas dari user yang login.
+	Token string `json:"token" binding:"required,max=4096"`
+}

@@ -71,6 +71,14 @@ CREATE INDEX IF NOT EXISTS idx_queue_history_owner_closed
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
     ON push_subscriptions (user_id);
 
+-- ----------------------------------------------------------------------------
+-- push_devices
+-- ----------------------------------------------------------------------------
+
+-- Semua token FCM satu user (kirim ke tiap perangkat Android).
+CREATE INDEX IF NOT EXISTS idx_push_devices_user
+    ON push_devices (user_id);
+
 
 -- ----------------------------------------------------------------------------
 -- notification_outbox

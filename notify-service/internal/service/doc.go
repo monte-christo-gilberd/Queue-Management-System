@@ -4,8 +4,9 @@
 //
 // Alur:
 //   - Plan menghitung daftar Delivery (penerima dan isi pesan) dari event dan data tiket.
-//   - Handle mengambil langganan setiap penerima, lalu memanggil PushSender.Send. Langganan yang sudah tidak
-//     berlaku (apperror.ErrSubscriptionGone) dihapus dari database. Kegagalan satu perangkat tidak menghentikan
+//   - Handle mengambil langganan setiap penerima (Web Push dan token FCM Android), lalu memanggil PushSender.Send.
+//     Service tidak membedakan kanal; pemilihan kanal ada di pusher.Dispatcher. Langganan yang sudah tidak
+//     berlaku (apperror.ErrSubscriptionGone: Web Push 404/410, FCM UNREGISTERED) dihapus dari database. Kegagalan satu perangkat tidak menghentikan
 //     yang lain, dan galat pertama dikembalikan di akhir.
 //
 // Aturan yang dipakai:
@@ -16,6 +17,8 @@
 // Isinya:
 //   - notify_service.go: NotifyService (NewNotifyService, Plan, Handle), Delivery, serta interface
 //     NotifyRepository dan PushSender.
+//   - push_metrics.go: NewMeteredPushSender, pembungkus PushSender yang menghitung push terkirim dan gagal per
+//     kanal (label channel = webpush atau fcm).
 //   - label.go: Label, satu-satunya tempat format nomor tiket untuk teks notifikasi.
 //   - service_interface.go: NotifyServiceInterface, kontrak yang dipakai runner.
 //

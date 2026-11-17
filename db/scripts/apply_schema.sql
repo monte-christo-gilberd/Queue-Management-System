@@ -41,6 +41,17 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
 
+-- Token FCM perangkat Android (01j_push_devices.sql).
+CREATE TABLE IF NOT EXISTS push_devices (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    platform    TEXT NOT NULL CHECK (platform IN ('android')),
+    token       TEXT NOT NULL UNIQUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_push_devices_user ON push_devices (user_id);
+
 -- Status 'currently_served' (nomor yang sedang dilayani) menggantikan 'completed' sebagai sumber sinyal 'called'.
 -- Kondisi 'completed' sengaja dibiarkan selama masa transisi: urutan deploy tidak penting.
 -- Setelah service baru berjalan dan backfill terverifikasi, persempit menjadi = 'currently_served'.
@@ -90,8 +101,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS tickets_queue_id_user_id_active_key
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'notify_ro') THEN
-        GRANT SELECT ON tickets, queues, counters, push_subscriptions TO notify_ro;
-        GRANT DELETE ON push_subscriptions TO notify_ro;
+        GRANT SELECT ON tickets, queues, counters, push_subscriptions, push_devices TO notify_ro;
+        GRANT DELETE ON push_subscriptions, push_devices TO notify_ro;
     END IF;
 END $$;
 

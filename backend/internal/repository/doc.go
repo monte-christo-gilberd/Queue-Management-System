@@ -26,7 +26,8 @@
 //   - password_reset_repo.go dan email_verification_repo.go: token sekali pakai untuk reset password dan
 //     verifikasi email.
 //   - avatar_repo.go: AvatarRepository, yaitu foto profil yang disimpan di database.
-//   - push_repo.go: PushRepository, yaitu langganan push notifikasi.
+//   - push_repo.go: PushRepository, yaitu langganan Web Push (push_subscriptions) dan token FCM perangkat Android
+//     (push_devices: UpsertDevice, DeleteDevice).
 //   - repo_interface.go: kumpulan interface *RepositoryInterface yang menggambarkan bentuk tiap repository.
 //     Dipakai terutama oleh tes untuk membuat fake dalam memori.
 package repository

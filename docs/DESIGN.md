@@ -8,7 +8,7 @@ lihat [api-contract.md](api-contract.md). Untuk alur pengguna lihat [FLOW.md](FL
 Sistem antrian untuk layanan tatap muka. Ada dua peran:
 
 - **Owner**: membuat antrian, memanggil nomor (Next, Skip, Panggil ulang), mengelola counter, menyisipkan atau menghapus nomor, menulis catatan, mengaktifkan layar publik, melihat riwayat dan mengekspornya, dan menutup antrian. Owner harus punya langganan aktif. Langganan dibayar lewat QRIS BorderPay (`POST /api/v1/owners/subscription/checkout`, lalu webhook `payment.paid` memperpanjang 30 hari). Pembayaran pertama user biasa sekaligus menjadikannya owner.
-- **Customer**: login, bergabung ke antrian lewat kode join (dari QR atau tautan), melihat nomor yang sedang dilayani dan posisinya secara real-time, membatalkan tiketnya, dan melihat riwayat tiket. Menerima Web Push dan email.
+- **Customer**: login, bergabung ke antrian lewat kode join (dari QR atau tautan), melihat nomor yang sedang dilayani dan posisinya secara real-time, membatalkan tiketnya, dan melihat riwayat tiket. Menerima notifikasi giliran (Web Push di browser, FCM di aplikasi Android) dan email.
 
 Sistem terdiri dari lima service Go (backend antrian, `auth-service`, `notify-service`, `mail-service`, `payment-service`), satu PostgreSQL, satu frontend Expo, dan nginx. Ringkasan lintas-service ada di [README.md](../README.md) bagian 5. `payment-service` menangani pembayaran langganan lewat QRIS BorderPay sebagai service terpisah.
 
@@ -22,7 +22,7 @@ Sistem terdiri dari lima service Go (backend antrian, `auth-service`, `notify-se
         │          ──────────────►  auth-service :8094 ──► PostgreSQL (auth_rw)
         │                              └──► mail-service :8092 (email reset password, verifikasi)
 
-   PostgreSQL ─ pg_notify('queue_events') ─► notify-service :8091 ─► Web Push
+   PostgreSQL ─ pg_notify('queue_events') ─► notify-service :8091 ─► Web Push / FCM
    PostgreSQL ─ notification_outbox       ─► mail-service         ─► SMTP
 ```
 
@@ -84,7 +84,7 @@ tidak bisa ditebak.
 
 ### 2.3 Model data
 
-Semua tabel di skema kini dipakai (14 tabel; peta per file di `db/migrations/README.md`):
+Semua tabel di skema kini dipakai (16 tabel; peta per file di `db/migrations/README.md`):
 
 | Tabel | Fungsi |
 |---|---|
@@ -95,6 +95,7 @@ Semua tabel di skema kini dipakai (14 tabel; peta per file di `db/migrations/REA
 | `counters` | Counter per antrian (satu default, maks 10) |
 | `tickets`, `ticket_notes`, `queue_history` | Tiket (`waiting`, `currently_served`, `completed`, `cancelled`, `skipped`, `deleted`), catatan owner, dan riwayat |
 | `push_subscriptions` | Langganan Web Push per browser |
+| `push_devices` | Token FCM per perangkat Android (satu token satu baris, pindah ke akun yang terakhir login) |
 | `notification_outbox` | Antrian email tiket dan `queue-closed` yang dikirim mail-service |
 | `user_action_tokens` | Hash token reset password dan verifikasi email (dikelola auth-service) |
 | `user_avatars` | Foto profil |
@@ -263,15 +264,15 @@ Dengan nginx, `EXPO_PUBLIC_API_URL` harus diisi dengan origin nginx. Kalau tidak
 
 Ekspektasi tes diturunkan dari product overview proyek (dokumen di luar repo ini), bukan dari kode.
 
-## 6b. notify-service (Web Push)
+## 6b. notify-service (Web Push dan FCM)
 
-Service Go terpisah, internal, tidak dipublikasikan nginx. Hanya membuka `GET :8091/health` (200 bila LISTEN aktif) untuk healthcheck compose; log JSON; push memakai timeout 8 detik dan coba ulang 3 kali untuk kegagalan sementara. Trigger `tickets_notify_trg` (`AFTER UPDATE OF status, called_at, recalled_at, skip_count`) memanggil `pg_notify('queue_events', {kind: called|recalled|skipped|requeued, queue_id, ticket_id})`; `requeued` juga membawa `reason` (`skip` atau `counter_closed`) dan `counter` (nama counter, dibaca saat trigger karena counter yang dihapus sudah hilang saat notify-service membaca), dan dicek lebih dulu daripada `skipped`; NOTIFY dikirim saat COMMIT. `notify-service` LISTEN (harus ke primary), membaca data dengan role `notify_ro` (SELECT `tickets`, `queues`, `counters`, `push_subscriptions`; DELETE `push_subscriptions`), lalu mengirim lewat webpush-go. Penerima: `called` → pemilik nomor dan tiket waiting terdepan; `recalled` → pemilik nomor; `skipped` (skip permanen) → pemilik nomor yang dilewati; `requeued` (nomor kembali ke `waiting` dari skip dengan fallback atau karena counter dihapus) → pemilik nomor, dengan posisi baru yang dihitung dari `sort_key` (`PositionOf`). Langganan 404/410 dihapus. Teks nomor dibuat satu fungsi (`service.Label`). Struktur berlapis: `internal/{config,model,dto,repository,service,listener,pusher,runner,httpserver,apperror}` (`listener` menerima NOTIFY, `pusher` mengirim Web Push dengan coba ulang, `runner` merangkai keduanya), tes di `internal/test/`. Belum ada outbox: push saat service mati hilang.
+Service Go terpisah, internal, tidak dipublikasikan nginx. Hanya membuka `GET :8091/health` (200 bila LISTEN aktif) untuk healthcheck compose; log JSON; push memakai timeout 8 detik dan coba ulang 3 kali untuk kegagalan sementara. Trigger `tickets_notify_trg` (`AFTER UPDATE OF status, called_at, recalled_at, skip_count`) memanggil `pg_notify('queue_events', {kind: called|recalled|skipped|requeued, queue_id, ticket_id})`; `requeued` juga membawa `reason` (`skip` atau `counter_closed`) dan `counter` (nama counter, dibaca saat trigger karena counter yang dihapus sudah hilang saat notify-service membaca), dan dicek lebih dulu daripada `skipped`; NOTIFY dikirim saat COMMIT. `notify-service` LISTEN (harus ke primary), membaca data dengan role `notify_ro` (SELECT `tickets`, `queues`, `counters`, `push_subscriptions`, `push_devices`; DELETE `push_subscriptions`, `push_devices`), lalu mengirim lewat webpush-go (browser) atau FCM HTTP v1 (aplikasi Android). `pusher.Dispatcher` memilih kanal per perangkat, jadi `service` tidak tahu kanal mana yang dipakai. Penerima: `called` → pemilik nomor dan tiket waiting terdepan; `recalled` → pemilik nomor; `skipped` (skip permanen) → pemilik nomor yang dilewati; `requeued` (nomor kembali ke `waiting` dari skip dengan fallback atau karena counter dihapus) → pemilik nomor, dengan posisi baru yang dihitung dari `sort_key` (`PositionOf`). Langganan 404/410 (Web Push) dan token `UNREGISTERED` atau tidak sah (FCM) dihapus; `INVALID_ARGUMENT` yang bukan soal token tidak menghapus apa pun. Teks nomor dibuat satu fungsi (`service.Label`). Struktur berlapis: `internal/{config,model,dto,repository,service,listener,pusher,runner,httpserver,apperror}` (`listener` menerima NOTIFY, `pusher` mengirim Web Push dengan coba ulang dan memilih kanal, `fcm` mengirim ke FCM dengan access token OAuth dari service account yang di-cache, `runner` merangkai keduanya), tes di `internal/test/`. Belum ada outbox: push saat service mati hilang.
 
-Backend: `POST /queues/:id/recall` (`tickets.recalled_at`, 3 detik, sekali per pemanggilan) dan `GET /push/public-key`, `POST /push/subscribe|unsubscribe`. Langganan unik per `endpoint`; subscribe memindahkannya ke user yang login.
+Backend: `POST /queues/:id/recall` (`tickets.recalled_at`, 3 detik, sekali per pemanggilan) dan `GET /push/public-key`, `POST /push/subscribe|unsubscribe`. Langganan unik per `endpoint`; subscribe memindahkannya ke user yang login. Untuk aplikasi Android: `POST /push/fcm/register|unregister` (token unik per perangkat, pindah ke akun yang login; rute hanya ada bila `FCM_PROJECT_ID` diisi). FCM bersifat opsional: tanpa kredensial, notify-service tidak membaca `push_devices` dan Web Push tetap jalan.
 
 ### mail-service (email, microservice tersendiri)
 
-Email dikirim oleh **`mail-service`**, bukan notify-service. Pemisahannya disengaja: `notify-service` hanya Web Push, tidak punya kode, env, atau `depends_on` ke email, jadi SMTP atau mail-service yang mati tidak menghentikan push (dibuktikan dengan peristiwa nyata saat mail-service dimatikan; dijaga `scripts/check-service-isolation.sh`).
+Email dikirim oleh **`mail-service`**, bukan notify-service. Pemisahannya disengaja: `notify-service` hanya push (Web Push dan FCM), tidak punya kode, env, atau `depends_on` ke email, jadi SMTP atau mail-service yang mati tidak menghentikan push (dibuktikan dengan peristiwa nyata saat mail-service dimatikan; dijaga `scripts/check-service-isolation.sh`).
 
 - **Bentuk:** modul Go sendiri (`mail-service/`, dependensi: `gin` untuk API, `sqlx` dengan driver `pgx` untuk query outbox, dan `pgx` langsung untuk LISTEN), port internal 8092 (worker outbox: lihat bagian "Outbox email" di bawah; tanpa `DATABASE_URL` worker mati dan hanya API kirim yang jalan), tidak ada rute nginx. `GET /health` tidak memeriksa SMTP. `POST /internal/v1/send` dengan header `X-Service-Token` (`MAIL_SERVICE_TOKEN`, minimal 32 karakter): `{"to","template","data"}`. Isi email ditentukan templat di mail-service; pemanggil hanya memberi nama dan data. Jawaban: 200 `{"data":{"status":"sent"}}`, 400 (JSON rusak, field asing, penerima tidak sah, templat tidak ada, data tidak lengkap), 401, 413 (body > 64 KB), 502 `SMTP_FAILED` (detail SMTP tidak dibocorkan), 503 `BUSY` (lebih dari 16 pengiriman bersamaan). Pengiriman sinkron dengan coba ulang di dalam; tidak ada antrian memori, jadi pemanggil yang butuh ketahanan memakai outbox (item 8, di bawah). Alamat penerima tidak dicatat di log.
 - **Paket `internal/mailer`** (dipanggil `service`): pesan MIME `multipart/alternative` (teks dan HTML, quoted-printable, subjek UTF-8), satu tenggat per percakapan SMTP (dial 5 detik, total 15 detik, ikut batal bersama `context`), mode TLS `none`/`starttls`/`tls` (`PlainAuth` menolak kata sandi lewat koneksi tanpa TLS ke host selain localhost), coba ulang 3 kali dengan backoff 1 dan 2 detik untuk kegagalan sementara (dial, 4xx); 5xx dan input tidak sah tidak diulang (`ErrPermanent`); `To` dan `Subject` dengan CR atau LF ditolak.
@@ -288,7 +289,7 @@ Di luar outbox, `auth-service` memanggil `POST /internal/v1/send` langsung untuk
 
 - **Tulis atomik.** Trigger `tickets_email_outbox` (`AFTER INSERT OR UPDATE OF status`, terpisah dari `tickets_notify` supaya push tidak tersentuh) menulis `notification_outbox` dalam transaksi yang sama dengan perubahan tiket, lalu `pg_notify('mail_outbox')` untuk membangunkan worker. `UNIQUE (kind, ticket_id)` + `ON CONFLICT DO NOTHING` menjamin satu email per kejadian. Payload berupa snapshot (`queue_id`, `queue_name`, `prefix`, `number`, `name`); **tidak pernah memuat catatan owner** dan label nomor diformat di satu tempat (`service.Label` di mail-service, sama dengan notify-service). Ticket dihapus: baris outbox ikut terhapus (`ON DELETE CASCADE`), yang juga mencegah bentrok id setelah `TRUNCATE ... RESTART IDENTITY` pada seed.
 - **Sakelar** `users.email_notifications` (default `TRUE`, diubah lewat `PUT /users/me/preferences`) dibaca **saat kejadian** oleh trigger: mematikan sakelar tidak membatalkan email yang sudah antre, tetapi kejadian sesudahnya tidak masuk outbox, dan menyalakannya lagi tidak mengirim yang terlewat.
-- **Worker ada di mail-service**, bukan notify-service: notify-service tetap Web Push murni tanpa dependensi ke email (dijaga `scripts/check-service-isolation.sh`). Worker mengklaim lewat satu pernyataan `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED)` yang menaikkan `attempts` dan memajukan `next_attempt_at` sebesar lease (masa sewa, `SendTimeout + 1 menit`); kunci baris tidak dipegang selama SMTP. Pengiriman **at-least-once**: bila proses mati tepat setelah SMTP menerima pesan dan sebelum `sent_at` ditulis, email bisa terkirim dua kali setelah lease habis.
+- **Worker ada di mail-service**, bukan notify-service: notify-service tetap push murni (Web Push dan FCM) tanpa dependensi ke email (dijaga `scripts/check-service-isolation.sh`). Worker mengklaim lewat satu pernyataan `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED)` yang menaikkan `attempts` dan memajukan `next_attempt_at` sebesar lease (masa sewa, `SendTimeout + 1 menit`); kunci baris tidak dipegang selama SMTP. Pengiriman **at-least-once**: bila proses mati tepat setelah SMTP menerima pesan dan sebelum `sent_at` ditulis, email bisa terkirim dua kali setelah lease habis.
 - **Coba ulang:** kegagalan sementara menjadwalkan `next_attempt_at` dengan backoff berlipat (30 detik, 1, 2, ... maksimum 30 menit; `OUTBOX_MAX_ATTEMPTS` bawaan 8). Gagal permanen (`mailer.ErrPermanent`: 5xx, alamat ditolak), payload atau templat rusak, atau percobaan habis menandai `failed_at` dan berhenti; `last_error` menyimpan sebabnya (maks. 500 karakter). Satu baris rusak tidak menahan baris lain. **Rate limit** `OUTBOX_RATE` (bawaan 5 email per detik) supaya penutupan antrian besar tidak membanjiri SMTP. Polling tiap 5 detik menjadi jaring pengaman bila NOTIFY terlewat (koneksi LISTEN putus disambung ulang).
 - **Hak akses:** role `mail_rw` (`db/migrations/04_mail_role.sh`, password `MAIL_DB_PASSWORD`; idempoten): `SELECT` pada outbox, `UPDATE` hanya pada kolom status kirim (`sent_at`, `attempts`, `last_error`, `next_attempt_at`, `failed_at`), dan `SELECT (id, email, username, email_notifications)` pada `users`. Tidak bisa membaca `password_hash`, tiket, atau tabel lain, dan tidak bisa INSERT/DELETE (diuji lewat `SET ROLE`). `notify_ro` tidak diubah. Skrip init hanya jalan pada data directory kosong; untuk DB yang sudah ada jalankan `db/scripts/apply_schema.sql` lalu `04_mail_role.sh` (lihat README).
 - **Tautan** di email tiket: `QMS_PUBLIC_ORIGIN` + `/ticket/:queueId`; email `queue-closed`: `QMS_PUBLIC_ORIGIN` + `/riwayat` (wajib URL absolut http/https saat worker aktif). Isi berbahasa Indonesia, HTML dan teks, subjek memuat nama antrian (dan nomor pada email tiket).
@@ -321,7 +322,7 @@ Layar tanpa login untuk monitor ruang tunggu: satu kartu per counter, nomor beri
 Belum dibangun:
 - Ganti alamat email (`email_change`) belum dibangun; kolom `purpose` sudah menyiapkannya.
 - Observability (metrik, log terpusat, dashboard, alert) dan uji beban.
-- Outbox untuk Web Push, migration runner, backup otomatis, HSTS dan Cloudflare Access.
+- Outbox untuk push (Web Push dan FCM), notifikasi iOS native, migration runner, backup otomatis, HSTS dan Cloudflare Access.
 - QR join di layar publik (kolom `show_qr` belum ada); plan langganan selain satu bulan (30 hari) lewat QRIS BorderPay, serta penagihan berulang.
 - Dihapus dari produk (31 Okt 2026): `registration_limit`, batas harian QR, batas riwayat, dan penghapusan permanen (riwayat selalu ada).
 

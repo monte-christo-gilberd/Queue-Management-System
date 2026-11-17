@@ -199,7 +199,7 @@ services:
       - internal
     restart: unless-stopped
 
-  # notify-service: Web Push. Membaca event tiket lewat role notify_ro (baca saja).
+  # notify-service: Web Push dan FCM (Android). Membaca event tiket lewat role notify_ro (baca saja).
   # Tidak bergantung pada mail-service, Mailpit, atau SMTP (dijaga scripts/check-service-isolation.sh).
   notify-service:
     build:
@@ -211,6 +211,13 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+      # Push ke aplikasi Android (FCM). Opsional: kosong = hanya Web Push. JSON service account disimpan sebagai
+      # secret di server pada keys/fcm/ (jangan di repo), lalu FCM_CREDENTIALS_FILE=/run/fcm/<nama-file>.json.
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_CREDENTIALS_FILE: ${FCM_CREDENTIALS_FILE:-}
+    # Hanya folder fcm yang di-mount, supaya notify-service tidak bisa membaca kunci privat auth di keys/.
+    volumes:
+      - ./keys/fcm:/run/fcm:ro
     # /health dipakai untuk memeriksa service sehat. Tidak ada service yang menunggu service ini.
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8091/health || exit 1"]
@@ -257,6 +264,8 @@ services:
       # [SINKRON] Harus sama dengan nilai di auth-service.
       EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      # Bila diisi, rute /api/v1/push/fcm/* (token FCM aplikasi Android) dipasang. Tidak butuh kredensial.
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
     volumes:
       # Hanya kunci publik. Kunci privat tidak pernah di-mount ke backend.
       - ./keys/auth-public.pem:/run/keys/auth-public.pem:ro

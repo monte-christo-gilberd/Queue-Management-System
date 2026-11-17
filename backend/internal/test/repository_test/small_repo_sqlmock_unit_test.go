@@ -307,6 +307,31 @@ func TestPushRepository_UpsertAndDelete(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// Token FCM: INSERT ... ON CONFLICT (token) memindahkan token ke user yang login, DELETE hanya milik user itu, dan
+// galat database diteruskan apa adanya.
+func TestPushRepository_UpsertAndDeleteDevice(t *testing.T) {
+	db, mock := setupTestDB(t)
+	defer db.Close()
+	repo := repository.NewPushRepository(db)
+
+	mock.ExpectExec(`INSERT INTO push_devices .* ON CONFLICT \(token\) DO UPDATE`).
+		WithArgs(int64(9), "tok-1", "android").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	require.NoError(t, repo.UpsertDevice(context.Background(), 9, "tok-1", "android"))
+
+	mock.ExpectExec(`INSERT INTO push_devices`).WillReturnError(errDB)
+	assert.ErrorIs(t, repo.UpsertDevice(context.Background(), 9, "tok-1", "android"), errDB)
+
+	mock.ExpectExec(`DELETE FROM push_devices WHERE user_id = \$1 AND token = \$2`).
+		WithArgs(int64(9), "tok-1").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	require.NoError(t, repo.DeleteDevice(context.Background(), 9, "tok-1"))
+
+	mock.ExpectExec(`DELETE FROM push_devices`).WillReturnError(errDB)
+	assert.ErrorIs(t, repo.DeleteDevice(context.Background(), 9, "tok-1"), errDB)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestSessionRepository_PasswordChangedAt(t *testing.T) {
 	ts := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 

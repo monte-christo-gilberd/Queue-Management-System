@@ -42,7 +42,7 @@ Diagram dan detail lengkap ada di [FLOW.md](docs/FLOW.md).
 - Riwayat dan antrian tidak pernah dihapus permanen (keputusan produk 31 Okt 2026).
 - Backend berjalan satu instance, karena hub SSE ada di memori proses.
 - Frontend dan API satu origin lewat nginx. `PUBLIC_APP_URL` harus bisa dibuka dari HP yang memindai QR.
-- Web Push butuh HTTPS dan browser yang mendukung.
+- Web Push butuh HTTPS dan browser yang mendukung. Notifikasi di aplikasi Android memakai FCM dan butuh APK hasil EAS Build (tidak jalan di Expo Go).
 
 ### Status
 
@@ -146,7 +146,7 @@ cd frontend
 npm run test:unit
 ```
 
-Tes tiap modul Go ada di `internal/test/<lapisan>_test/` (di notify-service juga `cmd/notify-service/main_test.go`). Hasil terakhir: backend 457 tes lulus, auth-service 131, notify-service 43, mail-service 57. Cakupan statement (`go test ./... -coverpkg=./...`): backend 70,0%, auth-service 85,7%, notify-service 88,1%, mail-service 75,9%. Unit test frontend: 193 lulus.
+Tes tiap modul Go ada di `internal/test/<lapisan>_test/` (di notify-service juga `cmd/notify-service/main_test.go`). Hasil terakhir: backend 500 tes lulus, auth-service 131, notify-service 59, mail-service 57. Cakupan statement (`go test ./... -coverpkg=./...`): backend 70,2%, auth-service 85,7%, notify-service 84,1%, mail-service 75,9%. Unit test frontend: 208 lulus.
 
 End-to-end memakai Playwright di `frontend/playwright/` (`npm run e2e`): 246 tes dalam 33 file spec. Tes ini butuh backend dan frontend yang berjalan.
 
@@ -164,7 +164,7 @@ Layanan internal (auth, notify, mail) tidak punya `ports:` sehingga endpoint int
 |---|---|---|
 | db | `db/Dockerfile` | `postgres:16-alpine`, skema dan index dijalankan otomatis saat data directory kosong |
 | auth-service | `auth-service/Dockerfile` | Target `dev`, hanya di jaringan internal (:8094). Login, registrasi, login Google, reset password, verifikasi email. Satu-satunya pemegang kunci privat JWT; role database `auth_rw` |
-| notify-service | `notify-service/Dockerfile` | Target `dev`, hanya di jaringan internal. LISTEN ke Postgres (role `notify_ro`), kirim Web Push (VAPID). Tidak bergantung pada email |
+| notify-service | `notify-service/Dockerfile` | Target `dev`, hanya di jaringan internal. LISTEN ke Postgres (role `notify_ro`), kirim Web Push (VAPID) ke browser dan FCM ke aplikasi Android (opsional, kredensial di `keys/fcm/`). Tidak bergantung pada email |
 | mail-service | `mail-service/Dockerfile` | Target `dev`, hanya di jaringan internal (:8092). Satu-satunya pengirim email: API `POST /internal/v1/send` (`X-Service-Token`), templat, SMTP, coba ulang |
 | payment-service | `payment-service/Dockerfile` | Target `dev`, hanya di jaringan internal. Pembayaran langganan QRIS lewat BorderPay; webhook publik masuk lewat nginx di `/api/v1/webhooks/borderpay` |
 | mailpit | `axllent/mailpit:v1.31.6` | Hanya dev. Server SMTP palsu: menangkap semua email dari mail-service. SMTP dan UI hanya diikat ke 127.0.0.1 (`:1025` dan `:8025`), tidak lewat nginx; mail-service memakai `mailpit:1025` lewat jaringan internal |
@@ -181,7 +181,7 @@ Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) ata
 ### Demo/produksi di belakang Cloudflare Tunnel
 
 ```bash
-cp .env.prod.example .env.prod && chmod 600 .env.prod   # isi rahasia (openssl rand -hex 32) dan kunci VAPID baru; .env dev tidak tersentuh
+cp .env.prod.example .env.prod && chmod 600 .env.prod   # isi rahasia (openssl rand -hex 32), kunci VAPID baru, dan (opsional) FCM_*; .env dev tidak tersentuh
 make down                   # stack dev memakai port 8080 yang sama
 make prod-up                # cek konfigurasi (MAIL, Google, pembayaran), siapkan role DB, lalu docker compose up -d --build
 make prod-payment-check     # hanya membaca: konfigurasi BorderPay, hak role payment_rw, status payment-service
@@ -234,14 +234,24 @@ Detail konfigurasi dan operasi untuk notify-service dan mail-service.
 
 #### Notifikasi (notify-service)
 
-Variabel `.env` (lihat `.env.example`): `NOTIFY_DB_PASSWORD` (password role `notify_ro`, hanya baca), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Buat kunci VAPID dengan `npx web-push generate-vapid-keys`.
+Variabel `.env` (lihat `.env.example`): `NOTIFY_DB_PASSWORD` (password role `notify_ro`, hanya baca), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Buat kunci VAPID dengan `npx web-push generate-vapid-keys`. Opsional untuk aplikasi Android: `FCM_PROJECT_ID` dan `FCM_CREDENTIALS_FILE` (lihat di bawah).
 
-Alur: trigger `tickets_notify_trg` di Postgres memancarkan `pg_notify('queue_events')` saat nomor dipanggil atau dipanggil ulang; `notify-service` mendengarkan, menghitung penerima, lalu mengirim push. Tanpa outbox, jadi push yang terjadi saat service mati hilang.
+Alur: trigger `tickets_notify_trg` di Postgres memancarkan `pg_notify('queue_events')` saat nomor dipanggil atau dipanggil ulang; `notify-service` mendengarkan, menghitung penerima, lalu mengirim push ke setiap perangkat penerima: Web Push untuk browser (`push_subscriptions`) dan FCM untuk aplikasi Android (`push_devices`). Tanpa outbox, jadi push yang terjadi saat service mati hilang.
+
+Push ke aplikasi Android (FCM), langkah sekali pasang:
+1. Firebase Console: buat project (atau pakai yang ada), tambah aplikasi Android dengan package `my.id.montechristo.qms`, dan pastikan **Firebase Cloud Messaging API (V1)** aktif (Project settings > Cloud Messaging). Langkah "Add Firebase SDK" (Gradle) dilewati: Expo memasang plugin Gradle sendiri saat build.
+2. `google-services.json` (Project settings > General > Your apps): simpan di `frontend/google-services.json` (di-gitignore) untuk build lokal, dan daftarkan ke EAS karena EAS Build tidak mengunggah berkas yang di-gitignore: `cd frontend && npx eas-cli env:create --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --visibility secret --environment production`. `frontend/app.config.js` membacanya.
+3. Kredensial server (Project settings > Service accounts > Generate new private key): simpan sebagai `keys/fcm/fcm-sa.json`, lalu `sudo chown -R 10001 keys/fcm && sudo chmod 500 keys/fcm && sudo chmod 400 keys/fcm/fcm-sa.json` (notify-service berjalan sebagai UID 10001). Pakai `keys/fcm/` juga di dev, bukan `keys-dev/` yang dihapus setiap `make up`. Bila `keys/fcm` sudah ada milik root (dibuat Docker saat mount), salin dengan `sudo install -o 10001 -m 400 <berkas> keys/fcm/fcm-sa.json`.
+4. Isi `.env` / `.env.prod`: `FCM_PROJECT_ID=<project id>` dan `FCM_CREDENTIALS_FILE=/run/fcm/fcm-sa.json` (`keys/fcm` di-mount ke `/run/fcm`). Jalankan `apply_schema.sql` (tabel `push_devices`), lalu restart backend dan notify-service.
+5. Cek: log notify-service menampilkan `FCM push enabled`, dan `POST /api/v1/push/fcm/register` tanpa login menjawab 401 (bukan 404).
+6. Build APK baru (`npx eas-cli build -p android --profile production`); APK lama tidak punya kode notifikasi dan tidak bisa diperbaiki lewat EAS Update. Di aplikasi: halaman tiket > AKTIFKAN NOTIFIKASI > izinkan. Token tersimpan di `push_devices`.
+
+Tanpa `FCM_*`, Web Push tetap berjalan; log hanya mencatat peringatan bila konfigurasinya setengah atau berkasnya tidak terbaca. Metrik `push_sent_total` dan `push_failed_total` punya label `channel` (`webpush` atau `fcm`).
 
 Catatan:
-- Satu browser hanya melayani satu akun. Layar tiket mendaftarkan ulang langganan ke akun yang sedang login, dan logout melepas langganan.
-- Push hanya jalan di HTTPS (domain tunnel `qms.montechristo.my.id`, atau `make tunnel` untuk uji sementara) dan di browser yang mendukung; Expo Go tidak. iPhone/iPad perlu situs dipasang ke Layar Utama.
-- DB yang sudah berjalan tidak menjalankan ulang skrip init. **Cara cepat dan idempoten:** `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql` (prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`), lalu restart backend dan notify-service. Isinya mencakup semua penyesuaian di bawah ini, yang bila dikerjakan manual: `ALTER TABLE tickets ADD COLUMN recalled_at TIMESTAMPTZ;`, tabel `push_subscriptions`, fungsi `tickets_notify` dan trigger `tickets_notify_trg` (jika sudah ada versi lama tanpa event `skipped` atau `requeued`, jalankan ulang `CREATE OR REPLACE FUNCTION` dan buat ulang trigger) (ada di `db/migrations/01g_triggers.sql`), serta role `notify_ro` (`db/migrations/03_notify_role.sh`). Pengaturan Skip juga butuh kolom `queue_settings.skip_fallback`, `skip_fallback_n`, `skip_max_returns`.
+- Satu browser atau satu HP hanya melayani satu akun. Layar tiket mendaftarkan ulang langganan (atau token FCM) ke akun yang sedang login, dan logout melepasnya.
+- Push hanya jalan di HTTPS (domain tunnel `qms.montechristo.my.id`, atau `make tunnel` untuk uji sementara) dan di browser yang mendukung. iPhone/iPad perlu situs dipasang ke Layar Utama. Aplikasi Android memakai FCM (development/production build); Expo Go dan iOS native tidak didukung, tombol notifikasi tidak tampil di sana.
+- DB yang sudah berjalan tidak menjalankan ulang skrip init. **Cara cepat dan idempoten:** `docker compose exec -T db psql -U qms -d qms_db -v ON_ERROR_STOP=1 < db/scripts/apply_schema.sql` (prod: tambahkan `-f docker-compose.prod.yml --env-file .env.prod`), lalu restart backend dan notify-service. Isinya mencakup semua penyesuaian di bawah ini, yang bila dikerjakan manual: `ALTER TABLE tickets ADD COLUMN recalled_at TIMESTAMPTZ;`, tabel `push_subscriptions` dan `push_devices`, fungsi `tickets_notify` dan trigger `tickets_notify_trg` (jika sudah ada versi lama tanpa event `skipped` atau `requeued`, jalankan ulang `CREATE OR REPLACE FUNCTION` dan buat ulang trigger) (ada di `db/migrations/01g_triggers.sql`), serta role `notify_ro` (`db/migrations/03_notify_role.sh`). Pengaturan Skip juga butuh kolom `queue_settings.skip_fallback`, `skip_fallback_n`, `skip_max_returns`.
 - Awalan nomor tiket: DB lama butuh `ALTER TABLE queues ADD COLUMN ticket_prefix VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (ticket_prefix ~ '^[A-Z0-9]{1,3}$');`, lalu restart backend dan notify-service (notify membaca kolom ini).
 - Tes unit: `cd notify-service && go test ./...`.
 
@@ -297,7 +307,7 @@ Setelah penyebabnya diperbaiki, kirim ulang dari dashboard BorderPay. Webhook ya
 
 #### Email (Mailpit atau SMTP nyata)
 
-`mail-service` adalah satu-satunya pengirim email (`notify-service` hanya Web Push dan tetap jalan walau email mati; dijaga `scripts/check-service-isolation.sh`). Pemanggil (auth-service untuk reset password, verifikasi, dan konfirmasi terverifikasi) memakai `POST /internal/v1/send` dengan header `X-Service-Token` (`MAIL_SERVICE_TOKEN`). Pengaturan SMTP lewat `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_TLS` (`none`, `starttls`, atau `tls`); divalidasi saat start dan service menolak start bila salah atau tidak lengkap.
+`mail-service` adalah satu-satunya pengirim email (`notify-service` hanya push, Web Push dan FCM, dan tetap jalan walau email mati; dijaga `scripts/check-service-isolation.sh`). Pemanggil (auth-service untuk reset password, verifikasi, dan konfirmasi terverifikasi) memakai `POST /internal/v1/send` dengan header `X-Service-Token` (`MAIL_SERVICE_TOKEN`). Pengaturan SMTP lewat `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_TLS` (`none`, `starttls`, atau `tls`); divalidasi saat start dan service menolak start bila salah atau tidak lengkap.
 
 ##### Email notifikasi tiket (outbox)
 Empat email ke pemilik tiket (masuk antrian, dibatalkan, nomor dihapus owner, selesai dilayani) dan satu email `queue-closed` ke owner saat ia menutup antriannya sendiri ditulis ke tabel `notification_outbox` oleh trigger (`tickets_email_outbox`, `queues_email_outbox`) dalam transaksi yang sama dengan perubahan tiket atau status antrian, lalu dikirim oleh worker di `mail-service` (role database `mail_rw`, `MAIL_DB_PASSWORD`). Email yang gagal dicoba ulang dengan jeda berlipat; bila mail-service atau SMTP mati, email menunggu di outbox dan terkirim setelah hidup lagi, sementara join, cancel, dan push tidak terpengaruh. Pengguna bisa mematikannya di Profil (`Notifikasi email`, kolom `users.email_notifications`).
@@ -352,7 +362,7 @@ Semua service Go (backend, auth, mail, notify) menulis **satu baris JSON per kej
 
 - **Log akses** (backend, auth, mail): `request_id`, `method`, `route`, `status`, `latency_ms`, `bytes`, `client_ip`, dan `user_id` (angka saja, backend dan auth). `route` adalah **templat** (`/api/v1/display/:token`), bukan path mentah; rute yang tidak ada dicatat `unmatched`. Probe `/health` dan `/ready` dicatat di level `debug`. Panic dicatat sebagai `panic recovered` (dengan stack) dan klien menerima 500 `INTERNAL_ERROR`.
 - **Request ID:** nginx membuat `X-Request-Id` untuk tiap request (nilai dari klien ditimpa) dan meneruskannya ke backend dan auth-service. ID dari luar yang kosong, lebih dari 128 karakter, atau berisi karakter selain huruf, angka, `-`, `_`, `.` diganti ID baru. Cari satu request di semua service dengan `docker compose logs | grep <request_id>`.
-- **Kebijakan isi log.** Tidak boleh masuk log (termasuk log nginx dan, nanti, atribut span): JWT dan header `Authorization`, password, token layar publik, token reset password, token verifikasi email, kode join, token Web Push, isi body request, query string, dan alamat email penuh. Catat id angka (`user_id`, `ticket_id`, `queue_id`) atau templat route, bukan nilainya. Saat menambah log baru, jangan memasukkan error mentah dari pustaka yang bisa memuat URL atau kredensial tanpa memeriksanya.
+- **Kebijakan isi log.** Tidak boleh masuk log (termasuk log nginx dan, nanti, atribut span): JWT dan header `Authorization`, password, token layar publik, token reset password, token verifikasi email, kode join, token Web Push dan token FCM, isi body request, query string, dan alamat email penuh. Catat id angka (`user_id`, `ticket_id`, `queue_id`) atau templat route, bukan nilainya. Saat menambah log baru, jangan memasukkan error mentah dari pustaka yang bisa memuat URL atau kredensial tanpa memeriksanya.
 
 #### Observability (opsional: log, metrik, trace, alert)
 Overlay `docker-compose.observability.yml` menambah OpenTelemetry Collector, Loki, dan Grafana. Aplikasi tidak bergantung padanya: tidak ada `depends_on` ke arah sana, dan bila overlay mati antrian, login, SSE, dan langganan tetap jalan.
@@ -377,11 +387,11 @@ Rincian: log Docker (`json-file`, maks 3 x 10 MB per container) dibaca collector
 | Komponen | Status | Catatan |
 |---|---|---|
 | Backend (Go, Gin) | Lengkap dan terhubung | Semua route punya handler, service, dan repository. Tanpa stub dan tanpa TODO. 457 tes lulus (`go test ./... -count=1 -v`), cakupan 70,0% (`-coverpkg=./...`). Tes ada di `internal/test/<lapisan>_test/`. |
-| Frontend (Expo) | Lengkap dan terhubung | Semua layar memakai API nyata. 193 unit test dan 246 tes Playwright (33 spec). Login Google tersambung ke auth-service. |
+| Frontend (Expo) | Lengkap dan terhubung | Semua layar memakai API nyata. 208 unit test dan 246 tes Playwright (33 spec). Login Google tersambung ke auth-service. |
 | auth-service | Lengkap | Login, registrasi, login Google, reset password, verifikasi email, token RS256. 131 tes lulus, cakupan 85,7%. |
-| notify-service | Lengkap | LISTEN Postgres, Web Push, coba ulang, dan `/health`. Tanpa outbox. 43 tes lulus, cakupan 88,1%. |
+| notify-service | Lengkap | LISTEN Postgres, Web Push, FCM untuk aplikasi Android, coba ulang, dan `/health`. Tanpa outbox. 59 tes lulus, cakupan 84,1%. |
 | mail-service | Lengkap | Outbox dengan coba ulang dan backoff, sembilan templat (`joined`, `cancelled`, `removed`, `completed`, `queue-closed`, `email-verify`, `email-verified`, `password-reset`, `test`), SMTP. 57 tes lulus, cakupan 75,9%. |
-| Database | Lengkap | 14 tabel, trigger notifikasi dan outbox email, role terpisah per service. |
+| Database | Lengkap | 16 tabel, trigger notifikasi dan outbox email, role terpisah per service. |
 | Deployment | Berjalan | Compose dev dan prod, nginx dengan rate limit, tunnel Cloudflare manual, Makefile dan skrip bantu. |
 
 ### Fitur yang ada
@@ -397,7 +407,7 @@ Rincian: log Docker (`json-file`, maks 3 x 10 MB per container) dibaca collector
 | Catatan | Owner menulis catatan untuk nomor yang sedang dilayani. |
 | Counter | Owner menambah, mengganti nama, dan menghapus counter per antrian lewat UI (`CounterBar`). Layar publik menampilkan satu kartu per counter. |
 | Layar publik | Owner mengaktifkan layar di `/display/<token>` untuk monitor ruang tunggu, tanpa login. Satu kartu per counter, langsung berubah saat Next atau Skip. "GANTI TAUTAN" mematikan tautan lama. |
-| Notifikasi giliran | Web Push dari `notify-service`: "Giliran Anda" saat dipanggil, "Tinggal 1 nomor lagi" untuk nomor berikutnya, dan pemberitahuan untuk nomor yang dilewati. Aktif otomatis saat join bila izin diberikan. Hanya di browser lewat HTTPS (`make tunnel`). |
+| Notifikasi giliran | Web Push (browser) dan FCM (aplikasi Android) dari `notify-service`: "Giliran Anda" saat dipanggil, "Tinggal 1 nomor lagi" untuk nomor berikutnya, dan pemberitahuan untuk nomor yang dilewati. Di browser aktif otomatis saat join bila izin diberikan (HTTPS, `make tunnel`); di aplikasi Android lewat tombol AKTIFKAN NOTIFIKASI di halaman tiket, dan ketuk notifikasi membuka halaman tiket. |
 | Email | `mail-service` mengirim email dari outbox (tiket, dan `queue-closed` ke owner saat antrian ditutup) dan mencoba ulang bila gagal; auth-service mengirim email verifikasi, `email-verified`, dan reset password lewat mail-service. Pengguna bisa mematikan email notifikasi di Profil. |
 | Riwayat dan ekspor | Owner melihat riwayat antrian dan bisa mengekspornya ke CSV atau XLSX. Customer melihat riwayat tiketnya. |
 | Langganan | Owner membayar 1 bulan (30 hari) lewat QRIS BorderPay. Langganan aktif setelah webhook `payment.paid` terverifikasi dan diterapkan. |
@@ -436,10 +446,11 @@ queue-management-system/
 │   └── internal/             apperror, config, database, dto, handler, httpserver, middleware, model, repository, router, service, validator,
 │                             google (verifikasi ID token Google), mailclient (klien HTTP ke mail-service), test/<lapisan>_test
 ├── frontend/                 aplikasi Expo: src/app (rute), components, hooks, lib, store, utils, constants, types
-├── notify-service/           Web Push (LISTEN Postgres), /health :8091
+├── notify-service/           Web Push dan FCM (LISTEN Postgres), /health :8091
 │   ├── cmd/notify-service/   titik masuk (+ main_test.go)
 │   └── internal/             apperror, config, dto, httpserver, model, repository, service,
-│                             listener (LISTEN pg_notify), pusher (kirim Web Push dan coba ulang), runner, test/<lapisan>_test (tanpa handler dan router)
+│                             listener (LISTEN pg_notify), pusher (kirim Web Push, coba ulang, Dispatcher per kanal),
+│                             fcm (kirim FCM HTTP v1 ke Android), runner, test/<lapisan>_test (tanpa handler dan router)
 ├── mail-service/             pengirim email (outbox dan SMTP), :8092
 │   ├── cmd/mail-service/     titik masuk
 │   └── internal/             apperror, config, dto, handler, middleware, model, repository, router, service,

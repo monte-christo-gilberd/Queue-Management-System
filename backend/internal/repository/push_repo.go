@@ -41,3 +41,29 @@ func (r *PushRepository) Delete(ctx context.Context, userID int64, endpoint stri
 	)
 	return err
 }
+
+// UpsertDevice menyimpan token FCM perangkat; token yang sama dipindah ke user yang sedang login (satu perangkat,
+// satu akun aktif), sama seperti Upsert untuk Web Push.
+func (r *PushRepository) UpsertDevice(ctx context.Context, userID int64, token, platform string) error {
+	// INSERT token; bila token sudah ada, pindahkan ke user ini dan perbarui platform serta updated_at.
+	_, err := r.db.ExecContext(
+		ctx,
+		`INSERT INTO push_devices (user_id, token, platform)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (token) DO UPDATE
+		 SET user_id = EXCLUDED.user_id, platform = EXCLUDED.platform, updated_at = now()`,
+		userID, token, platform,
+	)
+	return err
+}
+
+// DeleteDevice hanya menghapus token FCM milik user itu.
+func (r *PushRepository) DeleteDevice(ctx context.Context, userID int64, token string) error {
+	// DELETE token ini, hanya jika milik user ini.
+	_, err := r.db.ExecContext(
+		ctx,
+		`DELETE FROM push_devices WHERE user_id = $1 AND token = $2`,
+		userID, token,
+	)
+	return err
+}

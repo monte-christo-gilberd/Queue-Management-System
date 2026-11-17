@@ -14,6 +14,7 @@ erDiagram
     users ||--o| user_avatars : "punya foto"
     users ||--o{ user_action_tokens : "token sekali pakai"
     users ||--o{ push_subscriptions : "perangkat"
+    users ||--o{ push_devices : "aplikasi Android"
     users ||--o{ payment_orders : "memesan"
     users ||--o{ tickets : "memegang"
     users ||--o{ notification_outbox : "penerima"
@@ -130,6 +131,12 @@ erDiagram
         text endpoint UK
         text p256dh
         text auth
+    }
+    push_devices {
+        bigint id PK
+        bigint user_id FK
+        text platform
+        text token UK
     }
     notification_outbox {
         bigint id PK
@@ -701,6 +708,30 @@ CREATE TABLE payment_orders (
 );
 ```
 
+### `01j_push_devices.sql`
+
+```sql
+-- ============================================================================
+-- 01j_push_devices.sql — Token push perangkat native (FCM)
+-- Isi      : push_devices
+-- Bergantung: 01a (users)
+-- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
+-- ============================================================================
+
+-- Token FCM per perangkat Android (aplikasi APK). Terpisah dari push_subscriptions karena bentuknya berbeda:
+-- FCM memakai satu token, Web Push memakai endpoint dan dua kunci. Token yang sama dipindah ke akun yang terakhir
+-- login (ON CONFLICT (token) di backend). Dibaca notify-service (role notify_ro), yang juga boleh menghapus token
+-- yang sudah tidak berlaku (UNREGISTERED dari FCM).
+CREATE TABLE push_devices (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    platform    TEXT NOT NULL CHECK (platform IN ('android')),
+    token       TEXT NOT NULL UNIQUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
 ### `02_Indexes.sql`
 
 ```sql
@@ -776,6 +807,14 @@ CREATE INDEX IF NOT EXISTS idx_queue_history_owner_closed
 -- Semua langganan push satu user (kirim ke tiap perangkat, atau lepas saat logout).
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
     ON push_subscriptions (user_id);
+
+-- ----------------------------------------------------------------------------
+-- push_devices
+-- ----------------------------------------------------------------------------
+
+-- Semua token FCM satu user (kirim ke tiap perangkat Android).
+CREATE INDEX IF NOT EXISTS idx_push_devices_user
+    ON push_devices (user_id);
 
 
 -- ----------------------------------------------------------------------------

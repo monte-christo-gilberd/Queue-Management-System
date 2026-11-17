@@ -11,6 +11,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 
+	"qms/notify-service/internal/model"
 	"qms/notify-service/internal/repository"
 )
 
@@ -134,8 +135,10 @@ const (
 	qTicket     = "THEN cc.name END"
 	qPosition   = "o.sort_key < t.sort_key"
 	qFirst      = "ORDER BY t.sort_key ASC LIMIT 1"
-	qSubs       = "FROM push_subscriptions WHERE user_id"
+	qSubs       = "SELECT endpoint, p256dh, auth"
 	qDeleteSubs = "DELETE FROM push_subscriptions"
+	qDevices    = "FROM push_devices"
+	qDeleteDevs = "DELETE FROM push_devices"
 )
 
 func newStore(t *testing.T, replies map[string]reply) (*repository.NotifyRepository, *sqlx.DB) {
@@ -272,14 +275,63 @@ func TestSubscriptionsScanErrorIsReturned(t *testing.T) {
 
 func TestDeleteSubscription(t *testing.T) {
 	st, _ := newStore(t, map[string]reply{qDeleteSubs: {msgs: []pgproto3.BackendMessage{&pgproto3.CommandComplete{CommandTag: []byte("DELETE 1")}}}})
-	if err := st.DeleteSubscription(context.Background(), "https://push/a"); err != nil {
+	if err := st.DeleteSubscription(context.Background(), model.Subscription{Endpoint: "https://push/a"}); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestDeleteSubscriptionErrorIsReturned(t *testing.T) {
 	st, _ := newStore(t, map[string]reply{qDeleteSubs: errReply("boom")})
-	if err := st.DeleteSubscription(context.Background(), "https://push/a"); err == nil {
+	if err := st.DeleteSubscription(context.Background(), model.Subscription{Endpoint: "https://push/a"}); err == nil {
 		t.Fatal("want exec error")
+	}
+}
+
+// FCM mati (EnableDevices tidak dipanggil): push_devices tidak di-query sama sekali.
+func TestSubscriptionsSkipsDevicesWhenDisabled(t *testing.T) {
+	// Tidak ada jawaban untuk push_devices: query ke sana akan gagal, jadi hasil sukses membuktikan tidak di-query.
+	st, _ := newStore(t, map[string]reply{qSubs: rowsReply(subCols, [][]*string{{new("https://push/a"), new("k"), new("a")}})})
+	subs, err := st.Subscriptions(context.Background(), 10)
+	if err != nil || len(subs) != 1 || subs[0].Kind != model.KindWebPush {
+		t.Fatalf("subs=%+v err=%v", subs, err)
+	}
+}
+
+// FCM aktif: langganan Web Push lalu token FCM, masing-masing dengan Kind yang benar.
+func TestSubscriptionsIncludesDevicesWhenEnabled(t *testing.T) {
+	st, _ := newStore(t, map[string]reply{
+		qSubs:    rowsReply(subCols, [][]*string{{new("https://push/a"), new("k"), new("a")}}),
+		qDevices: rowsReply([]col{{"token", oidText}}, [][]*string{{new("tok-1")}, {new("tok-2")}}),
+	})
+	st.EnableDevices()
+	subs, err := st.Subscriptions(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(subs) != 3 || subs[0].Endpoint != "https://push/a" ||
+		subs[1].Kind != model.KindFCM || subs[1].Token != "tok-1" || subs[2].Token != "tok-2" {
+		t.Fatalf("subs=%+v", subs)
+	}
+}
+
+// Membaca push_devices gagal (mis. migrasi belum jalan): Web Push tetap dikembalikan tanpa galat.
+func TestSubscriptionsDeviceErrorKeepsWebPush(t *testing.T) {
+	st, _ := newStore(t, map[string]reply{
+		qSubs:    rowsReply(subCols, [][]*string{{new("https://push/a"), new("k"), new("a")}}),
+		qDevices: errReply("relation push_devices does not exist"),
+	})
+	st.EnableDevices()
+	subs, err := st.Subscriptions(context.Background(), 10)
+	if err != nil || len(subs) != 1 || subs[0].Endpoint != "https://push/a" {
+		t.Fatalf("subs=%+v err=%v, want Web Push only", subs, err)
+	}
+}
+
+// Token FCM yang mati dihapus dari push_devices menurut token, bukan dari push_subscriptions.
+func TestDeleteSubscriptionFCMDeletesDevice(t *testing.T) {
+	// Hanya push_devices yang dijawab; DELETE ke push_subscriptions akan gagal.
+	st, _ := newStore(t, map[string]reply{qDeleteDevs: {msgs: []pgproto3.BackendMessage{&pgproto3.CommandComplete{CommandTag: []byte("DELETE 1")}}}})
+	if err := st.DeleteSubscription(context.Background(), model.Subscription{Kind: model.KindFCM, Token: "tok-1"}); err != nil {
+		t.Fatal(err)
 	}
 }

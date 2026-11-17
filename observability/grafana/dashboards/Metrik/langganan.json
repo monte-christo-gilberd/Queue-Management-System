@@ -375,8 +375,8 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(increase(push_sent_total[$__interval]))",
-          "legendFormat": "terkirim",
+          "expr": "sum by (channel) (increase(push_sent_total[$__interval]))",
+          "legendFormat": "terkirim: {{channel}}",
           "instant": false,
           "range": true,
           "refId": "A"
@@ -387,8 +387,8 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (reason) (increase(push_failed_total[$__interval]))",
-          "legendFormat": "gagal: {{reason}}",
+          "expr": "sum by (channel, reason) (increase(push_failed_total[$__interval]))",
+          "legendFormat": "gagal {{channel}}: {{reason}}",
           "instant": false,
           "range": true,
           "refId": "B"

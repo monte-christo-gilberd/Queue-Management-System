@@ -98,6 +98,14 @@ type PushHandler interface {
 	Unsubscribe(c *gin.Context)
 }
 
+// FCMPushHandler adalah handler untuk token push FCM perangkat Android.
+type FCMPushHandler interface {
+	// Register menyimpan token FCM perangkat milik user yang login.
+	Register(c *gin.Context)
+	// Unregister menghapus token FCM perangkat milik user yang login.
+	Unregister(c *gin.Context)
+}
+
 // SubscriptionHandler adalah handler untuk penambahan masa langganan owner (30 hari, tanpa pembayaran).
 // SubscriptionCheckoutHandler: rute checkout pembayaran langganan (POST /owners/subscription/checkout).
 type SubscriptionCheckoutHandler interface {
@@ -156,6 +164,8 @@ type AppRouter struct {
 	displayHandler DisplayHandler
 	// pushHandler menangani Web Push (opsional).
 	pushHandler PushHandler
+	// fcmPushHandler menangani token FCM perangkat Android (opsional).
+	fcmPushHandler FCMPushHandler
 	// subscriptionCheckoutHandler menangani checkout pembayaran langganan lewat payment-service (opsional).
 	subscriptionCheckoutHandler SubscriptionCheckoutHandler
 	// ticketHandler menangani tiket dan join antrian.

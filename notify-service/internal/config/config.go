@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-// Config adalah konfigurasi runtime notify-service. Semua field wajib diisi.
+// Config adalah konfigurasi runtime notify-service. Semua field wajib diisi, kecuali FCM (opsional).
 type Config struct {
 	// DatabaseURL: URL koneksi PostgreSQL (DATABASE_URL). Dipakai untuk LISTEN dan query baca.
 	DatabaseURL string
@@ -15,6 +15,11 @@ type Config struct {
 	VAPIDPrivateKey string
 	// VAPIDSubject: kontak pengirim push (VAPID_SUBJECT), biasanya mailto: atau URL.
 	VAPIDSubject string
+	// FCMProjectID: project Firebase (FCM_PROJECT_ID). Opsional; kosong diisi dari project_id di file kredensial.
+	FCMProjectID string
+	// FCMCredentialsFile: path file JSON service account (FCM_CREDENTIALS_FILE). Opsional; kosong = push ke
+	// aplikasi Android (FCM) mati, Web Push tetap jalan.
+	FCMCredentialsFile string
 }
 
 // Load gagal cepat bila ada variabel wajib yang kosong.
@@ -25,6 +30,9 @@ func Load() (Config, error) {
 		VAPIDPublicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
 		VAPIDPrivateKey: os.Getenv("VAPID_PRIVATE_KEY"),
 		VAPIDSubject:    os.Getenv("VAPID_SUBJECT"),
+		// FCM opsional, jadi tidak ikut diperiksa di bawah.
+		FCMProjectID:       os.Getenv("FCM_PROJECT_ID"),
+		FCMCredentialsFile: os.Getenv("FCM_CREDENTIALS_FILE"),
 	}
 	// Periksa setiap variabel wajib. Bila ada yang kosong, tolak dengan menyebut namanya.
 	for name, v := range map[string]string{

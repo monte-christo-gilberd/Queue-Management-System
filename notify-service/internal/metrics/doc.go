@@ -3,5 +3,5 @@
 //
 // Isinya:
 //   - metrics.go: New, Handler, Serve (listener terpisah yang tidak pernah menggagalkan service).
-//   - notify.go: push_sent_total dan push_failed_total.
+//   - notify.go: push_sent_total{channel} dan push_failed_total{channel,reason}; channel = webpush atau fcm.
 package metrics

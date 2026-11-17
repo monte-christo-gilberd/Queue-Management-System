@@ -32,14 +32,14 @@ type NotifyRepository interface {
 		ctx context.Context,
 		userID int64,
 	) ([]model.Subscription, error)
-	// DeleteSubscription: menghapus langganan yang sudah tidak berlaku.
+	// DeleteSubscription: menghapus langganan yang sudah tidak berlaku, dari tabel sesuai jenisnya.
 	DeleteSubscription(
 		ctx context.Context,
-		endpoint string,
+		sub model.Subscription,
 	) error
 }
 
-// PushSender: pengirim push ke satu langganan. Dipenuhi pusher.Sender.
+// PushSender: pengirim push ke satu langganan. Dipenuhi pusher.Dispatcher (Web Push dan FCM) atau pusher.Sender.
 type PushSender interface {
 	// Send mengirim satu notifikasi ke satu langganan.
 	Send(
@@ -181,10 +181,10 @@ func (s *NotifyService) Handle(
 			switch {
 			// Berhasil terkirim: tidak perlu tindakan.
 			case err == nil:
-			// Langganan sudah tidak berlaku (404/410): hapus dari database supaya tidak dikirimi lagi. Galat hapus
-			// diabaikan karena akan dicoba lagi pada pengiriman berikutnya.
+			// Langganan sudah tidak berlaku (Web Push 404/410, FCM UNREGISTERED): hapus dari database supaya tidak
+			// dikirimi lagi. Galat hapus diabaikan karena akan dicoba lagi pada pengiriman berikutnya.
 			case errors.Is(err, apperror.ErrSubscriptionGone):
-				_ = s.repo.DeleteSubscription(ctx, sub.Endpoint)
+				_ = s.repo.DeleteSubscription(ctx, sub)
 			// Galat lain: simpan galat pertama, lalu lanjut ke perangkat berikutnya.
 			default:
 				// Hanya galat pertama yang disimpan.

@@ -115,7 +115,7 @@ services:
   #     - internal
   #   restart: unless-stopped
 
-  # notify-service: Web Push. Mendengarkan event tiket lewat LISTEN Postgres dengan role notify_ro (baca saja).
+  # notify-service: Web Push dan FCM (Android). Mendengarkan event tiket lewat LISTEN Postgres dengan role notify_ro (baca saja).
   # Tidak bergantung pada mail-service, Mailpit, atau SMTP (dijaga scripts/check-service-isolation.sh).
   notify-service:
     build:
@@ -126,8 +126,15 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:?set VAPID_PUBLIC_KEY in .env}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:?set VAPID_PRIVATE_KEY in .env}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+      # Push ke aplikasi Android (FCM). Opsional: kosong = hanya Web Push. Taruh JSON service account di
+      # keys/fcm/ (di-gitignore) lalu isi FCM_CREDENTIALS_FILE=/run/fcm/<nama-file>.json di .env.
+      # Sengaja BUKAN keys-dev/: folder itu dihapus setiap make up / make tunnel / make down (kunci JWT dev dibuat
+      # ulang), sehingga kredensial FCM akan ikut hilang. keys/ tidak pernah disentuh target dev.
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_CREDENTIALS_FILE: ${FCM_CREDENTIALS_FILE:-}
     volumes:
       - ./notify-service:/src
+      - ./keys/fcm:/run/fcm:ro
       - go_build_cache:/root/.cache/go-build
       - go_mod_cache:/go/pkg/mod
     healthcheck:
@@ -287,6 +294,8 @@ services:
       # [SINKRON] Harus sama dengan nilai di auth-service.
       EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      # Bila diisi, rute /api/v1/push/fcm/* (token FCM aplikasi Android) dipasang. Tidak butuh kredensial.
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
     volumes:
       - ./backend:/src
       # Hanya kunci publik. Kunci privat tidak pernah di-mount ke backend.

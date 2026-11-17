@@ -19,7 +19,7 @@ Diperbarui 17 November 2026 agar sesuai kode: lima service (backend, auth, notif
     │    └── login, register, reset password, verifikasi email ► auth-service ──► PostgreSQL (role auth_rw)
     │                              (menerbitkan JWT RS256; backend dan payment memverifikasi lokal, tanpa memanggilnya)
 
- PostgreSQL ─ pg_notify('queue_events') ─► notify-service ─► Web Push
+ PostgreSQL ─ pg_notify('queue_events') ─► notify-service ─► Web Push (browser) dan FCM (aplikasi Android)
  PostgreSQL ─ notification_outbox       ─► mail-service   ─► SMTP (Mailpit di dev)
     jaringan Docker internal: db, backend, qr, notify, mail, payment, frontend tidak membuka port
 ```
@@ -28,7 +28,7 @@ Lima service Go, satu database, satu frontend, satu proxy (dev juga menjalankan 
 
 ## 1. Database (PostgreSQL)
 
-16 tabel: `users`, `owners`, `payments`, `queues`, `queue_settings`, `counters`, `tickets`, `ticket_notes`, `queue_history`, `push_subscriptions`, `user_avatars`, `notification_outbox`, `user_action_tokens`, `queue_displays`, ditambah `payment_webhook_events` dan `payment_session_credits` (dibuat skrip `05_payment_role.sh`, milik payment-service).
+16 tabel di `db/migrations/`: `users`, `owners`, `payments`, `payment_orders`, `queues`, `queue_settings`, `counters`, `tickets`, `ticket_notes`, `queue_history`, `push_subscriptions`, `push_devices` (token FCM aplikasi Android), `user_avatars`, `notification_outbox`, `user_action_tokens`, `queue_displays`, ditambah `payment_webhook_events` dan `payment_session_credits` (dibuat skrip `05_payment_role.sh`, milik payment-service).
 
 | Keputusan | Alasan |
 |---|---|
@@ -83,7 +83,7 @@ internal/
 | Counter kustom (`/queues/:id/counters`) | Selesai |
 | Layar publik tanpa login (`/display/:token`, room SSE terpisah) | Selesai |
 | Riwayat owner dan customer, ekspor CSV/XLSX (`/history/*`, `/users/me/history`) | Selesai |
-| Notifikasi Web Push (`notify-service`) dan email (`mail-service`, outbox) | Selesai |
+| Notifikasi Web Push dan FCM Android (`notify-service`) dan email (`mail-service`, outbox) | Selesai |
 | Prefix tiket kustom | Selesai |
 | Pembayaran langganan (`payment-service`, QRIS lewat BorderPay) | Selesai (service terpisah) |
 | Shutdown rapi (SIGINT/SIGTERM, `SHUTDOWN_TIMEOUT`) | Selesai |
@@ -92,7 +92,7 @@ internal/
 
 ## 2b. notify-service (Go, terpisah)
 
-Mendengarkan `pg_notify('queue_events')` dari trigger `tickets_notify_trg`, membaca data lewat role `notify_ro`, mengirim Web Push (VAPID). Hanya port internal 8091 untuk `GET /health` (200 bila LISTEN aktif; dipakai healthcheck compose, tidak dipublikasikan nginx). Tanpa outbox (push saat service mati hilang; email sudah memakai outbox, lihat 2c). Pengiriman memakai timeout 8 dtk dan coba ulang 3 kali untuk kegagalan sementara; log JSON; shutdown menunggu push yang sedang berjalan. Backend hanya menyediakan `recall` dan endpoint `/push/*`.
+Mendengarkan `pg_notify('queue_events')` dari trigger `tickets_notify_trg`, membaca data lewat role `notify_ro`, mengirim Web Push (VAPID) ke browser dan, bila `FCM_*` diisi, FCM HTTP v1 ke aplikasi Android (token di `push_devices`; tanpa SDK Firebase, kredensial service account di `keys/fcm/`). Hanya port internal 8091 untuk `GET /health` (200 bila LISTEN aktif; dipakai healthcheck compose, tidak dipublikasikan nginx). Tanpa outbox (push saat service mati hilang; email sudah memakai outbox, lihat 2c). Pengiriman memakai timeout 8 dtk dan coba ulang 3 kali untuk kegagalan sementara; log JSON; shutdown menunggu push yang sedang berjalan. Backend hanya menyediakan `recall` dan endpoint `/push/*` (termasuk `/push/fcm/register|unregister` bila `FCM_PROJECT_ID` diisi).
 
 ## 2c. mail-service (Go, terpisah)
 
@@ -174,7 +174,7 @@ Rencana sebelumnya (counter, riwayat dan ekspor, papan publik, pembatalan, hapus
 - Login Google: tombol di layar masuk dan daftar hanya tampilan; kolom `users.google_id` ada, backend belum punya OAuth.
 - Ganti email (`email_change`) belum dibangun; kolom `purpose` sudah menyiapkannya.
 - Observability (metrik, log terpusat, dashboard, alert) dan uji beban k6: belum ada.
-- Outbox untuk Web Push, migration runner, backup otomatis, HSTS dan Cloudflare Access, backend lebih dari satu instance (hub SSE di memori).
+- Outbox untuk push (Web Push dan FCM), notifikasi iOS native, migration runner, backup otomatis, HSTS dan Cloudflare Access, backend lebih dari satu instance (hub SSE di memori).
 - QR join di layar publik (kolom `show_qr` belum ada). Plan langganan selain 1 bulan.
 - Dibatalkan (keputusan 31 Okt): batas harian QR dan `registration_limit`.
 - Uji manual yang butuh perangkat: hot reload Metro lewat nginx dan resinkron `AppState` di native.

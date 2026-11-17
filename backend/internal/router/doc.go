@@ -1,7 +1,7 @@
 // Package router mendaftarkan semua rute HTTP di bawah /api/v1 dan menghubungkannya ke handler dan middleware.
 //
 // Cara pakai: buat AppRouter lewat NewAppRouter dengan handler wajib (tiket, user, queue, auth, SSE), lalu pasang
-// fitur opsional lewat With... (counter, catatan, riwayat, reset password, verifikasi email, layar publik, push).
+// fitur opsional lewat With... (counter, catatan, riwayat, reset password, verifikasi email, layar publik, push, push FCM).
 // Fitur yang tidak dipasang tidak punya rute sama sekali. Setelah itu SetupRouter menghasilkan *gin.Engine.
 //
 // Istilah yang dipakai:

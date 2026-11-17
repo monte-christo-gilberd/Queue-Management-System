@@ -3,7 +3,8 @@
 //
 // Isinya:
 //   - ticket.go: Ticket, data tiket untuk menyusun pesan.
-//   - subscription.go: Subscription, tujuan dan kunci enkripsi push milik browser.
+//   - subscription.go: Subscription (satu langganan per perangkat: endpoint dan kunci Web Push, atau token FCM),
+//     KindWebPush, KindFCM, dan Channel (jenis yang dinormalkan; Kind kosong dianggap Web Push).
 //   - event.go: Event (bentuk payload JSON NOTIFY), KindCalled, KindRecalled, KindSkipped, KindRequeued,
 //     ReasonSkip, dan ReasonCounterClosed.
 //

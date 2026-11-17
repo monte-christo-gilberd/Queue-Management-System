@@ -377,6 +377,11 @@ Push ke customer untuk penghapusan belum ada; akan ditambahkan di pekerjaan beri
 - `POST /api/v1/push/unsubscribe` body `{ endpoint }`.
 Rute `/push` hanya ada bila `VAPID_PUBLIC_KEY` diset. Push dikirim `notify-service` (LISTEN `queue_events`): nomor dipanggil → pemilik "Giliran Anda" dan tiket waiting terdepan "Tinggal 1 nomor lagi"; recall → pemilik saja; skip → pemilik nomor yang dilewati ("dilewati" atau "dilewati dan dikembalikan ke antrian").
 
+### Push aplikasi Android / FCM (perlu login)
+- `POST /api/v1/push/fcm/register` body `{ token: string, platform: "android" }` → `204` tanpa body. `token` adalah token FCM perangkat (`getDevicePushTokenAsync` di expo-notifications). Token yang sama dipindah ke user yang sedang login (sama seperti endpoint Web Push). `400 BAD_REQUEST` bila token kosong atau `platform` bukan `android`.
+- `POST /api/v1/push/fcm/unregister` body `{ token: string }` → `204` tanpa body. Hanya menghapus token milik user yang login; token milik akun lain tidak tersentuh. `400 BAD_REQUEST` bila token kosong.
+Rute `/push/fcm` hanya ada bila `FCM_PROJECT_ID` diset di backend. Isi notifikasi dan pemicunya sama dengan Web Push; `notify-service` mengirim lewat FCM HTTP v1 bila `FCM_CREDENTIALS_FILE` terpasang, dan menghapus token yang dijawab `UNREGISTERED` oleh FCM. Ketuk notifikasi membuka `data.url` (mis. `/ticket/12`).
+
 ### POST /api/v1/queues/:queue_id/skip
 Melewati nomor yang sedang dilayani counter (tiket `currently_served`; body sama seperti `next`) lalu langsung memanggil tiket `waiting` pertama ke counter yang sama, dalam satu transaksi. Hanya owner. `skip_count` +1 dan `completed_at` dikosongkan. Nasib tiket yang dilewati mengikuti pengaturan Skip antrian (lihat `settings/skip`): `remove` atau batas `max_returns` tercapai menjadi `skipped` permanen (`called_at` tetap); `back`/`after_n` mengembalikannya ke `waiting` di posisi baru (`called_at` dan `called_counter_id` dikosongkan).
 

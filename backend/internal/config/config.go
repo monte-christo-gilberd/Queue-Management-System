@@ -22,7 +22,7 @@ import (
 // microservice (qrclient dan mailclient), dan router. Load() juga memvalidasi isinya.
 //
 // Wajib diisi: DATABASE_URL, JWT_PUBLIC_KEY_FILE, ALLOWED_ORIGINS, PUBLIC_APP_URL, QR_SERVICE_URL, QR_SERVICE_TOKEN.
-// Opsional: VAPID_PUBLIC_KEY, APP_ENV, TRUSTED_PROXIES, dan PORT (bawaan 8080).
+// Opsional: VAPID_PUBLIC_KEY, FCM_PROJECT_ID, APP_ENV, TRUSTED_PROXIES, dan PORT (bawaan 8080).
 // Opsional dengan nilai bawaan dalam detik: QR_HTTP_TIMEOUT (1) dan SHUTDOWN_TIMEOUT (8).
 // EMAIL_VERIFICATION_REQUIRED: bawaan true. Harus sama dengan nilai di auth-service.
 type Config struct {
@@ -74,6 +74,10 @@ type Config struct {
 	// Voluntary Application Server Identification: pasangan kunci untuk Web Push, yaitu notifikasi
 	// ke browser saat tab tertutup
 	VAPIDPublicKey string
+
+	// FCMProjectID: FCM_PROJECT_ID. Opsional; kosong = rute /push/fcm (token FCM perangkat Android) tidak dipasang.
+	// Backend hanya menyimpan token; kredensial FCM ada di notify-service, bukan di sini.
+	FCMProjectID string
 }
 
 // firstEnv mengembalikan nilai variabel pertama yang tidak kosong. Dipakai agar BACKEND_PORT / BACKEND_DATABASE_URL
@@ -111,6 +115,7 @@ func Load() (Config, error) {
 		PaymentServiceToken:  os.Getenv("PAYMENT_SERVICE_TOKEN"),
 		SubscriptionPriceIDR: 15000,
 		VAPIDPublicKey:       os.Getenv("VAPID_PUBLIC_KEY"),
+		FCMProjectID:         os.Getenv("FCM_PROJECT_ID"),
 	}
 
 	// pengecekan apakah cfg.DatabaseURL ada

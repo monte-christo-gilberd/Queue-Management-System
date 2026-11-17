@@ -27,8 +27,8 @@ func (f *fakeStore) PositionOf(context.Context, int64) (int, error) { return f.p
 func (f *fakeStore) Subscriptions(_ context.Context, u int64) ([]model.Subscription, error) {
 	return f.subs[u], nil
 }
-func (f *fakeStore) DeleteSubscription(_ context.Context, e string) error {
-	f.deleted = append(f.deleted, e)
+func (f *fakeStore) DeleteSubscription(_ context.Context, s model.Subscription) error {
+	f.deleted = append(f.deleted, s.Endpoint)
 	return nil
 }
 

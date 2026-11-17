@@ -55,3 +55,6 @@ CUSTOMER_GUIDE.md
 playwright/.results
 playwright/.report
 test-results
+
+# Firebase (FCM): konfigurasi Android dipasok lewat EAS file env GOOGLE_SERVICES_JSON, jangan di-commit
+google-services.json

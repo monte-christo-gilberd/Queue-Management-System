@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 
 	"qms/notify-service/internal/model"
 
@@ -16,12 +17,22 @@ import (
 type NotifyRepository struct {
 	// db: pool koneksi ke PostgreSQL.
 	db *sqlx.DB
+	// devices: true bila token FCM (push_devices) ikut dibaca. Hanya dinyalakan bila pengirim FCM aktif.
+	devices bool
 }
 
-// NewNotifyRepository membuat NotifyRepository dari pool koneksi yang sudah dibuka.
+// NewNotifyRepository membuat NotifyRepository dari pool koneksi yang sudah dibuka. Token FCM tidak dibaca
+// sampai EnableDevices dipanggil.
 func NewNotifyRepository(db *sqlx.DB) *NotifyRepository {
 	// Bungkus pool ke NotifyRepository.
 	return &NotifyRepository{db: db}
+}
+
+// EnableDevices menyalakan pembacaan token FCM dari push_devices di Subscriptions. Dipanggil main bila
+// kredensial FCM terpasang; tanpa itu hanya langganan Web Push yang dibaca.
+func (s *NotifyRepository) EnableDevices() *NotifyRepository {
+	s.devices = true
+	return s
 }
 
 // Ticket mengambil data tiket, antrian, dan nama counter yang memanggilnya.
@@ -134,7 +145,8 @@ func (s *NotifyRepository) FirstWaiting(
 	return &t, nil
 }
 
-// Subscriptions mengambil semua langganan push milik user.
+// Subscriptions mengambil semua langganan push milik user: Web Push, lalu token FCM bila EnableDevices aktif.
+// Galat membaca token FCM hanya dicatat, supaya Web Push tetap terkirim (mis. migrasi push_devices belum jalan).
 func (s *NotifyRepository) Subscriptions(
 	ctx context.Context,
 	userID int64,
@@ -172,28 +184,91 @@ func (s *NotifyRepository) Subscriptions(
 		); err != nil {
 			return nil, err
 		}
-		// Tambahkan langganan ke hasil.
+		// Tandai sebagai Web Push, lalu tambahkan ke hasil.
+		sub.Kind = model.KindWebPush
 		out = append(out, sub)
 	}
-	// Kembalikan hasil beserta galat yang terjadi saat membaca baris (rows.Err).
+	// Galat saat membaca baris (rows.Err): kembalikan, sama seperti sebelumnya.
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// FCM mati: cukup langganan Web Push.
+	if !s.devices {
+		return out, nil
+	}
+	// Tambahkan token FCM. Gagal di sini tidak membatalkan Web Push.
+	devices, err := s.deviceTokens(ctx, userID)
+	if err != nil {
+		slog.Warn("read push_devices failed; sending Web Push only", "user_id", userID, "err", err)
+		return out, nil
+	}
+	return append(out, devices...), nil
+}
+
+// deviceTokens mengambil semua token FCM milik user dari push_devices.
+func (s *NotifyRepository) deviceTokens(
+	ctx context.Context,
+	userID int64,
+) ([]model.Subscription, error) {
+
+	const query = `
+		SELECT token
+		FROM push_devices
+		WHERE user_id = $1
+	`
+	// Jalankan query token milik user.
+	rows, err := s.db.QueryContext(ctx, query, userID)
+	// Query gagal (mis. tabel belum dimigrasi, atau grant notify_ro belum ada): dikembalikan ke Subscriptions,
+	// yang hanya mencatatnya supaya Web Push tetap terkirim.
+	if err != nil {
+		return nil, err
+	}
+	// Tutup hasil query setelah fungsi selesai.
+	defer rows.Close()
+	// Kumpulkan token sebagai langganan berjenis FCM.
+	var out []model.Subscription
+	for rows.Next() {
+		// Tandai sebagai FCM supaya pusher.Dispatcher mengirim lewat FCM dan DeleteSubscription menghapus dari
+		// push_devices.
+		sub := model.Subscription{Kind: model.KindFCM}
+		// Salin token ke struct. Galat pemindaian menghentikan pembacaan.
+		if err := rows.Scan(&sub.Token); err != nil {
+			return nil, err
+		}
+		// Tambahkan token ke hasil.
+		out = append(out, sub)
+	}
+	// Kembalikan hasil beserta galat saat membaca baris (rows.Err).
 	return out, rows.Err()
 }
 
-// DeleteSubscription menghapus langganan dengan endpoint tertentu. Satu-satunya penulisan di package ini.
+// DeleteSubscription menghapus langganan yang sudah tidak berlaku: Web Push menurut endpoint (push_subscriptions),
+// FCM menurut token (push_devices). Satu-satunya penulisan di package ini.
 func (s *NotifyRepository) DeleteSubscription(
 	ctx context.Context,
-	endpoint string,
+	sub model.Subscription,
 ) error {
 
-	const query = `
+	const (
+		webPushQuery = `
 		DELETE FROM push_subscriptions 
 		WHERE endpoint = $1
 	`
-	// Hapus baris langganan yang endpoint-nya cocok.
+		deviceQuery = `
+		DELETE FROM push_devices
+		WHERE token = $1
+	`
+	)
+	// Pilih tabel dan kunci sesuai jenis langganan.
+	query, key := webPushQuery, sub.Endpoint
+	if sub.Channel() == model.KindFCM {
+		query, key = deviceQuery, sub.Token
+	}
+	// Hapus baris langganan yang kuncinya cocok.
 	_, err := s.db.ExecContext(
 		ctx,
 		query,
-		endpoint,
+		key,
 	)
 
 	// Kembalikan galat eksekusi, bila ada.

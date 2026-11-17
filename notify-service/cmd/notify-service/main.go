@@ -1,5 +1,5 @@
 // Command notify-service menjalankan layanan notifikasi push QMS: mendengarkan event dari database
-// (LISTEN queue_events), menentukan penerima, lalu mengirim Web Push ke browser.
+// (LISTEN queue_events), menentukan penerima, lalu mengirim Web Push ke browser dan FCM ke aplikasi Android.
 package main
 
 import (
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"qms/notify-service/internal/config"
+	"qms/notify-service/internal/fcm"
 	"qms/notify-service/internal/httpserver"
 	"qms/notify-service/internal/listener"
 	"qms/notify-service/internal/logging"
@@ -89,15 +90,27 @@ func run() error {
 	appMetrics := metrics.NewNotify()
 	appMetrics.Serve(ctx)
 
-	// Rangkai service: repository membaca database, dan pusher mengirim ke browser dengan kunci VAPID. Pengirim
-	// dibungkus penghitung metrik tanpa mengubah perilakunya.
+	// Rangkai service: repository membaca database, pusher mengirim ke browser dengan kunci VAPID, dan fcm
+	// mengirim ke aplikasi Android bila kredensial FCM terpasang. Dispatcher memilih pengirim sesuai jenis
+	// langganan. Pengirim dibungkus penghitung metrik tanpa mengubah perilakunya.
+	repo := repository.NewNotifyRepository(db)
+	fcmSender := newFCMSender(cfg)
+	// FCM aktif: token di push_devices ikut dibaca. Bila mati, tabel itu tidak disentuh sama sekali.
+	var fcmChannel pusher.ChannelSender
+	if fcmSender != nil {
+		repo.EnableDevices()
+		fcmChannel = fcmSender
+	}
 	svc := service.NewNotifyService(
-		repository.NewNotifyRepository(db),
+		repo,
 		service.NewMeteredPushSender(
-			pusher.New(
-				cfg.VAPIDPublicKey,
-				cfg.VAPIDPrivateKey,
-				cfg.VAPIDSubject),
+			pusher.NewDispatcher(
+				pusher.New(
+					cfg.VAPIDPublicKey,
+					cfg.VAPIDPrivateKey,
+					cfg.VAPIDSubject),
+				fcmChannel,
+			),
 			appMetrics,
 		),
 	)
@@ -134,4 +147,38 @@ func run() error {
 	_ = srv.Shutdown(shCtx)
 	// Selesai tanpa Error.
 	return nil
+}
+
+// newFCMSender membuat pengirim FCM dari konfigurasi. Kredensial kosong atau rusak hanya dicatat sebagai
+// peringatan dan mengembalikan nil: notify-service tetap jalan untuk Web Push.
+func newFCMSender(cfg config.Config) *fcm.Sender {
+	// FCM tidak dikonfigurasi: matikan tanpa peringatan bila project juga kosong
+	if cfg.FCMCredentialsFile == "" {
+		if cfg.FCMProjectID != "" {
+			slog.Warn("FCM_PROJECT_ID set but FCM_CREDENTIALS_FILE empty; Android push disabled")
+		}
+		return nil
+	}
+	// Baca berkas JSON service account (di container: /run/fcm/..., di-mount dari keys/fcm/). Galat paling umum di
+	// sini: path salah, atau izin berkas tidak memberi akses ke UID 10001 (user container).
+	data, err := os.ReadFile(cfg.FCMCredentialsFile)
+	if err != nil {
+		slog.Warn("read FCM credentials failed; Android push disabled", "err", err)
+		return nil
+	}
+	// Ubah JSON ke Credentials; gagal bila berkas bukan JSON service account (mis. salah unduh google-services.json).
+	creds, err := fcm.ParseCredentials(data)
+	if err != nil {
+		slog.Warn("parse FCM credentials failed; Android push disabled", "err", err)
+		return nil
+	}
+	// Siapkan pengirim; kunci privat diperiksa di sini sehingga kredensial rusak langsung terlihat saat start.
+	sender, err := fcm.New(cfg.FCMProjectID, creds)
+	if err != nil {
+		slog.Warn("init FCM sender failed; Android push disabled", "err", err)
+		return nil
+	}
+	// Penanda di log bahwa push ke aplikasi Android aktif (dipakai saat verifikasi deploy).
+	slog.Info("FCM push enabled")
+	return sender
 }

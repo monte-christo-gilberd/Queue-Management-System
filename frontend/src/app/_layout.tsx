@@ -4,7 +4,8 @@
  * Rute        : semua rute (tidak punya URL sendiri).
  * Akses       : publik; tidak ada AuthGate di sini, penjagaan login ada di (owner)/_layout.tsx dan AuthGate per halaman.
  * Dipakai oleh: Expo Router sebagai pintu masuk setiap rute.
- * Bergantung  : ThemeProvider, Stack, ToastProvider dan ToastViewport, restoreThemeMode (hooks/use-theme-mode), global.css (NativeWind).
+ * Bergantung  : ThemeProvider, Stack, ToastProvider dan ToastViewport, restoreThemeMode (hooks/use-theme-mode),
+ *               usePushListeners (hooks/use-push-listeners, notifikasi Android), global.css (NativeWind).
  * Catatan     : Pintu masuk arsitektur; urutan pembungkusan dijelaskan di JSDoc RootLayout.
  */
 import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
@@ -16,6 +17,7 @@ import { useEffect } from 'react';
 import { ToastProvider, ToastViewport } from '@/components/ui/Toast';
 import { AppColors } from '@/constants/app-theme';
 import { themedColors } from '@/constants/tokens';
+import { usePushListeners } from '@/hooks/use-push-listeners';
 import { restoreThemeMode } from '@/hooks/use-theme-mode';
 import "../global.css";
 
@@ -39,6 +41,9 @@ export default function RootLayout() {
   useEffect(() => {
     void restoreThemeMode();
   }, []);
+
+  // Android: listener token FCM dan ketukan notifikasi (buka /ticket/<id>). Di web tidak melakukan apa-apa.
+  usePushListeners();
 
   return (
     <ThemeProvider value={AppTheme}>

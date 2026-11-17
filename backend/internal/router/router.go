@@ -95,6 +95,13 @@ func (a *AppRouter) WithPush(h PushHandler) *AppRouter {
 	return a
 }
 
+// WithFCMPush memasang endpoint token FCM (opsional; tanpa ini rute /push/fcm tidak ada).
+func (a *AppRouter) WithFCMPush(h FCMPushHandler) *AppRouter {
+	// simpan handler FCM, lalu kembalikan router yang sama
+	a.fcmPushHandler = h
+	return a
+}
+
 // SetupRouter membuat gin.Engine dan mendaftarkan semua rute sesuai handler yang sudah dipasang di router.
 func SetupRouter(
 	router *AppRouter,
@@ -225,6 +232,14 @@ func SetupRouter(
 		push.GET("/public-key", router.pushHandler.PublicKey)
 		push.POST("/subscribe", router.pushHandler.Subscribe)
 		push.POST("/unsubscribe", router.pushHandler.Unsubscribe)
+	}
+
+	// Token FCM perangkat Android; hanya didaftarkan bila dipasang (FCM_PROJECT_ID terisi), dan wajib login
+	if router.fcmPushHandler != nil {
+		fcm := v1.Group("/push/fcm")
+		fcm.Use(router.authMiddleware)
+		fcm.POST("/register", router.fcmPushHandler.Register)
+		fcm.POST("/unregister", router.fcmPushHandler.Unregister)
 	}
 
 	// Join berbasis token: customer yang sudah login membuka /join?t=<token>.

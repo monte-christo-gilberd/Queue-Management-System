@@ -308,6 +308,13 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 			WithPush(pushHandler)
 	}
 
+	// jika FCM_PROJECT_ID diisi, endpoint token FCM (notifikasi aplikasi Android) dipasang.
+	// Pengiriman ke FCM dilakukan notify-service; backend hanya menyimpan token perangkat.
+	if cfg.FCMProjectID != "" {
+		appRouter.
+			WithFCMPush(handler.NewFCMPushHandler(pushRepo))
+	}
+
 	// metrik Prometheus: middleware HTTP dipasang di router, dan gauge SSE membaca hub saat di-scrape
 	appMetrics := metrics.NewBackend(hub)
 	appRouter.WithMetrics(appMetrics.Middleware())

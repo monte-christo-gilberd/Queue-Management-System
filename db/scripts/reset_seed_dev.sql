@@ -40,6 +40,7 @@ TRUNCATE TABLE
     queue_displays,
     user_avatars,
     push_subscriptions,
+    push_devices,
     ticket_notes,
     counters,
     tickets,

@@ -18,6 +18,7 @@ Docker menjalankan file di `/docker-entrypoint-initdb.d` menurut urutan nama, ha
 | `01f_profile_security.sql` | `user_avatars`, `user_action_tokens` | 01a |
 | `01g_triggers.sql` | fungsi dan trigger `tickets_notify`, `tickets_email_outbox`, `queues_email_outbox` (email ke owner saat antrian berubah dari `active` ke `closed`, mengikuti `users.email_notifications`) | 01a, 01b, 01c, 01e |
 | `01i_payment_orders.sql` | `payment_orders` (pesanan checkout BorderPay; `status` pending, paid, expired, failed) | 01a |
+| `01j_push_devices.sql` | `push_devices` (token FCM perangkat Android; satu token satu baris, dipindah ke akun yang terakhir login) | 01a |
 | `01h_role_grants.sql` | blok `GRANT` bersyarat untuk role `mail_rw` | 01a, 01e |
 | `02_Indexes.sql` | semua index non-unik, dikelompokkan per tabel | seluruh `01*` |
 | `03_notify_role.sh` | role `notify_ro` (notify-service) | seluruh `01*` |

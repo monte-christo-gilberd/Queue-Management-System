@@ -1,17 +1,18 @@
 /**
- * PushToggle: tombol untuk mengaktifkan atau mematikan notifikasi giliran (Web Push).
+ * PushToggle: tombol untuk mengaktifkan atau mematikan notifikasi giliran.
  *
  * Dipakai oleh : components/CustomerQueueScreen.tsx
- * Bergantung   : lib/push (pushSupported, syncSubscription, enablePush, disablePush), ui/AppButton, ui/Toast
+ * Bergantung   : lib/push-channel (pushSupported, syncPush, enablePush, disablePush, deniedMessage), ui/AppButton, ui/Toast
  * Peran        : customer
- * Catatan      : hanya berfungsi di web dengan dukungan Push; di native komponen tidak tampil (mis. Expo Go).
+ * Catatan      : web memakai Web Push (lib/push.ts), aplikasi Android memakai FCM (lib/push-native.ts); Metro memilih
+ *                push-channel.native.ts di native. Di Expo Go dan iOS komponen tidak tampil (FCM tidak tersedia).
  */
 import { useErrorToast } from '@/components/ui/Toast';
 import { useEffect, useState } from 'react';
 import { Platform, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/ui/AppButton';
-import { disablePush, enablePush, pushSupported, syncSubscription } from '@/lib/push';
+import { deniedMessage, disablePush, enablePush, pushSupported, syncPush } from '@/lib/push-channel';
 
 function isIOSDevice(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -20,7 +21,7 @@ function isIOSDevice(): boolean {
   return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
 }
 
-/** Tombol notifikasi giliran (Web Push). Tidak tampil bila perangkat tidak mendukung (mis. Expo Go). */
+/** Tombol notifikasi giliran (Web Push atau FCM). Tidak tampil bila perangkat tidak mendukung (mis. Expo Go). */
 export function PushToggle() {
   const [on, setOn] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -33,7 +34,7 @@ export function PushToggle() {
     // Flag `active` mencegah setState dijalankan setelah komponen unmount.
     let active = true;
     // Status langganan yang tersimpan dibaca saat mount agar tombol sesuai kondisi sebenarnya.
-    void syncSubscription()
+    void syncPush()
       .then((v) => {
         if (active) setOn(v);
       })
@@ -65,8 +66,8 @@ export function PushToggle() {
       } else if (await enablePush()) {
         setOn(true);
       } else {
-        // enablePush mengembalikan false bila pengguna menolak izin notifikasi di browser.
-        setMessage('Izin notifikasi ditolak di browser');
+        // enablePush mengembalikan false bila pengguna menolak izin notifikasi (browser atau Android).
+        setMessage(deniedMessage);
       }
     } catch (err) {
       // Alasan asli disertakan agar penyebab (mis. layanan push diblokir browser) terlihat, bukan hanya pesan umum.
