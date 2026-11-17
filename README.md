@@ -13,7 +13,7 @@ Isi dokumen:
 6. [Trade-offs](#6-trade-offs): mengapa berbentuk begitu, dan apa harganya.
 7. [Next steps](#7-next-steps): apa yang dikerjakan bila ada waktu lebih.
 
-Dokumentasi teknis lengkap per komponen (arsitektur, tech stack, keputusan desain, penjelasan kode backend, tiap service, database, frontend, deployment, observability, dan testing) ada di [docs/dokumentasi-teknis/README.md](docs/dokumentasi-teknis/README.md). Bila ada beda antara dokumen ini dan kode, kode yang benar.
+Dokumentasi teknis lengkap per komponen (arsitektur, tech stack, keputusan desain, penjelasan kode backend, tiap service, database, frontend, deployment, observability, dan testing) ada di [docs/dokumentasi-teknis/README.md](../docs/dokumentasi-teknis/README.md). Bila ada beda antara dokumen ini dan kode, kode yang benar.
 
 ## 1. Overview and assumptions
 
@@ -52,7 +52,7 @@ Proyek capstone. Hasil pembacaan seluruh kode: backend, frontend, dan keempat se
 
 ### Dokumen lain
 
-- [docs/dokumentasi-teknis/README.md](docs/dokumentasi-teknis/README.md): dokumentasi teknis lengkap hasil pembacaan kode (14 dokumen: arsitektur, tech stack, ADR, backend, auth, notify, mail, payment, database, frontend, deployment, observability, testing).
+- [docs/dokumentasi-teknis/README.md](../docs/dokumentasi-teknis/README.md): dokumentasi teknis lengkap hasil pembacaan kode (14 dokumen: arsitektur, tech stack, ADR, backend, auth, notify, mail, payment, database, frontend, deployment, observability, testing).
 - [DESIGN.md](docs/DESIGN.md): arsitektur, keputusan desain, dan batasan.
 - [FLOW.md](docs/FLOW.md): alur pengguna dan diagram urutan.
 - [api-contract.md](docs/api-contract.md): kontrak HTTP dan SSE.

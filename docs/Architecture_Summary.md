@@ -1,6 +1,6 @@
 # Ringkasan Arsitektur — Queue Management System
 
-Diperbarui 17 November 2026 agar sesuai kode: lima service (backend, auth, notify, mail, payment), outbox email, layar publik, pembayaran QRIS lewat BorderPay, dan verifikasi email. Join memakai kode 6 karakter dari backend (qr-service sudah dihapus). Login dipisah ke `auth-service` (fase 1) dan ditambah login Google (fase 2). Penjelasan kode per komponen ada di [dokumentasi-teknis/README.md](dokumentasi-teknis/README.md).
+Diperbarui 17 November 2026 agar sesuai kode: lima service (backend, auth, notify, mail, payment), outbox email, layar publik, pembayaran QRIS lewat BorderPay, dan verifikasi email. Join memakai kode 6 karakter dari backend (qr-service sudah dihapus). Login dipisah ke `auth-service` (fase 1) dan ditambah login Google (fase 2). Penjelasan kode per komponen ada di [dokumentasi-teknis/README.md](../../docs/dokumentasi-teknis/README.md).
 
 ## Gambaran besar
 

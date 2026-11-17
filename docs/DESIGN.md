@@ -1,7 +1,7 @@
 # Design: Queue Management System
 
 Dokumen ini menjelaskan arsitektur, keputusan desain, dan batasan sistem. Untuk bentuk request dan response
-lihat [api-contract.md](api-contract.md). Untuk alur pengguna lihat [FLOW.md](FLOW.md). Penjelasan kode per komponen ada di [dokumentasi-teknis/README.md](dokumentasi-teknis/README.md).
+lihat [api-contract.md](api-contract.md). Untuk alur pengguna lihat [FLOW.md](FLOW.md). Penjelasan kode per komponen ada di [dokumentasi-teknis/README.md](../../docs/dokumentasi-teknis/README.md).
 
 ## 1. Gambaran sistem
 

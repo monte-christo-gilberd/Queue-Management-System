@@ -12,7 +12,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colorScheme, useColorScheme } from 'nativewind';
 import { useCallback } from 'react';
-import { DeviceEventEmitter, Platform } from 'react-native';
+import { Appearance, DeviceEventEmitter, Platform } from 'react-native';
 
 import { themedColors } from '@/constants/tokens';
 import { createSafeStorage } from '@/store/safe-storage';
@@ -30,6 +30,25 @@ const storage = createSafeStorage(AsyncStorage);
 export type ThemeMode = 'light' | 'dark';
 
 /**
+ * Mengisi observable skema warna NativeWind langsung (native saja), tanpa menunggu event Appearance.
+ *
+ * Pendengar Appearance milik NativeWind mengabaikan perubahan bila AppState belum 'active' (mis. saat tema
+ * tersimpan dipulihkan di awal aplikasi), dan di Android event native bisa terlambat atau tidak datang.
+ * Dengan mengisi observable ini seluruh warna `dark:` dan variabel CSS bertema berganti saat itu juga.
+ */
+function setNativeWindScheme(mode: ThemeMode): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { systemColorScheme } = require('react-native-css-interop/dist/runtime/native/appearance-observables') as {
+      systemColorScheme: { set: (value: ThemeMode) => void };
+    };
+    systemColorScheme.set(mode);
+  } catch {
+    // Struktur internal library berubah: jalur event di applyThemeMode tetap berlaku.
+  }
+}
+
+/**
  * Menerapkan mode ke NativeWind.
  *
  * Di web, `colorScheme.set` cukup (mengganti kelas `.dark` pada <html>).
@@ -38,6 +57,8 @@ export type ThemeMode = 'light' | 'dark';
  * di Android (bergantung pada perubahan konfigurasi activity), sehingga tema gelap tidak pernah aktif
  * di build release. Karena itu event yang sama dikirim langsung dari JS; RN dan NativeWind
  * mendengarkan kanal `RCTDeviceEventEmitter` yang sama, sehingga cara ini aman di semua platform native.
+ * Pendengar itu juga mengabaikan perubahan bila AppState belum 'active', jadi `setNativeWindScheme`
+ * mengisi skema warna NativeWind langsung sebagai jalur kedua.
  */
 function applyThemeMode(mode: ThemeMode): void {
   colorScheme.set(mode);
@@ -46,6 +67,7 @@ function applyThemeMode(mode: ThemeMode): void {
       'appearanceChanged',
       { colorScheme: mode },
     );
+    setNativeWindScheme(mode);
   }
 }
 
@@ -55,7 +77,16 @@ function applyThemeMode(mode: ThemeMode): void {
  */
 export async function restoreThemeMode(): Promise<void> {
   const saved = await storage.getItem(THEME_KEY);
-  if (saved === 'light' || saved === 'dark') applyThemeMode(saved);
+  if (saved === 'light' || saved === 'dark') {
+    applyThemeMode(saved);
+    return;
+  }
+  // Belum ada pilihan tersimpan: ikuti tema sistem perangkat (native). Dibaca eksplisit karena nilai awal
+  // NativeWind bisa terbaca sebelum Android melaporkan mode gelap sistem.
+  if (Platform.OS !== 'web') {
+    const system = Appearance.getColorScheme();
+    if (system === 'dark' || system === 'light') setNativeWindScheme(system);
+  }
 }
 
 /**
