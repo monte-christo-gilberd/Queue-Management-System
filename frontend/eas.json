@@ -20,8 +20,8 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://qms.montechristo.my.id",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "248648353861-qaeb6era4tui8tjnak7ocf9rhfj6a090.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "248648353861-h15udooek2b755o0euvfd833v45krn30.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1025331547860-b2q77jj75skhkht4kqcmkoo2at3oq6ar.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "1025331547860-3pt61grv34dc9t0s133hvhr0dvoa53qh.apps.googleusercontent.com"
       }
     }
   },
