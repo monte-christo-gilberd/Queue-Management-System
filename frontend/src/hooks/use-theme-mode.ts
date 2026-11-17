@@ -12,6 +12,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colorScheme, useColorScheme } from 'nativewind';
 import { useCallback } from 'react';
+import { DeviceEventEmitter, Platform } from 'react-native';
 
 import { themedColors } from '@/constants/tokens';
 import { createSafeStorage } from '@/store/safe-storage';
@@ -29,12 +30,32 @@ const storage = createSafeStorage(AsyncStorage);
 export type ThemeMode = 'light' | 'dark';
 
 /**
+ * Menerapkan mode ke NativeWind.
+ *
+ * Di web, `colorScheme.set` cukup (mengganti kelas `.dark` pada <html>).
+ * Di native (APK), `colorScheme.set` hanya memanggil `Appearance.setColorScheme`, dan NativeWind baru
+ * memperbarui warna setelah event `appearanceChanged` dari sisi native. Event itu tidak selalu datang
+ * di Android (bergantung pada perubahan konfigurasi activity), sehingga tema gelap tidak pernah aktif
+ * di build release. Karena itu event yang sama dikirim langsung dari JS; RN dan NativeWind
+ * mendengarkan kanal `RCTDeviceEventEmitter` yang sama, sehingga cara ini aman di semua platform native.
+ */
+function applyThemeMode(mode: ThemeMode): void {
+  colorScheme.set(mode);
+  if (Platform.OS !== 'web') {
+    (DeviceEventEmitter as unknown as { emit: (name: string, payload: unknown) => void }).emit(
+      'appearanceChanged',
+      { colorScheme: mode },
+    );
+  }
+}
+
+/**
  * Memulihkan mode yang disimpan. Dipanggil sekali di root layout. Tidak ada data → ikut default sistem.
  * Nilai selain 'light' atau 'dark' diabaikan, sehingga data rusak tidak mengubah tema.
  */
 export async function restoreThemeMode(): Promise<void> {
   const saved = await storage.getItem(THEME_KEY);
-  if (saved === 'light' || saved === 'dark') colorScheme.set(saved);
+  if (saved === 'light' || saved === 'dark') applyThemeMode(saved);
 }
 
 /**
@@ -45,14 +66,14 @@ export async function restoreThemeMode(): Promise<void> {
  * - `toggle()`: membalik mode dan menyimpan pilihan baru ke storage.
  */
 export function useThemeMode() {
-  const { colorScheme: scheme, setColorScheme } = useColorScheme();
+  const { colorScheme: scheme } = useColorScheme();
   const dark = scheme === 'dark';
 
   const toggle = useCallback(() => {
     const next: ThemeMode = dark ? 'light' : 'dark';
-    setColorScheme(next);
+    applyThemeMode(next);
     void storage.setItem(THEME_KEY, next);
-  }, [dark, setColorScheme]);
+  }, [dark]);
 
   return { dark, toggle };
 }
