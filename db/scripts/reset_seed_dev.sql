@@ -32,9 +32,8 @@ BEGIN
 END $$;
 
 -- Kosongkan semua tabel yang punya data. Semua tabel yang mereferensi users/owners ikut dalam daftar,
--- sehingga tidak perlu CASCADE. CATATAN: payment_orders (FK ke users) belum ada di daftar ini; bila tabel itu berisi baris,
--- TRUNCATE ditolak sampai barisnya dihapus lebih dulu. Tanpa CASCADE, jika ada tabel lain yang bergantung, TRUNCATE gagal
--- dan tidak ada yang berubah. RESTART IDENTITY mengembalikan id mulai dari 1.
+-- sehingga tidak perlu CASCADE (termasuk payment_orders, FK ke users). Tanpa CASCADE, jika ada tabel lain yang
+-- bergantung, TRUNCATE gagal dan tidak ada yang berubah. RESTART IDENTITY mengembalikan id mulai dari 1.
 TRUNCATE TABLE
     notification_outbox,
     user_action_tokens,
@@ -49,6 +48,7 @@ TRUNCATE TABLE
     queue_settings,
     queues,
     payments,
+    payment_orders,
     owners,
     users
 RESTART IDENTITY;

@@ -66,7 +66,7 @@ Urutan `location` penting: regex diperiksa lebih dulu daripada prefix, dan `loca
 | `/api/v1/users/verify-email`, `/me/verify-email/resend` | auth-service | `auth_zone` 10 r/s, burst 20 |
 | `/api/v1/users/forgot-password`, `/reset-password` | auth-service | `reset_zone` 1 r/s, burst 5 (batas per akun ada di auth-service) |
 | `/reset-password` (halaman) | frontend | Token disamarkan di log, `Referrer-Policy no-referrer`, `no-store` |
-| `/api/v1/webhooks/borderpay` | payment-service | Dicocokkan persis, tanpa batas laju. Diverifikasi dengan `x-borderpay-token` di payment-service. Bila payment-service mati: 502 bawaan nginx (tidak ada fallback JSON) |
+| `/api/v1/webhooks/borderpay` | payment-service | Dicocokkan persis, tanpa batas laju. Diverifikasi dengan `x-borderpay-token` di payment-service. Bila payment-service mati (502/503/504): `@payment_unavailable` membalas JSON 503 `PAYMENT_UNAVAILABLE` dengan `Retry-After: 30` (status non-2xx supaya BorderPay mengirim ulang) |
 | `/api/v1/display/:token/event` | backend | SSE tanpa buffer, `display_zone` 20 r/s, burst 40, token disamarkan di log |
 | `/api/v1/display/:token` | backend | `display_zone`, token disamarkan di log |
 | `/display/:token` (halaman) | frontend | Sama seperti `/reset-password` |
@@ -77,8 +77,8 @@ Urutan `location` penting: regex diperiksa lebih dulu daripada prefix, dan `loca
 | `/internal/` | - | Selalu 404 |
 | `/` | frontend | Aplikasi web (fallback) |
 
-Fallback `@auth_unavailable` (502/503/504 dari auth-service) membalas JSON 503 `AUTH_UNAVAILABLE` dengan `Retry-After: 30`. Hanya kode ini yang
-dibuat nginx; `PAYMENT_UNAVAILABLE` dibuat backend. Melewati batas laju dibalas 429. Jalur antrian dan SSE tidak terpengaruh, dan user yang sudah
+Fallback `@auth_unavailable` (502/503/504 dari auth-service) membalas JSON 503 `AUTH_UNAVAILABLE` dengan `Retry-After: 30`. Kode ini dan `PAYMENT_UNAVAILABLE` (hanya untuk webhook BorderPay)
+dibuat nginx; `PAYMENT_UNAVAILABLE` untuk checkout dibuat backend. Melewati batas laju dibalas 429. Jalur antrian dan SSE tidak terpengaruh, dan user yang sudah
 login tetap jalan karena backend memverifikasi JWT secara lokal.
 
 Batas ukuran body default `client_max_body_size 1m` berlaku untuk semua rute, kecuali avatar.

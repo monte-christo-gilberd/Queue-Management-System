@@ -70,6 +70,7 @@ BEGIN
     ELSIF NEW.skip_count > OLD.skip_count THEN
         PERFORM pg_notify('queue_events', json_build_object(
             'kind', 'skipped', 'queue_id', NEW.queue_id, 'ticket_id', NEW.id)::text);
+    -- Transisi sementara: 'completed' dibiarkan selama masa transisi (lihat apply_schema.sql).
     ELSIF NEW.status IN ('completed', 'currently_served') AND NEW.called_at IS NOT NULL
        AND NEW.called_at IS DISTINCT FROM OLD.called_at THEN
         PERFORM pg_notify('queue_events', json_build_object(
@@ -108,8 +109,10 @@ BEGIN
 END $$;
 
 -- Multi-counter: satu counter melayani paling banyak satu nomor; nomor yang sedang dilayani wajib punya counter.
--- CHECK dipasang NOT VALID agar tidak memindai ulang tabel di sini. Sebelum VALIDATE CONSTRAINT, pastikan
--- tidak ada counter ganda dan tidak ada currently_served tanpa counter (lihat query cek di riwayat commit).
+-- CHECK dipasang NOT VALID agar penambahannya tidak memindai tabel dan tidak menahan lock lama. Segera sesudahnya
+-- (blok DO di bawah) constraint divalidasi: bila masih ada currently_served tanpa counter, validasi dilewati dengan
+-- WARNING (constraint tetap NOT VALID, baris lama tidak diperiksa) dan skrip ini tidak berhenti. Perbaiki barisnya
+-- lalu jalankan ulang skrip ini; VALIDATE CONSTRAINT idempoten.
 CREATE UNIQUE INDEX IF NOT EXISTS tickets_one_serving_per_counter
     ON tickets (called_counter_id)
     WHERE status = 'currently_served';
@@ -119,6 +122,21 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tickets_serving_has_counter') THEN
         ALTER TABLE tickets ADD CONSTRAINT tickets_serving_has_counter
             CHECK (status <> 'currently_served' OR called_counter_id IS NOT NULL) NOT VALID;
+    END IF;
+END $$;
+
+-- Validasi constraint di atas. Aman dijalankan berulang: bila sudah valid, tidak ada yang berubah.
+DO $$
+DECLARE
+    bad BIGINT;
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tickets_serving_has_counter' AND NOT convalidated) THEN
+        SELECT count(*) INTO bad FROM tickets WHERE status = 'currently_served' AND called_counter_id IS NULL;
+        IF bad = 0 THEN
+            ALTER TABLE tickets VALIDATE CONSTRAINT tickets_serving_has_counter;
+        ELSE
+            RAISE WARNING 'tickets_serving_has_counter tetap NOT VALID: % tiket currently_served tanpa counter. Perbaiki lalu jalankan ulang skrip ini.', bad;
+        END IF;
     END IF;
 END $$;
 

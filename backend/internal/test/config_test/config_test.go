@@ -126,6 +126,73 @@ func TestShutdownTimeout(t *testing.T) {
 	}
 }
 
+func TestPaymentHTTPTimeout(t *testing.T) {
+	cases := map[string]struct {
+		raw     string
+		want    time.Duration
+		wantErr bool
+	}{
+		"kosong = 20 detik": {raw: "", want: 20 * time.Second},
+		"diisi":             {raw: "30", want: 30 * time.Second},
+		"nol = bawaan":      {raw: "0", want: 20 * time.Second},
+		"negatif = bawaan":  {raw: "-1", want: 20 * time.Second},
+		"bukan angka = err": {raw: "abc", wantErr: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setEnv(t, map[string]string{"PAYMENT_HTTP_TIMEOUT": tc.raw})
+			// Env lama tidak lagi dibaca: nilai ini tidak boleh memengaruhi hasil.
+			t.Setenv("QR_HTTP_TIMEOUT", "1")
+			cfg, err := config.Load()
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "PAYMENT_HTTP_TIMEOUT") {
+					t.Fatalf("expected PAYMENT_HTTP_TIMEOUT error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.PaymentHTTPTimeout != tc.want {
+				t.Fatalf("PaymentHTTPTimeout = %v, want %v", cfg.PaymentHTTPTimeout, tc.want)
+			}
+		})
+	}
+}
+
+func TestSubscriptionPrice(t *testing.T) {
+	cases := map[string]struct {
+		raw     string
+		want    int64
+		wantErr bool
+	}{
+		"kosong = 15000":    {raw: "", want: 15000},
+		"diisi":             {raw: "25000", want: 25000},
+		"spasi dipangkas":   {raw: " 20000 ", want: 20000},
+		"nol = err":         {raw: "0", wantErr: true},
+		"negatif = err":     {raw: "-5", wantErr: true},
+		"bukan angka = err": {raw: "murah", wantErr: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			setEnv(t, map[string]string{"SUBSCRIPTION_PRICE_IDR": tc.raw})
+			cfg, err := config.Load()
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "SUBSCRIPTION_PRICE_IDR") {
+					t.Fatalf("expected SUBSCRIPTION_PRICE_IDR error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.SubscriptionPriceIDR != tc.want {
+				t.Fatalf("SubscriptionPriceIDR = %d, want %d", cfg.SubscriptionPriceIDR, tc.want)
+			}
+		})
+	}
+}
+
 func TestJWTPublicKey(t *testing.T) {
 	// ecdsa: kunci sah tetapi bukan RSA, harus ditolak.
 	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

@@ -313,7 +313,7 @@ Ringkasan target yang memanggil skrip di atas atau menggantikan langkah manual. 
 |---|---|
 | `make up`, `make tunnel` | Stack dev (LAN atau Cloudflare quick tunnel). Membuat kunci `keys-dev/`, memeriksa Google, membersihkan cache Metro bila perlu |
 | `make down` | Hentikan tunnel dan semua container dev, hapus `keys-dev/` dan penanda Metro |
-| `make restart`, `make logs`, `make ps` | Restart `backend`, `auth-service`, `notify-service`, `mail-service` (tidak termasuk payment-service); ikuti log; status container dev |
+| `make restart`, `make logs`, `make ps` | Restart `backend`, `auth-service`, `notify-service`, `mail-service`, `payment-service` (profil `payments`); ikuti log; status container dev |
 | `make seed` | Reset database dev ke data seed (`db/scripts/reset_seed_dev.sql`) |
 | `make verify-user EMAIL=... [STACK=prod]` | Lihat [`verify-user.sh`](#verify-usersh) |
 | `make prod-up` | `gen-auth-keys.sh`, `check-mail-mode.sh`, `check-google-config.sh`, `check-payment-config.sh`, naikkan `db`, jalankan `08_payment_role.sh` dan `check_payment_grants.sql` (galat menghentikan target), lalu naikkan seluruh stack (profil `payments` selalu aktif) |

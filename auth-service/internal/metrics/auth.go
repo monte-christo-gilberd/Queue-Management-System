@@ -37,10 +37,10 @@ func NewAuth() *Auth {
 	// label bersama untuk metrik yang hanya dipisah menurut hasil
 	result := []string{"result"}
 	a.login = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "auth_login_total", Help: "Hasil login password: ok, atau kode galat huruf kecil (mis. invalid_credentials).",
+		Name: "auth_login_total", Help: "Hasil login password: ok, atau kode galat huruf kecil (mis. unauthorized, bad_request).",
 	}, result)
 	a.register = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "auth_register_total", Help: "Hasil registrasi akun: ok, atau kode galat huruf kecil (mis. email_taken).",
+		Name: "auth_register_total", Help: "Hasil registrasi akun: ok, atau kode galat huruf kecil (mis. conflict, weak_password).",
 	}, result)
 	a.reset = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "auth_password_reset_total", Help: "Reset password per langkah (requested = minta tautan, completed = password diganti) dan hasil.",

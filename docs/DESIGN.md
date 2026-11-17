@@ -336,4 +336,4 @@ Batasan teknis:
 - Deploy demo: `docker-compose.prod.yml` di belakang Cloudflare Tunnel; backend `APP_ENV=production` memvalidasi rahasia dan origin https.
 - Push tidak punya outbox; email punya (at-least-once, bisa terkirim dua kali bila proses mati tepat setelah SMTP menerima).
 - `ALREADY_JOINED` tidak lagi dikirim oleh join (join ulang mengembalikan tiket yang ada). Handler join masih memetakan `ErrAlreadyJoined` dan frontend masih menanganinya agar tidak merusak klien lama; kode itu hanya aktif untuk sisip owner (`POST /insert`, 409 `ALREADY_JOINED`).
-- Harga langganan tetap Rp15.000 (konstanta di `backend/internal/config/config.go`); `SUBSCRIPTION_PRICE_IDR` tidak dibaca dari env.
+- Harga langganan dibaca dari `SUBSCRIPTION_PRICE_IDR` (bawaan Rp15.000; nilai tidak valid atau <= 0 menggagalkan start backend).

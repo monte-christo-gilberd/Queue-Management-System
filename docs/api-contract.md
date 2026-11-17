@@ -607,7 +607,7 @@ nginx: zona laju `display_zone` (20 permintaan/detik per IP, burst 40) dan log a
 Dilayani backend, pembayaran lewat payment-service dan BorderPay.
 
 ### POST /api/v1/owners/subscription/checkout
-Butuh token. Body `{ "method": "qris", "return_url": "https://..." }` (hanya QRIS yang didukung; `return_url` opsional, halaman tujuan setelah membayar, harus https). Membuat pesanan pembayaran satu bulan lewat payment-service dan BorderPay. Harga ditentukan server dan saat ini tetap 15000 (`SubscriptionPriceIDR` di `backend/internal/config/config.go` tidak dibaca dari environment; variabel `SUBSCRIPTION_PRICE_IDR` tidak berpengaruh). Langganan **tidak** bertambah di sini: `owners.subscription_expires_at` diperpanjang 30 hari oleh webhook BorderPay `payment.paid` setelah pembayaran lunas. Calon owner otomatis menjadi owner pada pembayaran pertama yang lunas.
+Butuh token. Body `{ "method": "qris", "return_url": "https://..." }` (hanya QRIS yang didukung; `return_url` opsional, halaman tujuan setelah membayar, harus https). Membuat pesanan pembayaran satu bulan lewat payment-service dan BorderPay. Harga ditentukan server dari env `SUBSCRIPTION_PRICE_IDR` (bawaan 15000). Langganan **tidak** bertambah di sini: `owners.subscription_expires_at` diperpanjang 30 hari oleh webhook BorderPay `payment.paid` setelah pembayaran lunas. Calon owner otomatis menjadi owner pada pembayaran pertama yang lunas.
 
 Respons 200:
 ```json

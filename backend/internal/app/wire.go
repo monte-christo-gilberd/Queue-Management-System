@@ -264,7 +264,7 @@ func Wire(cfg *config.Config, db *sqlx.DB) *App {
 	// checkout pembayaran langganan lewat payment-service (satu-satunya jalur berlangganan).
 	// Hanya dipasang bila PAYMENT_SERVICE_URL diisi.
 	if cfg.PaymentServiceURL != "" {
-		paymentClient := paymentclient.New(cfg.PaymentServiceURL, cfg.PaymentServiceToken, cfg.QRHTTPTimeout)
+		paymentClient := paymentclient.New(cfg.PaymentServiceURL, cfg.PaymentServiceToken, cfg.PaymentHTTPTimeout)
 		checkoutService := service.
 			NewSubscriptionCheckout(paymentClient, cfg.SubscriptionPriceIDR)
 		if verification != nil {

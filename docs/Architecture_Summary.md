@@ -25,7 +25,7 @@ Diperbarui 17 November 2026 agar sesuai kode: lima service (backend, auth, notif
     jaringan Docker internal: db, backend, notify, mail, payment, auth, frontend tidak membuka port
 ```
 
-Lima service Go, satu database, satu frontend, satu proxy (dev juga menjalankan Mailpit). Hanya nginx yang terhubung ke luar. Service pendukung tidak bisa dijangkau dari luar, kecuali `payment-service` (hanya webhook `/api/v1/webhooks/borderpay`) dan `auth-service` (hanya path `/api/v1/users/...` untuk login, register, reset password, dan verifikasi email). `auth-service` terpisah dari antrian: backend tidak memanggilnya dan sebaliknya (dijaga `scripts/check-service-isolation.sh`). Backend memanggil `payment-service` hanya untuk checkout langganan (`internal/paymentclient`, timeout `QR_HTTP_TIMEOUT`, nama lama dari qr-service yang sudah dihapus).
+Lima service Go, satu database, satu frontend, satu proxy (dev juga menjalankan Mailpit). Hanya nginx yang terhubung ke luar. Service pendukung tidak bisa dijangkau dari luar, kecuali `payment-service` (hanya webhook `/api/v1/webhooks/borderpay`) dan `auth-service` (hanya path `/api/v1/users/...` untuk login, register, reset password, dan verifikasi email). `auth-service` terpisah dari antrian: backend tidak memanggilnya dan sebaliknya (dijaga `scripts/check-service-isolation.sh`). Backend memanggil `payment-service` hanya untuk checkout langganan (`internal/paymentclient`, timeout `PAYMENT_HTTP_TIMEOUT`, bawaan 20 detik).
 
 ## 1. Database (PostgreSQL)
 
@@ -115,7 +115,7 @@ Satu kemampuan: perpanjang langganan owner 1 bulan (30 hari) lewat QRIS BorderPa
 - API internal `POST /internal/v1/payments` (`X-Service-Token`), dipanggil backend untuk membuat pesanan `pending` di `payment_orders` dan transaksi di BorderPay, lalu mengembalikan `pay_url` dan `reference_id`.
 - Webhook publik `POST /api/v1/webhooks/borderpay` (lewat nginx, diverifikasi dengan header `x-borderpay-token`). Event `payment.paid` menandai pesanan lunas dan memperpanjang `owners.subscription_expires_at` dalam satu transaksi.
 
-Webhook idempoten: pengiriman ulang tidak menerapkan pembayaran dua kali, dan nominal yang tidak sama dengan pesanan ditolak (409). Pembayaran pertama user biasa sekaligus menjadikannya owner. Role database `payment_rw`. Bila service mati, checkout membalas 503 `PAYMENT_UNAVAILABLE`, sementara login, antrian, dan tiket tetap berjalan. Port internal 8095 (`PAYMENT_SERVICE_URL`). payment-service tidak memverifikasi JWT (backend yang mengautentikasi user dan memanggilnya dengan `X-Service-Token`), memakai `net/http` tanpa Gin, dan memakai log standar (teks), tanpa log JSON, metrik, maupun trace. Harga tetap Rp15.000 (konstanta di backend; `SUBSCRIPTION_PRICE_IDR` tidak dibaca).
+Webhook idempoten: pengiriman ulang tidak menerapkan pembayaran dua kali, dan nominal yang tidak sama dengan pesanan ditolak (409). Pembayaran pertama user biasa sekaligus menjadikannya owner. Role database `payment_rw`. Bila service mati, checkout membalas 503 `PAYMENT_UNAVAILABLE`, sementara login, antrian, dan tiket tetap berjalan. Port internal 8095 (`PAYMENT_SERVICE_URL`). payment-service tidak memverifikasi JWT (backend yang mengautentikasi user dan memanggilnya dengan `X-Service-Token`), memakai `net/http` tanpa Gin, dan memakai log standar (teks), tanpa log JSON, metrik, maupun trace. Harga dari `SUBSCRIPTION_PRICE_IDR` di backend (bawaan Rp15.000).
 
 ## 3. Frontend (Expo / React Native Web)
 

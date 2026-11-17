@@ -11,7 +11,7 @@
 #   make up IP=192.168.1.5          sama, tetapi memakai IP LAN yang ditentukan
 #   make tunnel                     HTTPS publik lewat Cloudflare quick tunnel (kamera HP jalan)
 #   make down                       hentikan stack dan tunnel
-#   make restart                    restart backend, auth-service, notify-service, mail-service (payment-service tidak ikut)
+#   make restart                    restart backend, auth-service, notify-service, mail-service, payment-service (bila berjalan)
 #                                   (dipakai setelah mengubah kode Go)
 #   make seed                       reset database dev ke data seed
 #   make logs                       ikuti log semua service (50 baris terakhir)
@@ -71,7 +71,7 @@ SHELL := bash
 .SILENT:
 .PHONY: obs up tunnel down restart seed logs ps mailpit verify-user \
         prod-up prod-up-mailpit prod-up-smtp prod-down prod-guard prod-backup prod-reset \
-        prod-seed-penguji \
+        prod-seed-penguji prod-payment-check \
         obs-up obs-down obs-url obs-check
 
 # -----------------------------------------------------------------------------
@@ -237,7 +237,7 @@ down:
 
 # Restart service yang perlu dimuat ulang setelah kode Go berubah.
 restart:
-	docker compose restart backend auth-service notify-service mail-service
+	docker compose --profile payments restart backend auth-service notify-service mail-service payment-service
 
 # Reset database dev ke data seed (db/scripts/reset_seed_dev.sql).
 seed:

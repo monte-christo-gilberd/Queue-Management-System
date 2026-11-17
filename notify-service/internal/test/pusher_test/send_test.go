@@ -86,6 +86,29 @@ func TestSendGoneIsNotRetried(t *testing.T) {
 	}
 }
 
+// A 4xx other than 404/410/429 (e.g. 403 from a mismatched VAPID key) is an error: not retried, subscription kept.
+func TestSendOtherClientErrorIsPermanentError(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden} {
+		var hits atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			hits.Add(1)
+			w.WriteHeader(status)
+		}))
+
+		err := newSender(t).Send(context.Background(), testSub(t, srv.URL), testMsg)
+		srv.Close()
+		if err == nil {
+			t.Fatalf("status %d: err=nil, want error", status)
+		}
+		if errors.Is(err, apperror.ErrSubscriptionGone) || errors.Is(err, apperror.ErrTemporaryPush) {
+			t.Fatalf("status %d: err=%v must be neither gone nor temporary", status, err)
+		}
+		if hits.Load() != 1 {
+			t.Fatalf("status %d: hits=%d, want 1 (no retry)", status, hits.Load())
+		}
+	}
+}
+
 func TestSendNotFoundIsGone(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

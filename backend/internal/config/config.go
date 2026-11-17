@@ -23,7 +23,7 @@ import (
 //
 // Wajib diisi: DATABASE_URL, JWT_PUBLIC_KEY_FILE, ALLOWED_ORIGINS, PUBLIC_APP_URL.
 // Opsional: VAPID_PUBLIC_KEY, FCM_PROJECT_ID, APP_ENV, TRUSTED_PROXIES, dan PORT (bawaan 8080).
-// Opsional dengan nilai bawaan dalam detik: QR_HTTP_TIMEOUT (1; nama lama dari masa qr-service, kini hanya batas waktu klien payment-service) dan SHUTDOWN_TIMEOUT (8).
+// Opsional dengan nilai bawaan dalam detik: PAYMENT_HTTP_TIMEOUT (20; batas waktu klien payment-service) dan SHUTDOWN_TIMEOUT (8).
 // EMAIL_VERIFICATION_REQUIRED: bawaan true. Harus sama dengan nilai di auth-service.
 type Config struct {
 	// Env: APP_ENV. Bila "production", validateProduction() menolak origin/URL yang tidak https dan wildcard * di ALLOWED_ORIGINS. Pemeriksaan secret lemah sudah tidak aktif (dikomentari) sejak qr-service dihapus.
@@ -50,14 +50,15 @@ type Config struct {
 	// QRServiceURL string
 	// (tidak aktif) bekas token antarservice ke qr-service (QR_SERVICE_TOKEN). Tidak lagi dibaca.
 	// QRServiceToken string
-	// batas waktu tiap panggilan ke payment-service dalam detik (QR_HTTP_TIMEOUT; nama env lama dari masa qr-service, dipertahankan untuk payment-service). Bila kosong atau nilai <= 0, 1 detik.
-	// Nilai yang bukan angka membuat Load() gagal.
-	QRHTTPTimeout time.Duration
+	// batas waktu tiap panggilan ke payment-service dalam detik (PAYMENT_HTTP_TIMEOUT). Bila kosong atau nilai <= 0, 20 detik:
+	// payment-service sendiri menunggu BorderPay sampai 15 detik, jadi batas ini harus lebih besar dari itu.
+	// Nilai yang bukan angka membuat Load() gagal. Env lama QR_HTTP_TIMEOUT tidak lagi dibaca.
+	PaymentHTTPTimeout time.Duration
 	// URL dasar payment-service (PAYMENT_SERVICE_URL). Kosong = checkout langganan tidak dipasang.
 	PaymentServiceURL string
 	// token antarservice ke payment-service (PAYMENT_SERVICE_TOKEN), dikirim sebagai X-Service-Token.
 	PaymentServiceToken string
-	// harga paket bulanan dalam rupiah. Saat ini tetap 15000 (di-hardcode di Load); env SUBSCRIPTION_PRICE_IDR tidak dibaca.
+	// harga paket bulanan dalam rupiah (SUBSCRIPTION_PRICE_IDR). Bila kosong, 15000. Bukan angka atau <= 0 membuat Load() gagal.
 	SubscriptionPriceIDR int64
 	// batas waktu menunggu request yang sedang berjalan selesai saat server berhenti (SHUTDOWN_TIMEOUT, detik).
 	// Bila kosong atau nilai <= 0, 8 detik. Harus lebih kecil dari stop_grace_period backend di compose.
@@ -112,7 +113,6 @@ func Load() (Config, error) {
 		// QRServiceToken:       os.Getenv("QR_SERVICE_TOKEN"),
 		PaymentServiceURL:    strings.TrimRight(os.Getenv("PAYMENT_SERVICE_URL"), "/"),
 		PaymentServiceToken:  os.Getenv("PAYMENT_SERVICE_TOKEN"),
-		SubscriptionPriceIDR: 15000,
 		VAPIDPublicKey:       os.Getenv("VAPID_PUBLIC_KEY"),
 		FCMProjectID:         os.Getenv("FCM_PROJECT_ID"),
 	}
@@ -160,19 +160,29 @@ func Load() (Config, error) {
 	// 	return Config{}, fmt.Errorf("missing required env var: QR_SERVICE_TOKEN")
 	// }
 
-	// QR_HTTP_TIMEOUT dalam detik. Kosong = 1 detik. Bukan angka = error. Nilai <= 0 = 1 detik.
-	timeout := time.Second
-	if raw := os.Getenv("QR_HTTP_TIMEOUT"); raw != "" {
+	// PAYMENT_HTTP_TIMEOUT dalam detik. Kosong = 20 detik. Bukan angka = error. Nilai <= 0 = 20 detik.
+	timeout := 20 * time.Second
+	if raw := os.Getenv("PAYMENT_HTTP_TIMEOUT"); raw != "" {
 		seconds, err := strconv.Atoi(raw)
 		if err != nil {
-			return Config{}, fmt.Errorf("invalid QR_HTTP_TIMEOUT: %w", err)
+			return Config{}, fmt.Errorf("invalid PAYMENT_HTTP_TIMEOUT: %w", err)
 		}
 		timeout = time.Duration(seconds) * time.Second
 	}
 	if timeout <= 0 {
-		timeout = time.Second
+		timeout = 20 * time.Second
 	}
-	cfg.QRHTTPTimeout = timeout
+	cfg.PaymentHTTPTimeout = timeout
+
+	// SUBSCRIPTION_PRICE_IDR dalam rupiah. Kosong = 15000. Bukan angka atau <= 0 = error (harga nol/negatif tidak masuk akal).
+	cfg.SubscriptionPriceIDR = 15000
+	if raw := strings.TrimSpace(os.Getenv("SUBSCRIPTION_PRICE_IDR")); raw != "" {
+		price, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || price <= 0 {
+			return Config{}, fmt.Errorf("invalid SUBSCRIPTION_PRICE_IDR: must be a positive integer, got %q", raw)
+		}
+		cfg.SubscriptionPriceIDR = price
+	}
 
 	// SHUTDOWN_TIMEOUT dalam detik. Kosong = 8 detik. Bukan angka = error. Nilai <= 0 = 8 detik.
 	shutdownTimeout := 8 * time.Second

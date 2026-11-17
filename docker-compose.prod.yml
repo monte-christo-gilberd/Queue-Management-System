@@ -91,6 +91,8 @@ services:
       context: ./mail-service
       target: prod
     environment:
+      # Tingkat log: debug, info, warn, atau error (bawaan info).
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: "8092"
       MAIL_SERVICE_TOKEN: ${MAIL_SERVICE_TOKEN:?set MAIL_SERVICE_TOKEN in .env}
       # Wajib diisi (:?) agar tidak diam-diam mengirim ke server yang salah. Diisi make prod-up sesuai MAIL_MODE.
@@ -149,6 +151,8 @@ services:
       context: ./auth-service
       target: prod
     environment:
+      # Tingkat log: debug, info, warn, atau error (bawaan info).
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: "8094"
       # production: menolak start bila PUBLIC_APP_URL bukan https atau token mail lemah.
       APP_ENV: production
@@ -190,6 +194,8 @@ services:
       context: ./notify-service
       target: prod
     environment:
+      # Tingkat log: debug, info, warn, atau error (bawaan info).
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgresql://notify_ro:${NOTIFY_DB_PASSWORD}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
       # Wajib diisi: config.Load notify-service menolak start bila VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, atau VAPID_SUBJECT
       # kosong. Di backend hanya VAPID_PUBLIC_KEY yang dipakai (opsional).
@@ -224,6 +230,8 @@ services:
       context: ./backend
       target: prod
     environment:
+      # Tingkat log: debug, info, warn, atau error (bawaan info).
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       APP_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-qms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-qms_db}?sslmode=disable
       PORT: "8080"
@@ -239,8 +247,8 @@ services:
       PAYMENT_SERVICE_URL: http://payment-service:8095
       PAYMENT_SERVICE_TOKEN: ${PAYMENT_SERVICE_TOKEN:-}
       SUBSCRIPTION_PRICE_IDR: ${SUBSCRIPTION_PRICE_IDR:-15000}
-      # Nama lama dari qr-service (sudah dihapus); kini batas waktu (detik) klien backend ke payment-service.
-      QR_HTTP_TIMEOUT: ${QR_HTTP_TIMEOUT:-1}
+      # Batas waktu (detik) klien backend ke payment-service. Harus > 15 (payment-service menunggu BorderPay hingga 15 dtk).
+      PAYMENT_HTTP_TIMEOUT: ${PAYMENT_HTTP_TIMEOUT:-20}
       # Batas menunggu request selesai saat berhenti; harus lebih kecil dari stop_grace_period di bawah.
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-8}
       # Guard verifikasi email (join dan buat antrian butuh email terverifikasi). Kosong = nyala. `false` mematikan.

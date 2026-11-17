@@ -113,7 +113,8 @@ Variabel penting:
 | `PORT` | Port HTTP backend |
 | `ALLOWED_ORIGINS` | Origin frontend yang diizinkan (dipisah koma) |
 | `PUBLIC_APP_URL` | Origin frontend untuk `join_url`, mis. `http://localhost:8080` (lewat nginx) |
-| `QR_HTTP_TIMEOUT` | Timeout panggilan internal ke payment-service (detik, default 1) |
+| `PAYMENT_HTTP_TIMEOUT` | Timeout panggilan internal backend ke payment-service (detik, default 20; harus > 15 karena payment-service menunggu BorderPay hingga 15 detik) |
+| `SUBSCRIPTION_PRICE_IDR` | Harga langganan per bulan dalam rupiah (default 15000; bukan angka atau <= 0 membuat backend gagal start) |
 | `EMAIL_VERIFICATION_REQUIRED` | Guard verifikasi email di backend. Kosong = nyala; `false` mematikan (semua akun dianggap terverifikasi). Harus sama dengan nilai di auth-service (di sana kosong = nyala bila `MAIL_SERVICE_URL` terisi, dan `true` tanpa mail-service ditolak saat start) |
 | `SHUTDOWN_TIMEOUT` | Detik menunggu request selesai saat backend berhenti (default 8; compose dev 2). Harus lebih kecil dari `stop_grace_period` |
 
@@ -181,7 +182,7 @@ Satu `docker-compose.yml` untuk development; semua kode di-mount. Frontend hot r
 Kredensial (`POSTGRES_PASSWORD` dan kata sandi role database) tidak dibakar ke image; kunci privat JWT di-mount dari `keys-dev/` (dev) atau `keys/` (prod).
 Frontend memanggil API di origin halaman (`EXPO_PUBLIC_API_URL=origin`), jadi mengganti `QMS_PUBLIC_ORIGIN` tidak butuh build ulang frontend.
 
-Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) atau `make tunnel` (HTTPS publik, kamera HP jalan); `make down` untuk berhenti. Perintah lain: `make restart` (backend, auth-service, notify-service, mail-service), `make seed`, `make logs`. Lihat `Makefile` dan `deploy/nginx/README.md`.
+Untuk uji dari HP, jalankan `make up` (build + stack, alamat memakai IP LAN) atau `make tunnel` (HTTPS publik, kamera HP jalan); `make down` untuk berhenti. Perintah lain: `make restart` (backend, auth-service, notify-service, mail-service, payment-service), `make seed`, `make logs`. Lihat `Makefile` dan `deploy/nginx/README.md`.
 
 ### Demo/produksi di belakang Cloudflare Tunnel
 
@@ -262,7 +263,7 @@ Catatan:
 
 #### Langganan owner dan pembayaran BorderPay
 
-Owner membayar **1 bulan langganan (30 hari)** lewat QRIS BorderPay. Harga tetap Rp15.000 per bulan: `SubscriptionPriceIDR` di `backend/internal/config/config.go` diisi konstanta 15000 dan **tidak dibaca dari env** (`SUBSCRIPTION_PRICE_IDR` di compose dan `.env.prod.example` tidak berefek). Alur:
+Owner membayar **1 bulan langganan (30 hari)** lewat QRIS BorderPay. Harga per bulan diatur `SUBSCRIPTION_PRICE_IDR` (bawaan Rp15.000 bila kosong; nilai bukan angka atau <= 0 membuat `config.Load()` gagal). Alur:
 
 1. Frontend memanggil `POST /api/v1/owners/subscription/checkout` (butuh JWT dan email terverifikasi, metode `qris`). Backend menentukan harga dan membuat `reference_id` (`SUB-<owner>-<unix>-<acak>`).
 2. Backend memanggil payment-service di `/internal/v1/payments` dengan `X-Service-Token`. payment-service mencatat pesanan `pending` di `payment_orders`, lalu membuat transaksi di BorderPay dan menyimpan `pay_url`.
@@ -576,7 +577,7 @@ handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
 | Tanpa `WriteTimeout` di backend | Koneksi SSE berumur panjang tidak terputus | Batas tulis untuk rute biasa dipegang nginx (`proxy_read_timeout`), bukan backend |
 | Verifikasi email membatasi aksi (bergabung, membuat antrian), bukan login | User yang salah ketik email tidak terkunci dan masih bisa membuka Profil untuk kirim ulang | Akun belum terverifikasi tetap bisa masuk dan melihat; status dibaca dari database tiap permintaan (bukan JWT), satu query tambahan pada join dan buat antrian |
 | Rate limit login dan `/join` hanya di nginx | Satu tempat untuk membatasi, tanpa kode tambahan di backend | Backend yang dijangkau tanpa nginx tidak membatasi login |
-| Interface didefinisikan di tiap lapisan | Service bisa diuji dengan fake tanpa database | Ada interface ganda yang tidak dipakai (mis. `database.TxRunnerInterface` dan `handler_interface.go`) |
+| Interface didefinisikan di tiap lapisan | Service bisa diuji dengan fake tanpa database | Interface didefinisikan di sisi pemakai, sehingga interface ganda yang tidak dipakai perlu dibersihkan berkala (yang lama, `database.TxRunnerInterface` dan `handler/handler_interface.go` di backend, sudah dihapus) |
 | Pembayaran QRIS lewat BorderPay dengan service terpisah `payment-service` | Pembayaran sungguhan. Langganan hanya berubah lewat webhook yang diverifikasi token dan idempoten. Service pembayaran bisa mati tanpa menghentikan antrian | Satu service dan satu role database tambahan yang harus dijaga (grant, token, webhook). Pembayaran gagal bila WAF memblokir webhook |
 | Service pembayaran BorderPay ditambahkan kembali, menggantikan keputusan awal tanpa pembayaran | Pembayaran nyata; konfigurasi dan rahasia diperiksa sebelum deploy (`check-payment-config.sh`) | Lebih banyak container, rahasia, dan role database yang harus dijaga |
 

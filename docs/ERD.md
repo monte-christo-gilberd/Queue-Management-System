@@ -230,10 +230,9 @@ Tidak ada skrip `05_*`; tabel `payment_webhook_events` dan `payment_session_cred
 
 ## Keterbatasan dan ketidaksesuaian yang diketahui
 
-- `tickets_serving_has_counter` dipasang `NOT VALID` oleh `apply_schema.sql` pada database yang di-upgrade (baris lama tidak dipindai); pada database baru constraint ini valid.
-- Badan `tickets_notify()` di `01g_triggers.sql` memuat satu baris komentar ("Transisi sementara ...") yang tidak ada di `apply_schema.sql`;
-  logikanya sama, tetapi katalog database baru dan hasil upgrade berbeda satu baris komentar.
-- `db/scripts/reset_seed_dev.sql` tidak men-`TRUNCATE` `payment_orders`; baris pesanan dapat tertinggal setelah reset (padahal `users` dikosongkan; FK ke `users` akan membuat `TRUNCATE` gagal bila baris itu ada).
+- `tickets_serving_has_counter` dipasang `NOT VALID` oleh `apply_schema.sql`, lalu langsung di-`VALIDATE` bila tidak ada pelanggar. Bila ada tiket `currently_served` tanpa counter, skrip mengeluarkan `WARNING` dan constraint tetap `NOT VALID` (skrip tidak berhenti); bereskan datanya lalu jalankan `VALIDATE CONSTRAINT` manual.
+- Badan `tickets_notify()` di `apply_schema.sql` kini identik dengan `01g_triggers.sql` (dulu baris komentar "Transisi sementara ..." tidak ada di `apply_schema.sql`).
+- `db/scripts/reset_seed_dev.sql` kini ikut men-`TRUNCATE` `payment_orders` (dulu tidak, sehingga `make seed` gagal bila ada baris pesanan karena FK ke `users`).
 - Kolom `queue_settings` yang tidak dipakai kode: lihat `db/migrations/README.md`.
 
 ## SQL asli

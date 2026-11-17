@@ -11,7 +11,6 @@
 //
 // Isinya:
 //   - response.go: respondData dan respondError, dua pembantu untuk bentuk respons JSON.
-//   - handler_interface.go: interface lama yang tidak dipakai lagi (router memakai interface di router/router_interface.go).
 //   - user_handler.go, ticket_handler.go, queue_handler.go, counter_handler.go, display_handler.go,
 //     history_handler.go, note_handler.go, sse_handler.go, push_handler.go, fcm_push_handler.go,
 //     subscription_checkout_handler.go: handler per fitur. Registrasi, login, reset password, dan verifikasi email

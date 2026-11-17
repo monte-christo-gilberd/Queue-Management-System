@@ -61,11 +61,11 @@ for f in db/migrations/01*.sql db/migrations/02_Indexes.sql; do psql -d qms_db -
 
 ## Keterbatasan
 
-- `apply_schema.sql` memasang `tickets_serving_has_counter` sebagai `NOT VALID` (database baru: valid). Jalankan `VALIDATE CONSTRAINT` setelah data dipastikan bersih.
-- Badan `tickets_notify` di `01g_triggers.sql` punya satu baris komentar ("Transisi sementara ...") yang tidak ada di `apply_schema.sql`; logika sama.
+- `apply_schema.sql` memasang `tickets_serving_has_counter` sebagai `NOT VALID`, lalu menjalankan `VALIDATE CONSTRAINT` bila tidak ada pelanggar (tiket `currently_served` tanpa counter). Bila ada pelanggar: `WARNING` dan constraint tetap `NOT VALID`; bereskan data lalu validasi manual.
+- Badan `tickets_notify` di `apply_schema.sql` kini identik dengan `01g_triggers.sql` (dulu selisih satu baris komentar).
 - `01h_role_grants.sql` menyebut skrip role `03..05`, dan komentar `payments` di `01a_accounts.sql` menyebut endpoint extend; keduanya usang (role payment = `08_payment_role.sh`, `payments` ditulis payment-service).
 - `queue_history` ada tetapi tidak dipakai kode Go. Tidak ada trigger `updated_at`.
-- `../scripts/reset_seed_dev.sql` tidak men-`TRUNCATE` `payment_orders`.
+- `../scripts/reset_seed_dev.sql` kini ikut men-`TRUNCATE` `payment_orders` (dulu tidak, sehingga `make seed` gagal bila ada baris pesanan).
 - Backend terhubung sebagai pengguna utama `qms`, bukan role terbatas; role terbatas hanya untuk notify, mail, auth, metrics, dan payment.
 
 ## Kolom yang ada tetapi tidak dipakai kode

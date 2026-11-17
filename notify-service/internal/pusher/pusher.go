@@ -90,8 +90,12 @@ func (w *Sender) once(
 	// 429 atau 5xx: server sibuk atau rusak sementara, coba lagi nanti.
 	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 		return fmt.Errorf("%w: status %d", apperror.ErrTemporaryPush, resp.StatusCode)
+	// 4xx lain (mis. 400 payload ditolak, 401/403 kunci VAPID tidak cocok): bukan salah langganan dan tidak akan
+	// sembuh bila diulang, jadi tidak di-retry dan langganan tidak dihapus. Dikembalikan sebagai galat biasa agar
+	// terhitung gagal ("error") di metrik, tidak lagi dianggap sukses.
+	case resp.StatusCode >= 400:
+		return fmt.Errorf("push service rejected the notification: status %d", resp.StatusCode)
 	}
-	// Status lain dianggap sukses: tidak ada galat. Ini termasuk 4xx selain 404/410/429 (mis. 403 karena kunci VAPID
-	// tidak cocok), yang tidak diulang dan tidak menghapus langganan.
+	// Status lain (2xx) berarti push service menerima notifikasi.
 	return nil
 }
