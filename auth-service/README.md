@@ -1,128 +1,111 @@
 # auth-service
 
-Microservice login untuk QMS. Tanggung jawabnya:
+The login microservice for QMS. Its responsibilities:
 
-- **registrasi dan login** (email atau username, bcrypt) dan menerbitkan **JWT RS256**,
-- **lupa dan reset password** lewat tautan sekali pakai,
-- **verifikasi email** (kirim, kirim ulang, dan verifikasi lewat tautan; setelah berhasil dikirim email konfirmasi `email-verified` di latar belakang),
-- **login dengan Google** (menukar ID token Google dengan token QMS, dan menautkan akun lewat konfirmasi password),
-- menjadi **satu-satunya pemegang kunci privat** penanda token (`AUTH_JWT_PRIVATE_KEY_FILE`).
+- **registration and login** (by email or username, bcrypt), issuing **RS256 JWTs**,
+- **forgot and reset password** through single-use links,
+- **email verification** (send, resend, and verify through a link; after a successful verification, a `email-verified` confirmation email is sent in the background),
+- **Google sign-in** (exchanging a Google ID token for a QMS token, and linking accounts through password confirmation),
+- being the **only holder of the private key** that signs tokens (`AUTH_JWT_PRIVATE_KEY_FILE`).
 
-Backend **tidak memanggil** service ini. Mereka memverifikasi token secara lokal dengan kunci publik
-(`keys/auth-public.pem`) dan membaca pencabutan sesi serta status verifikasi langsung dari database. Bila auth-service
-mati, user yang sudah login tetap bisa memakai aplikasi; yang gagal hanya login baru, registrasi, reset password, dan
-verifikasi email (nginx menjawab 503 `AUTH_UNAVAILABLE`).
+The backend **does not call** this service. It verifies tokens locally with the public key (`keys/auth-public.pem`) and reads session revocation and verification status directly from the database. If auth-service is down, logged-in users can keep using the application; only new logins, registrations, password resets, and email verification fail (nginx answers 503 `AUTH_UNAVAILABLE`).
 
-## Menjalankan
+## Running
 
-Kunci dibuat sekali (otomatis oleh `make up` dan `make prod-up`):
+The keys are created once (automatically by `make up` and `make prod-up`):
 
 ```bash
-scripts/gen-auth-keys.sh        # dari akar queue-management-system/
+scripts/gen-auth-keys.sh        # from the queue-management-system/ root
 ```
 
-Lewat compose (service `auth-service`, port internal 8094, tidak dipetakan ke host):
+With Compose (the `auth-service` service, internal port 8094, not mapped to the host):
 
 ```bash
 docker compose up -d --build auth-service
 curl -s http://localhost:8080/api/v1/users/login -H 'Content-Type: application/json' \
-  -d '{"identifier":"budi","password":"rahasia123"}'      # lewat nginx
+  -d '{"identifier":"budi","password":"secret123"}'      # through nginx
 ```
 
-Tanpa Docker: `go run ./cmd/auth-service` (membaca `../.env`; butuh `DATABASE_URL`, `PUBLIC_APP_URL`,
-`AUTH_JWT_PRIVATE_KEY_FILE`). Tes: `go test ./...`.
+Without Docker: `go run ./cmd/auth-service` (reads `../.env`; requires `DATABASE_URL`, `PUBLIC_APP_URL`, and `AUTH_JWT_PRIVATE_KEY_FILE`). Tests: `go test ./...`.
 
-## Endpoint
+## Endpoints
 
-Path publik sama dengan yang dulu dilayani backend (nginx meneruskannya ke service ini). Bentuk respons:
-sukses `{"data": ...}`, gagal `{"error": {"code", "message"}}`.
+The public paths are the same ones the backend used to serve (nginx forwards them to this service). Response shape: success `{"data": ...}`, failure `{"error": {"code", "message"}}`.
 
-| Method | Path | Keterangan |
+| Method | Path | Notes |
 |---|---|---|
-| GET | `/health` | Liveness (`{"status":"ok"}`), tidak menyentuh database |
+| GET | `/health` | Liveness (`{"status":"ok"}`), does not touch the database |
 | POST | `/api/v1/users/register` | `{email, username, password}` → `{data:{token}}`. 400 `WEAK_PASSWORD`, 409 `CONFLICT` |
-| POST | `/api/v1/users/login` | `{identifier, password}` (`email` diterima sebagai alias) → `{data:{token}}`. Semua kegagalan 401 `UNAUTHORIZED` |
-| POST | `/api/v1/users/google` | `{id_token}` → `{data:{token}}`, atau 409 `GOOGLE_LINK_REQUIRED` + `error.link_token`. 401/403/503 lihat kontrak API. Hanya bila `GOOGLE_CLIENT_IDS` terisi |
+| POST | `/api/v1/users/login` | `{identifier, password}` (`email` accepted as an alias) → `{data:{token}}`. All failures return 401 `UNAUTHORIZED` |
+| POST | `/api/v1/users/google` | `{id_token}` → `{data:{token}}`, or 409 `GOOGLE_LINK_REQUIRED` with `error.link_token`. For 401/403/503 see the API contract. Only when `GOOGLE_CLIENT_IDS` is set |
 | POST | `/api/v1/users/google/link` | `{link_token, password}` → `{data:{token}}`. 400 `INVALID_TOKEN`, 401 `UNAUTHORIZED`, 409 `CONFLICT` |
-| POST | `/api/v1/users/forgot-password` | Selalu 202 untuk email berformat sah (tidak ada enumerasi akun) |
+| POST | `/api/v1/users/forgot-password` | Always 202 for a well-formed email (no account enumeration) |
 | POST | `/api/v1/users/reset-password` | `{token, password}`. 400 `INVALID_TOKEN` / `WEAK_PASSWORD` |
-| POST | `/api/v1/users/verify-email` | `{token}`. 400 `INVALID_TOKEN`. Bila akun baru terverifikasi oleh token ini, email `email-verified` dikirim lewat mail-service (lihat bagian Email konfirmasi verifikasi) |
-| POST | `/api/v1/users/me/verify-email/resend` | Butuh login. 202, atau 429 bila lewat 3 per jam |
+| POST | `/api/v1/users/verify-email` | `{token}`. 400 `INVALID_TOKEN`. If this token verifies a newly verified account, the `email-verified` email is sent through mail-service (see the verification confirmation section) |
+| POST | `/api/v1/users/me/verify-email/resend` | Requires login. 202, or 429 when more than 3 per hour |
 
-Forgot/reset/verify hanya terpasang bila `MAIL_SERVICE_URL` terisi (selain itu 404). Profil, avatar, preferensi, dan tiket
-tetap di backend.
+Forgot, reset, and verify are only registered when `MAIL_SERVICE_URL` is set (otherwise 404). Profile, avatar, preferences, and tickets remain in the backend.
 
-## Email konfirmasi verifikasi
+## Verification confirmation email
 
-Setelah `verify-email` mengonsumsi token untuk akun yang **belum** terverifikasi sebelumnya, `service/verification_service.go` mengirim templat `email-verified` ke akun itu lewat `mailclient` (mail-service). Pengiriman best effort dan asinkron (goroutine dengan batas waktu sendiri): kegagalan hanya masuk log (tanpa alamat email) dan tidak pernah mengubah respons HTTP `verify-email`. Tidak dikirim bila akun sudah terverifikasi sebelumnya, atau bila `MAIL_SERVICE_URL` kosong (rute verifikasi pun tidak terpasang). `TokenRepository.VerifyEmail` mengembalikan `userID` dan `newlyVerified` (true hanya bila `email_verified_at` baru terisi oleh token ini) untuk keputusan itu.
+After `verify-email` consumes a token for an account that was **not** verified before, `service/verification_service.go` sends the `email-verified` template to that account through `mailclient` (mail-service). Delivery is best effort and asynchronous (a goroutine with its own timeout): a failure is only written to the log (without the email address) and never changes the HTTP response of `verify-email`. Nothing is sent if the account was already verified, or if `MAIL_SERVICE_URL` is empty (in that case the verification route is not registered at all). `TokenRepository.VerifyEmail` returns `userID` and `newlyVerified` (true only when `email_verified_at` was set by this token) for that decision.
 
-## Token
+## Tokens
 
 ```
 header : {"alg":"RS256","typ":"JWT","kid":"qms-1"}
-payload: {"sub":"<user id>","iat":<detik>,"exp":<iat + 24 jam>}
+payload: {"sub":"<user id>","iat":<seconds>,"exp":<iat + 24 hours>}
 ```
 
-`iat` dipakai pencabutan sesi: token yang terbit sebelum `users.password_changed_at` ditolak. Verifikasi hanya menerima
-RS256 (HS256 dan `alg=none` ditolak).
+`iat` is used for session revocation: a token issued before `users.password_changed_at` is rejected. Verification only accepts RS256 (HS256 and `alg=none` are rejected).
 
-**Link token** (penautan akun Google): JWT RS256 5 menit dengan `purpose: "google_link"`, `gid`, dan `jti` acak. Ditandatangani
-kunci yang sama dengan token login, tetapi **bukan token login**: `purpose` membuatnya ditolak oleh `auth-service` dan backend.
-Sekali pakai, dan hangus setelah 5 kali salah password (penghitung di memori; satu instance).
+**Link token** (Google account linking): a 5-minute RS256 JWT with `purpose: "google_link"`, `gid`, and a random `jti`. It is signed with the same key as login tokens, but it is **not a login token**: `purpose` makes `auth-service` and the backend reject it. It is single-use, and it expires after 5 wrong passwords (the counter is in memory; one instance only).
 
-## Login Google
+## Google sign-in
 
-`internal/google` memeriksa ID token sendiri (tanpa `google.golang.org/api`): tanda tangan RS256 dengan JWKS Google
-(di-cache sesuai `Cache-Control`, `kid` tak dikenal paling cepat diambil ulang tiap 1 menit, kunci kedaluwarsa tidak dipakai
-bila Google mati), `iss` Google, `aud` salah satu `GOOGLE_CLIENT_IDS`, `exp`/`iat` dengan toleransi 60 detik, dan
-`email_verified`. Keputusan di `service/google_service.go`: akun tertaut (cocok lewat `google_id`) → token; email belum ada → akun baru
-tanpa password dan terverifikasi; email sudah ada dengan password (huruf besar/kecil diabaikan) → 409 dan **tidak** ditautkan
-otomatis.
+`internal/google` verifies the ID token itself (without `google.golang.org/api`): RS256 signature checked against Google's JWKS (cached according to `Cache-Control`; an unknown `kid` triggers a refresh at most once every 1 minute; expired keys are not used when Google is unavailable), the `iss` must be Google's, `aud` must be one of `GOOGLE_CLIENT_IDS`, `exp`/`iat` with a 60-second tolerance, and `email_verified` must be true. Decisions in `service/google_service.go`: a linked account (matched by `google_id`) → token; an email that does not exist yet → new account with no password, already verified; an email that exists with a password (case-insensitive) → 409, and it is **not** linked automatically.
 
-## Konfigurasi
+## Configuration
 
-| Variabel | Wajib | Keterangan |
+| Variable | Required | Notes |
 |---|---|---|
-| `DATABASE_URL` (atau `AUTH_DATABASE_URL`) | ya | Koneksi dengan role `auth_rw` |
-| `PUBLIC_APP_URL` | ya | Alamat publik untuk tautan di email. Produksi: wajib https |
-| `AUTH_JWT_PRIVATE_KEY_FILE` | ya | Kunci privat RSA (PEM, PKCS#8 atau PKCS#1) |
-| `AUTH_JWT_KID` | tidak | Header `kid` (bawaan `qms-1`) |
-| `MAIL_SERVICE_URL`, `MAIL_SERVICE_TOKEN` | pasangan | Keduanya atau tidak sama sekali. Produksi: token minimal 32 karakter |
-| `EMAIL_VERIFICATION_REQUIRED` | tidak | Kosong = ikut ada-tidaknya mail-service. **Harus sama dengan backend** |
-| `GOOGLE_CLIENT_IDS` | tidak | Client ID OAuth yang sah (web, Android, iOS) untuk klaim `aud`, dipisah koma. Kosong = login Google mati (404). Lihat [setup-google-login.md](../../documentation/docs/setup-google-login.md) |
-| `GOOGLE_CERTS_URL` | tidak | Alamat kunci publik Google; hanya untuk tes lokal. Produksi: wajib https |
-| `PORT` / `AUTH_PORT` | tidak | Bawaan `8094` |
-| `TRUSTED_PROXIES` | tidak | CIDR proxy yang boleh menentukan IP klien |
-| `SHUTDOWN_TIMEOUT` | tidak | Detik, bawaan 8 |
-| `APP_ENV` | tidak | `production` mengaktifkan pemeriksaan keamanan |
+| `DATABASE_URL` (or `AUTH_DATABASE_URL`) | yes | Connection using the `auth_rw` role |
+| `PUBLIC_APP_URL` | yes | Public address used in email links. In production: https is required |
+| `AUTH_JWT_PRIVATE_KEY_FILE` | yes | RSA private key (PEM, PKCS#8 or PKCS#1) |
+| `AUTH_JWT_KID` | no | `kid` header value (default `qms-1`) |
+| `MAIL_SERVICE_URL`, `MAIL_SERVICE_TOKEN` | paired | Both or neither. In production: the token must be at least 32 characters |
+| `EMAIL_VERIFICATION_REQUIRED` | no | Empty = follows whether mail-service is configured. **Must match the backend** |
+| `GOOGLE_CLIENT_IDS` | no | Valid OAuth client IDs (web, Android, iOS) for the `aud` claim, comma-separated. Empty = Google sign-in disabled (404). See [setup-google-login.md](../../documentation/docs/setup-google-login.md) |
+| `GOOGLE_CERTS_URL` | no | Google public key endpoint; for local tests only. In production: https is required |
+| `PORT` / `AUTH_PORT` | no | Default `8094` |
+| `TRUSTED_PROXIES` | no | CIDRs of proxies allowed to set the client IP |
+| `SHUTDOWN_TIMEOUT` | no | Seconds, default 8 |
+| `APP_ENV` | no | `production` enables the security checks |
 
 ## Database
 
-Role `auth_rw` (`db/migrations/06_auth_role.sh`): baca kolom login di `users`, tulis `password_hash`,
-`password_changed_at`, `email_verified_at`, `google_id`, dan `INSERT` user baru; `user_action_tokens` baca, tambah, dan
-ubah `used_at` (tanpa `DELETE`). Tidak ada akses ke antrian, tiket, atau pembayaran. Yang disimpan untuk token sekali
-pakai hanya hash SHA-256, tidak pernah token mentah.
+The `auth_rw` role (`db/migrations/06_auth_role.sh`): reads the login columns of `users`, writes `password_hash`, `password_changed_at`, `email_verified_at`, and `google_id`, and `INSERT`s new users. On `user_action_tokens` it can read, insert, and update `used_at` (no `DELETE`). It has no access to queues, tickets, or payments. Only SHA-256 hashes of single-use tokens are stored, never the raw token.
 
-## Struktur
+## Structure
 
-Arsitektur berlapis: `cmd` hanya merangkai (konfigurasi, database, repository, service, handler, router, server).
+Layered architecture: `cmd` only wires things together (configuration, database, repository, service, handler, router, server).
 
 ```
-cmd/auth-service/    main: main() memanggil run(); konfigurasi → database → repository → service → handler → router, shutdown rapi
-internal/apperror/   galat sentinel yang dipetakan handler ke kode HTTP
-internal/config/     env, kunci privat, validasi produksi, TRUSTED_PROXIES
-internal/database/   koneksi PostgreSQL (Connect)
-internal/dto/        body request dan isi respons JSON
-internal/google/     klien verifikasi ID token Google (JWKS, iss, aud, exp, email_verified)
-internal/handler/    Gin: AuthHandler (8 handler akun), respondData/respondError
-internal/httpserver/ http.Server dengan batas waktu
-internal/mailclient/ klien HTTP ke mail-service
-internal/middleware/ Auth: pemeriksaan JWT RS256 dan pencabutan sesi
-internal/model/      User dan GoogleIdentity
-internal/repository/ PostgreSQL: UserRepository dan TokenRepository
-internal/router/     AppRouter, NewAppRouter + WithEmail/WithGoogle, SetupRouter, rute per fitur (auth_routes.go)
-internal/service/    Service (register, login, Authenticate, reset, verifikasi, Google) dan TokenIssuer (RS256)
-internal/validator/  aturan no_html_tags
-internal/test/       tes eksternal per lapisan: config_test, google_test, handler_test, service_test,
-                     repository_test (sqlmock untuk SQL); testutil berisi fake di memori
+cmd/auth-service/    main: main() calls run(); configuration → database → repository → service → handler → router, graceful shutdown
+internal/apperror/   sentinel errors that handlers map to HTTP codes
+internal/config/     env, private key, production validation, TRUSTED_PROXIES
+internal/database/   PostgreSQL connection (Connect)
+internal/dto/        request bodies and JSON response payloads
+internal/google/     Google ID token verifier (JWKS, iss, aud, exp, email_verified)
+internal/handler/    Gin: AuthHandler (8 account handlers), respondData/respondError
+internal/httpserver/ http.Server with timeouts
+internal/mailclient/ HTTP client for mail-service
+internal/middleware/ Auth: RS256 JWT check and session revocation
+internal/model/      User and GoogleIdentity
+internal/repository/ PostgreSQL: UserRepository and TokenRepository
+internal/router/     AppRouter, NewAppRouter + WithEmail/WithGoogle, SetupRouter, per-feature routes (auth_routes.go)
+internal/service/    Service (register, login, Authenticate, reset, verification, Google) and TokenIssuer (RS256)
+internal/validator/  no_html_tags rule
+internal/test/       external tests per layer: config_test, google_test, handler_test, service_test,
+                     repository_test (sqlmock for SQL); testutil holds in-memory fakes
 ```

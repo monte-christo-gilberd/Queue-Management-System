@@ -1,328 +1,287 @@
 # scripts/
 
-Skrip bantu untuk menjalankan, memeriksa, dan merawat stack QMS. Semua skrip **dijalankan dari akar
-`queue-management-system/`** (mereka sendiri pindah ke akar repo lewat `cd "$(dirname "$0")/.."`, jadi path relatif
-aman). Sebagian besar dipanggil lewat `make`; yang lain dijalankan langsung.
+Helper scripts to run, check, and maintain the QMS stack. All scripts are **run from the repository root `queue-management-system/`**. They change to the repo root themselves with `cd "$(dirname "$0")/.."`, so relative paths are safe. Most are called through `make`; the rest are run directly.
 
-Prasyarat umum: `bash`, `docker` dengan `docker compose`. `check-service-isolation.sh` juga butuh `python3`;
-`gen-auth-keys.sh` dan `seed-prod-penguji.sh` butuh `openssl`; `seed-prod-penguji.sh` juga butuh `curl` dan modul Python `bcrypt`.
+Common prerequisites: `bash` and `docker` with `docker compose`. `check-service-isolation.sh` also needs `python3`. `gen-auth-keys.sh` and `seed-prod-penguji.sh` need `openssl`. `seed-prod-penguji.sh` also needs `curl` and the Python module `bcrypt`.
 
-| Skrip | Untuk apa | Stack | Dipanggil oleh |
+| Script | Purpose | Stack | Called by |
 |---|---|---|---|
-| [`gen-auth-keys.sh`](#gen-auth-keyssh) | Membuat pasangan kunci RSA untuk token login | dev dan prod | `make up`, `make tunnel`, `make prod-up` |
-| [`check-service-isolation.sh`](#check-service-isolationsh) | Menjaga isolasi antar service di compose (termasuk overlay observability) | dev dan prod | `make obs-check`, manual |
-| [`check-observability-leaks.sh`](#check-observability-leakssh) | Tes kebocoran rahasia ke log, trace, dan metrik | dev dan prod (overlay observability) | `make obs-check` |
-| [`check-google-config.sh`](#check-google-configsh) | Memeriksa konfigurasi login Google (server dan frontend sinkron) | dev dan prod | `make up`, `make tunnel`, `make prod-up` |
-| [`check-mail-mode.sh`](#check-mail-modesh) | Memeriksa `MAIL_MODE` dan `SMTP_*` sebelum stack prod naik | prod | `make prod-up` |
-| [`check-payment-config.sh`](#check-payment-configsh) | Memeriksa kunci BorderPay, token webhook, token service, dan password role `payment_rw` (hanya keberadaan dan panjang, nilai tidak dicetak) | prod | `make prod-up`, `make prod-payment-check` |
-| [`verify-user.sh`](#verify-usersh) | Menandai email satu akun terverifikasi langsung di database | dev atau prod | `make verify-user` |
-| [`reset-demo.sh`](#reset-demosh) | RESET TOTAL database prod (semua akun dihapus) | prod | `make prod-reset` |
-| [`seed-prod-penguji.sh`](#seed-prod-penguji) | Membuat 1 akun penguji (owner + customer) dan mengisi data uji antrian | prod | `make prod-seed-penguji` |
-| [`backup-prod.sh`](#backup-prodsh) | Backup dan restore database prod | prod | `make prod-backup`, `make prod-reset`, `seed-prod-penguji.sh` |
+| [`gen-auth-keys.sh`](#gen-auth-keyssh) | Generates the RSA key pair for login tokens | dev and prod | `make up`, `make tunnel`, `make prod-up` |
+| [`check-service-isolation.sh`](#check-service-isolationsh) | Keeps services isolated from each other in Compose (including the observability overlay) | dev and prod | `make obs-check`, manual |
+| [`check-observability-leaks.sh`](#check-observability-leakssh) | Secret-leak test against logs, traces, and metrics | dev and prod (observability overlay) | `make obs-check` |
+| [`check-google-config.sh`](#check-google-configsh) | Checks Google sign-in configuration (server and frontend are in sync) | dev and prod | `make up`, `make tunnel`, `make prod-up` |
+| [`check-mail-mode.sh`](#check-mail-modesh) | Checks `MAIL_MODE` and `SMTP_*` before the prod stack starts | prod | `make prod-up` |
+| [`check-payment-config.sh`](#check-payment-configsh) | Checks the BorderPay key, webhook token, service token, and the `payment_rw` role password (only presence and length; values are never printed) | prod | `make prod-up`, `make prod-payment-check` |
+| [`verify-user.sh`](#verify-usersh) | Marks one account's email as verified directly in the database | dev or prod | `make verify-user` |
+| [`reset-demo.sh`](#reset-demosh) | FULL RESET of the prod database (all accounts are deleted) | prod | `make prod-reset` |
+| [`seed-prod-penguji.sh`](#seed-prod-pengujish) | Creates 1 tester account (owner + customer) and fills in test queue data | prod | `make prod-seed-penguji` |
+| [`backup-prod.sh`](#backup-prodsh) | Backs up and restores the prod database | prod | `make prod-backup`, `make prod-reset`, `seed-prod-penguji.sh` |
 
-Variabel lingkungan yang dibaca beberapa skrip:
+Environment variables read by some scripts:
 
-| Variabel | Arti | Bawaan |
+| Variable | Meaning | Default |
 |---|---|---|
-| `QMS_ENV_FILE` | File env yang dipakai compose prod | `.env.prod` (`.env` untuk `backup-prod.sh` dan `check-service-isolation.sh`) |
-| `POSTGRES_USER`, `POSTGRES_DB` | Pengguna dan nama database (dibaca `backup-prod.sh`, `reset-demo.sh`, `seed-prod-penguji.sh`) | `qms`, `qms_db` |
+| `QMS_ENV_FILE` | Env file used by the prod Compose stack | `.env.prod` (`.env` for `backup-prod.sh` and `check-service-isolation.sh`) |
+| `POSTGRES_USER`, `POSTGRES_DB` | Database user and name (read by `backup-prod.sh`, `reset-demo.sh`, `seed-prod-penguji.sh`) | `qms`, `qms_db` |
 
 ---
 
 ## gen-auth-keys.sh
 
-Membuat pasangan kunci RSA 2048 bit untuk token login (JWT RS256). Prod memakai folder `keys/`: idempoten, kunci tidak diganti oleh `make prod-up`. Dev memakai folder terpisah `keys-dev/` (`AUTH_KEYS_DIR=keys-dev`): `make up` dan `make tunnel` membuat kunci baru (menghapus `keys-dev/` dulu), `make down` menghapusnya. Kunci prod tidak pernah disentuh target dev.
+Creates an RSA 2048-bit key pair for login tokens (JWT RS256). Prod uses the `keys/` folder: it is idempotent, and `make prod-up` never replaces the keys. Dev uses a separate `keys-dev/` folder (`AUTH_KEYS_DIR=keys-dev`): `make up` and `make tunnel` create new keys (deleting `keys-dev/` first), and `make down` removes it. Prod keys are never touched by dev targets.
 
-| Berkas | Isi | Dipasang ke |
+| File | Contents | Mounted into |
 |---|---|---|
-| `auth-private.pem` | Kunci privat | **Hanya** `auth-service` (penerbit token) |
-| `auth-public.pem` | Kunci publik | `backend` (verifikasi lokal) dan `auth-service` |
+| `auth-private.pem` | Private key | **Only** `auth-service` (the token issuer) |
+| `auth-public.pem` | Public key | `backend` (local verification) and `auth-service` |
 
-Berkas ada di `keys/` (prod) atau `keys-dev/` (dev).
+The files are in `keys/` (prod) or `keys-dev/` (dev).
 
 ```bash
 scripts/gen-auth-keys.sh
 ```
 
-- **Idempoten.** Bila kedua kunci sudah ada, tidak ada yang ditimpa dan skrip keluar dengan kode 0. Menimpa kunci
-  membuat semua token login yang beredar tidak sah.
-- Bila hanya satu kunci yang ada, skrip berhenti dengan galat (keadaan setengah jadi, tidak ditebak).
-- Dipanggil otomatis oleh `make up`, `make tunnel`, dan `make prod-up`, jadi biasanya tidak perlu dijalankan manual.
-- Folder `keys/` dan `keys-dev/` ada di `.gitignore`. Jangan di-commit.
-- `AUTH_KEYS_DIR=<folder>` mengganti lokasi (bawaan `keys`).
+- **Idempotent.** If both keys already exist, nothing is overwritten and the script exits with code 0. Replacing the keys would make every token currently in use invalid.
+- If only one key exists, the script stops with an error (a half-finished state is never guessed).
+- Called automatically by `make up`, `make tunnel`, and `make prod-up`, so you normally do not need to run it manually.
+- The `keys/` and `keys-dev/` folders are in `.gitignore`. Do not commit them.
+- `AUTH_KEYS_DIR=<folder>` changes the location (default `keys`).
 
-**Rotasi kunci:** hapus kedua berkas, jalankan skrip lagi, lalu `make restart` (atau restart `backend`,
-`auth-service`). Semua user harus login ulang.
+**Key rotation:** delete both files, run the script again, then `make restart` (or restart `backend` and `auth-service`). All users must log in again.
 
 ---
 
 ## check-service-isolation.sh
 
-Memeriksa konfigurasi `docker-compose.yml` dan `docker-compose.prod.yml` serta kode, untuk menjaga jaminan berikut.
-Keluar dengan kode 1 dan pesan `GAGAL [...]` bila ada yang dilanggar.
+Checks `docker-compose.yml` and `docker-compose.prod.yml` and the code, to protect the guarantees below. Exits with code 1 and a `GAGAL [...]` message (Indonesian for "FAILED") when a guarantee is violated.
 
-| Pemeriksaan | Jaminan |
+| Check | Guarantee |
 |---|---|
-| `notify-service` | Tidak bergantung pada `mail-service`, Mailpit, atau SMTP. Email mati tidak boleh menghentikan push |
-| `auth-service` | Tidak ada service lain yang punya `depends_on` ke sana, ia hanya bergantung pada `db`, dan **kunci privat JWT hanya di-mount ke `auth-service`**. Karena itu user yang sudah login tetap bisa memakai aplikasi saat ia mati |
-| Kode | `notify-service` tidak menyebut smtp atau mailer. `backend` tidak memanggil `auth-service` |
-| nginx | Upstream `auth-service` lewat variabel + resolver, supaya nginx tetap start bila salah satunya mati |
-| Observability: overlay | Dengan `docker-compose.observability.yml` (dev dan prod): tanpa `depends_on` dari service aplikasi ke komponen observability, hanya Grafana yang membuka port ke host (dan hanya di `127.0.0.1`), port internal (9100, 8081, 4317, 9090, 3100, 3200) tidak dipublikasikan, tanpa `docker.sock`, mount direktori host read-only, semua komponen punya `mem_limit`, `OTEL_EXPORTER_OTLP_ENDPOINT` hanya untuk backend, auth, mail dan hanya ke collector |
-| Observability: compose dasar | Tanpa overlay, compose dasar tidak punya service observability dan tidak membawa variabel `OTEL_*`, jadi aplikasi start apa adanya |
-| Observability: nginx dan kode | nginx tidak meneruskan `/metrics` atau `:9100`, listener `stub_status` `:8081` punya `deny all`, dan kode Go tidak menulis alamat komponen observability secara keras |
+| `notify-service` | Does not depend on `mail-service`, Mailpit, or SMTP. A dead email service must not stop push notifications |
+| `auth-service` | No other service has `depends_on` on it. It depends only on `db`, and the **JWT private key is mounted only into `auth-service`**. This means logged-in users can keep using the app while it is down |
+| Code | `notify-service` does not mention smtp or mailer. `backend` does not call `auth-service` |
+| nginx | The `auth-service` upstream uses a variable plus a resolver, so nginx still starts if one upstream is down |
+| Observability: overlay | With `docker-compose.observability.yml` (dev and prod): no `depends_on` from application services to observability components. Only Grafana publishes a port to the host (and only on `127.0.0.1`). Internal ports (9100, 8081, 4317, 9090, 3100, 3200) are not published. No `docker.sock`. Host directory mounts are read-only. Every component has a `mem_limit`. `OTEL_EXPORTER_OTLP_ENDPOINT` is set only for backend, auth, and mail, and only points to the collector |
+| Observability: base Compose | Without the overlay, the base Compose file has no observability services and no `OTEL_*` variables, so the application starts as usual |
+| Observability: nginx and code | nginx does not forward `/metrics` or `:9100`. The `stub_status` listener on `:8081` has `deny all`. The Go code does not hard-code observability component addresses |
 
 ```bash
 scripts/check-service-isolation.sh
 QMS_ENV_FILE=.env.prod scripts/check-service-isolation.sh
 ```
 
-Jalankan setiap kali mengubah `docker-compose*.yml` atau `deploy/nginx/*.conf`. Juga dijalankan oleh `make obs-check`.
-Compose prod butuh variabel wajib terisi; skrip memakai `${QMS_ENV_FILE:-.env}` dan mengisi nilai SMTP palsu untuk
-keperluan parsing saja.
+Run it every time you change `docker-compose*.yml` or `deploy/nginx/*.conf`. It is also run by `make obs-check`. The prod Compose file requires variables to be set. The script uses `${QMS_ENV_FILE:-.env}` and fills in fake SMTP values for parsing only.
 
 ---
 
 ## check-observability-leaks.sh
 
-Tes kebocoran rahasia ke observability (tujuan 6 di `plan-observability-tracing.md`, folder `documentation/docs/` satu tingkat di atas `queue-management-system/`). Mengirim request
-yang ditolak (404/401/400) lewat nginx dengan **rahasia palsu yang unik per eksekusi**: token layar publik (path dan query),
-password dan email penuh di body login, token verifikasi email, token reset password, dan JWT palsu di header
-`Authorization`. Setelah pipeline sempat memproses (sekitar 45 detik), skrip mencari rahasia itu di:
+A secret-leak test for observability (goal 6 in the observability plan document, which is not included in this repository). It sends rejected requests (404, 401, 400) through nginx with **fake secrets that are unique for each run**: a public display token (in the path and query string), the password and full email in the login body, an email verification token, a password reset token, and a fake JWT in the `Authorization` header. After the pipeline has had time to process them (about 45 seconds), the script searches for those secrets in:
 
-| Tempat | Cara |
+| Location | Method |
 |---|---|
-| Log (Loki) | Pencarian teks bebas di semua service |
-| Trace (Tempo) | Mengambil trace terbaru lalu memindai seluruh isi span (atribut, event, status) |
-| Metrik (Prometheus) | Memindai semua label metrik `http_*`, `auth_*`, `nginx_*` |
+| Logs (Loki) | Free-text search across all services |
+| Traces (Tempo) | Fetches the latest traces and scans all span content (attributes, events, status) |
+| Metrics (Prometheus) | Scans all label values of `http_*`, `auth_*`, and `nginx_*` metrics |
 
-Kode keluar: `0` bersih, `1` ada kebocoran (rahasia dan tempatnya dicetak), `2` stack observability tidak terjangkau,
-`3` tidak ada log nginx baru di Loki (pemeriksaan tidak berarti). Skrip tidak membuat data; hanya menambah beberapa angka
-di metrik login gagal dan 404.
+Exit codes: `0` clean, `1` a leak was found (the secret and where it was found are printed), `2` the observability stack is not reachable, `3` no new nginx logs in Loki (the check is not meaningful). The script does not create data. It only adds a few counts to the failed-login and 404 metrics.
 
 ```bash
 scripts/check-observability-leaks.sh
 QMS_ENV_FILE=.env.prod scripts/check-observability-leaks.sh
-LEAK_ROUNDS=80 scripts/check-observability-leaks.sh                 # lebih pasti ada trace yang terekam di sampling 10%
-LEAK_EXTRA_CANARY="teks-uji" scripts/check-observability-leaks.sh   # kontrol positif: harus GAGAL bila "teks-uji" ada di log
+LEAK_ROUNDS=80 scripts/check-observability-leaks.sh                 # more likely to capture a trace at 10% sampling
+LEAK_EXTRA_CANARY="test-text" scripts/check-observability-leaks.sh  # positive control: must FAIL if "test-text" is in the logs
 ```
 
-Prasyarat: stack jalan dengan overlay (`make up obs`), `curl`, `openssl`, `python3`. Membaca `GRAFANA_ADMIN_PASSWORD`,
-`GRAFANA_PORT`, dan `QMS_HTTP_PORT` dari `.env` (atau `QMS_ENV_FILE`). Variabel lain: `QMS_BASE_URL` (alamat nginx, bawaan `http://localhost:<QMS_HTTP_PORT>`) dan `LEAK_ROUNDS` (bawaan 40). Dijalankan juga oleh `make obs-check`.
+Prerequisites: the stack is running with the overlay (`make up obs`), plus `curl`, `openssl`, and `python3`. It reads `GRAFANA_ADMIN_PASSWORD`, `GRAFANA_PORT`, and `QMS_HTTP_PORT` from `.env` (or `QMS_ENV_FILE`). Other variables: `QMS_BASE_URL` (nginx address, default `http://localhost:<QMS_HTTP_PORT>`) and `LEAK_ROUNDS` (default 40). It is also run by `make obs-check`.
 
 ---
 
 ## check-google-config.sh
 
-Memeriksa konfigurasi login Google di file env sebelum stack dijalankan. Dipanggil otomatis oleh `make up` dan `make tunnel`
-(membaca `.env`) dan `make prod-up` (membaca `.env.prod`).
+Checks the Google sign-in configuration in the env file before the stack starts. It is called automatically by `make up` and `make tunnel` (reads `.env`) and by `make prod-up` (reads `.env.prod`).
 
-| Keadaan | Hasil |
+| Situation | Result |
 |---|---|
-| `GOOGLE_CLIENT_IDS` dan `EXPO_PUBLIC_GOOGLE_*` semua kosong | Login Google mati (tombol tersembunyi, rute 404). **Bukan galat** |
-| Client ID frontend **tidak ada** di `GOOGLE_CLIENT_IDS` | **GAGAL (exit 1)**: setiap ID token ditolak server (401, `aud` tidak cocok) |
-| `EXPO_PUBLIC_GOOGLE_*` terisi tetapi `GOOGLE_CLIENT_IDS` kosong | **GAGAL (exit 1)**: tombol tampil tetapi server menjawab 404 |
-| `GOOGLE_CLIENT_IDS` terisi tetapi frontend kosong | Peringatan: tombol tidak akan tampil |
-| Client ID tidak berakhiran `.apps.googleusercontent.com` | Peringatan: kemungkinan nilai contoh atau salah ketik |
+| `GOOGLE_CLIENT_IDS` and all `EXPO_PUBLIC_GOOGLE_*` are empty | Google sign-in is disabled (button hidden, route returns 404). **This is not an error** |
+| A frontend client ID is **missing** from `GOOGLE_CLIENT_IDS` | **FAILED (exit 1)**: every ID token is rejected by the server (401, `aud` does not match) |
+| `EXPO_PUBLIC_GOOGLE_*` is set but `GOOGLE_CLIENT_IDS` is empty | **FAILED (exit 1)**: the button appears, but the server answers 404 |
+| `GOOGLE_CLIENT_IDS` is set but the frontend values are empty | Warning: the button will not appear |
+| A client ID does not end with `.apps.googleusercontent.com` | Warning: possibly a sample value or a typo |
 
 ```bash
-scripts/check-google-config.sh            # memeriksa .env
-scripts/check-google-config.sh .env.prod  # file env eksplisit
+scripts/check-google-config.sh            # checks .env
+scripts/check-google-config.sh .env.prod  # explicit env file
 ```
 
-Skrip ini hanya membaca file; tidak menjalankan apa pun dan tidak mencetak nilai client ID.
+The script only reads the file. It does not run anything and does not print client ID values.
 
-### Yang ikut dilakukan Makefile untuk login Google
+### What the Makefile also does for Google sign-in
 
-| Target | Tambahan |
+| Target | Additional behavior |
 |---|---|
-| `make up` | Memeriksa konfigurasi; **membersihkan cache Metro otomatis** bila `EXPO_PUBLIC_GOOGLE_*` di `.env` berubah sejak build terakhir (penanda `.metro-google.stamp`, tidak ikut git); mencetak pengingat bahwa Google hanya jalan di `http://localhost:8080`, bukan alamat IP LAN |
-| `make tunnel` | Sama, dan mencetak origin tunnel yang harus didaftarkan di Google Cloud (URL berubah tiap sesi, jadi harus didaftarkan ulang setiap kali) |
-| `make prod-up` | Memeriksa `.env.prod`; mencetak origin https yang harus terdaftar dan pengingat memperbarui role `auth_rw` pada database yang sudah ada |
+| `make up` | Runs the check. **Clears the Metro cache automatically** if `EXPO_PUBLIC_GOOGLE_*` in `.env` changed since the last build (marker file `.metro-google.stamp`, not committed to git). Prints a reminder that Google sign-in only works at `http://localhost:8080`, not at a LAN IP address |
+| `make tunnel` | Same, and prints the tunnel origin that must be registered in Google Cloud (the URL changes every session, so it must be registered again each time) |
+| `make prod-up` | Checks `.env.prod`. Prints the https origin that must be registered, and a reminder to update the `auth_rw` role on an existing database |
 
-Cache Metro perlu dibersihkan karena Metro menyimpan nilai `EXPO_PUBLIC_*` di cache transformasi, sehingga mengubahnya di `.env` tanpa membersihkan cache membuat bundle memakai nilai lama. Build prod tidak mengalaminya: nilainya masuk sebagai argumen build Docker, yang membuat layer dibangun ulang sendiri.
+The Metro cache has to be cleared because Metro stores `EXPO_PUBLIC_*` values in its transform cache. Changing them in `.env` without clearing the cache makes the bundle use the old values. Prod builds are not affected: the values are passed as Docker build arguments, which rebuilds the layer automatically.
 
 ---
 
 ## check-mail-mode.sh
 
-Memeriksa `MAIL_MODE` di file env prod sebelum stack naik. Dipanggil otomatis oleh `make prod-up`.
+Checks `MAIL_MODE` in the prod env file before the stack starts. It is called automatically by `make prod-up`.
 
-| `MAIL_MODE` | Arti | Pemeriksaan |
+| `MAIL_MODE` | Meaning | Checks |
 |---|---|---|
-| `mailpit` (**bawaan bila kosong**) | Email ditangkap Mailpit dan **tidak** dikirim ke siapa pun (demo atau uji) | Hanya peringatan: UI Mailpit hanya di `127.0.0.1`, dan bila verifikasi email menyala, user baru tidak menerima tautan |
-| `smtp` | Email dikirim lewat SMTP nyata | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` terisi dan bukan nilai contoh (`GANTI`); host bukan `mailpit`; `SMTP_TLS=none` hanya untuk localhost |
+| `mailpit` (**default when empty**) | Email is captured by Mailpit and is **not** sent to anyone (demo or testing) | Warning only: the Mailpit UI is bound to `127.0.0.1`, and if email verification is enabled, new users will not receive links |
+| `smtp` | Email is sent through a real SMTP server | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` must be set and must not be sample values (`GANTI`). The host must not be `mailpit`. `SMTP_TLS=none` is allowed only for localhost |
 
-Pemeriksaan umum untuk kedua mode: `MAIL_SERVICE_TOKEN` terisi, bukan contoh, minimal 32 karakter; `MAIL_DB_PASSWORD`
-terisi dan bukan contoh.
+Checks for both modes: `MAIL_SERVICE_TOKEN` is set, is not a sample value, and is at least 32 characters. `MAIL_DB_PASSWORD` is set and is not a sample value.
 
 ```bash
-scripts/check-mail-mode.sh                 # memakai $QMS_ENV_FILE atau .env.prod
-scripts/check-mail-mode.sh .env.prod       # file env eksplisit
+scripts/check-mail-mode.sh                 # uses $QMS_ENV_FILE or .env.prod
+scripts/check-mail-mode.sh .env.prod       # explicit env file
 MAIL_MODE=smtp scripts/check-mail-mode.sh .env.prod
 ```
 
-`MAIL_MODE` di lingkungan menimpa nilai di file. Kode keluar 1 bila konfigurasi salah.
+A `MAIL_MODE` set in the environment overrides the value in the file. Exit code 1 when the configuration is wrong.
 
 ---
 
 ## check-payment-config.sh
 
-Memeriksa konfigurasi pembayaran BorderPay di file env prod. Dipanggil `make prod-up` (sebelum stack dinyalakan) dan
-`make prod-payment-check` (kapan saja, tanpa mengubah apa pun). Skrip hanya mencetak keberadaan, panjang, dan prefix;
-nilai rahasia tidak pernah tampil.
+Checks the BorderPay payment configuration in the prod env file. It is run by `make prod-up` (before the stack starts) and by `make prod-payment-check` (at any time, without changing anything). The script only prints presence, length, and prefix. Secret values are never shown.
 
-| Variabel | Pemeriksaan | Hasil bila gagal |
+| Variable | Check | Result when failing |
 |---|---|---|
-| `BORDERPAY_API_KEY` | Terisi, berawalan `bp_test_` atau `bp_live_` | Galat bila kosong atau prefix lain. `bp_test_` hanya peringatan: pembayaran sungguhan tidak akan diterima |
-| `BORDERPAY_WEBHOOK_TOKEN` | Terisi, minimal 32 karakter, bukan contoh. Dianjurkan berawalan `bpt_` | Galat; `bpt_` hanya peringatan |
-| `PAYMENT_SERVICE_TOKEN` | Terisi, minimal 32 karakter, bukan contoh | Galat (checkout dan webhook akan gagal) |
-| `PAYMENT_DB_PASSWORD` | Terisi dan bukan contoh | Galat (payment-service tidak bisa konek ke database) |
+| `BORDERPAY_API_KEY` | Set, starts with `bp_test_` or `bp_live_` | Error if empty or another prefix. `bp_test_` is only a warning: real payments will not be accepted |
+| `BORDERPAY_WEBHOOK_TOKEN` | Set, at least 32 characters, not a sample value. Recommended to start with `bpt_` | Error. `bpt_` is only a warning |
+| `PAYMENT_SERVICE_TOKEN` | Set, at least 32 characters, not a sample value | Error (checkout and webhook will fail) |
+| `PAYMENT_DB_PASSWORD` | Set and not a sample value | Error (payment-service cannot connect to the database) |
 
 ```bash
-scripts/check-payment-config.sh                # memakai $QMS_ENV_FILE atau .env.prod
-scripts/check-payment-config.sh .env.prod      # file env eksplisit
+scripts/check-payment-config.sh                # uses $QMS_ENV_FILE or .env.prod
+scripts/check-payment-config.sh .env.prod      # explicit env file
 ```
 
-Kode keluar 1 bila ada galat, sehingga `make prod-up` berhenti sebelum container pembayaran dibangun ulang.
+Exit code 1 if there is an error, so `make prod-up` stops before the payment container is rebuilt.
 
-Pemeriksaan hak database (`db/scripts/check_payment_grants.sql`) dijalankan terpisah oleh `make prod-up` dan
-`make prod-payment-check`, karena butuh database yang sedang berjalan.
+The database privilege check (`db/scripts/check_payment_grants.sql`) is run separately by `make prod-up` and `make prod-payment-check`, because it needs a running database.
 
 ---
 
 ## verify-user.sh
 
-Menandai `users.email_verified_at` satu akun langsung di database, tanpa menunggu email. Berguna bila email
-verifikasi tidak mungkin sampai: `MAIL_MODE=mailpit`, SMTP belum disiapkan, atau email salah ketik. Idempoten.
+Sets `users.email_verified_at` for one account directly in the database, without waiting for an email. Useful when the verification email cannot be delivered: `MAIL_MODE=mailpit`, SMTP is not set up yet, or the email address was mistyped. Idempotent.
 
 ```bash
-scripts/verify-user.sh budi@mail.com          # stack dev
-scripts/verify-user.sh budi@mail.com prod     # stack prod (env dari $QMS_ENV_FILE, bawaan .env.prod)
+scripts/verify-user.sh budi@mail.com          # dev stack
+scripts/verify-user.sh budi@mail.com prod     # prod stack (env from $QMS_ENV_FILE, default .env.prod)
 
-make verify-user EMAIL=budi@mail.com          # lewat make
+make verify-user EMAIL=budi@mail.com          # via make
 make verify-user EMAIL=budi@mail.com STACK=prod
 ```
 
-Hasil: `OK` (diubah), `Sudah terverifikasi` (tidak ada yang diubah), atau `GAGAL` (email tidak ada, kode keluar 1).
-Email dikirim sebagai variabel psql, bukan disisipkan ke teks SQL. Argumen kedua hanya boleh `prod`; selain itu skrip keluar dengan kode 1.
+Result: `OK` (changed), `Sudah terverifikasi` (already verified, nothing changed), or `GAGAL` (email not found, exit code 1). The script prints these messages in Indonesian. The email is passed as a psql variable, not inserted into the SQL text. The second argument may only be `prod`; any other value makes the script exit with code 1.
 
 ---
 
 ## reset-demo.sh
 
-**Reset total** database prod. Volume `qms-prod_db_data_prod` dihapus, lalu `make prod-up` menyalakan stack lagi dengan
-database kosong. Container `db` membuat ulang skema dan role dari `db/migrations/`. **Semua akun (owner, pelanggan,
-penguji), antrian, tiket, riwayat, dan pembayaran ikut hilang.**
+**Full reset** of the prod database. The volume `qms-prod_db_data_prod` is deleted, then `make prod-up` starts the stack again with an empty database. The `db` container recreates the schema and roles from `db/migrations/`. **All accounts (owners, customers, testers), queues, tickets, history, and payments are lost.**
 
-Urutan skrip: cek stack berjalan, konfirmasi (ketik `hapus-prod`), backup (`backup-prod.sh`), `down`, hapus volume,
-`make prod-up`, tunggu `db` sehat, lalu `CREATE TABLE _no_seed_guard` agar seed/reset dev ditolak di DB ini.
+Script steps: check that the stack is running, ask for confirmation (type `hapus-prod`), back up (`backup-prod.sh`), `down`, delete the volume, `make prod-up`, wait for `db` to become healthy, then create `_no_seed_guard` so that dev seeds and resets are refused on this database.
 
 ```bash
-scripts/reset-demo.sh        # minta konfirmasi (ketik 'hapus-prod')
-scripts/reset-demo.sh -y     # tanpa konfirmasi
+scripts/reset-demo.sh        # asks for confirmation (type 'hapus-prod')
+scripts/reset-demo.sh -y     # no confirmation
 make prod-reset
 ```
 
-Setelah reset, buat ulang akun penguji dan data uji dengan `make prod-seed-penguji`. Untuk memulihkan data sebelumnya:
-`scripts/backup-prod.sh restore <file>` (menimpa database prod).
+After a reset, recreate the tester account and test data with `make prod-seed-penguji`. To restore earlier data: `scripts/backup-prod.sh restore <file>` (overwrites the prod database).
 
-## seed-prod-penguji
+---
 
-Data uji untuk penguji yang hanya punya **satu akun** (`penguji@montechristo.my.id`, username `penguji`). Akun itu
-adalah owner sekaligus customer, sehingga semua fitur antrian bisa diuji dari satu login:
+## seed-prod-penguji.sh
 
-Setiap fitur punya antrian sendiri, dan setiap antrian aktif berisi 5 sampai 12 orang menunggu:
+Test data for a tester who has only **one account** (`tester@example.com`, username `tester`). That account is both owner and customer, so every queue feature can be tested from one login.
 
-| Awalan | Antrian | Untuk diuji |
+Each feature has its own queue, and each active queue contains 5 to 12 waiting customers:
+
+| Prefix | Queue | What to test |
 |---|---|---|
-| N | Demo NEXT | NEXT berulang (10 menunggu), layar publik |
-| U | Demo Panggil Ulang | PANGGIL ULANG pada nomor yang dilayani |
-| S | Demo Skip | SKIP, pengaturan skip "kembali ke belakang" |
-| H | Demo Hapus Nomor | Hapus nomor oleh owner (customer dapat email dan layarnya berubah) |
-| B | Demo Batal Nomor | Batal dari customer. Akun penguji sudah punya nomor di sini (nomor 3) |
-| I | Demo Sisip | Sisip pelanggan lewat username `pelanggan-7` sampai `pelanggan-12` |
-| C | Demo Catatan | Catatan per nomor (sudah ada di nomor 1, 3, dan 5) |
-| K | Demo Counter | CRUD counter. Loket 2 sedang melayani nomor 1 |
-| T | Demo Tutup Antrian | Tutup antrian (pindah ke riwayat) |
-| R | Riwayat Panjang | Antrian tutup dengan 25 nomor, untuk paginasi Riwayat dan ekspor |
+| N | Demo NEXT | Repeated NEXT (10 waiting), public display |
+| U | Demo Recall | RECALL on the number being served |
+| S | Demo Skip | SKIP, skip setting "return to the back" |
+| H | Demo Remove Number | Owner removes a number (customer gets an email and their screen updates) |
+| B | Demo Cancel Number | Customer cancels. The tester account already has a number here (number 3) |
+| I | Demo Insert | Owner inserts customers `customer-7` through `customer-12` by username |
+| C | Demo Notes | Per-number notes (already present on numbers 1, 3, and 5) |
+| K | Demo Counter | Counter CRUD. Counter 2 is serving number 1 |
+| T | Demo Close Queue | Closes the queue (moves it to history) |
+| R | Long History | Closed queue with 25 numbers, for History pagination and export |
 
-Akun penguji juga bisa bergabung dengan memindai QR antriannya sendiri lewat HP (akun yang sama) untuk menguji sisi
-customer: Antrian Saya, Riwayat Saya, dan notifikasi.
+The tester account can also join by scanning its own queue's QR code with a phone (same account) to test the customer side: My Queues, My History, and notifications.
 
-Isi data uji ada di [`db/scripts/seed_prod_penguji.sql`](../db/scripts/seed_prod_penguji.sql). Pelanggan seed
-(`pelanggan-1` sampai `pelanggan-12`) punya kata sandi acak sendiri per run dan bisa login dengan username. Notifikasi emailnya mati.
+The test data is in [`db/scripts/seed_prod_penguji.sql`](../db/scripts/seed_prod_penguji.sql). The seeded customers (`customer-1` through `customer-12`) get their own random password on each run and can log in with their username. Their email notifications are turned off.
 
-Setiap run membuat kata sandi acak baru untuk akun penguji dan **semua** pelanggan seed, lalu menulis email, username, dan
-kata sandinya ke `~/qms-penguji-account.txt` (mode 600, di luar repo, ditimpa setiap run). Sesi login lama semua akun itu dicabut. Jalankan ulang skrip yang sama untuk mengembalikan data uji ke kondisi seed.
+Each run creates a new random password for the tester account and for **all** seeded customers, then writes the email, username, and password to `~/qms-penguji-account.txt` (mode 600, outside the repository, overwritten on each run). All existing login sessions of these accounts are revoked. Run the same script again to bring the test data back to its seeded state.
 
 ```bash
-make prod-seed-penguji        # atau: scripts/seed-prod-penguji.sh [-y]
+make prod-seed-penguji        # or: scripts/seed-prod-penguji.sh [-y]
 ```
 
-- **seed**: setiap run membuat kata sandi acak 16 karakter untuk akun penguji. Bila akun belum ada, akun didaftarkan
-  lewat API. Bila sudah ada, sandinya diganti lewat hash bcrypt. Kredensial ditulis ke `~/qms-penguji-account.txt`
-  (mode 600, di luar repo) dan **ditimpa** setiap run. Setiap run juga mencabut sesi login lama akun penguji.
-  Email dan username bisa diganti lewat `PENGUJI_EMAIL` dan `PENGUJI_USERNAME`. Email verifikasi dari pendaftaran
-  ikut terkirim sesuai `MAIL_MODE`. `QMS_API` (bawaan `http://localhost:8080`) menentukan alamat API untuk pendaftaran, dan `PENGUJI_FILE` mengganti lokasi berkas kredensial. Skrip ini juga mengembalikan data uji ke kondisi seed, jadi tidak perlu
-  skrip restore terpisah.
-- Skrip membuat backup database (`scripts/backup-prod.sh`) lebih dulu dan meminta konfirmasi (`ketik 'ya'`) kecuali
-  memakai `-y`. Butuh modul Python `bcrypt` di host.
-- Hanya akun penguji, tiketnya, dan akun pelanggan seed yang disentuh. Akun lain dan data produksi lain tidak.
-- Jalankan ulang seed **setelah** sesi pengujian selesai. Bila `make prod-reset` dijalankan, akun dan data penguji ikut
-  terhapus, jadi jalankan `make prod-seed-penguji` sesudahnya. Sandi baru akan ditulis ke berkas kredensial.
-- Kode QR dan token layar publik berbeda setiap kali data diisi ulang. Cetak ulang QR dari layar owner dan gunakan
-  tautan layar publik yang ditampilkan saat skrip selesai.
+- **Seed:** each run creates a random 16-character password for the tester account. If the account does not exist yet, it is registered through the API. If it exists, its password is replaced using a bcrypt hash. Credentials are written to `~/qms-penguji-account.txt` (mode 600, outside the repository) and **overwritten** on each run. Each run also revokes the tester's existing login sessions. The email and username can be changed with `PENGUJI_EMAIL` and `PENGUJI_USERNAME`. The verification email from registration is sent according to `MAIL_MODE`. `QMS_API` (default `http://localhost:8080`) sets the API address for registration, and `PENGUJI_FILE` changes the credentials file location. This script also resets the test data to its seeded state, so no separate restore script is needed.
+- The script makes a database backup first (`scripts/backup-prod.sh`) and asks for confirmation (type `ya`, Indonesian for "yes") unless `-y` is used. It needs the Python module `bcrypt` on the host.
+- Only the tester account, its tickets, and the seeded customer accounts are changed. Other accounts and other production data are not touched.
+- Run the seed **after** the testing session is finished. If `make prod-reset` is run, the tester account and data are deleted too, so run `make prod-seed-penguji` afterwards. The new password is written to the credentials file.
+- QR codes and public display tokens change every time the data is seeded. Print the QR code again from the owner screen, and use the public display link shown when the script finishes.
 
 ---
 
 ## backup-prod.sh
 
-Backup dan restore database prod memakai `pg_dump` dan `psql` di dalam kontainer `db`.
+Backs up and restores the prod database using `pg_dump` and `psql` inside the `db` container.
 
 ```bash
-scripts/backup-prod.sh backup                  # ~/qms-backups/qms-<waktu>.sql.gz (di luar repo)
+scripts/backup-prod.sh backup                  # ~/qms-backups/qms-<timestamp>.sql.gz (outside the repository)
 scripts/backup-prod.sh backup /path/file.sql.gz
 scripts/backup-prod.sh restore /path/file.sql.gz
 make prod-backup
 ```
 
-- Berkas backup dibuat dengan `umask 077` (hanya terbaca pemilik). Backup kosong dianggap gagal dan dihapus.
-- Dump memakai `--clean --if-exists`, jadi **restore menimpa isi database prod**. Skrip meminta Anda mengetik `ya`.
-- File env dibaca dari `$QMS_ENV_FILE` (bawaan `.env`; untuk prod biasanya `QMS_ENV_FILE=.env.prod`, yang sudah
-  diatur oleh `make prod-backup`).
-- Tabel milik `auth-service` (`users`, `user_action_tokens`) ikut ter-backup karena berada di database yang sama.
-  Kunci JWT (`keys/`) **tidak** ikut. Simpan cadangannya terpisah: tanpa kunci yang sama, token lama tidak sah, tetapi
-  user tetap bisa login lagi dan akun tidak hilang.
+- Backup files are created with `umask 077` (readable only by the owner). An empty backup is treated as a failure and deleted.
+- The dump uses `--clean --if-exists`, so **restore overwrites the contents of the prod database**. The script asks you to type `ya`.
+- The env file is read from `$QMS_ENV_FILE` (default `.env`; for prod it is usually `QMS_ENV_FILE=.env.prod`, which `make prod-backup` sets).
+- The tables owned by `auth-service` (`users`, `user_action_tokens`) are included in the backup because they live in the same database. The JWT keys (`keys/`) are **not** included. Store a backup of the keys separately: without the same keys, old tokens are invalid, but users can log in again and no accounts are lost.
 
 ---
 
-## Skrip SQL di db/
+## SQL scripts in db/
 
-Bukan di folder ini, tetapi sering dibutuhkan bersama skrip di atas: `db/scripts/apply_schema.sql` (penyesuaian skema
-idempoten untuk database yang sudah berjalan), `db/scripts/reset_seed_dev.sql` (data seed dev, `make seed`), dan
-`db/scripts/backfill_currently_served.sql`, dan `db/scripts/check_payment_grants.sql` (hanya membaca: memastikan role `payment_rw` punya semua hak yang dibutuhkan payment-service; dipanggil `make prod-up` dan `make prod-payment-check`). Role per service dibuat oleh `db/migrations/03_notify_role.sh`, `04_mail_role.sh`, `06_auth_role.sh`, dan `07_metrics_role.sh` (`metrics_ro` untuk postgres_exporter, dijalankan ulang oleh target observability); `08_payment_role.sh` untuk `payment_rw` juga dijalankan ulang oleh `make prod-up`. Untuk
-database lama yang belum punya role `auth_rw`, jalankan `06_auth_role.sh` seperti dijelaskan di `.env.example`.
+These are not in this folder, but they are often needed together with the scripts above: `db/scripts/apply_schema.sql` (idempotent schema adjustments for an existing database), `db/scripts/reset_seed_dev.sql` (dev seed data, `make seed`), `db/scripts/backfill_currently_served.sql`, and `db/scripts/check_payment_grants.sql` (read-only: checks that the `payment_rw` role has all privileges payment-service needs; called by `make prod-up` and `make prod-payment-check`). The per-service roles are created by `db/migrations/03_notify_role.sh`, `04_mail_role.sh`, `06_auth_role.sh`, and `07_metrics_role.sh` (`metrics_ro` for postgres_exporter, re-run by the observability targets). `08_payment_role.sh` for `payment_rw` is also re-run by `make prod-up`. For an older database that does not have the `auth_rw` role yet, run `06_auth_role.sh` as described in `.env.example`.
 
 ---
 
-## Target Makefile terkait
+## Related Makefile targets
 
-Ringkasan target yang memanggil skrip di atas atau menggantikan langkah manual. `make up obs` (atau `obs=1`) menambahkan overlay observability.
+Summary of targets that call the scripts above or replace manual steps. `make up obs` (or `obs=1`) adds the observability overlay.
 
-| Target | Fungsi |
+| Target | Purpose |
 |---|---|
-| `make up`, `make tunnel` | Stack dev (LAN atau Cloudflare quick tunnel). Membuat kunci `keys-dev/`, memeriksa Google, membersihkan cache Metro bila perlu |
-| `make down` | Hentikan tunnel dan semua container dev, hapus `keys-dev/` dan penanda Metro |
-| `make restart`, `make logs`, `make ps` | Restart `backend`, `auth-service`, `notify-service`, `mail-service`, `payment-service` (profil `payments`); ikuti log; status container dev |
-| `make seed` | Reset database dev ke data seed (`db/scripts/reset_seed_dev.sql`) |
-| `make verify-user EMAIL=... [STACK=prod]` | Lihat [`verify-user.sh`](#verify-usersh) |
-| `make prod-up` | `gen-auth-keys.sh`, `check-mail-mode.sh`, `check-google-config.sh`, `check-payment-config.sh`, naikkan `db`, jalankan `08_payment_role.sh` dan `check_payment_grants.sql` (galat menghentikan target), lalu naikkan seluruh stack (profil `payments` selalu aktif) |
-| `make prod-up-mailpit`, `make prod-up-smtp` | Pintasan `prod-up` dengan `MAIL_MODE` tertentu |
-| `make prod-payment-check` | `check-payment-config.sh`, `check_payment_grants.sql`, dan status `payment-service`, tanpa mengubah apa pun |
-| `make prod-down` | Hentikan stack prod (termasuk Mailpit dan orphan) |
-| `make prod-guard` | Membuat tabel `_no_seed_guard` di DB prod agar seed/reset dev ditolak (sudah dilakukan `reset-demo.sh`) |
-| `make prod-backup`, `make prod-reset`, `make prod-seed-penguji` | Lihat [`backup-prod.sh`](#backup-prodsh), [`reset-demo.sh`](#reset-demosh), [`seed-prod-penguji`](#seed-prod-penguji) |
-| `make obs-up`, `make obs-down`, `make obs-url`, `make obs-check` | Observability: naikkan overlay dan role `metrics_ro`, hentikan komponennya saja, cetak alamat Grafana, jalankan `check-service-isolation.sh` dan `check-observability-leaks.sh`. `OBS_TARGET=prod` untuk stack prod |
-| `make mailpit` | Cetak link Mailpit dev dan prod serta `MAIL_MODE` prod yang aktif (bawaan `mailpit`) |
+| `make up`, `make tunnel` | Dev stack (LAN or Cloudflare quick tunnel). Creates `keys-dev/`, checks Google configuration, clears the Metro cache if needed |
+| `make down` | Stops the tunnel and all dev containers, removes `keys-dev/` and the Metro marker |
+| `make restart`, `make logs`, `make ps` | Restarts `backend`, `auth-service`, `notify-service`, `mail-service`, and `payment-service` (profile `payments`); follows logs; dev container status |
+| `make seed` | Resets the dev database to seed data (`db/scripts/reset_seed_dev.sql`) |
+| `make verify-user EMAIL=... [STACK=prod]` | See [`verify-user.sh`](#verify-usersh) |
+| `make prod-up` | Runs `gen-auth-keys.sh`, `check-mail-mode.sh`, `check-google-config.sh`, and `check-payment-config.sh`. Starts `db`, runs `08_payment_role.sh` and `check_payment_grants.sql` (an error stops the target), then starts the whole stack (the `payments` profile is always enabled) |
+| `make prod-up-mailpit`, `make prod-up-smtp` | Shortcuts for `prod-up` with a specific `MAIL_MODE` |
+| `make prod-payment-check` | `check-payment-config.sh`, `check_payment_grants.sql`, and `payment-service` status, without changing anything |
+| `make prod-down` | Stops the prod stack (including Mailpit and orphans) |
+| `make prod-guard` | Creates the `_no_seed_guard` table in the prod database so that dev seeds and resets are refused (already done by `reset-demo.sh`) |
+| `make prod-backup`, `make prod-reset`, `make prod-seed-penguji` | See [`backup-prod.sh`](#backup-prodsh), [`reset-demo.sh`](#reset-demosh), [`seed-prod-penguji.sh`](#seed-prod-pengujish) |
+| `make obs-up`, `make obs-down`, `make obs-url`, `make obs-check` | Observability: starts the overlay and the `metrics_ro` role, stops only its components, prints the Grafana address, runs `check-service-isolation.sh` and `check-observability-leaks.sh`. `OBS_TARGET=prod` for the prod stack |
+| `make mailpit` | Prints the dev and prod Mailpit links and the active prod `MAIL_MODE` (default `mailpit`) |
 
-`PROD_ENV` (bawaan `.env.prod`) mengganti file env prod untuk semua target `prod-*`.
+`PROD_ENV` (default `.env.prod`) replaces the prod env file for all `prod-*` targets.

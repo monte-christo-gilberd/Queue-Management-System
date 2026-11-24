@@ -1,184 +1,154 @@
-# Konfigurasi nginx (QMS)
+# nginx configuration (QMS)
 
-Folder ini berisi konfigurasi reverse proxy: satu-satunya pintu masuk ke seluruh stack. Setiap berkas punya kartu di
-kepalanya yang menjelaskan fungsi dan apa yang harus diperiksa bila domain atau topologi berubah. Setiap direktif
-diberi komentar sendiri, dan titik yang perlu disesuaikan ditandai dengan penanda yang bisa dicari:
+This folder contains the reverse proxy configuration: the single entry point to the whole stack. Each file has a header card that explains its purpose and what to check when the domain or topology changes. Every directive has its own comment, and the points that need adjusting are marked with searchable tags:
 
 ```bash
 grep -rn "\[GANTI" deploy/nginx
 ```
 
-| Penanda | Arti |
+| Tag | Meaning |
 |---|---|
-| `[GANTI-DOMAIN]` | Nilai terkait domain atau host. Ganti saat pindah domain. |
-| `[GANTI-JARINGAN]` | Harus sama dengan `docker-compose*.yml` (nama service, port, subnet). |
-| `[SESUAIKAN]` | Nilai tuning (rate limit, burst, batas ukuran, timeout). Boleh diubah sesuai beban. |
-| `[SINKRON]` | Duplikat di berkas lain. Ubah di kedua tempat. |
-| `[PENTING]` | Keamanan atau kontrak. Jangan diubah tanpa memahami akibatnya. |
+| `[GANTI-DOMAIN]` | Value related to the domain or host. Change it when the domain moves. |
+| `[GANTI-JARINGAN]` | Must match `docker-compose*.yml` (service names, ports, subnets). |
+| `[SESUAIKAN]` | Tuning values (rate limits, burst, size limits, timeouts). Adjust according to load. |
+| `[SINKRON]` | Duplicate in another file. Change it in both places. |
+| `[PENTING]` | Security or contract. Do not change without understanding the consequences. |
 
-## Berkas
+> Note: the tags above are kept in their original Indonesian form because they are literal strings used by `grep`.
 
-| Berkas | Fungsi |
+## Files
+
+| File | Purpose |
 |---|---|
-| `nginx.conf` | Konfigurasi **dev** (`docker-compose.yml`): http{}, zona rate limit (`limit_req_status 429`), format log, listener `stub_status` `:8081` untuk observability, `server_name localhost`. Jadi `/etc/nginx/nginx.conf` pada image bawaan. |
-| `nginx.prod.conf` | Konfigurasi **prod/demo** di belakang Cloudflare Tunnel: sama dengan dev, ditambah `set_real_ip_from` dan `real_ip_header CF-Connecting-IP`, serta `server_tokens off`. |
-| `server.conf` | Isi `server{}` bersama (routing, rate limit per rute, header). Di-include oleh kedua konfigurasi di atas. |
-| `frontend-upgrade.dev.conf` | Header WebSocket untuk HMR Metro. **Hanya dev.** |
-| `frontend-upgrade.prod.conf` | Sengaja kosong. Jangan dihapus, karena Dockerfile tetap meng-COPY-nya. |
-| `Dockerfile` | Image nginx 1.27 Alpine. Menyalin berkas di atas ke `/etc/nginx/`. |
-| `Dockerfile.dockerignore` | Daftar putih berkas yang masuk build context. Berkas baru harus ditambahkan di sini. |
-| `../../frontend/nginx.conf` | nginx di kontainer frontend (menyajikan hasil `expo export`), berbeda dari berkas di folder ini. |
+| `nginx.conf` | **Dev** configuration (`docker-compose.yml`): http{}, rate-limit zones (`limit_req_status 429`), log format, `stub_status` listener on `:8081` for observability, `server_name localhost`. This is `/etc/nginx/nginx.conf` in the image. |
+| `nginx.prod.conf` | **Prod/demo** configuration behind Cloudflare Tunnel: same as dev, plus `set_real_ip_from` and `real_ip_header CF-Connecting-IP`, and `server_tokens off`. |
+| `server.conf` | Shared `server{}` body (routing, per-route rate limits, headers). Included by both configurations above. |
+| `frontend-upgrade.dev.conf` | WebSocket headers for Metro HMR. **Dev only.** |
+| `frontend-upgrade.prod.conf` | Intentionally empty. Do not delete it, because the Dockerfile still COPYs it. |
+| `Dockerfile` | nginx 1.27 Alpine image. Copies the files above to `/etc/nginx/`. |
+| `Dockerfile.dockerignore` | Allowlist of files included in the build context. New files must be added here. |
+| `../../frontend/nginx.conf` | nginx inside the frontend container (serves the output of `expo export`). It is different from the files in this folder. |
 
-## Argumen build (`Dockerfile`)
+## Build arguments (`Dockerfile`)
 
-| ARG | Dev (bawaan) | Prod |
+| ARG | Dev (default) | Prod |
 |---|---|---|
 | `NGINX_CONF` | `nginx.conf` | `nginx.prod.conf` |
 | `FRONTEND_UPGRADE` | `frontend-upgrade.dev.conf` | `frontend-upgrade.prod.conf` |
 
-Dua ARG ini harus dipasangkan benar. Nilai prod diatur di `docker-compose.prod.yml` (`build.args`).
+These two ARGs must be paired correctly. Prod values are set in `docker-compose.prod.yml` (`build.args`).
 
-## Nama host dan port upstream
+## Upstream hostnames and ports
 
-Nama host di `server.conf` adalah nama service di docker-compose:
+The hostnames in `server.conf` are the service names in docker-compose:
 
-| Variabel | Upstream | Keterangan |
+| Variable | Upstream | Notes |
 |---|---|---|
 | `$qms_backend` | `backend:8080` | API, SSE, health |
-| `$qms_auth` | `auth-service:8094` | Login, registrasi, reset password, verifikasi email |
-| `$qms_frontend` | `frontend:80` | Aplikasi web |
-| `$qms_payment` | `payment-service:8095` | Hanya webhook BorderPay. Service ini aktif hanya dengan profil compose `payments` (selalu aktif di `make prod-up`) |
+| `$qms_auth` | `auth-service:8094` | Login, registration, password reset, email verification |
+| `$qms_frontend` | `frontend:80` | Web application |
+| `$qms_payment` | `payment-service:8095` | BorderPay webhook only. This service runs only with the compose profile `payments` (always enabled by `make prod-up`) |
 
-`notify-service`, `mail-service`, dan `mailpit` tidak punya rute publik. `payment-service` hanya punya satu rute publik (webhook); checkout-nya
-(`/internal/...`) hanya dipanggil backend. `/internal/` selalu dibalas 404, dan backend memanggil service internal langsung lewat
-jaringan Docker. Upstream memakai variabel dan `resolver 127.0.0.11`, sehingga nginx tetap bisa start walaupun sebuah
-service belum jalan, dan tidak 502 terus setelah service direstart.
+`notify-service`, `mail-service`, and `mailpit` have no public routes. `payment-service` has only one public route (the webhook). Its checkout (`/internal/...`) is called only by the backend. `/internal/` always returns 404, and the backend calls internal services directly over the Docker network. Upstreams use variables and `resolver 127.0.0.11`, so nginx can still start while a service is not yet running, and it does not keep returning 502 after a service is restarted.
 
 ## Routing (`server.conf`)
 
-Urutan `location` penting: regex diperiksa lebih dulu daripada prefix, dan `location /` ada paling bawah.
+The order of `location` blocks matters: regex locations are checked before prefix locations, and `location /` is at the bottom.
 
-| Path | Tujuan | Batas laju / catatan |
+| Path | Destination | Rate limit / notes |
 |---|---|---|
-| `/api/v1/queues/:id/event` | backend | SSE: tanpa buffer, timeout 86400s |
-| `/api/v1/users/login`, `/register` | auth-service | `auth_zone` 10 r/s, burst 20. Bila auth-service mati: JSON 503 `AUTH_UNAVAILABLE` |
+| `/api/v1/queues/:id/event` | backend | SSE: unbuffered, timeout 86400s |
+| `/api/v1/users/login`, `/register` | auth-service | `auth_zone` 10 r/s, burst 20. If auth-service is down: JSON 503 `AUTH_UNAVAILABLE` |
 | `/api/v1/users/google`, `/google/link` | auth-service | `auth_zone` 10 r/s, burst 20 |
 | `/api/v1/users/verify-email`, `/me/verify-email/resend` | auth-service | `auth_zone` 10 r/s, burst 20 |
-| `/api/v1/users/forgot-password`, `/reset-password` | auth-service | `reset_zone` 1 r/s, burst 5 (batas per akun ada di auth-service) |
-| `/reset-password` (halaman) | frontend | Token disamarkan di log, `Referrer-Policy no-referrer`, `no-store` |
-| `/api/v1/webhooks/borderpay` | payment-service | Dicocokkan persis, tanpa batas laju. Diverifikasi dengan `x-borderpay-token` di payment-service. Bila payment-service mati (502/503/504): `@payment_unavailable` membalas JSON 503 `PAYMENT_UNAVAILABLE` dengan `Retry-After: 30` (status non-2xx supaya BorderPay mengirim ulang) |
-| `/api/v1/display/:token/event` | backend | SSE tanpa buffer, `display_zone` 20 r/s, burst 40, token disamarkan di log |
-| `/api/v1/display/:token` | backend | `display_zone`, token disamarkan di log |
-| `/display/:token` (halaman) | frontend | Sama seperti `/reset-password` |
+| `/api/v1/users/forgot-password`, `/reset-password` | auth-service | `reset_zone` 1 r/s, burst 5 (per-account limit is in auth-service) |
+| `/reset-password` (page) | frontend | Token masked in logs, `Referrer-Policy no-referrer`, `no-store` |
+| `/api/v1/webhooks/borderpay` | payment-service | Exact match, no rate limit. Verified with `x-borderpay-token` in payment-service. If payment-service is down (502/503/504): `@payment_unavailable` returns JSON 503 `PAYMENT_UNAVAILABLE` with `Retry-After: 30` (a non-2xx status so BorderPay retries) |
+| `/api/v1/display/:token/event` | backend | Unbuffered SSE, `display_zone` 20 r/s, burst 40, token masked in logs |
+| `/api/v1/display/:token` | backend | `display_zone`, token masked in logs |
+| `/display/:token` (page) | frontend | Same as `/reset-password` |
 | `/api/v1/join`, `/api/v1/join/preview` | backend | `join_zone` 10 r/s, burst 20 |
-| `/api/v1/users/me/avatar` | backend | Body sampai 6 MB (hanya rute ini), `avatar_zone` 5 r/s, burst 10 |
-| `/health` | backend | Log akses dimatikan |
-| `/api/` | backend | Timeout 60s. Termasuk `POST /api/v1/owners/subscription/checkout` (backend memanggil payment-service; bila mati, backend sendiri membalas 503 `PAYMENT_UNAVAILABLE`), yang tidak punya aturan khusus |
-| `/internal/` | - | Selalu 404 |
-| `/` | frontend | Aplikasi web (fallback) |
+| `/api/v1/users/me/avatar` | backend | Body up to 6 MB (this route only), `avatar_zone` 5 r/s, burst 10 |
+| `/health` | backend | Access log disabled |
+| `/api/` | backend | Timeout 60s. Includes `POST /api/v1/owners/subscription/checkout` (the backend calls payment-service; if it is down, the backend itself returns 503 `PAYMENT_UNAVAILABLE`). This route has no special rule |
+| `/internal/` | - | Always 404 |
+| `/` | frontend | Web application (fallback) |
 
-Fallback `@auth_unavailable` (502/503/504 dari auth-service) membalas JSON 503 `AUTH_UNAVAILABLE` dengan `Retry-After: 30`. Kode ini dan `PAYMENT_UNAVAILABLE` (hanya untuk webhook BorderPay)
-dibuat nginx; `PAYMENT_UNAVAILABLE` untuk checkout dibuat backend. Melewati batas laju dibalas 429. Jalur antrian dan SSE tidak terpengaruh, dan user yang sudah
-login tetap jalan karena backend memverifikasi JWT secara lokal.
+The `@auth_unavailable` fallback (502/503/504 from auth-service) returns JSON 503 `AUTH_UNAVAILABLE` with `Retry-After: 30`. This code and `PAYMENT_UNAVAILABLE` (for the BorderPay webhook only) are generated by nginx. `PAYMENT_UNAVAILABLE` for checkout is generated by the backend. Requests over the rate limit get 429. The queue and SSE paths are not affected, and logged-in users keep working because the backend verifies the JWT locally.
 
-Batas ukuran body default `client_max_body_size 1m` berlaku untuk semua rute, kecuali avatar.
+The default body size limit `client_max_body_size 1m` applies to all routes except the avatar route.
 
-Header proxy umum (`Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`) dan header keamanan dasar
-(`X-Content-Type-Options`, `Referrer-Policy`) diatur di `server.conf`, yang berada di dalam `server{}`.
+Common proxy headers (`Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`) and basic security headers (`X-Content-Type-Options`, `Referrer-Policy`) are set in `server.conf`, which sits inside `server{}`.
 
-## Log akses dan request ID
+## Access logs and request IDs
 
-Semua location memakai satu `access_log` global berformat JSON (`qms_json`, didefinisikan di `nginx.conf` dan
-`nginx.prod.conf`). Field: `time`, `service` (`nginx`), `request_id`, `remote_addr`, `method`, `uri`, `status`, `bytes`,
-`request_time`, `upstream_response_time`. Semua nilai berupa string. `/health` tidak dicatat (`access_log off`).
+All locations use one global JSON `access_log` (`qms_json`, defined in `nginx.conf` and `nginx.prod.conf`). Fields: `time`, `service` (`nginx`), `request_id`, `remote_addr`, `method`, `uri`, `status`, `bytes`, `request_time`, `upstream_response_time`. All values are strings. `/health` is not logged (`access_log off`).
 
-Yang disamarkan: token reset password ada di query string (`?token=`) dan token layar publik ada di path. Log
-mencatat `$uri_masked` (token diganti `***`) dan tidak pernah mencatat query string, jadi tidak ada location yang
-butuh format log khusus.
+Sensitive values are masked: the password reset token is in the query string (`?token=`), and the public display token is in the path. Logs record `$uri_masked` (the token is replaced with `***`) and never record the query string, so no location needs a special log format.
 
-Request ID: nginx membuat `$request_id` untuk setiap request (nilai kiriman klien selalu ditimpa), meneruskannya ke
-upstream sebagai `X-Request-Id`, dan mengembalikannya di header respons. Backend dan auth-service mencatat ID yang sama sebagai `request_id`. Location yang punya `proxy_set_header` atau `add_header` sendiri
-(SSE, halaman layar, reset password, `@auth_unavailable`) mengulang header ini karena direktif di location
-menggantikan yang di `server{}`.
+Request IDs: nginx creates `$request_id` for every request (any value sent by the client is always overwritten), forwards it to upstreams as `X-Request-Id`, and returns it in the response header. The backend and auth-service log the same ID as `request_id`. Locations that have their own `proxy_set_header` or `add_header` (SSE, display pages, password reset, `@auth_unavailable`) repeat these headers, because a directive inside a location replaces the one in `server{}`.
 
-## Listener `stub_status` (observability)
+## `stub_status` listener (observability)
 
-Selain `server{}` utama (port 80), `nginx.conf` dan `nginx.prod.conf` punya `server{}` kedua di port `8081` yang hanya
-menyajikan `/stub_status` untuk `nginx-exporter` (overlay `docker-compose.observability.yml`). Hanya jaringan privat
-(`10/8`, `172.16/12`, `192.168/16`) yang diizinkan, sisanya `deny all`, dan path lain 404. Port ini tidak dipetakan ke host dan tidak
-ada di `server.conf`, sehingga tidak ada rute publik ke `/metrics` atau `stub_status`. `scripts/check-service-isolation.sh` memeriksanya.
+In addition to the main `server{}` (port 80), `nginx.conf` and `nginx.prod.conf` define a second `server{}` on port `8081` that serves only `/stub_status` for `nginx-exporter` (the `docker-compose.observability.yml` overlay). Only private networks (`10/8`, `172.16/12`, `192.168/16`) are allowed; everything else gets `deny all`, and other paths return 404. This port is not mapped to the host and is not in `server.conf`, so there is no public route to `/metrics` or `stub_status`. `scripts/check-service-isolation.sh` checks this.
 
-## Saat pindah domain atau topologi
+## When moving the domain or topology
 
-| Yang berubah | Ubah di |
+| What changes | Change it in |
 |---|---|
-| Domain publik (browser dan HP) | `QMS_PUBLIC_ORIGIN` di `.env`. Harus sama dengan alamat yang dibuka. Backend memakainya untuk CORS dan tautan join (`PUBLIC_APP_URL`), auth-service dan mail-service untuk tautan di email. |
-| Domain di produksi | Konfigurasi tunnel Cloudflare, dan `server_name _` di `nginx.prod.conf` bila ingin menolak Host lain. |
-| Nama atau port service | `set $qms_*` di `server.conf`, dan service di `docker-compose*.yml`. |
-| Subnet jaringan | `set_real_ip_from` di `nginx.prod.conf`, `TRUSTED_PROXIES` backend di `docker-compose*.yml` (dev `172.28.0.0/16`, prod `172.29.0.0/16`), dan blok `ipam` di compose. Ketiganya harus sama. |
-| Port yang dipetakan ke host | `EXPOSE` di `Dockerfile` (harus tetap 80) dan `QMS_HTTP_PORT` di compose. |
-| Batas laju atau ukuran body | `limit_req_zone` di `nginx.conf` dan `nginx.prod.conf`, `limit_req` dan `client_max_body_size` di `server.conf`. Nama zona harus cocok. |
+| Public domain (browsers and phones) | `QMS_PUBLIC_ORIGIN` in `.env`. It must match the address that is opened. The backend uses it for CORS and join links (`PUBLIC_APP_URL`), and auth-service and mail-service use it for links in emails. |
+| Production domain | The Cloudflare Tunnel configuration, and `server_name _` in `nginx.prod.conf` if you want to reject other Host headers. |
+| Service names or ports | `set $qms_*` in `server.conf`, and the services in `docker-compose*.yml`. |
+| Network subnet | `set_real_ip_from` in `nginx.prod.conf`, the backend `TRUSTED_PROXIES` in `docker-compose*.yml` (dev `172.28.0.0/16`, prod `172.29.0.0/16`), and the `ipam` block in compose. All three must match. |
+| Ports mapped to the host | `EXPOSE` in `Dockerfile` (must stay 80) and `QMS_HTTP_PORT` in compose. |
+| Rate limits or body size | `limit_req_zone` in `nginx.conf` and `nginx.prod.conf`, and `limit_req` and `client_max_body_size` in `server.conf`. Zone names must match. |
 
-## Menjalankan
-
-```bash
-cp .env.example .env        # isi secret dan QMS_PUBLIC_ORIGIN
-docker compose up --build   # nginx terbuka di ${QMS_HTTP_PORT:-8080}
-```
-
-`docker-compose.yml` adalah mode development (hot reload); stack prod memakai `docker-compose.prod.yml` (`make prod-up`), dan
-`docker-compose.observability.yml` adalah overlay opsional. Hanya nginx yang membuka port ke host (selain Mailpit,
-yang hanya diikat ke `127.0.0.1`); `db`, `backend`, `auth-service`, `notify-service`, `mail-service` dan
-`frontend` hanya terjangkau lewat jaringan Docker. Psql:
-`docker compose exec db psql -U qms -d qms_db`.
-
-`QMS_PUBLIC_ORIGIN` harus sama dengan alamat yang dibuka browser dan HP. Frontend memanggil API di origin halaman,
-jadi tidak ada yang dibakar ke bundle.
-
-`backend` memakai `TRUSTED_PROXIES` (subnet jaringan compose) agar IP klien dari `X-Forwarded-For` hanya dipercaya bila
-datang dari nginx.
-
-## nginx frontend
-
-Satu HTML per rute dari Expo (mis. `dashboard.html`), jadi `try_files $uri $uri.html $uri/ /index.html`. Aset statis di-cache
-setahun, HTML tidak di-cache. Berkasnya di `frontend/nginx.conf`.
-
-## Produksi/demo: `nginx.prod.conf`
-
-Di belakang Cloudflare Tunnel (`cloudflared` di host, target `http://localhost:8080`). Port nginx hanya terikat ke
-`127.0.0.1`, sehingga hanya `cloudflared` yang bisa mengirim header `CF-Connecting-IP` yang dipercaya. Domain yang dipakai
-diatur di Cloudflare. Header WebSocket Metro tidak ada di prod (`frontend-upgrade.prod.conf` kosong). Tunnel dikelola
-manual, lihat `documentation/docs/setup-perintah-manual.md` (satu tingkat di atas `queue-management-system/`).
-
-## HTTPS publik untuk uji di HP (quick tunnel, sementara)
-
-HP tidak perlu memasang apa pun: Cloudflare quick tunnel memberi URL `https://*.trycloudflare.com` dengan sertifikat
-publik yang dipercaya, jadi kamera pemindai QR langsung jalan.
+## Running
 
 ```bash
-# pasang cloudflared: https://github.com/cloudflare/cloudflared/releases
-make tunnel   # buka tunnel, jalankan stack, cetak URL
-make down     # hentikan
-make mailpit  # tampilkan link Mailpit (dev) tanpa menjalankan apa pun
+cp .env.example .env        # fill in the secrets and QMS_PUBLIC_ORIGIN
+docker compose up --build   # nginx is exposed on ${QMS_HTTP_PORT:-8080}
 ```
 
-- URL acak dan berganti tiap sesi. Skrip memberikannya sebagai `QMS_PUBLIC_ORIGIN` ke backend, auth-service,
-  mail-service, dan service lain yang membutuhkannya, yang membacanya saat start.
-- Butuh internet. Jangan dipakai untuk data nyata, karena siapa pun yang tahu URL-nya bisa mengakses aplikasi.
-- Jaringan yang memblokir QUIC ditangani dengan `--protocol http2`.
+`docker-compose.yml` is the development mode (hot reload). The prod stack uses `docker-compose.prod.yml` (`make prod-up`), and `docker-compose.observability.yml` is an optional overlay. Only nginx publishes a port to the host (besides Mailpit, which is bound to `127.0.0.1` only). `db`, `backend`, `auth-service`, `notify-service`, `mail-service`, and `frontend` are reachable only over the Docker network. To open psql: `docker compose exec db psql -U qms -d qms_db`.
 
-## Belum ada
+`QMS_PUBLIC_ORIGIN` must match the address the browser and phone use. The frontend calls the API on the page's origin, so nothing is baked into the bundle.
 
-- HSTS (ditunda, keputusan 31 Okt; bila dipasang mulai dengan `max-age=300`, hanya di `nginx.prod.conf`). Sertifikat
-  ditangani Cloudflare, bukan nginx.
-- Mailpit lewat nginx (`/mail/`). Mailpit hanya terjangkau di `127.0.0.1` (lihat `make mailpit`). `mail-service`
-  mengirim email ke Mailpit lewat jaringan internal (`SMTP_HOST: mailpit`).
+The `backend` uses `TRUSTED_PROXIES` (the compose network subnet), so client IPs from `X-Forwarded-For` are trusted only when they come from nginx.
 
-## Uji cepat
+## Frontend nginx
 
-- `/` menampilkan halaman login, dan `/dashboard` tidak 404.
-- `/api/v1/queues` tanpa token membalas 401 (502 berarti backend mati).
-- `/internal/v1/join-token` membalas 404.
-- `POST /api/v1/webhooks/borderpay` tanpa payment-service membalas 502 (profil `payments` belum jalan).
-- Banyak request cepat ke `/api/v1/users/login` akhirnya dibalas 429.
-- Owner menekan Next dan layar customer berubah tanpa refresh (SSE tidak tertahan buffer).
+One HTML file per Expo route (e.g. `dashboard.html`), so `try_files $uri $uri.html $uri/ /index.html` is used. Static assets are cached for one year, HTML is not cached. The file is at `frontend/nginx.conf`.
+
+## Production/demo: `nginx.prod.conf`
+
+Behind Cloudflare Tunnel (`cloudflared` on the host, target `http://localhost:8080`). The nginx port is bound only to `127.0.0.1`, so only `cloudflared` can send the `CF-Connecting-IP` header that is trusted. The domain is configured in Cloudflare. The Metro WebSocket headers are not used in prod (`frontend-upgrade.prod.conf` is empty). The tunnel is managed manually; see `documentation/docs/setup-perintah-manual.md` (one level above `queue-management-system/`, a document that is not part of this repository).
+
+## Public HTTPS for phone testing (temporary quick tunnel)
+
+Phones do not need to install anything: a Cloudflare quick tunnel gives a `https://*.trycloudflare.com` URL with a publicly trusted certificate, so the QR scanner camera works directly.
+
+```bash
+# install cloudflared: https://github.com/cloudflare/cloudflared/releases
+make tunnel   # open the tunnel, start the stack, print the URL
+make down     # stop
+make mailpit  # print the Mailpit links (dev) without starting anything
+```
+
+- The URL is random and changes every session. The script passes it as `QMS_PUBLIC_ORIGIN` to the backend, auth-service, mail-service, and other services that need it, which read it at startup.
+- Requires internet access. Do not use it for real data, because anyone who knows the URL can reach the application.
+- On networks that block QUIC, use `--protocol http2`.
+
+## Not yet implemented
+
+- HSTS (postponed, decision of 31 Oct; if added, start with `max-age=300` and only in `nginx.prod.conf`). Certificates are handled by Cloudflare, not nginx.
+- Mailpit through nginx (`/mail/`). Mailpit is reachable only on `127.0.0.1` (see `make mailpit`). `mail-service` sends email to Mailpit over the internal network (`SMTP_HOST: mailpit`).
+
+## Quick checks
+
+- `/` shows the login page, and `/dashboard` does not return 404.
+- `/api/v1/queues` without a token returns 401 (502 means the backend is down).
+- `/internal/v1/join-token` returns 404.
+- `POST /api/v1/webhooks/borderpay` without payment-service returns 502 (the `payments` profile is not running).
+- Many quick requests to `/api/v1/users/login` eventually return 429.
+- The owner presses Next and the customer screen updates without a refresh (SSE is not held by buffering).
