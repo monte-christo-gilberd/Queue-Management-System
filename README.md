@@ -1,5 +1,30 @@
 # Queue Management System (QMS)
 
+<p align="center">
+  <a href="https://go.dev/"><img alt="Go 1.27" src="https://img.shields.io/badge/Go-1.27-00ADD8?style=for-the-badge&logo=go&logoColor=white"></a>
+  <a href="https://gin-gonic.com/"><img alt="Gin 1.12" src="https://img.shields.io/badge/Gin-1.12-008ECF?style=for-the-badge"></a>
+  <a href="https://www.postgresql.org/"><img alt="PostgreSQL 16" src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white"></a>
+  <a href="https://reactnative.dev/"><img alt="React Native 0.86" src="https://img.shields.io/badge/React%20Native-0.86-61DAFB?style=for-the-badge&logo=react&logoColor=black"></a>
+  <a href="https://expo.dev/"><img alt="Expo SDK 57" src="https://img.shields.io/badge/Expo%20SDK-57-000020?style=for-the-badge&logo=expo&logoColor=white"></a>
+  <a href="https://www.typescriptlang.org/"><img alt="TypeScript 6.0" src="https://img.shields.io/badge/TypeScript-6.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white"></a>
+  <a href="https://www.docker.com/"><img alt="Docker" src="https://img.shields.io/badge/Docker-Containerized-2496ED?style=for-the-badge&logo=docker&logoColor=white"></a>
+  <a href="https://nginx.org/"><img alt="nginx 1.27" src="https://img.shields.io/badge/nginx-1.27-009639?style=for-the-badge&logo=nginx&logoColor=white"></a>
+  <a href="https://opentelemetry.io/"><img alt="OpenTelemetry" src="https://img.shields.io/badge/OpenTelemetry-Enabled-425CC7?style=for-the-badge&logo=opentelemetry&logoColor=white"></a>
+  <a href="https://grafana.com/"><img alt="Grafana" src="https://img.shields.io/badge/Grafana-Enabled-F46800?style=for-the-badge&logo=grafana&logoColor=white"></a>
+  <a href="https://playwright.dev/"><img alt="Playwright" src="https://img.shields.io/badge/Playwright-Tested-2EAD33?style=for-the-badge&logo=playwright&logoColor=white"></a>
+  <img alt="Web Push" src="https://img.shields.io/badge/Web%20Push-VAPID-FF6B00?style=for-the-badge">
+</p>
+
+<p align="center">
+  <a href="https://github.com/monte-christo-gilberd/Queue-Management-System/releases"><img alt="Version 1.0.0" src="https://img.shields.io/badge/Version-1.0.0-blue?style=for-the-badge"></a>
+  <a href="https://github.com/monte-christo-gilberd/Queue-Management-System/actions"><img alt="CI: GitHub Actions" src="https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white"></a>
+  <img alt="Platform: Web and Android" src="https://img.shields.io/badge/Platform-Web%20%7C%20Android-blue?style=for-the-badge&logo=android&logoColor=white">
+  <img alt="Status: Active" src="https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge">
+  <a href="https://github.com/monte-christo-gilberd/Queue-Management-System/pulls"><img alt="PRs Welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge&logo=github&logoColor=white"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge"></a>
+  <a href="docs/"><img alt="Docs" src="https://img.shields.io/badge/Docs-available-blue?style=for-the-badge&logo=readthedocs&logoColor=white"></a>
+</p>
+
 A queue management system for in-person services. Owners create a queue, share a QR code or join link, and call the next number. Customers join by scanning the QR code or opening the link, then follow their position and the number currently being served in real time, without refreshing the page.
 
 > Capstone project. All services (backend, frontend, auth, notifications, email, and payments) are connected end to end. For deeper technical documentation, see [Documentation](#documentation).
@@ -433,4 +458,4 @@ This project was created for learning and portfolio purposes only. It is not aff
 
 ## License
 
-There is no license file in this repository yet.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
