@@ -30,29 +30,14 @@ import (
 // healthAddr: alamat server health check.
 const healthAddr = ":8091"
 
-// main memanggil run, lalu keluar dengan kode 1 bila gagal. Error sudah dicatat di run.
+// main membuat konteks sinyal, memanggil run, lalu keluar dengan kode 1 bila gagal. Error sudah dicatat di run.
 func main() {
 	// Atur logger default ke JSON di stdout untuk seluruh proses, dengan atribut service=notify-service
 	// dan level dari LOG_LEVEL (bawaan info).
 	slog.SetDefault(logging.NewLogger("notify-service", os.Getenv("LOG_LEVEL")))
 
-	// Jalankan service. Error berarti service gagal start, jadi hentikan proses dengan status gagal.
-	if err := run(); err != nil {
-		os.Exit(1)
-	}
-}
-
-// run menyusun konfigurasi, koneksi, health server, dan listener, lalu menunggu sinyal berhenti.
-func run() error {
-	// Baca dan validasi konfigurasi dari environment.
-	cfg, err := config.Load()
-	// Error berarti ada variabel wajib yang belum diisi, jadi service tidak boleh start.
-	if err != nil {
-		slog.Error("config", "err", err)
-		return err
-	}
-
-	// Buat konteks yang batal saat SIGINT atau SIGTERM diterima.
+	// Buat konteks yang batal saat SIGINT atau SIGTERM diterima. Pembuatan konteks ada di sini (bukan di run)
+	// agar run bisa dites lintas platform: test cukup membatalkan context tanpa mengirim sinyal OS.
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
 		syscall.SIGINT,
@@ -60,6 +45,22 @@ func run() error {
 	)
 
 	defer stop()
+
+	// Jalankan service. Error berarti service gagal start, jadi hentikan proses dengan status gagal.
+	if err := run(ctx); err != nil {
+		os.Exit(1)
+	}
+}
+
+// run menyusun konfigurasi, koneksi, health server, dan listener, lalu berjalan sampai ctx batal.
+func run(ctx context.Context) error {
+	// Baca dan validasi konfigurasi dari environment.
+	cfg, err := config.Load()
+	// Error berarti ada variabel wajib yang belum diisi, jadi service tidak boleh start.
+	if err != nil {
+		slog.Error("config", "err", err)
+		return err
+	}
 
 	// Buat pool koneksi ke PostgreSQL (sqlx dengan driver pgx) untuk query baca dan hapus langganan. sqlx.Open
 	// tidak menyambung saat dibuat, jadi database yang belum siap tidak menggagalkan start; listener LISTEN
