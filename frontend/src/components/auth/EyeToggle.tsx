@@ -5,7 +5,7 @@
  * Bergantung   : react-native (Animated), constants/app-theme
  * Catatan      : Tombol ini tidak menyimpan state sendiri; induk membalik visible saat onPress.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
@@ -26,8 +26,9 @@ const STROKE = 1.5;
  * garis coret "/" digambar masuk (scaleX) dengan iris sedikit mengecil; saat terlihat garis ditarik keluar.
  */
 export function EyeToggle({ visible, onPress }: EyeToggleProps) {
-  // Nilai animasi: 0 = terlihat, 1 = tersembunyi. Disimpan di ref agar tidak dibuat ulang tiap render.
-  const open = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  // Nilai animasi disimpan di state (bukan ref) agar tidak diakses lewat ref.current saat render.
+  // Nilai awal mengikuti visible saat komponen dipasang; animasi berikutnya dijalankan oleh effect di bawah.
+  const [open] = useState(() => new Animated.Value(visible ? 1 : 0));
 
   // Jalankan animasi tiap visible berubah. Web tidak mendukung useNativeDriver, jadi animasi di web berjalan di sisi JS.
   useEffect(() => {

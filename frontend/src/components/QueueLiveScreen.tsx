@@ -7,7 +7,7 @@
  * Catatan      : layout dipilih dari lebar layar (timeline di HP, papan gelap di PC). Konfirmasi Skip dan Next dilakukan route, bukan komponen ini.
  */
 import { router } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
@@ -260,7 +260,8 @@ function BoardSide({
 
 /** Titik hijau berdenyut (khusus makna status "live"). */
 function LiveDot() {
-  const pulse = useRef(new Animated.Value(0)).current;
+  // Nilai animasi disimpan di state (bukan ref) agar tidak diakses lewat ref.current saat render.
+  const [pulse] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     // Native driver dimatikan di web karena animasinya tidak didukung di sana; di native dijalankan di thread native agar mulus.

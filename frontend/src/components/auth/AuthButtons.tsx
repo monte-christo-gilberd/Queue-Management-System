@@ -14,7 +14,6 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { AppColors } from '@/constants/app-theme';
 
 // Logo Google "G" (SVG sebagai modul); require dipakai karena bundler memuat aset ini sebagai modul.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const GOOGLE_G = require('../../../assets/images/google-g.svg');
 
 /** Props tombol utama auth. */

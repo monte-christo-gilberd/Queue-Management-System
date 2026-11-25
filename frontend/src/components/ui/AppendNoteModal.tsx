@@ -6,7 +6,7 @@
  * Alur         : isian -> onSubmit(note) -> induk menyimpan lalu menutup popup bila berhasil
  */
 import { useErrorToast } from '@/components/ui/Toast';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
@@ -50,9 +50,15 @@ export function AppendNoteModal({
   // State tampilan murni: isi TextInput sebelum di-submit. Diisi ulang setiap kali popup dibuka.
   const [note, setNote] = useState(initialNote);
 
-  useEffect(() => {
+  // Reset saat popup dibuka atau catatan awal berubah, lewat pola render-phase (bukan effect) agar tidak
+  // memicu render berantai.
+  const [prevVisible, setPrevVisible] = useState(visible);
+  const [prevInitialNote, setPrevInitialNote] = useState(initialNote);
+  if (visible !== prevVisible || initialNote !== prevInitialNote) {
+    setPrevVisible(visible);
+    setPrevInitialNote(initialNote);
     if (visible) setNote(initialNote);
-  }, [visible, initialNote]);
+  }
 
   return (
     <ModalCard visible={visible} onRequestClose={onCancel}>

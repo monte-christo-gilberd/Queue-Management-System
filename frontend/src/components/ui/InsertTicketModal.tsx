@@ -8,7 +8,7 @@
  * Catatan      : Validasi lokal dijalankan dulu; server tidak dipanggil bila isian belum lolos.
  */
 import { useErrorToast } from '@/components/ui/Toast';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
 import { AppColors } from '@/constants/app-theme';
@@ -44,14 +44,19 @@ export function InsertTicketModal({
   const [positionText, setPositionText] = useState(String(defaultPosition));
   const [validationError, setValidationError] = useState<string>();
 
-  // Setiap popup dibuka, isian kembali ke nilai awal.
-  useEffect(() => {
+  // Setiap popup dibuka (atau posisi awal berubah), isian kembali ke nilai awal. Reset dilakukan saat render
+  // mengikuti pola React "adjusting state when props change", bukan di effect, agar tidak memicu render berantai.
+  const [prevVisible, setPrevVisible] = useState(visible);
+  const [prevDefaultPosition, setPrevDefaultPosition] = useState(defaultPosition);
+  if (visible !== prevVisible || defaultPosition !== prevDefaultPosition) {
+    setPrevVisible(visible);
+    setPrevDefaultPosition(defaultPosition);
     if (visible) {
       setIdentifier('');
       setPositionText(String(defaultPosition));
       setValidationError(undefined);
     }
-  }, [visible, defaultPosition]);
+  }
 
   // Posisi dibaca dari teks; pesan galat validasi berasal dari validateInsertInput.
   async function submit() {

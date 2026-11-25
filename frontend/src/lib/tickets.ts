@@ -9,7 +9,7 @@
  * Catatan      : Galat 409 (QUEUE_EMPTY, NOTHING_TO_SKIP, QUEUE_CLOSED, dll.) dibaca dari ApiError.code, bukan dari status saja.
  */
 import { apiFetch } from './api';
-import type { PublicQueue, QueueStatus, Ticket } from '@/types/api';
+import type { QueueStatus, Ticket } from '@/types/api';
 
 /** Bentuk `data` dari GET /api/v1/queues/:id/tickets. */
 type ListTicketsResponse = {
