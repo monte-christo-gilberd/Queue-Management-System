@@ -1,6 +1,6 @@
 # Product Overview
 
-> This is the product-level companion to `api-contract.md` (API), `ERD.md` (database), `DESIGN.md`, `Architecture_Summary.md` and `dokumentasi-teknis/`. Update the status and change log as your project evolves.
+> This is the product-level companion to `api-contract.md` (API), `ERD.md` (database), `DESIGN.md`, and `Architecture_Summary.md`. Update the status and change log as your project evolves.
 
 ## Document Info
 
@@ -25,14 +25,14 @@
 | 2026-09-20 | Customer join (4.2, 4.4, US-14) now requires login (replaced no-login/anonymous design); added Owner Subscription & Payment (4.18, US-21, Scope row 18) to formalize the monetization model from ideation; added CSV/Excel export and dedicated-archive data model note to Read History (4.15); added owner's saved-admin-roster note to Admin Appointment (4.6) |
 | 2026-10-02 | Backend for Create/View/Manage a Queue (4.1) fully rebuilt and verified (`go build`/`go test` passing, 16 new unit tests) — closes the gap left open since the Week 11 from-scratch rebuild. **Reversed the Week 9/10 architecture decision that rejected WebSocket in favor of "REST + polling"** (NFR #4): frontend direction was set to React Native (Expo), and real-time queue/ticket updates (4.3, 4.4, 4.5) are now pushed over WebSocket instead of polled. Subscription gating (4.18) was narrowed to apply only to actions that create or modify data (create queue, edit queue, edit admin authorities) — viewing, listing, and closing a queue no longer require an active subscription. `owners.subscription_expires_at` changed from nullable to `NOT NULL`, reflecting a clarified business rule: an `owners` row is only ever created after a first successful payment, so "never subscribed" is no longer a state the data model needs to represent |
 | 2026-10-31 | **Tier 2 delivered:** Skip (4.7) with fallback setting (4.14: `remove`/`back`/`after_n`, max returns), owner recall (3 s after Next, once per call) and Web Push notification through a separate internal `notify-service` (4.8, push only, no outbox yet). Customers enable notifications per browser on their ticket screen (HTTPS only; Expo Go unsupported); one browser serves one account at a time. Email notify, custom ticket prefix and counter CRUD remain deferred. |
-| 2026-10-30 | Overhaul after the Week 15 rebuild. **Removed the admin system** (US-3, US-18, FR 4.6): only the owner manages a queue; tables `queue_authz`, `queue_admins`, `owner_saved_admins` dropped. **Counter redesigned** (US-4, US-19, FR 4.11): every queue gets one hidden default counter; counter CRUD and the counter page deferred to Tier 2. **Join is QR-only and signed** (US-5, FR 4.2): tokens from a separate `qr-service` (static or dynamic, 120 s TTL); the customer joins only by scanning in the in-app camera, and a repeated join returns the same ticket (200). The QR image is drawn on the frontend. **Real-time stays SSE** (FR 4.4/4.5), with a resync every 45 s and a 3 s fallback poll when the stream is held back by a proxy. Skip (FR 4.7) with fallback (FR 4.14) and push notify (FR 4.8) were added after the rebuild; email notify is deferred. Delivery moved to Docker Compose behind nginx. See `plan-rombak-utama.md` and `Architecture_Summary.md`. |
+| 2026-10-30 | Overhaul after the Week 15 rebuild. **Removed the admin system** (US-3, US-18, FR 4.6): only the owner manages a queue; tables `queue_authz`, `queue_admins`, `owner_saved_admins` dropped. **Counter redesigned** (US-4, US-19, FR 4.11): every queue gets one hidden default counter; counter CRUD and the counter page deferred to Tier 2. **Join is QR-only and signed** (US-5, FR 4.2): tokens from a separate `qr-service` (static or dynamic, 120 s TTL); the customer joins only by scanning in the in-app camera, and a repeated join returns the same ticket (200). The QR image is drawn on the frontend. **Real-time stays SSE** (FR 4.4/4.5), with a resync every 45 s and a 3 s fallback poll when the stream is held back by a proxy. Skip (FR 4.7) with fallback (FR 4.14) and push notify (FR 4.8) were added after the rebuild; email notify is deferred. Delivery moved to Docker Compose behind nginx. See `Architecture_Summary.md`. |
 | 2026-10-31 | Removed permanent deletion (history always remains), the history cap, the QR daily usage limit and registration_limit |
 | 2026-10-31 | Custom ticket prefix delivered (1-3 letters/digits per queue, default `A`, set on create/edit, shown in UI and push notifications) |
 | 2026-11-04 | Profile (plan item 6): `GET /users/me` now carries `subscription_expires_at` (owner only), new `PUT /users/me` edits the username (trimmed, 1 to 50 characters), and the profile screen works for customers and owners. Password change moved out of the profile form: a "Minta Ganti Password" button is shown but does nothing until reset by email (plan item 9), so the password-revocation work (`password_changed_at`, token `iat`, 8-character minimum) moves to item 9 as well. |
 | 2026-11-04 | Profile photo: `PUT/GET/DELETE /users/me/avatar`, stored in Postgres (`user_avatars`, bytea, one 512x512 JPEG of at most 150 KB per user), private to its owner; the server validates by content, crops, resizes and re-encodes (EXIF/GPS removed); nginx allows 6 MB bodies and 5 requests per second per IP on this route only. |
 | 2026-11-04 | Mailpit and mail-service (plan item 7): development mail is caught by Mailpit; email is sent by a separate `mail-service` (internal API with a service token, Indonesian templates, retries, TLS modes). `notify-service` is Web Push only and keeps working when the mail service is down (verified with real push events). Decision D4 revised accordingly. |
 | 2026-11-04 | Email notifications (plan item 8): four emails to the ticket owner (joined, cancelled, removed by the owner, finished serving) through an outbox written by a trigger in the same transaction as the ticket change; the worker lives in `mail-service` (role `mail_rw`, no access to passwords or tickets), retries with backoff, is rate limited, and never includes owner notes. New switch `users.email_notifications` with `PUT /users/me/preferences` and a profile switch. Delivery is at-least-once. |
-| 2026-11-03 | **Delivered since 31 Oct:** counter management (4.11: create, rename and delete counters, one number per counter, one account on several devices, a tab per counter), customer cancel (4.9), notes CRUD (4.16), insert at a position (4.12), dynamic QR (4.13), a customer can also join by pasting the join link into the join popup, error toasts, a ticket popup on the customer card, and the push "your turn" message names the counter. Join stays in-app only: opening `/join` outside the app creates nothing. **Plan to the end** (`queue-management-system/docs/plan-sampai-akhir-03-11-2026.md`): owner removes a number (status `deleted`, no fallback), owner history and CSV/Excel export, customer history, notes shown in the queue, user profile, Mailpit, email notifications (joined, cancelled, removed, completed), password reset by email, requeue push, a confirmation popup for Next and Skip (no undo, by design); then observability, k6 load tests (staged toward 1M concurrent users) and frontend performance audits. |
+| 2026-11-03 | **Delivered since 31 Oct:** counter management (4.11: create, rename and delete counters, one number per counter, one account on several devices, a tab per counter), customer cancel (4.9), notes CRUD (4.16), insert at a position (4.12), dynamic QR (4.13), a customer can also join by pasting the join link into the join popup, error toasts, a ticket popup on the customer card, and the push "your turn" message names the counter. Join stays in-app only: opening `/join` outside the app creates nothing. **Plan to the end** (planning document kept outside this repository): owner removes a number (status `deleted`, no fallback), owner history and CSV/Excel export, customer history, notes shown in the queue, user profile, Mailpit, email notifications (joined, cancelled, removed, completed), password reset by email, requeue push, a confirmation popup for Next and Skip (no undo, by design); then observability, k6 load tests (staged toward 1M concurrent users) and frontend performance audits. |
 | 2026-11-04 | Public display (4.5) done, outside the 14 plan items: login-free `/display/<token>` with one card per counter that follows counters being added, renamed or deleted; random URL token; the screen listens on its own SSE room that carries only a "refetch" signal, never ticket payloads; snapshot cached for 1 second and invalidated before each event; owner settings card ("Layar Publik") on the queue detail. Verified with Go tests (race detector), Postgres integration tests, frontend unit tests and Playwright `ts-32`. |
 | 2026-11-04 | Password reset (plan item 9, 4.20) done: forgot and reset by email, 30-minute one-time token stored as a hash, sessions revoked by `password_changed_at` against the token `iat`, minimum password of 8 characters at registration and reset. Replaces the earlier "in progress" status. Verified with Go tests, Playwright `ts-31` and a manual run. |
 | 2026-11-04 | Requeue push (plan item 10): trigger `tickets_notify` emits `requeued` (with `reason` and `counter`) when a number returns to `waiting`; `skipped` is now only for permanent skips; the push states the new position. |
@@ -48,9 +48,9 @@
 
 | #   | Problem                                                                                                                | Solution                                                                                                                                                                                 |
 | --- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | User having to queue in line without knowing their number or current number                                            | Web-based queue management system that is easy to set up and run ⚠️ _needs confirmation: with the frontend direction now set to React Native (Expo, see Change Log 2026-10-02), is "web-based" still accurate for all users (owner, customer), or does this become a native-app experience for some/all of them? The customer join flow (4.2, US-14) specifically assumes "phone browser opens the join page" via QR scan — confirm whether that still holds or whether Expo changes it too_ |
-| 2   | Small Bussiness Owner forgetting which customer to serve first because chaotic queuing                                 | Small Bussiness Owner and Front Staff (Owner side) could easily set up the system using their own pc as the server or manually use a server as their main server and use qr to add queue |
-| 3   | Front Staff handling customer cannot create a queue management system without integrated system prepared by IT support | User side can use their phone camera to join the queue and view their number in the queue                                                                                                |
+| 1   | Users have to queue in line without knowing their number or the current number                                         | A web-based queue management system that is easy to set up and run ⚠️ _needs confirmation: with the frontend direction now set to React Native (Expo, see Change Log 2026-10-02), is "web-based" still accurate for all users (owner, customer), or does this become a native-app experience for some or all of them? The customer join flow (4.2, US-14) specifically assumes "phone browser opens the join page" via QR scan — confirm whether that still holds or whether Expo changes it too_ |
+| 2   | A small business owner forgets which customer to serve first because the queue is chaotic                              | A small business owner and front staff (owner side) can easily set up the system using their own PC as the server, or use a server as their main server and use a QR code to add to the queue |
+| 3   | Front staff handling customers cannot create a queue management system without an integrated system prepared by IT support | Users can use their phone camera to join the queue and view their number in the queue                                                                                                |
 
 ## Scope
 
@@ -60,15 +60,15 @@
 | 2   | Join Queue via QR Code (static)               | Customer logs in (manual or Google) and joins a queue by scanning a static QR code generated by the owner    | P0       | Done | US-5 (static), US-14 |
 | 3   | Continue Queue (Next)                         | Owner can continue the queue to the next number, on a single default counter                             | P0       | Done | US-8 (next)        |
 | 4   | Customer View: Queue Status & Position        | Customer can view their position in the queue and the number currently being served                           | P1       | Done | US-15              |
-| 5   | Display Queue for Public                      | Owner can display current queue on a screen for public to view (one card per counter, live)                                          | P1       | Done | US-7               |
-| 6   | Admin Appointment & Authority Delegation      | **REMOVED 2026-10-30.**  Owner can appoint admins and configure a shared set of authorities for the queue they're on                   | P1       | Backlog | US-3, US-18        |
+| 5   | Display Queue for Public                      | Owner can display the current queue on a screen for the public to view (one card per counter, live)                                          | P1       | Done | US-7               |
+| 6   | Admin Appointment & Authority Delegation      | **REMOVED 2026-10-30.** Owner can appoint admins and configure a shared set of authorities for the queue they manage                   | P1       | Backlog | US-3, US-18        |
 | 7   | Skip Queue                                    | **DONE (31 Oct).** Owner skips the number being served; the system calls the next waiting number in the same step. 409 when nothing is served or nobody is waiting. | P2       | Done | US-8 (skip)        |
 | 8   | Notify Next                                   | **DONE (31 Oct, push only).** A separate `notify-service` sends Web Push: the owner of a called number gets "your turn", the first waiting customer gets "1 number left", and a skipped customer gets "skipped" (or "returned to the queue"). Owner can recall the number being served (3 s after Next/Skip, once per call). Email is deferred. | P2       | Done (push); email planned | US-9               |
 | 9   | Queue Cancelling for Customer                 | **DONE (Nov 2026).** Customer can cancel their own queue number (kept in the record as `cancelled`). | P2       | Done | US-16              |
 | 10  | Removing a Customer from Queue                | Owner can remove a specific customer number from the queue. The number gets status `deleted` (kept in the record, no fallback). | P2       | Done | US-11              |
 | 11  | Counter Management                            | **DONE (Nov 2026).** Owner creates, renames and deletes counters (max 10); each counter serves one number; one account can be used on several devices, each acting for one counter. | P2       | Done | US-4               |
 | 12  | Inserting a Certain Number in Queue           | **DONE (Nov 2026).** Owner inserts a customer (by email or username) at a specific position in the queue. | P3       | Done | US-10              |
-| 13  | Dynamic QR Code                              | **DONE.** QR code can be static or dynamic (a code that rotates, valid for 120 s). | P3       | Done | US-5 (dynamic)     |
+| 13  | Dynamic QR Code                              | **DONE.** The QR code can be static or dynamic (a code that rotates, valid for 120 s). | P3       | Done | US-5 (dynamic)     |
 | 14  | Skipped Customer Fallback / Requeue           | **DONE (31 Oct).** Per-queue setting for a skipped customer: remove, return to the back, or return after N positions, with a maximum number of returns. Partly covers the original multi-attempt rule (see 4.14). | P3       | Done | US-17              |
 | 15  | Read History & Export                         | **DONE (Nov 2026).** Owner can view all closed queues (paged), open one to see every number with its outcome and note, and export a queue's record as CSV or Excel (`/history/queues`, `/history/queues/:id`, `/history/queues/:id/export`). | P4       | Done | US-13              |
 | 16  | Add / Edit Notes                              | **DONE (Nov 2026).** Owner can attach one note (editable in place) to a queue number; the note is shown in the owner's ticket list and in history. Never shown to customers. | P4       | Done | US-12              |
@@ -449,7 +449,7 @@ Lets the owner show the queue's live status on a public screen (e.g. a monitor i
 | Multiple displays are open for the same queue                | All stay in sync, reading from the same source of truth                |
 | Owner adds, renames or deletes a counter                     | The cards change on the open screen without a reload                   |
 | Owner replaces the link or turns the display off             | The old link stops working at once; an open screen says the link is no longer valid |
-| Queue is closed                                              | The screen shows "Antrian ditutup"                                     |
+| Queue is closed                                              | The screen shows "Antrian ditutup" (queue closed)                                     |
 | The link leaks                                               | It shows ticket numbers only, never names or notes; the owner can replace it |
 
 ### 4.6 — Admin Appointment & Authority Delegation
@@ -524,7 +524,7 @@ Lets a customer cancel their own queue number directly, without asking staff to 
 
 ### 4.10 — Removing a Customer from Queue
 
-> **Status (2026-11-03): done.** The owner removes a waiting or served number from the ticket list of the queue detail (after a confirmation popup) through `POST /queues/:id/tickets/:ticket_id/remove`. The customer sees "Dihapus" in real time. A push and an email for the removal follow with email notifications (4.19).
+> **Status (2026-11-03): done.** The owner removes a waiting or served number from the ticket list of the queue detail (after a confirmation popup) through `POST /queues/:id/tickets/:ticket_id/remove`. The customer sees "Dihapus" (removed) in real time. A push and an email for the removal follow with email notifications (4.19).
 
 **Summary**
 Lets the owner remove a specific customer's number from the active queue (e.g. a reported no-show, or a data-entry issue). The number isn't erased — it gets the status `deleted`: it stays in the queue's record and history as "removed by the organizer", leaves the waiting order like a skipped number, but is not shown in the skipped list and no fallback (4.14) is applied.
@@ -552,7 +552,7 @@ Lets the owner run several counters so several customers can be served at once.
 
 **Flow**
 
-1. Owner taps "+ Tambah counter" on the queue detail or dashboard → a popup suggests a name (Counter 2, Counter 3, …) → the owner confirms or edits it → a new tab appears and this device switches to it.
+1. Owner taps "+ Tambah counter" (add counter) on the queue detail or dashboard → a popup suggests a name (Counter 2, Counter 3, …) → the owner confirms or edits it → a new tab appears and this device switches to it.
 2. Owner presses Next on a counter; it pulls from the shared queue.
 3. Owner can rename a counter (✎ or long press) and close a non-default counter; the number it was serving returns to the front of the waiting order.
 
@@ -678,6 +678,7 @@ Lets a user log in with their Google account instead of manually creating creden
 **Flow**
 
 1. User opens the login screen and clicks "Log in with Google".
+
 2. User authenticates via Google's OAuth flow and grants permission.
 3. System verifies the ID token itself, then creates (first-time, no password, email already verified) or matches (returning, by Google ID) an account tied to that Google identity and logs the user in.
 
@@ -799,7 +800,7 @@ Lets a customer review all their past tickets: queue, number, outcome and times.
 
 **Flow**
 
-1. Customer opens "Riwayat".
+1. Customer opens "Riwayat" (history).
 2. The list shows one row per ticket (not per queue), newest first, loaded page by page.
 3. Customer opens a row to see the details (read only).
 
@@ -813,7 +814,7 @@ Lets a customer review all their past tickets: queue, number, outcome and times.
 
 ### 4.23 — User Profile
 
-> **Status: done (plan item 6, 2026-11-04).** View, edit username, subscription status, upload and delete a profile photo, and the email-notification switch. The "Minta Ganti Password" button is wired to the reset-link request (4.20).
+> **Status: done (plan item 6, 2026-11-04).** View, edit username, subscription status, upload and delete a profile photo, and the email-notification switch. The "Minta Ganti Password" (request password change) button is wired to the reset-link request (4.20).
 
 **Summary**
 Shows the account details and lets the user edit the username. Customers and owners use the same profile; the subscription card is shown to owners only. Changing the password goes through an emailed link, not a form on the profile: the profile has a "Minta Ganti Password" button that requests that link (4.20). Changing the email address is not built (it would need its own verification link). The user can upload a profile photo (JPEG, PNG or WebP up to 5 MB; the server crops it to a 512x512 JPEG and strips EXIF/GPS data) and delete it; the photo is private and only the account owner sees it.
@@ -822,8 +823,8 @@ Shows the account details and lets the user edit the username. Customers and own
 
 1. User opens the profile (`GET /users/me`); username, email (read-only) and, for an owner, the subscription status and expiry are shown.
 2. User edits the username and saves (`PUT /users/me`). The save button is disabled while the name is unchanged or invalid. The header name updates.
-3. Errors appear as toasts; success shows "Perubahan tersimpan".
-4. Photo: "Unggah Foto" / "Ganti Foto" opens the picker, the photo is uploaded (`PUT /users/me/avatar`) and shown; "Hapus Foto" asks for confirmation, then deletes it (`DELETE /users/me/avatar`) and the icon returns.
+3. Errors appear as toasts; success shows "Perubahan tersimpan" (changes saved).
+4. Photo: "Unggah Foto" / "Ganti Foto" (upload / change photo) opens the picker, the photo is uploaded (`PUT /users/me/avatar`) and shown; "Hapus Foto" (delete photo) asks for confirmation, then deletes it (`DELETE /users/me/avatar`) and the icon returns.
 5. Email notifications: a switch "Notifikasi email" (`PUT /users/me/preferences`) turns ticket emails (4.19) on or off; it is on by default.
 6. Password: the user presses "Minta Ganti Password"; the emailed link flow is described in 4.20.
 
@@ -894,19 +895,22 @@ A new account must prove its email through a one-time link before it can create 
 - Owner subscription/payment (4.18, row 18) is built, but only as a one-month extension (no other plans, no recurring billing); real BorderPay payments need the API key, the webhook token, and the webhook registered in the BorderPay dashboard; otherwise checkout answers 503.
 - A profile photo is visible only to its owner (not to owners of queues or other customers), and is stored in the database (see DESIGN.md for the point at which it should move to object storage). Changing the email address needs a verification link and is planned after password reset.
 - Email change is not built. Google login (4.17) and email verification (4.24) are built. Observability is partly built and load tests are not confirmed.
-**Future Improvements**
- 
-Once the P0 prototype (create/manage a queue, join via static QR, continue via Next) works end-to-end, the plan is to build out the backlog in Scope's existing priority order:
-- P1: Done: customer status view (4.4), public display (4.5) and owner subscription/payment (4.18). Admin delegation (4.6) was removed.
-- P2: Done: customer self-cancel (4.9), owner-side removal (4.10), multi-counter (4.11), Skip (4.7), push notify (4.8), the Next/Skip confirmation (4.21) and email notify (4.19). Password reset (4.20) is done. Email verification (4.24) is done (backend and frontend).
-- P3: Done: inserting a customer at a position (4.12), the skipped-customer fallback (4.14) and the requeue push notification (4.8/4.14).
-- P4: Done: queue history and export (4.15), notes (4.16), customer history (4.22) and the profile (4.23). Google authentication (4.17) is done.
-- Quality phase, after the features: observability, staged load tests toward 1 million concurrent users, and frontend performance audits (see `queue-management-system/docs/plan-sampai-akhir-03-11-2026.md`).
-With more time beyond this backlog, worth revisiting: a proper conflict-resolution strategy for concurrent queue edits (beyond last-write-wins), and whether a guest/anonymous join path should be reintroduced alongside the account-based one.
- 
- ## Project Completion (as of 2026-11-17)
 
-Measured against the Scope table above. Row 6 (admins) is removed and not counted, leaving 25 rows. A row scores 1 when Done, a fraction when partial, 0 when not started. Partial scores are judgement calls, based on what exists in the code and whether it was verified.
+**Future Improvements**
+
+Once the P0 prototype (create and manage a queue, join via static QR, continue via Next) works end to end, the plan is to build the backlog in the existing priority order of the Scope table:
+
+- P1: Done: customer status view (4.4), public display (4.5), and owner subscription and payment (4.18). Admin delegation (4.6) was removed.
+- P2: Done: customer self-cancel (4.9), owner-side removal (4.10), multi-counter (4.11), Skip (4.7), push notify (4.8), the Next and Skip confirmation (4.21), and email notify (4.19). Password reset (4.20) is done. Email verification (4.24) is done (backend and frontend).
+- P3: Done: inserting a customer at a position (4.12), the skipped-customer fallback (4.14), and the requeue push notification (4.8 and 4.14).
+- P4: Done: queue history and export (4.15), notes (4.16), customer history (4.22), and the profile (4.23). Google authentication (4.17) is done.
+- Quality phase, after the features: observability, staged load tests toward 1 million concurrent users, and frontend performance audits (see the planning document kept outside this repository).
+
+With more time beyond this backlog, two things are worth revisiting: a proper conflict-resolution strategy for concurrent queue edits (beyond last-write-wins), and whether a guest or anonymous join path should be reintroduced alongside the account-based one.
+
+## Project Completion (as of 2026-11-17)
+
+Measured against the Scope table above. Row 6 (admins) is removed and not counted, leaving 25 rows. A row scores 1 when Done, a fraction when partial, and 0 when not started. Partial scores are judgement calls, based on what exists in the code and whether it was verified.
 
 | Group | Rows | Score |
 | ----- | ---- | ----- |
@@ -916,7 +920,8 @@ Measured against the Scope table above. Row 6 (admins) is removed and not counte
 
 - Features only (excluding row 25, the quality phase): 24 / 24 = 100%.
 - Verification: `go test ./...` in the backend and the services; frontend unit tests (`npm run test:unit`: 208 tests in 27 files, all passing); Playwright specs (33 files, 247 tests) cover the main flows, with email tests needing Mailpit.
-- To reach 100%: finish observability, run the load tests and the frontend performance audits.
+- To reach 100%: finish observability, run the load tests, and run the frontend performance audits.
 
-## Pixso Wireframe
- https://pixso.net/app/design/79Kq0W10KNeTlhGSejyhWg Invite you to join the Pixso Design file "Owner PC Interface"
+## Wireframes
+
+The wireframe design file is kept outside this repository.
