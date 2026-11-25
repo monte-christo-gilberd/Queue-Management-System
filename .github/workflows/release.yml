@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: GitHub Release
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            index($0, "## [" ver "]") == 1 { capture=1; next }
+            capture && index($0, "## [") == 1 { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "Release ${GITHUB_REF_NAME}" > release-notes.md
+          fi
+
+      - name: Create source archive
+        run: |
+          git archive --format=tar.gz \
+            --prefix="qms-${GITHUB_REF_NAME}/" \
+            -o "qms-${GITHUB_REF_NAME}.tar.gz" \
+            "${GITHUB_REF_NAME}"
+          sha256sum "qms-${GITHUB_REF_NAME}.tar.gz" > SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: QMS ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: |
+            qms-${{ github.ref_name }}.tar.gz
+            SHA256SUMS
+          generate_release_notes: false
+          draft: false
+          prerelease: false
