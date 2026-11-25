@@ -168,7 +168,15 @@ func (m *memTicketRepo) ServingByQueue(_ context.Context, queueID int64) ([]mode
 			out = append(out, *t)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].CalledAt.Time.After(out[j].CalledAt.Time) })
+	// Samakan dengan query produksi: ORDER BY called_at DESC, id DESC.
+	// Tie-breaker id membuat urutan deterministik saat resolusi jam OS membuat called_at sama
+	// (mis. dua panggilan berdekatan di Windows).
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CalledAt.Time.Equal(out[j].CalledAt.Time) {
+			return out[i].ID > out[j].ID
+		}
+		return out[i].CalledAt.Time.After(out[j].CalledAt.Time)
+	})
 	return out, nil
 }
 
