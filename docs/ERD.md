@@ -1,39 +1,39 @@
-# ERD Database QMS
+# ERD: QMS Database
 
-Diagram entitas-relasi untuk skema PostgreSQL Queue Management System. Diagram dibuat dari berkas migrasi
-di `db/migrations/` (`01a` sampai `01j` dan `02_Indexes.sql`). Salinan SQL asli ada di bagian "SQL asli" di bawah
-(isinya sama persis dengan berkas migrasi; tidak ada folder `sql/` terpisah).
+Entity-relationship diagram for the PostgreSQL schema of the Queue Management System. The diagram is built from the migration files
+in `db/migrations/` (`01a` to `01j` and `02_Indexes.sql`). The original SQL is in the section "Original SQL" below
+(its content is identical to the migration files; there is no separate `sql/` folder).
 
-> Catatan: tidak ada berkas ERD terpisah yang diunggah. Sumber kebenaran diagram ini adalah SQL di bawah.
-> `db/scripts/apply_schema.sql` adalah jalur upgrade untuk database yang sudah berjalan. Database hasil upgrade bisa berbeda
-> tipis dari database baru (lihat "Keterbatasan dan ketidaksesuaian yang diketahui"); periksa ulang terhadap database yang berjalan.
+> Note: no separate ERD file was uploaded. The source of truth for this diagram is the SQL below.
+> `db/scripts/apply_schema.sql` is the upgrade path for an existing database. A database that was upgraded can differ
+> slightly from a new one (see "Known limitations and inconsistencies"); check it against the running database.
 
 ## Diagram
 
 ```mermaid
 erDiagram
-    users ||--o| owners : "adalah owner"
-    users ||--o| user_avatars : "punya foto"
-    users ||--o{ user_action_tokens : "token sekali pakai"
-    users ||--o{ push_subscriptions : "perangkat"
-    users ||--o{ push_devices : "aplikasi Android"
-    users ||--o{ payment_orders : "memesan"
-    users ||--o{ tickets : "memegang"
-    users ||--o{ notification_outbox : "penerima"
+    users ||--o| owners : "is an owner"
+    users ||--o| user_avatars : "has a photo"
+    users ||--o{ user_action_tokens : "single-use tokens"
+    users ||--o{ push_subscriptions : "devices"
+    users ||--o{ push_devices : "Android app"
+    users ||--o{ payment_orders : "orders"
+    users ||--o{ tickets : "holds"
+    users ||--o{ notification_outbox : "recipient"
 
-    owners ||--o{ queues : "memiliki"
-    owners ||--o{ payments : "membayar"
-    owners ||--o{ queue_history : "arsip"
+    owners ||--o{ queues : "owns"
+    owners ||--o{ payments : "pays"
+    owners ||--o{ queue_history : "archive"
 
-    queues ||--o| queue_settings : "pengaturan"
-    queues ||--o| queue_displays : "layar publik"
-    queues ||--o{ counters : "loket"
-    queues ||--o{ tickets : "nomor"
-    queues ||--o{ notification_outbox : "email ditutup"
+    queues ||--o| queue_settings : "settings"
+    queues ||--o| queue_displays : "public display"
+    queues ||--o{ counters : "counters"
+    queues ||--o{ tickets : "numbers"
+    queues ||--o{ notification_outbox : "queue closed email"
 
-    counters |o--o{ tickets : "memanggil"
-    tickets ||--o| ticket_notes : "catatan"
-    tickets ||--o{ notification_outbox : "email tiket"
+    counters |o--o{ tickets : "calls"
+    tickets ||--o| ticket_notes : "note"
+    tickets ||--o{ notification_outbox : "ticket email"
 
     users {
         bigint id PK
@@ -167,131 +167,132 @@ erDiagram
     }
 ```
 
-## Keterangan
+## Notes
 
-- `||` berarti tepat satu, `o|` nol atau satu, `o{` nol atau banyak.
-- `queue_history` sengaja tanpa FK ke `queues` atau `tickets`, karena berfungsi sebagai arsip.
-- `payment_orders.owner_id` mereferensi `users(id)`, bukan `owners`, karena calon owner belum punya baris `owners`
-  sampai pembayaran lunas. Migrasi `08_payment_role.sh` memperbaiki FK ini di database lama.
-- `notification_outbox` punya dua jenis: email tiket memakai `ticket_id`, email `queue-closed` memakai `queue_id`.
-- `payment_orders.reference_id` tidak direferensikan tabel lain; hubungannya ke `payments` ada di level aplikasi.
-- `payments` ditulis oleh payment-service saat pesanan lunas (`INSERT INTO payments`, role `payment_rw`). Komentar di `01a_accounts.sql`
-  yang menyebut endpoint `POST /api/v1/owners/subscription/extend` (amount 0) sudah usang: endpoint itu tidak ada.
-- Constraint penting, selain PK/UK/FK pada diagram:
-  - `users`: `CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL)`; `email` UNIQUE, `username` tidak unik.
-  - `queues.ticket_prefix`: `CHECK ~ '^[A-Z0-9]{1,3}$'`, default `'A'`; `queues.status`: `active` atau `closed`.
+- `||` means exactly one, `o|` zero or one, `o{` zero or many.
+- `queue_history` deliberately has no FK to `queues` or `tickets`, because it works as an archive.
+- `payment_orders.owner_id` references `users(id)`, not `owners`, because a prospective owner does not have an `owners` row
+  until the payment is confirmed. The migration `08_payment_role.sh` fixes this FK in existing databases.
+- `notification_outbox` has two kinds: ticket emails use `ticket_id`, and the `queue-closed` email uses `queue_id`.
+- `payment_orders.reference_id` is not referenced by any other table; its link to `payments` exists at the application level.
+- `payments` is written by payment-service when an order is paid (`INSERT INTO payments`, role `payment_rw`). The comment in
+  `01a_accounts.sql` that mentions the endpoint `POST /api/v1/owners/subscription/extend` (amount 0) is outdated: that endpoint does not exist.
+- Important constraints, in addition to the PK, UK, and FK shown in the diagram:
+  - `users`: `CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL)`; `email` UNIQUE, `username` is not unique.
+  - `queues.ticket_prefix`: `CHECK ~ '^[A-Z0-9]{1,3}$'`, default `'A'`; `queues.status`: `active` or `closed`.
   - `counters`: `UNIQUE (queue_id, name)` (`counters_queue_id_name_key`).
   - `tickets.status`: `waiting`, `currently_served`, `completed`, `cancelled`, `skipped`, `deleted`; `UNIQUE (queue_id, ticket_number)`
-    dan `UNIQUE (queue_id, sort_key)`.
+    and `UNIQUE (queue_id, sort_key)`.
   - `tickets_serving_has_counter`: `CHECK (status <> 'currently_served' OR called_counter_id IS NOT NULL)`.
-  - `queue_settings`: `skip_fallback` (`remove`/`back`/`after_n`, default `back`), `skip_fallback_n >= 1` atau NULL, `skip_max_returns >= 1` (default 1),
+  - `queue_settings`: `skip_fallback` (`remove`/`back`/`after_n`, default `back`), `skip_fallback_n >= 1` or NULL, `skip_max_returns >= 1` (default 1),
     `qr_type` (`static`/`dynamic`).
   - `queue_displays`: `upcoming_count` 0-10 (default 5), `skipped_count` 0-10 (default 0), `token` UNIQUE.
-  - `user_avatars.data`: maksimal 153600 byte; `user_action_tokens.purpose`: `password_reset`, `email_verify`, `email_change` (yang terakhir belum dipakai kode).
+  - `user_avatars.data`: at most 153600 bytes; `user_action_tokens.purpose`: `password_reset`, `email_verify`, `email_change` (the last one is not used by the code yet).
   - `notification_outbox.kind`: `joined`, `cancelled`, `removed`, `completed`, `queue-closed`; `UNIQUE (kind, ticket_id)`.
   - `payments.plan_type`/`payment_orders.plan_type`: `monthly`, `yearly`, `one_time`; `payment_orders.status`: `pending`, `paid`, `expired`, `failed`; `payment_orders.amount > 0`.
-- Hapus berantai (`ON DELETE CASCADE`): `queue_settings`, `queue_displays`, `counters`, `tickets` (dari `queues`); `ticket_notes` (dari `tickets`);
-  `notification_outbox` (dari `tickets`, `queues`, `users`); `push_subscriptions`, `push_devices`, `user_avatars`, `user_action_tokens` (dari `users`).
-  `tickets.called_counter_id` memakai `ON DELETE SET NULL`. FK lain (`owners`, `queues.owner_id`, `tickets.user_id`, `payments`,
-  `payment_orders`, `queue_history`, `ticket_notes.created_by/updated_by`) tanpa aksi hapus (NO ACTION).
-- Index unik parsial penegak aturan bisnis (di `01c_tickets.sql`):
-  - `tickets_queue_id_user_id_active_key` pada `(queue_id, user_id)` hanya untuk `status IN ('waiting', 'currently_served')`: satu akun satu tiket aktif per antrian.
-  - `tickets_one_serving_per_counter` pada `(called_counter_id)` hanya untuk `status = 'currently_served'`: satu counter melayani satu nomor.
-  - `queue_settings_qr_current_code_key` (kode join unik, `WHERE qr_current_code IS NOT NULL`) dan `uq_outbox_kind_queue` (`(kind, queue_id) WHERE queue_id IS NOT NULL`).
-- Index non-unik ada di `02_Indexes.sql`: `idx_payments_owner_paid_at`, `idx_queues_owner_created_at`, `idx_tickets_queue_waiting_sort_key` (parsial `waiting`),
-  `idx_tickets_queue_completed` (parsial `completed`), `idx_tickets_user_created_at`, `idx_queue_history_owner_closed`, `idx_push_subscriptions_user`,
-  `idx_push_devices_user`, `idx_outbox_pending` (parsial, belum terkirim dan belum gagal), `user_action_tokens_user_idx`.
-- `queue_history` ada di skema tetapi tidak dipakai kode Go backend (hanya muncul di metrik); arsip riwayat belum ditulis oleh aplikasi.
-- Tidak ada trigger `updated_at`: kolom `updated_at` (`queue_settings`, `ticket_notes`, `user_avatars`, `payment_orders`, `push_devices`) harus diisi oleh aplikasi.
+- Cascading delete (`ON DELETE CASCADE`): `queue_settings`, `queue_displays`, `counters`, `tickets` (from `queues`); `ticket_notes` (from `tickets`);
+  `notification_outbox` (from `tickets`, `queues`, `users`); `push_subscriptions`, `push_devices`, `user_avatars`, `user_action_tokens` (from `users`).
+  `tickets.called_counter_id` uses `ON DELETE SET NULL`. The other FKs (`owners`, `queues.owner_id`, `tickets.user_id`, `payments`,
+  `payment_orders`, `queue_history`, `ticket_notes.created_by/updated_by`) have no delete action (NO ACTION).
+- Partial unique indexes that enforce business rules (in `01c_tickets.sql`):
+  - `tickets_queue_id_user_id_active_key` on `(queue_id, user_id)` only for `status IN ('waiting', 'currently_served')`: one account, one active ticket per queue.
+  - `tickets_one_serving_per_counter` on `(called_counter_id)` only for `status = 'currently_served'`: one counter serves one number.
+  - `queue_settings_qr_current_code_key` (join code unique, `WHERE qr_current_code IS NOT NULL`) and `uq_outbox_kind_queue` (`(kind, queue_id) WHERE queue_id IS NOT NULL`).
+- Non-unique indexes are in `02_Indexes.sql`: `idx_payments_owner_paid_at`, `idx_queues_owner_created_at`, `idx_tickets_queue_waiting_sort_key` (partial `waiting`),
+  `idx_tickets_queue_completed` (partial `completed`), `idx_tickets_user_created_at`, `idx_queue_history_owner_closed`, `idx_push_subscriptions_user`,
+  `idx_push_devices_user`, `idx_outbox_pending` (partial, not yet sent and not failed), `user_action_tokens_user_idx`.
+- `queue_history` is in the schema but is not used by the backend Go code (it only appears in metrics); the application does not yet write history archive rows.
+- There are no `updated_at` triggers: the `updated_at` columns (`queue_settings`, `ticket_notes`, `user_avatars`, `payment_orders`, `push_devices`) must be set by the application.
 
-## Trigger dan fungsi
+## Triggers and functions
 
-| Trigger | Tabel dan kejadian | Fungsi | Efek |
+| Trigger | Table and event | Function | Effect |
 |---|---|---|---|
-| `tickets_notify_trg` | `tickets`, `AFTER UPDATE OF status, called_at, recalled_at, skip_count` | `tickets_notify()` | `pg_notify('queue_events', ...)` dengan kind `requeued`, `skipped`, `called`, `recalled` |
-| `tickets_email_outbox_trg` | `tickets`, `AFTER INSERT OR UPDATE OF status` | `tickets_email_outbox()` | menulis `notification_outbox` (`joined`, `cancelled`, `removed`, `completed`), lalu `pg_notify('mail_outbox')`; hanya bila `users.email_notifications` |
-| `queues_email_outbox_trg` | `queues`, `AFTER UPDATE OF status` | `queues_email_outbox()` | untuk `active` menjadi `closed`, menulis `queue-closed` ke owner, lalu `pg_notify('mail_outbox')` |
+| `tickets_notify_trg` | `tickets`, `AFTER UPDATE OF status, called_at, recalled_at, skip_count` | `tickets_notify()` | `pg_notify('queue_events', ...)` with kind `requeued`, `skipped`, `called`, `recalled` |
+| `tickets_email_outbox_trg` | `tickets`, `AFTER INSERT OR UPDATE OF status` | `tickets_email_outbox()` | writes `notification_outbox` (`joined`, `cancelled`, `removed`, `completed`), then `pg_notify('mail_outbox')`; only when `users.email_notifications` is on |
+| `queues_email_outbox_trg` | `queues`, `AFTER UPDATE OF status` | `queues_email_outbox()` | for `active` changing to `closed`, writes `queue-closed` to the owner, then `pg_notify('mail_outbox')` |
 
-## Role database dan hak
+## Database roles and privileges
 
-Dibuat oleh skrip `.sh` di `db/migrations/` (hanya saat volume kosong; `01h_role_grants.sql` hanya memberi hak `mail_rw` bila role sudah ada).
+Created by the `.sh` scripts in `db/migrations/` (only when the volume is empty; `01h_role_grants.sql` only grants `mail_rw` privileges when the role already exists).
 
-| Role | Skrip | Hak |
+| Role | Script | Privileges |
 |---|---|---|
-| `qms` (pengguna utama) | bawaan image | pemilik skema; dipakai backend (`DATABASE_URL`) |
-| `notify_ro` | `03_notify_role.sh` | `SELECT` pada `tickets`, `queues`, `counters`, `push_subscriptions`, `push_devices`; `DELETE` pada `push_subscriptions`, `push_devices` |
-| `mail_rw` | `04_mail_role.sh` | `SELECT` `notification_outbox`; `UPDATE (sent_at, attempts, last_error, next_attempt_at, failed_at)`; `SELECT (id, email, username, email_notifications)` pada `users` |
-| `auth_rw` | `06_auth_role.sh` | kolom terbatas pada `users` (SELECT/INSERT/UPDATE); `SELECT, INSERT` dan `UPDATE (used_at)` pada `user_action_tokens`; tanpa DELETE |
-| `metrics_ro` | `07_metrics_role.sh` | hanya `pg_monitor` dan `CONNECT`; dilewati bila `METRICS_DB_PASSWORD` kosong |
-| `payment_rw` | `08_payment_role.sh` | `owners`: `SELECT`/`INSERT (user_id, subscription_expires_at)`, `UPDATE (subscription_expires_at)`; `payment_orders`: `SELECT, INSERT`, `UPDATE (status, pay_url, paid_at, updated_at)`; `payments`: `INSERT` dan sequence; dilewati bila `PAYMENT_DB_PASSWORD` kosong |
+| `qms` (main user) | built into the image | schema owner; used by the backend (`DATABASE_URL`) |
+| `notify_ro` | `03_notify_role.sh` | `SELECT` on `tickets`, `queues`, `counters`, `push_subscriptions`, `push_devices`; `DELETE` on `push_subscriptions`, `push_devices` |
+| `mail_rw` | `04_mail_role.sh` | `SELECT` on `notification_outbox`; `UPDATE (sent_at, attempts, last_error, next_attempt_at, failed_at)`; `SELECT (id, email, username, email_notifications)` on `users` |
+| `auth_rw` | `06_auth_role.sh` | limited columns on `users` (SELECT/INSERT/UPDATE); `SELECT, INSERT` and `UPDATE (used_at)` on `user_action_tokens`; no DELETE |
+| `metrics_ro` | `07_metrics_role.sh` | only `pg_monitor` and `CONNECT`; skipped when `METRICS_DB_PASSWORD` is empty |
+| `payment_rw` | `08_payment_role.sh` | `owners`: `SELECT`/`INSERT (user_id, subscription_expires_at)`, `UPDATE (subscription_expires_at)`; `payment_orders`: `SELECT, INSERT`, `UPDATE (status, pay_url, paid_at, updated_at)`; `payments`: `INSERT` and the sequence; skipped when `PAYMENT_DB_PASSWORD` is empty |
 
-Tidak ada skrip `05_*`; tabel `payment_webhook_events` dan `payment_session_credits` yang mungkin disebut dokumen lama tidak ada di skema.
-`db/scripts/check_payment_grants.sql` memeriksa hak `payment_rw`.
+There is no `05_*` script. The tables `payment_webhook_events` and `payment_session_credits` that older documents may mention do not exist in the schema.
+`db/scripts/check_payment_grants.sql` checks the privileges of `payment_rw`.
 
-## Keterbatasan dan ketidaksesuaian yang diketahui
+## Known limitations and inconsistencies
 
-- `tickets_serving_has_counter` dipasang `NOT VALID` oleh `apply_schema.sql`, lalu langsung di-`VALIDATE` bila tidak ada pelanggar. Bila ada tiket `currently_served` tanpa counter, skrip mengeluarkan `WARNING` dan constraint tetap `NOT VALID` (skrip tidak berhenti); bereskan datanya lalu jalankan `VALIDATE CONSTRAINT` manual.
-- Badan `tickets_notify()` di `apply_schema.sql` kini identik dengan `01g_triggers.sql` (dulu baris komentar "Transisi sementara ..." tidak ada di `apply_schema.sql`).
-- `db/scripts/reset_seed_dev.sql` kini ikut men-`TRUNCATE` `payment_orders` (dulu tidak, sehingga `make seed` gagal bila ada baris pesanan karena FK ke `users`).
-- Kolom `queue_settings` yang tidak dipakai kode: lihat `db/migrations/README.md`.
+- `tickets_serving_has_counter` is added as `NOT VALID` by `apply_schema.sql`, and then immediately `VALIDATE`d if there are no violations. If there are tickets in `currently_served` without a counter, the script raises a `WARNING` and the constraint stays `NOT VALID` (the script does not stop); fix the data and then run `VALIDATE CONSTRAINT` manually.
+- The body of `tickets_notify()` in `apply_schema.sql` is now identical to `01g_triggers.sql` (previously a comment line "Transisi sementara ..." was missing from `apply_schema.sql`).
+- `db/scripts/reset_seed_dev.sql` now also `TRUNCATE`s `payment_orders` (previously it did not, so `make seed` failed when order rows existed because of the FK to `users`).
+- `queue_settings` columns that the code does not use: see `db/migrations/README.md`.
 
-## SQL asli
+## Original SQL
+
 
 ### `01a_accounts.sql`
 
 ```sql
 -- ============================================================================
--- 01a_accounts.sql — Akun dan langganan
--- Isi      : users, owners, payments
--- Bergantung: -
--- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
+-- 01a_accounts.sql — Accounts and subscriptions
+-- Contents : users, owners, payments
+-- Depends on: -
+-- Order and rules for all migration files: see db/migrations/README.md.
 -- ============================================================================
 
 CREATE TABLE users (
     id                   BIGSERIAL PRIMARY KEY,
     email                TEXT NOT NULL UNIQUE,
-    username             VARCHAR NOT NULL,       -- tidak unik; login menerima email atau username
-    password_hash        TEXT,                   -- NULL untuk akun Google-only
-    google_id            TEXT UNIQUE,            -- ID akun Google; login/matching pakai ini, bukan email (FR 4.17)
+    username             VARCHAR NOT NULL,       -- not unique; login accepts email or username
+    password_hash        TEXT,                   -- NULL for Google-only accounts
+    google_id            TEXT UNIQUE,            -- Google account ID; login/matching uses this, not email (FR 4.17)
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    -- Sakelar email notifikasi tiket. Dibaca trigger tickets_email_outbox saat kejadian.
+    -- Ticket email notification switch. Read by the trigger tickets_email_outbox when an event happens.
     email_notifications  BOOLEAN NOT NULL DEFAULT TRUE,
-    -- Sesi (JWT) yang diterbitkan sebelum waktu ini dicabut. Diisi saat password diganti atau direset.
+    -- Sessions (JWT) issued before this time are revoked. Set when the password is changed or reset.
     password_changed_at  TIMESTAMPTZ,
     -- Kapan pemilik membuktikan emailnya lewat tautan. NULL = belum terverifikasi.
-    -- Untuk database lama, apply_schema.sql menambahkan kolom ini dan memverifikasi akun yang sudah ada sekali saja.
+    -- For older databases, apply_schema.sql adds this column and verifies existing accounts once only.
     email_verified_at    TIMESTAMPTZ,
 
-    -- tiap user minimal punya satu cara login
+    -- every user must have at least one login method
     CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL)
 );
 
--- owners 1:1 dengan users (shared primary key), jadi user_id langsung menjadi PK. Pola yang sama dengan
--- queue_settings, ticket_notes, dan user_avatars. Ini juga mencegah satu user terdaftar sebagai owner dua kali.
+-- owners is 1:1 with users (shared primary key), so user_id becomes the PK directly. Same pattern as
+-- queue_settings, ticket_notes, and user_avatars. This also prevents one user from being registered as an owner twice.
 CREATE TABLE owners (
     user_id                  BIGINT PRIMARY KEY REFERENCES users(id),
 
-    -- Akhir masa langganan. "Aktif" TIDAK disimpan sebagai boolean; dihitung saat dicek
-    -- (subscription_expires_at > now()), supaya tidak butuh cron yang bisa telat atau gagal.
+    -- End of the subscription period. "Active" is NOT stored as a boolean; it is computed when checked
+    -- (subscription_expires_at > now()), so no cron job is needed that could be late or fail.
     subscription_expires_at  TIMESTAMPTZ NOT NULL,
 
     created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Jejak tiap pembayaran langganan. owners.subscription_expires_at hanya menyimpan tanggal aktif SEKARANG;
--- tabel ini menyimpan pembayaran yang membentuk tanggal itu. Ditulis oleh backend (POST /api/v1/owners/subscription/extend, amount 0).
+-- Record of each subscription payment. owners.subscription_expires_at only stores the CURRENT active date;
+-- this table stores the payments that make up that date. Written by payment-service when the order is paid (INSERT INTO payments; the old endpoint POST /api/v1/owners/subscription/extend, amount 0, no longer exists).
 CREATE TABLE payments (
     id                       BIGSERIAL PRIMARY KEY,
     owner_id                 BIGINT NOT NULL REFERENCES owners(user_id),
 
     amount                   NUMERIC(12,2) NOT NULL,
     currency                 VARCHAR NOT NULL DEFAULT 'IDR',
-    -- Kode saat ini hanya menulis 'monthly'; 'yearly' dan 'one_time' disiapkan.
+    -- The code currently only writes 'monthly'; 'yearly' and 'one_time' are prepared.
     plan_type                VARCHAR NOT NULL
         CHECK (plan_type IN ('monthly', 'yearly', 'one_time')),
 
-    extends_subscription_to  TIMESTAMPTZ NOT NULL,   -- tanggal berakhir baru setelah pembayaran ini
+    extends_subscription_to  TIMESTAMPTZ NOT NULL,   -- new end date after this payment
 
     status                   VARCHAR NOT NULL DEFAULT 'success'
         CHECK (status IN ('success', 'failed', 'refunded')),
@@ -303,10 +304,10 @@ CREATE TABLE payments (
 
 ```sql
 -- ============================================================================
--- 01b_queues.sql — Antrian
--- Isi      : queues, queue_settings, counters, queue_displays
--- Bergantung: 01a (owners)
--- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
+-- 01b_queues.sql — Queues
+-- Contents : queues, queue_settings, counters, queue_displays
+-- Depends on: 01a (owners)
+-- Order and rules for all migration files: see db/migrations/README.md.
 -- ============================================================================
 
 CREATE TABLE queues (
@@ -314,7 +315,7 @@ CREATE TABLE queues (
     owner_id       BIGINT NOT NULL REFERENCES owners(user_id),
     queue_name     TEXT NOT NULL,
     queue_desc     TEXT,
-    -- Prefix nomor tiket yang dilihat customer (mis. 'A' -> A-001). 1-3 huruf besar atau angka.
+    -- Number prefix the customer sees (e.g. 'A' -> A-001). 1-3 uppercase letters or digits.
     ticket_prefix  VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (ticket_prefix ~ '^[A-Z0-9]{1,3}$'),
     status         VARCHAR NOT NULL DEFAULT 'active'
         CHECK (status IN ('active', 'closed')),
@@ -322,75 +323,75 @@ CREATE TABLE queues (
     closed_at      TIMESTAMPTZ
 );
 
--- Pengaturan satu antrian (1:1 dengan queues). Kolom dikelompokkan menurut apakah kode memakainya.
+-- Settings of one queue (1:1 with queues). Columns are grouped by whether the code uses them.
 CREATE TABLE queue_settings (
     queue_id               BIGINT PRIMARY KEY REFERENCES queues(id) ON DELETE CASCADE,
 
-    -- [dipakai] Mode QR join: statis (kode tetap, bisa diganti owner) atau dinamis (kode berubah berkala).
+    -- [used] QR join mode: static (fixed code, the owner can replace it) or dynamic (the code changes periodically).
     qr_type                VARCHAR NOT NULL DEFAULT 'static'
         CHECK (qr_type IN ('static', 'dynamic')),
     qr_current_code        TEXT,
-    -- Kode join aktif (6 karakter). Unik di seluruh antrian karena pengunjung hanya mengetik kode, tanpa ID antrian.
-    -- Kode dinamis punya masa berlaku di qr_expires_at; kode statis tidak (NULL).
+    -- Active join code (6 characters). Unique across all queues because visitors only type the code, without a queue ID.
+    -- Dynamic codes have an expiry in qr_expires_at; static codes do not (NULL).
     qr_expires_at          TIMESTAMPTZ,
 
-    -- [tidak dipakai] Batas pendaftar per antrian. NULL = tanpa batas. Dihapus dari produk 31 Okt 2026.
+    -- [not used] Registration limit per queue. NULL = no limit. Removed from the product on 31 Oct 2026.
     registration_limit     INT,
 
-    -- [tidak dipakai] Jumlah nomor berikutnya/dilewati di layar publik. Digantikan queue_displays
-    -- (upcoming_count dan skipped_count), yang disimpan per antrian di tabel tersendiri.
+    -- [not used] Number of upcoming/skipped numbers on the public screen. Replaced by queue_displays
+    -- (upcoming_count and skipped_count), stored per queue in its own table.
     display_next_count     INT NOT NULL DEFAULT 3,
     display_skipped_count  INT NOT NULL DEFAULT 3,
 
-    -- [tidak dipakai] Rotasi kode QR per customer dan batas join per hari kalender. Dihapus dari produk
-    -- 31 Okt 2026. Jangan dikacaukan dengan skip_fallback di bawah.
+    -- [not used] QR code rotation per customer and join limit per calendar day. Removed from the product
+    -- on 31 Oct 2026. Do not confuse with skip_fallback below.
     fallback_mode          VARCHAR NOT NULL DEFAULT 'none'
         CHECK (fallback_mode IN ('none', 'once', 'max_n', 'unlimited')),
     fallback_offset        INT,
     fallback_max_attempts  INT,
 
-    -- [dipakai] Pengaturan Skip: apa yang terjadi pada nomor yang dilewati owner.
-    --   remove  : jadi 'skipped' dan tidak kembali
-    --   back    : kembali 'waiting' di posisi paling belakang (bawaan antrian baru)
-    --   after_n : kembali 'waiting' setelah N tiket yang sedang menunggu (skip_fallback_n)
-    -- skip_max_returns = berapa kali satu tiket boleh dikembalikan; sesudah itu 'skipped' permanen.
+    -- [used] Skip setting: what happens to a number the owner skips.
+    --   remove  : becomes 'skipped' and does not return
+    --   back    : returns to 'waiting' at the very back (default for new queues)
+    --   after_n : returns to 'waiting' after N waiting tickets (skip_fallback_n)
+    -- skip_max_returns = how many times one ticket may be returned; after that it is permanently 'skipped'.
     skip_fallback          VARCHAR NOT NULL DEFAULT 'back'
         CHECK (skip_fallback IN ('remove', 'back', 'after_n')),
     skip_fallback_n        INT CHECK (skip_fallback_n IS NULL OR skip_fallback_n >= 1),
     skip_max_returns       INT NOT NULL DEFAULT 1 CHECK (skip_max_returns >= 1),
 
-    -- [tidak dipakai] Kapan sort_key tiket antrian ini terakhir dinormalkan ulang. Murni catatan debug.
+    -- [not used] When the sort_key of this queue's tickets was last renormalized. Debug record only.
     last_rebalanced_at     TIMESTAMPTZ,
 
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Kode join aktif harus unik di seluruh antrian (lihat qr_current_code). Kode lama yang sudah diganti tidak disimpan.
+-- The active join code must be unique across all queues (see qr_current_code). Replaced old codes are not stored.
 CREATE UNIQUE INDEX queue_settings_qr_current_code_key ON queue_settings (qr_current_code) WHERE qr_current_code IS NOT NULL;
 
--- Loket pemanggil. Counter tidak menyimpan admin atau tiket yang sedang dilayani: siapa pun yang login sebagai
--- owner boleh memakai counter mana pun, dan tiketlah yang mencatat counter pemanggilnya (tickets.called_counter_id).
--- Dideklarasikan sebelum tickets karena tickets mereferensikannya.
+-- Calling counter. A counter does not store admins or the ticket it is serving: anyone who logs in as
+-- the owner may use any counter, and the ticket records the counter that called it (tickets.called_counter_id).
+-- Declared before tickets because tickets references it.
 CREATE TABLE counters (
     id          BIGSERIAL PRIMARY KEY,
     queue_id    BIGINT NOT NULL REFERENCES queues(id) ON DELETE CASCADE,
     name        TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    is_default  BOOLEAN NOT NULL DEFAULT FALSE,   -- counter default tidak bisa dihapus
+    is_default  BOOLEAN NOT NULL DEFAULT FALSE,   -- the default counter cannot be deleted
 
     CONSTRAINT counters_queue_id_name_key UNIQUE (queue_id, name)
 );
 
--- Layar publik antrian (fitur 4.5): satu baris per antrian yang layarnya diaktifkan. `token` acak 24 byte dipakai
--- di URL publik (/display/<token>); disimpan mentah karena owner perlu melihat URL-nya lagi. Siapa pun yang
--- memegang token bisa melihat nomor antrian itu, jadi notify_ro dan mail_rw sengaja tidak diberi hak di sini.
+-- Public screen of a queue (feature 4.5): one row per queue whose screen is enabled. The random 24-byte `token` is used
+-- in the public URL (/display/<token>); stored in plain text because the owner needs to see the URL again. Anyone who
+-- holds the token can see that queue's numbers, so notify_ro and mail_rw deliberately have no privileges here.
 CREATE TABLE queue_displays (
     queue_id        BIGINT PRIMARY KEY REFERENCES queues(id) ON DELETE CASCADE,
     token           TEXT NOT NULL UNIQUE,
-    upcoming_count  INT NOT NULL DEFAULT 5 CHECK (upcoming_count BETWEEN 0 AND 10),   -- nomor berikutnya yang ditampilkan
-    skipped_count   INT NOT NULL DEFAULT 0 CHECK (skipped_count BETWEEN 0 AND 10),    -- nomor dilewati yang ditampilkan
+    upcoming_count  INT NOT NULL DEFAULT 5 CHECK (upcoming_count BETWEEN 0 AND 10),   -- next numbers shown
+    skipped_count   INT NOT NULL DEFAULT 0 CHECK (skipped_count BETWEEN 0 AND 10),    -- skipped numbers shown
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    rotated_at      TIMESTAMPTZ                                                       -- terakhir token diganti
+    rotated_at      TIMESTAMPTZ                                                       -- last time the token was replaced
 );
 ```
 
@@ -398,43 +399,43 @@ CREATE TABLE queue_displays (
 
 ```sql
 -- ============================================================================
--- 01c_tickets.sql — Tiket
--- Isi      : tickets, ticket_notes
--- Bergantung: 01a (users), 01b (queues, counters)
--- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
+-- 01c_tickets.sql — Tickets
+-- Contents : tickets, ticket_notes
+-- Depends on: 01a (users), 01b (queues, counters)
+-- Order and rules for all migration files: see db/migrations/README.md.
 -- ============================================================================
 
 CREATE TABLE tickets (
     id                 BIGSERIAL PRIMARY KEY,
     queue_id           BIGINT NOT NULL REFERENCES queues(id) ON DELETE CASCADE,
 
-    -- Nomor yang dilihat customer; tetap, tidak pernah berubah.
+    -- The number the customer sees; fixed, never changes.
     ticket_number      INT NOT NULL,
 
-    -- Kunci urutan gap-based (fractional indexing ala Figma/Jira LexoRank): diberi jarak besar saat insert
-    -- (kelipatan 65536) supaya requeue/fallback (FR 4.14) cukup menyisipkan satu nilai baru di antara dua
-    -- sort_key yang ada, TANPA menulis ulang baris tiket lain. "Posisi ke berapa" dihitung saat baca lewat
-    -- ROW_NUMBER() OVER (PARTITION BY queue_id, status ORDER BY sort_key), bukan disimpan.
+    -- Gap-based ordering key (fractional indexing, like Figma/Jira LexoRank): given a large spacing on insert
+    -- (multiples of 65536) so that requeue/fallback (FR 4.14) only needs to insert one new value between two
+    -- existing sort_keys, WITHOUT rewriting other ticket rows. "Which position" is computed at read time via
+    -- ROW_NUMBER() OVER (PARTITION BY queue_id, status ORDER BY sort_key), not stored.
     sort_key           BIGINT NOT NULL,
 
-    -- Customer wajib login (revisi FR 4.2; sebelumnya anonim lewat device_token). Anti-double-join berbasis akun
-    -- (index tickets_queue_id_user_id_active_key di bawah), jadi tidak bisa dihindari dengan clear storage/incognito.
+    -- Customers must log in (revision of FR 4.2; previously anonymous via device_token). Anti-double-join is account-based
+    -- (index tickets_queue_id_user_id_active_key below), so it cannot be bypassed by clearing storage or using incognito mode.
     user_id            BIGINT NOT NULL REFERENCES users(id),
 
-    -- waiting          : menunggu giliran
-    -- currently_served : sedang dilayani (sumber kebenaran, bukan turunan dari completed)
-    -- completed        : selesai dilayani
-    -- cancelled        : dibatalkan customer
-    -- skipped          : dilewati owner dan tidak kembali
-    -- deleted          : dihapus owner (tidak ikut urutan; email "removed" dikirim lewat outbox)
+    -- waiting          : waiting for its turn
+    -- currently_served : being served (source of truth, not derived from completed)
+    -- completed        : finished being served
+    -- cancelled        : cancelled by the customer
+    -- skipped          : skipped by the owner and does not return
+    -- deleted          : removed by the owner (not part of the order; the "removed" email is sent through the outbox)
     status             VARCHAR NOT NULL DEFAULT 'waiting'
         CHECK (status IN ('waiting', 'currently_served', 'completed', 'cancelled', 'skipped', 'deleted')),
     skip_count         INT NOT NULL DEFAULT 0,
 
-    -- Counter yang memanggil tiket ini (diisi saat Next); NULL selama belum dipanggil atau counter-nya dihapus.
+    -- The counter that called this ticket (set on Next); NULL while not yet called or when that counter was deleted.
     called_counter_id  BIGINT REFERENCES counters(id) ON DELETE SET NULL,
     called_at          TIMESTAMPTZ,
-    -- Panggil ulang oleh owner: boleh sekali per pemanggilan (di-NULL-kan tiap tiket dipanggil).
+    -- Recall by the owner: allowed once per call (set to NULL each time the ticket is called).
     recalled_at        TIMESTAMPTZ,
 
     last_notified_at   TIMESTAMPTZ,
@@ -443,29 +444,29 @@ CREATE TABLE tickets (
     cancelled_at       TIMESTAMPTZ,
 
     UNIQUE (queue_id, ticket_number),
-    -- Jaring pengaman: dua tiket di antrian yang sama tidak boleh punya sort_key yang persis sama
-    -- (mencegah race condition insert merusak urutan secara diam-diam).
+    -- Safety net: two tickets in the same queue must not have the exact same sort_key
+    -- (prevents an insert race condition from silently breaking the order).
     UNIQUE (queue_id, sort_key),
 
-    -- Nomor yang sedang dilayani selalu punya counter.
+    -- A number being served always has a counter.
     CONSTRAINT tickets_serving_has_counter
         CHECK (status <> 'currently_served' OR called_counter_id IS NOT NULL)
 );
 
--- Anti-double-join: satu akun hanya punya satu tiket aktif per antrian. Hanya waiting dan currently_served
--- yang dihitung; setelah selesai atau dibatalkan, akun boleh join lagi dan mendapat nomor baru.
+-- Anti-double-join: one account has only one active ticket per queue. Only waiting and currently_served
+-- are counted; after completion or cancellation, the account may join again and get a new number.
 CREATE UNIQUE INDEX tickets_queue_id_user_id_active_key
     ON tickets (queue_id, user_id)
     WHERE status IN ('waiting', 'currently_served');
 
--- Multi-counter: tiap counter melayani paling banyak satu nomor. Dua perangkat di counter yang sama tidak bisa
--- membuat dua nomor dilayani bersamaan.
+-- Multi-counter: each counter serves at most one number. Two devices on the same counter cannot
+-- serve two numbers at the same time.
 CREATE UNIQUE INDEX tickets_one_serving_per_counter
     ON tickets (called_counter_id)
     WHERE status = 'currently_served';
 
--- Catatan owner untuk satu tiket. ticket_id menjadi PK (bukan id surrogate), jadi menulis catatan kedua berarti
--- UPDATE baris ini (mengedit catatan dan updated_at/updated_by), bukan INSERT baris baru.
+-- The owner's note for one ticket. ticket_id is the PK (not a surrogate id), so writing a second note means
+-- UPDATE of this row (editing the note and updated_at/updated_by), not an INSERT of a new row.
 CREATE TABLE ticket_notes (
     ticket_id   BIGINT PRIMARY KEY REFERENCES tickets(id) ON DELETE CASCADE,
     note        TEXT NOT NULL,
@@ -480,27 +481,27 @@ CREATE TABLE ticket_notes (
 
 ```sql
 -- ============================================================================
--- 01d_history.sql — Arsip riwayat
--- Isi      : queue_history
--- Bergantung: 01a (owners)
--- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
+-- 01d_history.sql — History archive
+-- Contents : queue_history
+-- Depends on: 01a (owners)
+-- Order and rules for all migration files: see db/migrations/README.md.
 -- ============================================================================
 
--- Tabel KHUSUS, terpisah dari queues/tickets yang operasional. Sengaja TIDAK punya FK ke queues(id) atau
+-- A SEPARATE table, apart from the operational queues/tickets. Deliberately has NO FK to queues(id) or
 -- tickets(id):
---   1. Antrian aktif tidak pernah muncul di sini secara struktural. Baris hanya ada bila Go sengaja menulisnya
---      (sekali, saat antrian ditutup).
---   2. Tanpa FK balik, baris live (queues/tickets) bebas dibersihkan tanpa memengaruhi arsip. Data operasional
---      (harus cepat dan selalu konsisten, NFR #2) sengaja dipisah dari data historis.
---   3. Tidak ada trigger penghapusan. Retensi "simpan 10 terbaru per owner" dan ekspor CSV/Excel murni logika Go.
--- Denormalisasi: satu baris = satu tiket, sudah termasuk nama customer dan catatan, supaya ekspor cukup SELECT
--- tanpa JOIN.
+--   1. Active queues never appear here structurally. Rows exist only if the Go code deliberately writes them
+--      (once, when the queue is closed).
+--   2. Without a back-reference, live rows (queues/tickets) can be cleaned without affecting the archive. Operational data
+--      (must be fast and always consistent, NFR #2) is deliberately separated from historical data.
+--   3. No delete trigger. Retention ("keep the 10 most recent per owner") and CSV/Excel export are pure Go logic.
+-- Denormalized: one row = one ticket, already including the customer's name and note, so an export only needs a SELECT
+-- without a JOIN.
 
 CREATE TABLE queue_history (
     id                 BIGSERIAL PRIMARY KEY,
     owner_id           BIGINT NOT NULL REFERENCES owners(user_id),
 
-    -- ID antrian asli saat masih live. Hanya referensi/debug, BUKAN FK (antrian aslinya boleh sudah dihapus).
+    -- Original queue ID saat masih live. Reference/debug only, NOT an FK (the original queue may already be deleted).
     original_queue_id  BIGINT NOT NULL,
     queue_name         TEXT NOT NULL,
     queue_opened_at    TIMESTAMPTZ NOT NULL,
@@ -509,7 +510,7 @@ CREATE TABLE queue_history (
     ticket_number      INT NOT NULL,
     customer_name      TEXT NOT NULL,
     customer_email     TEXT NOT NULL,
-    outcome            VARCHAR NOT NULL,   -- snapshot tickets.status saat diarsipkan
+    outcome            VARCHAR NOT NULL,   -- snapshot of tickets.status when archived
     joined_at          TIMESTAMPTZ NOT NULL,
     completed_at       TIMESTAMPTZ,
     cancelled_at       TIMESTAMPTZ,
@@ -524,14 +525,14 @@ CREATE TABLE queue_history (
 
 ```sql
 -- ============================================================================
--- 01e_notifications.sql — Notifikasi
--- Isi      : push_subscriptions, notification_outbox
--- Bergantung: 01a (users), 01b (queues), 01c (tickets)
--- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
+-- 01e_notifications.sql — Notifications
+-- Contents : push_subscriptions, notification_outbox
+-- Depends on: 01a (users), 01b (queues), 01c (tickets)
+-- Order and rules for all migration files: see db/migrations/README.md.
 -- ============================================================================
 
--- Langganan Web Push per browser (satu user bisa punya banyak perangkat). Dibaca notify-service (role notify_ro),
--- yang juga boleh menghapus langganan yang sudah kedaluwarsa.
+-- Web Push subscriptions per browser (one user can have several devices). Read by notify-service (role notify_ro),
+-- which may also delete expired subscriptions.
 CREATE TABLE push_subscriptions (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -541,27 +542,27 @@ CREATE TABLE push_subscriptions (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Outbox email (item 8): ke pemilik tiket, dan ke owner saat antriannya ditutup (kind queue-closed). Trigger tickets_email_outbox menulis baris di sini DALAM transaksi
--- yang sama dengan perubahan tiket (atau status antrian), jadi email tidak hilang walau mail-service mati. Worker di mail-service
--- (role mail_rw) mengirimnya dan mencoba ulang. Terpisah dari push: push tidak bergantung pada email sama sekali.
+-- Email outbox (item 8): to the ticket owner, and to the queue owner when the queue is closed (kind queue-closed). The trigger tickets_email_outbox writes rows here IN THE SAME transaction
+-- as the ticket change (or queue status change), so emails are not lost even if mail-service is down. The worker in mail-service
+-- (role mail_rw) sends them and retries. Separate from push: push does not depend on email at all.
 CREATE TABLE notification_outbox (
     id               BIGSERIAL PRIMARY KEY,
     kind             TEXT NOT NULL CHECK (kind IN ('joined', 'cancelled', 'removed', 'completed', 'queue-closed')),
-    ticket_id        BIGINT REFERENCES tickets(id) ON DELETE CASCADE,   -- NULL untuk queue-closed (tidak ada tiket)
-    queue_id         BIGINT REFERENCES queues(id) ON DELETE CASCADE,    -- diisi hanya untuk queue-closed
+    ticket_id        BIGINT REFERENCES tickets(id) ON DELETE CASCADE,   -- NULL for queue-closed (no ticket)
+    queue_id         BIGINT REFERENCES queues(id) ON DELETE CASCADE,    -- filled only for queue-closed
     user_id          BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    payload          JSONB NOT NULL,   -- snapshot: queue_id, queue_name, prefix, number, name (tanpa catatan owner)
+    payload          JSONB NOT NULL,   -- snapshot: queue_id, queue_name, prefix, number, name (without the owner's note)
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     next_attempt_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     sent_at          TIMESTAMPTZ,
     attempts         INT NOT NULL DEFAULT 0,
     last_error       TEXT,
-    failed_at        TIMESTAMPTZ,      -- gagal permanen (5xx atau batas percobaan): tidak dicoba lagi
+    failed_at        TIMESTAMPTZ,      -- permanent failure (5xx or attempt limit): not retried
 
-    UNIQUE (kind, ticket_id)           -- satu email per kejadian tiket (NULL dianggap berbeda, jadi tidak menghalangi queue-closed)
+    UNIQUE (kind, ticket_id)           -- one email per ticket event (NULLs are treated as distinct, so they do not block queue-closed)
 );
 
--- Satu antrian paling banyak menghasilkan satu email queue-closed.
+-- A queue produces at most one queue-closed email.
 CREATE UNIQUE INDEX uq_outbox_kind_queue
     ON notification_outbox (kind, queue_id)
     WHERE queue_id IS NOT NULL;
@@ -571,14 +572,14 @@ CREATE UNIQUE INDEX uq_outbox_kind_queue
 
 ```sql
 -- ============================================================================
--- 01f_profile_security.sql — Profil dan keamanan akun
--- Isi      : user_avatars, user_action_tokens
--- Bergantung: 01a (users)
--- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
+-- 01f_profile_security.sql — Profile and account security
+-- Contents : user_avatars, user_action_tokens
+-- Depends on: 01a (users)
+-- Order and rules for all migration files: see db/migrations/README.md.
 -- ============================================================================
 
--- Foto profil: JPEG 512x512 hasil olahan server, satu per user. Disimpan di database supaya ikut backup.
--- Batas 150 KB dijaga CHECK. notify_ro sengaja tidak diberi hak apa pun di tabel ini.
+-- Profile photo: 512x512 JPEG processed by the server, one per user. Stored in the database so that it is included in backups.
+-- The 150 KB limit is enforced by CHECK. notify_ro deliberately has no privileges on this table.
 CREATE TABLE user_avatars (
     user_id       BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     content_type  TEXT NOT NULL DEFAULT 'image/jpeg',
@@ -586,9 +587,9 @@ CREATE TABLE user_avatars (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Token sekali pakai untuk reset password dan verifikasi email. Yang disimpan adalah HASH token (SHA-256),
--- tidak pernah token mentahnya. 'email_change' disiapkan untuk verifikasi ganti email dan belum dipakai kode.
--- notify_ro dan mail_rw tidak diberi hak apa pun di tabel ini.
+-- Single-use tokens for password reset and email verification. What is stored is the token HASH (SHA-256),
+-- never the raw token. 'email_change' is prepared for verifying an email change and is not yet used by the code.
+-- notify_ro and mail_rw have no privileges on this table.
 CREATE TABLE user_action_tokens (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -605,24 +606,24 @@ CREATE TABLE user_action_tokens (
 
 ```sql
 -- ============================================================================
--- 01g_triggers.sql — Trigger
--- Isi      : fungsi dan trigger tickets_notify, tickets_email_outbox, queues_email_outbox
--- Bergantung: 01b (queues, counters), 01c (tickets), 01e (notification_outbox), 01a (users)
--- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
+-- 01g_triggers.sql — Triggers
+-- Contents : functions and triggers tickets_notify, tickets_email_outbox, queues_email_outbox
+-- Depends on: 01b (queues, counters), 01c (tickets), 01e (notification_outbox), 01a (users)
+-- Order and rules for all migration files: see db/migrations/README.md.
 -- ============================================================================
 
--- Dua trigger terpisah pada tickets dan satu pada queues, masing-masing satu fungsi. Isi fungsi tersimpan apa adanya di katalog
--- Postgres (termasuk komentar di dalamnya); jaga isinya sama dengan db/scripts/apply_schema.sql.
+-- Two separate triggers on tickets and one on queues, each with one function. The function body is stored as-is in the catalog
+-- of Postgres (including comments inside it); keep its content identical to db/scripts/apply_schema.sql.
 
--- Sinyal untuk notify-service (LISTEN queue_events). Hanya memancarkan; pengiriman push terjadi di luar
--- transaksi Next/Skip. NOTIFY dikirim saat COMMIT, jadi transaksi yang dibatalkan tidak mengirim apa pun.
--- Event: requeued, skipped, called, recalled. Tanpa outbox: push yang terjadi saat notify-service mati hilang.
+-- Signal for notify-service (LISTEN queue_events). It only emits; push delivery happens outside
+-- the Next/Skip transaction. NOTIFY is sent on COMMIT, so a rolled-back transaction sends nothing.
+-- Events: requeued, skipped, called, recalled. No outbox: a push that happens while notify-service is down is lost.
 CREATE FUNCTION tickets_notify() RETURNS trigger AS $$
 BEGIN
-    -- requeued harus dicek paling awal: skip dengan fallback juga menaikkan skip_count, tetapi hasilnya nomor
-    -- kembali menunggu, bukan skipped. Asal status bisa completed (Skip menurunkan nomor lebih dulu),
-    -- currently_served (counter dihapus), atau skipped. reason membedakan dua sumber; counter dibawa di payload
-    -- karena counter yang dihapus sudah tidak ada saat notify-service membaca.
+    -- requeued must be checked first: a skip with fallback also increments skip_count, but the result is a number
+    -- returning to waiting, not skipped. The origin status can be completed (Skip demotes the number first),
+    -- currently_served (counter deleted), or skipped. reason tells the two sources apart; the counter is carried in the payload
+    -- because a deleted counter no longer exists when notify-service reads.
     IF NEW.status = 'waiting' AND OLD.status IN ('currently_served', 'completed', 'skipped') THEN
         PERFORM pg_notify('queue_events', json_build_object(
             'kind', 'requeued', 'queue_id', NEW.queue_id, 'ticket_id', NEW.id,
@@ -631,7 +632,7 @@ BEGIN
     ELSIF NEW.skip_count > OLD.skip_count THEN
         PERFORM pg_notify('queue_events', json_build_object(
             'kind', 'skipped', 'queue_id', NEW.queue_id, 'ticket_id', NEW.id)::text);
-    -- Transisi sementara: 'completed' dibiarkan selama masa transisi (lihat apply_schema.sql).
+    -- Temporary transition: 'completed' is kept during the transition period (see apply_schema.sql).
     ELSIF NEW.status IN ('completed', 'currently_served') AND NEW.called_at IS NOT NULL
        AND NEW.called_at IS DISTINCT FROM OLD.called_at THEN
         PERFORM pg_notify('queue_events', json_build_object(
@@ -648,8 +649,8 @@ CREATE TRIGGER tickets_notify_trg
     AFTER UPDATE OF status, called_at, recalled_at, skip_count ON tickets
     FOR EACH ROW EXECUTE FUNCTION tickets_notify();
 
--- Menulis notification_outbox untuk empat kejadian tiket: joined (INSERT), cancelled, removed (status deleted),
--- dan completed (hanya dari currently_served). Lalu membangunkan worker mail-service lewat pg_notify('mail_outbox').
+-- Writes notification_outbox for four ticket events: joined (INSERT), cancelled, removed (status deleted),
+-- and completed (only from currently_served). Then wakes the mail-service worker via pg_notify('mail_outbox').
 CREATE FUNCTION tickets_email_outbox() RETURNS trigger AS $$
 DECLARE
     k TEXT;
@@ -666,8 +667,8 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    -- Sakelar pengguna dibaca saat kejadian: mematikan sakelar tidak membatalkan email lama,
-    -- tetapi kejadian sesudahnya tidak masuk outbox.
+    -- The user's switch is read at event time: turning the switch off does not cancel old emails,
+    -- but later events do not enter the outbox.
     INSERT INTO notification_outbox (kind, ticket_id, user_id, payload)
     SELECT k, NEW.id, u.id, jsonb_build_object(
         'queue_id', q.id, 'queue_name', q.queue_name, 'prefix', q.ticket_prefix,
@@ -687,17 +688,17 @@ CREATE TRIGGER tickets_email_outbox_trg
     AFTER INSERT OR UPDATE OF status ON tickets
     FOR EACH ROW EXECUTE FUNCTION tickets_email_outbox();
 
--- Menulis notification_outbox kind queue-closed ke OWNER saat antrian ditutup (status active menjadi closed),
--- lalu membangunkan worker mail-service lewat pg_notify('mail_outbox').
+-- Writes notification_outbox kind queue-closed to the OWNER when the queue is closed (status active becomes closed),
+-- then wakes the mail-service worker via pg_notify('mail_outbox').
 CREATE FUNCTION queues_email_outbox() RETURNS trigger AS $$
 BEGIN
-    -- Hanya penutupan oleh owner (active menjadi closed) yang menghasilkan email.
+    -- Only closing by the owner (active becomes closed) produces an email.
     IF NOT (OLD.status = 'active' AND NEW.status = 'closed') THEN
         RETURN NULL;
     END IF;
 
-    -- Sakelar pengguna dibaca saat kejadian, sama seperti email tiket. Tanpa tiket: ticket_id NULL, number 0.
-    -- Satu antrian paling banyak satu email berkat indeks unik parsial (kind, queue_id).
+    -- The user's switch is read at event time, the same as ticket emails. No ticket: ticket_id NULL, number 0.
+    -- One email per queue at most, thanks to the partial unique index (kind, queue_id).
     INSERT INTO notification_outbox (kind, ticket_id, queue_id, user_id, payload)
     SELECT 'queue-closed', NULL, q.id, u.id, jsonb_build_object(
         'queue_id', q.id, 'queue_name', q.queue_name, 'prefix', q.ticket_prefix,
@@ -722,15 +723,15 @@ CREATE TRIGGER queues_email_outbox_trg
 
 ```sql
 -- ============================================================================
--- 01h_role_grants.sql — Hak role
--- Isi      : blok GRANT bersyarat untuk role mail_rw
--- Bergantung: 01a (users), 01e (notification_outbox)
--- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
+-- 01h_role_grants.sql — Role privileges
+-- Contents : conditional GRANT block for role mail_rw
+-- Depends on: 01a (users), 01e (notification_outbox)
+-- Order and rules for all migration files: see db/migrations/README.md.
 -- ============================================================================
 
--- Role per service dibuat oleh 03..05_*_role.sh SETELAH file ini, dan skrip itu memberi hak sendiri. Blok ini
--- hanya berlaku bila role mail_rw SUDAH ada saat file ini dijalankan (mis. database dengan role yang tersisa),
--- jadi pada init database kosong ia tidak melakukan apa-apa. Daftar hak mail_rw sama dengan 04_mail_role.sh.
+-- Per-service roles are created by 03..05_*_role.sh AFTER this file, and those scripts grant their own privileges. This block
+-- only applies if the mail_rw role ALREADY exists when this file runs (e.g. a database with leftover roles),
+-- so on an empty database init it does nothing. The mail_rw privilege list is the same as 04_mail_role.sh.
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mail_rw') THEN
@@ -746,22 +747,22 @@ END $$;
 
 ```sql
 -- ============================================================================
--- Isi      : payment_orders (pesanan checkout BorderPay sebelum dan sesudah dibayar)
--- Bergantung: 01a (owners)
--- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
+-- Contents : payment_orders (BorderPay checkout orders before and after payment)
+-- Depends on: 01a (owners)
+-- Order and rules for all migration files: see db/migrations/README.md.
 -- ============================================================================
 
 CREATE TABLE payment_orders (
-    -- ID pesanan dari backend utama. Dipakai sebagai reference_id di BorderPay dan di webhook.
+    -- Order ID from the main backend. Used as reference_id at BorderPay and in the webhook.
     reference_id   TEXT PRIMARY KEY,
-    -- Mereferensi users, bukan owners: calon owner belum punya baris owners sampai pembayaran lunas.
+    -- References users, not owners: a prospective owner has no owners row until the payment is paid.
     owner_id       BIGINT NOT NULL REFERENCES users(id),
-    -- Nominal dalam rupiah; webhook harus membawa nominal yang sama.
+    -- Amount in rupiah; the webhook must carry the same amount.
     amount         BIGINT NOT NULL CHECK (amount > 0),
     plan_type      VARCHAR NOT NULL CHECK (plan_type IN ('monthly', 'yearly', 'one_time')),
     status         VARCHAR NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'paid', 'expired', 'failed')),
-    -- URL halaman pembayaran BorderPay (pay_url), diisi setelah BorderPay membalas checkout.
+    -- BorderPay payment page URL (pay_url), filled after BorderPay answers the checkout.
     pay_url        TEXT,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -773,16 +774,16 @@ CREATE TABLE payment_orders (
 
 ```sql
 -- ============================================================================
--- 01j_push_devices.sql — Token push perangkat native (FCM)
--- Isi      : push_devices
--- Bergantung: 01a (users)
--- Urutan dan aturan seluruh file migrasi: lihat README.md di folder ini.
+-- 01j_push_devices.sql — Native device push tokens (FCM)
+-- Contents : push_devices
+-- Depends on: 01a (users)
+-- Order and rules for all migration files: see db/migrations/README.md.
 -- ============================================================================
 
--- Token FCM per perangkat Android (aplikasi APK). Terpisah dari push_subscriptions karena bentuknya berbeda:
--- FCM memakai satu token, Web Push memakai endpoint dan dua kunci. Token yang sama dipindah ke akun yang terakhir
--- login (ON CONFLICT (token) di backend). Dibaca notify-service (role notify_ro), yang juga boleh menghapus token
--- yang sudah tidak berlaku (UNREGISTERED dari FCM).
+-- FCM tokens per Android device (APK app). Separate from push_subscriptions because the shape differs:
+-- FCM uses one token, Web Push uses an endpoint and two keys. The same token is moved to the account that last
+-- logged in (ON CONFLICT (token) in the backend). Read by notify-service (role notify_ro), which may also delete tokens
+-- that are no longer valid (UNREGISTERED from FCM).
 CREATE TABLE push_devices (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -797,18 +798,18 @@ CREATE TABLE push_devices (
 
 ```sql
 -- ============================================================================
--- 02_Indexes.sql — index non-unik untuk query lookup
+-- 02_Indexes.sql — non-unique indexes for lookup queries
 -- ============================================================================
--- Dijalankan setelah semua 01*.sql (Docker menjalankannya otomatis di database kosong).
+-- Run after all 01*.sql files (Docker runs it automatically on an empty database).
 --
--- Pembagian tugas dengan 01*.sql (urutan dan aturan: lihat README.md di folder ini):
---   * 01*.sql memuat constraint PRIMARY KEY dan UNIQUE, serta dua index unik parsial yang menegakkan aturan
---     bisnis (tickets_queue_id_user_id_active_key, tickets_one_serving_per_counter) di 01c_tickets.sql.
---   * File ini memuat SEMUA index lain, yaitu yang hanya mempercepat query. Index tiap tabel dikelompokkan
---     di bawah satu judul, dengan keterangan query yang dilayaninya.
+-- Division of work with 01*.sql (order and rules: see db/migrations/README.md):
+--   * 01*.sql contains the PRIMARY KEY and UNIQUE constraints, and the two partial unique indexes that enforce the
+--     business rules (tickets_queue_id_user_id_active_key, tickets_one_serving_per_counter) in 01c_tickets.sql.
+--   * This file contains ALL other indexes, i.e. those that only speed up queries. The indexes of each table are grouped
+--     under one heading, with a note on the queries they serve.
 --
--- Aman dijalankan berulang (IF NOT EXISTS). Nama index tidak boleh diganti tanpa migrasi: database yang
--- sudah berjalan dan db/scripts/apply_schema.sql memakai nama yang sama.
+-- Safe to run repeatedly (IF NOT EXISTS). Index names must not be changed without a migration: a running database
+-- and db/scripts/apply_schema.sql use the same names.
 -- ============================================================================
 
 
@@ -816,7 +817,7 @@ CREATE TABLE push_devices (
 -- payments
 -- ----------------------------------------------------------------------------
 
--- Riwayat pembayaran satu owner, berurutan menurut waktu.
+-- Payment history of one owner, ordered by time.
 CREATE INDEX IF NOT EXISTS idx_payments_owner_paid_at
     ON payments (owner_id, paid_at);
 
@@ -825,7 +826,7 @@ CREATE INDEX IF NOT EXISTS idx_payments_owner_paid_at
 -- queues
 -- ----------------------------------------------------------------------------
 
--- Daftar antrian satu owner, terbaru dulu.
+-- List of queues of one owner, newest first.
 CREATE INDEX IF NOT EXISTS idx_queues_owner_created_at
     ON queues (owner_id, created_at DESC);
 
@@ -834,19 +835,19 @@ CREATE INDEX IF NOT EXISTS idx_queues_owner_created_at
 -- tickets
 -- ----------------------------------------------------------------------------
 
--- Tiket yang menunggu, berurutan menurut sort_key. Partial: hanya status 'waiting', karena itu satu-satunya
--- status yang di-query berulang kali per detik (halaman status dan layar publik, NFR #4). Tiket
--- completed/cancelled/skipped tetap ada untuk histori, tetapi jarang dibaca dan tidak perlu membengkakkan
--- index yang sering dipakai ini.
+-- Waiting tickets, ordered by sort_key. Partial: only status 'waiting', because it is the only
+-- status queried repeatedly every second (status page and public screen, NFR #4). Tickets
+-- completed/cancelled/skipped stay for history, but are rarely read and should not bloat
+-- this frequently used index.
 CREATE INDEX IF NOT EXISTS idx_tickets_queue_waiting_sort_key
     ON tickets (queue_id, sort_key) WHERE status = 'waiting';
 
--- Nomor yang terakhir selesai dilayani (LastCompletedNumber, RecentCompletedNumbers). Partial: hanya
--- 'completed', terbaru dulu.
+-- The last number finished being served (LastCompletedNumber, RecentCompletedNumbers). Partial: only
+-- 'completed', newest first.
 CREATE INDEX IF NOT EXISTS idx_tickets_queue_completed
     ON tickets (queue_id, completed_at DESC, id DESC) WHERE status = 'completed';
 
--- Riwayat tiket satu customer (ListByUser), terbaru dulu.
+-- Ticket history of one customer (ListByUser), newest first.
 CREATE INDEX IF NOT EXISTS idx_tickets_user_created_at
     ON tickets (user_id, created_at DESC);
 
@@ -855,8 +856,8 @@ CREATE INDEX IF NOT EXISTS idx_tickets_user_created_at
 -- queue_history
 -- ----------------------------------------------------------------------------
 
--- Dipakai Go untuk dua hal: (1) daftar riwayat satu owner, terbaru dulu; (2) COUNT(DISTINCT original_queue_id)
--- per owner, untuk memutuskan apakah sudah lewat 10 antrian dan perlu DELETE.
+-- Used by Go for two things: (1) the history list of one owner, newest first; (2) COUNT(DISTINCT original_queue_id)
+-- per owner, to decide whether more than 10 queues have been kept and a DELETE is needed.
 CREATE INDEX IF NOT EXISTS idx_queue_history_owner_closed
     ON queue_history (owner_id, queue_closed_at);
 
@@ -865,7 +866,7 @@ CREATE INDEX IF NOT EXISTS idx_queue_history_owner_closed
 -- push_subscriptions
 -- ----------------------------------------------------------------------------
 
--- Semua langganan push satu user (kirim ke tiap perangkat, atau lepas saat logout).
+-- All push subscriptions of one user (send to each device, or remove on logout).
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
     ON push_subscriptions (user_id);
 
@@ -873,7 +874,7 @@ CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
 -- push_devices
 -- ----------------------------------------------------------------------------
 
--- Semua token FCM satu user (kirim ke tiap perangkat Android).
+-- All FCM tokens of one user (send to each Android device).
 CREATE INDEX IF NOT EXISTS idx_push_devices_user
     ON push_devices (user_id);
 
@@ -882,8 +883,8 @@ CREATE INDEX IF NOT EXISTS idx_push_devices_user
 -- notification_outbox
 -- ----------------------------------------------------------------------------
 
--- Antrean kirim email: hanya baris yang belum terkirim dan belum gagal permanen, urut menurut jadwal coba.
--- Partial, jadi index tetap kecil walau tabel menumpuk baris yang sudah terkirim.
+-- Email send queue: only rows that are not yet sent and not permanently failed, ordered by retry schedule.
+-- Partial, so the index stays small even when the table accumulates sent rows.
 CREATE INDEX IF NOT EXISTS idx_outbox_pending
     ON notification_outbox (next_attempt_at)
     WHERE sent_at IS NULL AND failed_at IS NULL;
@@ -893,8 +894,8 @@ CREATE INDEX IF NOT EXISTS idx_outbox_pending
 -- user_action_tokens
 -- ----------------------------------------------------------------------------
 
--- Token terbaru satu user per tujuan: batas kirim per jam (CountRecentTokens) dan pembatalan token lama.
--- (Namanya tidak berawalan idx_ karena sudah dipakai database yang berjalan; jangan diganti.)
+-- Latest token of one user per purpose: the per-hour send limit (CountRecentTokens) and cancellation of old tokens.
+-- (The name does not start with idx_ because the running database already uses it; do not change it.)
 CREATE INDEX IF NOT EXISTS user_action_tokens_user_idx
     ON user_action_tokens (user_id, purpose, created_at DESC);
 ```

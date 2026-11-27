@@ -1,339 +1,335 @@
 # Design: Queue Management System
 
-Dokumen ini menjelaskan arsitektur, keputusan desain, dan batasan sistem. Untuk bentuk request dan response
-lihat [api-contract.md](api-contract.md). Untuk alur pengguna lihat [FLOW.md](FLOW.md). Penjelasan kode per komponen ada di [dokumentasi-teknis/README.md](../../docs/dokumentasi-teknis/README.md).
+This document describes the architecture, design decisions, and constraints of the system. For request and response shapes
+see [api-contract.md](api-contract.md). For user flows see [FLOW.md](FLOW.md).
 
-## 1. Gambaran sistem
+## 1. System overview
 
-Sistem antrian untuk layanan tatap muka. Ada dua peran:
+A queue system for in-person services. There are two roles:
 
-- **Owner**: membuat antrian, memanggil nomor (Next, Skip, Panggil ulang), mengelola counter, menyisipkan atau menghapus nomor, menulis catatan, mengaktifkan layar publik, melihat riwayat dan mengekspornya, dan menutup antrian. Owner harus punya langganan aktif. Langganan dibayar lewat QRIS BorderPay (`POST /api/v1/owners/subscription/checkout`, lalu webhook `payment.paid` memperpanjang 30 hari). Pembayaran pertama user biasa sekaligus menjadikannya owner.
-- **Customer**: login, bergabung ke antrian lewat kode join (dari QR atau tautan), melihat nomor yang sedang dilayani dan posisinya secara real-time, membatalkan tiketnya, dan melihat riwayat tiket. Menerima notifikasi giliran (Web Push di browser, FCM di aplikasi Android) dan email.
+- **Owner**: creates queues, calls numbers (Next, Skip, Recall), manages counters, inserts or removes numbers, writes notes, turns on the public display, views and exports history, and closes queues. The owner must have an active subscription. The subscription is paid through QRIS BorderPay (`POST /api/v1/owners/subscription/checkout`, then the `payment.paid` webhook extends it by 30 days). A regular user's first payment also makes them an owner.
+- **Customer**: logs in, joins a queue with a join code (from a QR code or a link), sees the number being served and their position in real time, cancels their ticket, and views their ticket history. Receives turn notifications (Web Push in the browser, FCM in the Android app) and emails.
 
-Sistem terdiri dari lima service Go (backend antrian, `auth-service`, `notify-service`, `mail-service`, `payment-service`), satu PostgreSQL, satu frontend Expo, dan nginx. Ringkasan lintas-service ada di [README.md](../README.md) bagian 5. `payment-service` menangani pembayaran langganan lewat QRIS BorderPay sebagai service terpisah.
+The system consists of five Go services (the queue backend, `auth-service`, `notify-service`, `mail-service`, and `payment-service`), one PostgreSQL database, one Expo frontend, and nginx. The cross-service summary is in the Architecture section of [README.md](../README.md). `payment-service` handles subscription payments through QRIS BorderPay as a separate service.
 
 ```
    Browser (Expo web / native)
         │  HTTP (REST, JSON)  +  SSE (fetch stream)
         ▼
-   nginx  ── frontend (Metro di dev, statis di prod)
+   nginx  ── frontend (Metro in dev, static in prod)
         │  /api/  ──────────────►  Backend Go (Gin) :8080 ──► PostgreSQL (qms_db)
         │  /api/v1/users/ (login, register, google, forgot/reset password, verify-email)
         │          ──────────────►  auth-service :8094 ──► PostgreSQL (auth_rw)
-        │                              └──► mail-service :8092 (email reset password, verifikasi)
+        │                              └──► mail-service :8092 (password reset and verification emails)
         │  /api/v1/webhooks/borderpay ─► payment-service :8095 ──► PostgreSQL (payment_rw) + BorderPay
-        │     (backend memanggil payment-service lewat /internal/v1/payments untuk checkout)
+        │     (the backend calls payment-service through /internal/v1/payments for checkout)
 
    PostgreSQL ─ pg_notify('queue_events') ─► notify-service :8091 ─► Web Push / FCM
    PostgreSQL ─ notification_outbox       ─► mail-service         ─► SMTP
 ```
 
-Backend tidak memanggil auth-service: token login (JWT RS256) diterbitkan auth-service dan diverifikasi backend secara lokal dengan kunci publik. Jalur `/api/v1/users/me/*` lain (profil, avatar, preferensi, riwayat) tetap di backend.
+The backend does not call auth-service: login tokens (RS256 JWTs) are issued by auth-service and verified locally by the backend with the public key. The other `/api/v1/users/me/*` paths (profile, avatar, preferences, history) stay in the backend.
 
-Dalam produksi nginx berada di depan (lihat `deploy/nginx/`). Frontend dan API berada di satu origin,
-sehingga CORS hanya dibutuhkan saat frontend dibuka dari origin lain.
+In production nginx sits in front (see `deploy/nginx/`). The frontend and the API share one origin, so CORS is only needed when the frontend is opened from another origin.
 
 ## 2. Backend
 
-### 2.1 Lapisan
+### 2.1 Layers
 
 ```
 handler  →  service  →  repository  →  PostgreSQL (sqlx + pgx)
    │           │
    │           └── notifier (SSE hub)
-   └── dto (bentuk JSON)
+   └── dto (JSON shapes)
 ```
 
-- **handler** (`internal/handler`): membaca request, memanggil service, dan memetakan error ke kode HTTP dan kode error.
-  Tidak berisi aturan bisnis.
-- **service** (`internal/service`): semua aturan bisnis (kepemilikan, langganan, urutan antrian, join ulang).
-- **repository** (`internal/repository`): SQL. Tidak tahu aturan bisnis.
-- **dto** (`internal/dto`): bentuk JSON ke klien. Model database tidak pernah dikirim langsung.
+- **handler** (`internal/handler`): reads the request, calls a service, and maps errors to HTTP codes and error codes.
+  It contains no business rules.
+- **service** (`internal/service`): all business rules (ownership, subscription, queue order, rejoining).
+- **repository** (`internal/repository`): SQL. It knows no business rules.
+- **dto** (`internal/dto`): the JSON shapes sent to clients. Database models are never sent directly.
 
-Pola lapisan yang sama (`handler`, `service`, `repository`, `dto`, `model`, `router`, `config`, `apperror`, `httpserver`, tes di `internal/test`) dipakai backend, `auth-service`, `notify-service`, dan `mail-service`; paket yang tidak diperlukan tidak ada. Backend juga punya `app` (wiring), `logging`, `metrics`, `telemetry`, `requestid`, dan `paymentclient` (klien ke payment-service). `payment-service` lebih kecil: `borderpay`, `checkout`, `webhook`, `order`, `store`, `config`, memakai `net/http` tanpa Gin dan tanpa JWT (hanya `X-Service-Token` dan token webhook). Paket khusus: `notify-service` punya `listener`, `pusher`, dan `runner`; `mail-service` punya `mailer` dan `mailtemplate`; `auth-service` punya `google` dan `mailclient`.
+The same layer pattern (`handler`, `service`, `repository`, `dto`, `model`, `router`, `config`, `apperror`, `httpserver`, tests in `internal/test`) is used by the backend, `auth-service`, `notify-service`, and `mail-service`; packages that are not needed do not exist. The backend also has `app` (wiring), `logging`, `metrics`, `telemetry`, `requestid`, and `paymentclient` (the client for payment-service). `payment-service` is smaller: `borderpay`, `checkout`, `webhook`, `order`, `store`, `config`, using `net/http` without Gin and without JWT (only `X-Service-Token` and the webhook token). Specific packages: `notify-service` has `listener`, `pusher`, and `runner`; `mail-service` has `mailer` and `mailtemplate`; `auth-service` has `google` and `mailclient`.
 
-Setiap lapisan mendefinisikan interface yang dibutuhkannya sendiri (mis. `TicketRepository` di paket service).
-Akibatnya service bisa diuji dengan fake repository tanpa database, dan wiring dilakukan manual di
-`internal/app/wire.go` (`app.Wire`) dan `internal/app/engine.go`, yang dipanggil dari `cmd/server/main.go`.
+Each layer defines the interfaces it needs itself (for example `TicketRepository` in the service package).
+As a result, services can be tested with fake repositories and no database, and wiring is done manually in
+`internal/app/wire.go` (`app.Wire`) and `internal/app/engine.go`, called from `cmd/server/main.go`.
 
-### 2.2 Autentikasi dan otorisasi
+### 2.2 Authentication and authorization
 
-- **auth-service** (`auth-service/`, port internal 8094) memegang registrasi, login (email atau username), login Google, lupa dan reset password, serta verifikasi email. Hanya service ini yang memegang kunci privat penanda token. Path publik tetap `/api/v1/users/...`; nginx meneruskan `login`, `register`, `google`, `forgot-password`, `reset-password`, `verify-email`, dan `me/verify-email/resend` ke sana, dan menjawab 503 JSON `AUTH_UNAVAILABLE` bila ia mati. Role database `auth_rw` hanya menyentuh `users`, `user_action_tokens`, dan kolom yang memang diubah alur auth. Backend tidak memanggilnya dan `scripts/check-service-isolation.sh` menjaga agar tidak ada `depends_on` ke sana, jadi user yang sudah login tetap bisa memakai aplikasi saat auth-service mati.
-- Password di-hash dengan bcrypt (cost 10). Respons tidak pernah memuat password.
-- Token JWT RS256 berlaku 24 jam (`kid` `qms-1`). Klaim `sub` berisi user id, `iat` waktu terbit. Backend hanya memegang kunci publik (`JWT_PUBLIC_KEY_FILE`); token HS256 ditolak. Middleware `RequireAuthWithRevocation` memeriksa token di semua rute `/api/v1/queues` dan `/api/v1/users/me`, dan menolak token ber-`iat` yang lebih lama dari `users.password_changed_at` (sesi dicabut setelah reset password; perbandingan dalam detik). Token tanpa `iat` (terbitan lama) tetap sah sampai `exp` dan tidak memicu query. Biayanya satu query per request terautentikasi, diukur di item 13.
-- Password minimal 8 karakter dan maksimal 72 byte (`service.ValidatePassword`, dipakai registrasi dan reset).
-- **Reset password (item 9):** `POST /users/forgot-password` selalu 202 (tanpa enumerasi; pengiriman di goroutine, maksimal 32 bersamaan, selebihnya 503). Token 32 byte acak, hanya hash SHA-256-nya di `user_action_tokens` (30 menit, sekali pakai, token baru membatalkan yang lama, maksimal 3 per akun per jam). auth-service memanggil `mail-service` (`POST /internal/v1/send`, templat `password-reset`) lewat `internal/mailclient`; `MAIL_SERVICE_URL` dan `MAIL_SERVICE_TOKEN` diisi berpasangan, kosong = rute forgot/reset/verify tidak dipasang. `POST /users/reset-password` mengonsumsi token, mengganti password, mengisi `password_changed_at`, dan membatalkan token lain dalam satu transaksi; password diperiksa sebelum token disentuh. nginx: zona `reset_zone` (1 r/s, burst 5), log halaman `/reset-password` memakai format tanpa query (`qms_masked`) supaya token tidak tercatat, dan `Referrer-Policy: no-referrer`. `notify_ro` dan `mail_rw` tidak punya hak apa pun di `user_action_tokens`. Tabel yang sama disiapkan untuk verifikasi ganti email (`purpose = 'email_change'`), yang belum dibangun.
-- Login menerima email atau username. Pesan gagal login tidak membedakan mana yang salah.
-- **Login Google:** `POST /users/google {id_token}` menukar ID token Google (diperiksa auth-service sendiri terhadap JWKS Google; hanya aktif bila `GOOGLE_CLIENT_IDS` terisi) dengan token QMS. Akun tertaut lewat `google_id`; email baru membuat akun tanpa password yang sudah terverifikasi; email yang sudah terdaftar dengan password dijawab 409 `GOOGLE_LINK_REQUIRED` beserta `link_token` (JWT 5 menit, sekali pakai) dan **tidak** ditautkan otomatis: pemilik harus membuktikan password lewat `POST /users/google/link`. Di frontend tombol Google tidak tampil bila client ID belum dikonfigurasi.
-- **Verifikasi email:** `EMAIL_VERIFICATION_REQUIRED` (bawaan: menyala bila `MAIL_SERVICE_URL` terisi; nilainya harus sama di auth-service dan backend; menyalakannya tanpa mail-service membuat service menolak start). Registrasi mengirim tautan (`email-verify`, `/verify-email?token=`, berlaku 24 jam, maks 3 per jam per akun) memakai `user_action_tokens` (`purpose = 'email_verify'`) dan kolom `users.email_verified_at`. `POST /users/verify-email {token}` (publik; token tidak sah, kedaluwarsa, atau terpakai: 400 `INVALID_TOKEN`), `POST /users/me/verify-email/resend` (202 netral, 429 bila terlalu sering). Setelah verifikasi berhasil auth-service mengirim email konfirmasi `email-verified` di goroutine (best effort: gagal hanya masuk log, hasil verifikasi tidak berubah). `GET /users/me` (backend) memuat `email_verified` (selalu `true` bila fitur mati). Guard `RequireVerified` di backend membaca database pada tiap panggilan (bukan klaim JWT) dan menolak 403 `EMAIL_NOT_VERIFIED` untuk buat antrian, checkout langganan, dan join nomor baru (join ulang yang mengembalikan tiket lama tidak ditolak). Frontend: halaman publik `/verify-email` dan banner dengan tombol kirim ulang di Profil. Email verifikasi dikirim sinkron-lepas: registrasi mengirimnya di goroutine (gagal hanya masuk log, registrasi tetap 200). Dev: email masuk Mailpit. Prod: ikut `MAIL_MODE` (`mailpit` bawaan, atau `smtp` untuk SMTP nyata, mis. Gmail; `scripts/check-mail-mode.sh` memperingatkan bahwa pengguna baru tidak bisa memverifikasi di mode `mailpit`, dan `make verify-user` menandai satu akun). Migrasi DB lama (`db/scripts/apply_schema.sql`) menambah kolom, memperluas CHECK `purpose`, dan memverifikasi semua akun yang sudah ada sekali saja (kolom belum ada), supaya tidak ada yang terkunci. Seed dan akun demo dibuat sudah terverifikasi. Tidak ada cek MX atau allowlist domain: bukti kepemilikan email adalah klik tautan.
-- Foto profil: lihat 6c.
+- **auth-service** (`auth-service/`, internal port 8094) handles registration, login (email or username), Google login, forgot and reset password, and email verification. Only this service holds the private key that signs tokens. Public paths stay `/api/v1/users/...`; nginx forwards `login`, `register`, `google`, `forgot-password`, `reset-password`, `verify-email`, and `me/verify-email/resend` there, and answers with a JSON 503 `AUTH_UNAVAILABLE` when it is down. The database role `auth_rw` only touches `users`, `user_action_tokens`, and the columns that the auth flows change. The backend does not call it, and `scripts/check-service-isolation.sh` keeps any `depends_on` to it out, so users who are already logged in can keep using the app while auth-service is down.
+- Passwords are hashed with bcrypt (cost 10). Responses never contain the password.
+- RS256 JWT tokens are valid for 24 hours (`kid` `qms-1`). The `sub` claim holds the user id and `iat` the issue time. The backend only holds the public key (`JWT_PUBLIC_KEY_FILE`); HS256 tokens are rejected. The `RequireAuthWithRevocation` middleware checks tokens on all `/api/v1/queues` and `/api/v1/users/me` routes, and rejects a token whose `iat` is older than `users.password_changed_at` (sessions are revoked after a password reset; the comparison is in seconds). Tokens without `iat` (issued before this change) remain valid until `exp` and do not trigger a query. The cost is one query per authenticated request, measured in item 13.
+- A password must be between 8 characters and 72 bytes (`service.ValidatePassword`, used by registration and reset).
+- **Password reset (item 9):** `POST /users/forgot-password` always returns 202 (no account enumeration; sending happens in a goroutine, at most 32 at a time, the rest get 503). The token is 32 random bytes, and only its SHA-256 hash is stored in `user_action_tokens` (30 minutes, single use, a new token cancels the old one, at most 3 per account per hour). auth-service calls `mail-service` (`POST /internal/v1/send`, template `password-reset`) through `internal/mailclient`; `MAIL_SERVICE_URL` and `MAIL_SERVICE_TOKEN` are set as a pair, and when empty the forgot, reset, and verify routes are not registered. `POST /users/reset-password` consumes the token, changes the password, sets `password_changed_at`, and cancels the other tokens in one transaction; the password is checked before the token is touched. nginx: zone `reset_zone` (1 r/s, burst 5), the log for the `/reset-password` page uses a format without the query (`qms_masked`) so the token is not recorded, and `Referrer-Policy: no-referrer`. `notify_ro` and `mail_rw` have no privileges on `user_action_tokens`. The same table is prepared for verifying an email change (`purpose = 'email_change'`), which is not built yet.
+- Login accepts an email or a username. A failed login message does not say which part was wrong.
+- **Google login:** `POST /users/google {id_token}` exchanges a Google ID token (checked by auth-service itself against Google's JWKS; active only when `GOOGLE_CLIENT_IDS` is set) for a QMS token. An account is matched by `google_id`; a new email creates an account without a password that is already verified; an email that is already registered with a password gets 409 `GOOGLE_LINK_REQUIRED` together with a `link_token` (a 5-minute single-use JWT) and is **not** linked automatically: the owner must prove the password through `POST /users/google/link`. In the frontend, the Google button is hidden when the client ID is not configured.
+- **Email verification:** `EMAIL_VERIFICATION_REQUIRED` (default: on when `MAIL_SERVICE_URL` is set; the value must be the same in auth-service and the backend; turning it on without mail-service makes the service refuse to start). Registration sends a link (`email-verify`, `/verify-email?token=`, valid 24 hours, at most 3 per account per hour) using `user_action_tokens` (`purpose = 'email_verify'`) and the column `users.email_verified_at`. `POST /users/verify-email {token}` (public; a token that is invalid, expired, or used gives 400 `INVALID_TOKEN`), and `POST /users/me/verify-email/resend` (neutral 202, 429 when too frequent). After a successful verification, auth-service sends the `email-verified` confirmation email in a goroutine (best effort: a failure is only logged, and the verification result does not change). `GET /users/me` (backend) includes `email_verified` (always `true` when the feature is off). The `RequireVerified` guard in the backend reads the database on each call (not the JWT claims) and rejects 403 `EMAIL_NOT_VERIFIED` for creating a queue, subscription checkout, and joining with a new number (rejoining that returns the old ticket is not rejected). Frontend: the public page `/verify-email` and a banner with a resend button on the Profile page. The verification email is sent by a fire-and-forget pattern: registration sends it in a goroutine (a failure is only logged, and registration still returns 200). Development: emails go to Mailpit. Production: follows `MAIL_MODE` (`mailpit` by default, or `smtp` for a real SMTP server, e.g. Gmail; `scripts/check-mail-mode.sh` warns that new users cannot verify in `mailpit` mode, and `make verify-user` marks one account). The older DB migration (`db/scripts/apply_schema.sql`) adds the columns, widens the `purpose` CHECK, and verifies all existing accounts once (the column did not exist before), so no one is locked out. Seed and demo accounts are created as verified. There is no MX or domain allowlist check: proof of ownership is clicking the link.
+- Profile photo: see 6c.
 
-Aturan akses:
+Access rules:
 
-| Operasi | Siapa boleh |
+| Operation | Who may do it |
 |---|---|
-| Buat, ubah, atur izin, daftar antrian | Owner dengan langganan aktif (daftar tetap ada tanpa langganan, tetapi hanya antrian aktif) |
-| Tutup, detail, daftar tiket, Next, Skip, Panggil ulang, sisip, hapus nomor, counter, catatan, pengaturan layar publik | Owner antrian |
-| Batalkan tiket | Pemegang tiket |
-| Riwayat antrian dan ekspor (`/history/*`) | Owner antrian; customer memakai `/users/me/history` |
-| Layar publik (`/display/:token`) | Siapa pun yang memegang token (tanpa login) |
-| Info antrian (`/info`) | Semua user yang login |
-| Status antrian dan SSE | Owner atau pemegang tiket di antrian itu |
-| Join | Semua user yang login, selama antrian aktif |
+| Create, change, set permissions, list queues | The owner with an active subscription (the list remains available without a subscription, but only active queues) |
+| Close, details, ticket list, Next, Skip, Recall, insert, remove number, counters, notes, public display settings | The queue's owner |
+| Cancel a ticket | The ticket holder |
+| Queue history and export (`/history/*`) | The queue's owner; customers use `/users/me/history` |
+| Public display (`/display/:token`) | Anyone who holds the token (no login) |
+| Queue information (`/info`) | Any logged-in user |
+| Queue status and SSE | The owner or a ticket holder in that queue |
+| Join | Any logged-in user while the queue is active |
 
-Permintaan yang tidak diizinkan dibalas **404**, bukan 403. Dengan begitu keberadaan antrian milik orang lain
-tidak bisa ditebak.
+Requests that are not allowed get **404**, not 403. This way the existence of another person's queue cannot be guessed.
 
-### 2.3 Model data
+### 2.3 Data model
 
-Semua tabel di skema kini dipakai (16 tabel; peta per file di `db/migrations/README.md`):
+All tables in the schema are used now (16 tables; the map per file is in `db/migrations/README.md`):
 
-| Tabel | Fungsi |
+| Table | Purpose |
 |---|---|
-| `users` | Akun (email, username, password hash, `google_id`, `email_notifications`, `password_changed_at`, `email_verified_at`) |
-| `owners` | Penanda owner dan masa berlaku langganan (`subscription_expires_at`) |
-| `payments` | Riwayat tiap penambahan langganan (ditulis payment-service saat webhook `payment.paid` diterapkan) |
-| `queues`, `queue_settings` | Antrian (nama, deskripsi, status, pemilik, `ticket_prefix`) dan pengaturan Skip (`skip_fallback`, `skip_fallback_n`, `skip_max_returns`) |
-| `counters` | Counter per antrian (satu default, maks 10) |
-| `tickets`, `ticket_notes`, `queue_history` | Tiket (`waiting`, `currently_served`, `completed`, `cancelled`, `skipped`, `deleted`), catatan owner, dan riwayat |
-| `push_subscriptions` | Langganan Web Push per browser |
-| `push_devices` | Token FCM per perangkat Android (satu token satu baris, pindah ke akun yang terakhir login) |
-| `notification_outbox` | Antrian email tiket dan `queue-closed` yang dikirim mail-service |
-| `user_action_tokens` | Hash token reset password dan verifikasi email (dikelola auth-service) |
-| `user_avatars` | Foto profil |
-| `queue_displays` | Token dan pengaturan layar publik |
+| `users` | Accounts (email, username, password hash, `google_id`, `email_notifications`, `password_changed_at`, `email_verified_at`) |
+| `owners` | Owner marker and subscription expiry (`subscription_expires_at`) |
+| `payments` | History of each subscription extension (written by payment-service when the `payment.paid` webhook is applied) |
+| `queues`, `queue_settings` | Queues (name, description, status, owner, `ticket_prefix`) and Skip settings (`skip_fallback`, `skip_fallback_n`, `skip_max_returns`) |
+| `counters` | Counters per queue (one default, at most 10) |
+| `tickets`, `ticket_notes`, `queue_history` | Tickets (`waiting`, `currently_served`, `completed`, `cancelled`, `skipped`, `deleted`), owner notes, and history |
+| `push_subscriptions` | Web Push subscriptions per browser |
+| `push_devices` | FCM tokens per Android device (one token per row, moved to the account that logged in last) |
+| `notification_outbox` | Queue of ticket and `queue-closed` emails sent by mail-service |
+| `user_action_tokens` | Hashes of password reset and email verification tokens (managed by auth-service) |
+| `user_avatars` | Profile photos |
+| `queue_displays` | Token and settings of the public display |
 
-Batasan penting di `tickets`:
-- Indeks unik parsial `tickets_queue_id_user_id_active_key` pada `(queue_id, user_id) WHERE status IN ('waiting','currently_served')`: satu user hanya punya satu tiket aktif per antrian; setelah tiketnya selesai atau dibatalkan ia boleh join lagi dan mendapat nomor baru.
-- Indeks unik parsial `tickets_one_serving_per_counter`: satu counter hanya melayani satu nomor.
-- `UNIQUE (queue_id, sort_key)`: dua tiket tidak boleh punya urutan yang sama, termasuk yang sudah selesai.
+Important constraints on `tickets`:
+- Partial unique index `tickets_queue_id_user_id_active_key` on `(queue_id, user_id) WHERE status IN ('waiting','currently_served')`: a user has only one active ticket per queue; after the ticket is completed or cancelled, the user may join again and receive a new number.
+- Partial unique index `tickets_one_serving_per_counter`: a counter serves only one number.
+- `UNIQUE (queue_id, sort_key)`: two tickets must not have the same order, including completed ones.
 
-### 2.4 Urutan antrian (sort_key)
+### 2.4 Queue order (sort_key)
 
-- Setiap tiket baru mendapat `sort_key` = nilai maksimum `sort_key` di antrian itu + **65536** (gap).
-- Maksimum dihitung dari **semua** tiket di antrian, bukan hanya yang `waiting`. Alasannya: `UNIQUE (queue_id, sort_key)`
-  berlaku untuk tiket yang sudah selesai juga. Kalau hanya tiket `waiting` yang dihitung, antrian yang sudah habis akan
-  menghasilkan kunci yang bentrok dan join gagal terus (ini bug yang pernah terjadi).
-- Gap besar memungkinkan penyisipan di tengah (`POST /insert`) tanpa menulis ulang banyak baris.
-- Next memilih tiket `waiting` dengan `sort_key` terkecil.
+- Each new ticket gets a `sort_key` = the maximum `sort_key` in that queue + **65536** (the gap).
+- The maximum is computed from **all** tickets in the queue, not only the `waiting` ones. The reason: `UNIQUE (queue_id, sort_key)`
+  also applies to completed tickets. If only `waiting` tickets were counted, a queue that had been drained would produce a
+  colliding key and joins would keep failing (this bug happened once).
+- The large gap allows inserting in the middle (`POST /insert`) without rewriting many rows.
+- Next selects the `waiting` ticket with the smallest `sort_key`.
 
-### 2.5 Siklus tiket
+### 2.5 Ticket lifecycle
 
 ```
             join                 next
-  (baru) ───────────► waiting ───────────► currently_served ───────► completed
-                         │  ▲                     │      (Next berikutnya / antrian ditutup)
-                         │  └── skip dengan fallback (back | after_n) atau counter dihapus
+  (new) ───────────► waiting ───────────► currently_served ───────► completed
+                         │  ▲                     │      (next Next / queue closed)
+                         │  └── skip with fallback (back | after_n) or counter deleted
                          ├── cancel (customer)            ──► cancelled
                          ├── remove (owner)               ──► deleted
-                         └── skip permanen (fallback `remove`) ──► skipped
+                         └── permanent skip (fallback `remove`) ──► skipped
 ```
 
-Aturan Skip diatur per antrian lewat `queue_settings.skip_fallback` (`remove|back|after_n`), `skip_fallback_n`, dan `skip_max_returns`. Bawaan antrian baru: `skip_fallback = back` (kembali ke paling belakang) dan `skip_max_returns = 1`; antrian yang sudah ada menyimpan nilainya sendiri. Setiap counter melayani satu nomor (`currently_served`). Menghapus counter yang sedang melayani mengembalikan nomornya ke depan antrian.
+Skip rules are set per queue with `queue_settings.skip_fallback` (`remove|back|after_n`), `skip_fallback_n`, and `skip_max_returns`. Defaults for a new queue: `skip_fallback = back` (return to the very back) and `skip_max_returns = 1`; existing queues keep their own values. Each counter serves one number (`currently_served`). Deleting a counter that is serving returns its number to the front of the queue.
 
-- **Join ulang** (user yang sudah punya tiket di antrian itu): backend mengembalikan **tiket yang sudah ada** dengan 200.
-  Tidak ada nomor kedua dan tidak ada event baru. Ini menjawab kasus scan QR dua kali atau double-tap.
-- **Next** pada antrian tanpa tiket `waiting`: 409 `QUEUE_EMPTY`, tanpa perubahan data.
+- **Rejoining** (a user who already has a ticket in that queue): the backend returns the **existing ticket** with 200.
+  No second number and no new event. This answers the case of scanning a QR code twice or double-tapping.
+- **Next** on a queue with no `waiting` ticket: 409 `QUEUE_EMPTY`, with no data change.
 
-### 2.6 Nomor yang ditampilkan
+### 2.6 Displayed numbers
 
-- `current_number` = `ticket_number` tiket `currently_served` (satu per counter; customer melihat nomor yang dilayani di antrian itu).
-- `previous_number` = tiket yang baru selesai (`completed`) sebelumnya.
-- `next_number` = tiket `waiting` pertama.
-- `waiting_ahead` = jumlah tiket `waiting` dengan `sort_key` lebih kecil dari milik requester.
+- `current_number` = the `ticket_number` of the `currently_served` ticket (one per counter; customers see the number being served in that queue).
+- `previous_number` = the most recently completed (`completed`) ticket.
+- `next_number` = the first `waiting` ticket.
+- `waiting_ahead` = the number of `waiting` tickets with a smaller `sort_key` than the requester's.
 
-Tampilan customer memakai angka ini langsung dari `GET /status`. Papan owner berbeda: ia memuat daftar tiket
-(`GET /tickets`) lalu menurunkan posisi yang sama di frontend (`utils/queue-view.ts`), dengan aturan yang sama dengan di atas.
+The customer view uses these numbers directly from `GET /status`. The owner's board is different: it loads the ticket list
+(`GET /tickets`) and derives the same positions in the frontend (`utils/queue-view.ts`), using the same rules as above.
 
 ### 2.7 Real-time (SSE)
 
-- Backend punya **satu hub** di memori (`sse.NewHub()` di `app.Wire`) yang menyimpan *room* per antrian (kunci `queue_id`; layar publik memakai room `-queueID`). Klien yang tersambung ke `/queues/:id/event` didaftarkan ke room antrian itu.
-- Service memanggil `notifier` setelah transaksi selesai (join, next, skip, cancel, remove, counter, update, close, QR). Event: `ticket_joined`, `ticket_next`, `ticket_skipped`, `ticket_cancelled`, `ticket_removed`, `counter_updated`, `queue_closed`, `queue_updated`, `queue_qr_updated`, dan `display_changed` (hanya ke room layar publik, lihat 6d). Hub mengirim event ke semua klien di room antrian itu.
-- Setiap ~25 detik dikirim heartbeat `: ping` agar koneksi tidak diputus proxy. Header `X-Accel-Buffering: no` mematikan buffering di nginx.
-- Klien yang putus dibersihkan dari hub (`defer Unsubscribe`).
-- Event hanya membawa data yang perlu untuk tampilan. `user_id` dan `sort_key` dibuang dari `TicketEvent`, karena penerima bisa
-  customer lain di antrian yang sama.
+- The backend has **one hub** in memory (`sse.NewHub()` in `app.Wire`) that keeps a *room* per queue (keyed by `queue_id`; the public display uses the room `-queueID`). A client connected to `/queues/:id/event` is registered in that queue's room.
+- Services call `notifier` after the transaction is complete (join, next, skip, cancel, remove, counter, update, close, QR). Events: `ticket_joined`, `ticket_next`, `ticket_skipped`, `ticket_cancelled`, `ticket_removed`, `counter_updated`, `queue_closed`, `queue_updated`, `queue_qr_updated`, and `display_changed` (only to the public display room, see 6d). The hub sends the event to every client in that queue's room.
+- A `: ping` heartbeat is sent about every 25 seconds so that the connection is not dropped by a proxy. The header `X-Accel-Buffering: no` turns off buffering in nginx.
+- A disconnected client is removed from the hub (`defer Unsubscribe`).
+- Events only carry the data needed for display. `user_id` and `sort_key` are removed from `TicketEvent`, because the recipients can be other customers in the same queue.
 
-**Batasan**: hub ada di memori satu proses. Menjalankan lebih dari satu instance backend memerlukan mekanisme pub/sub bersama
-(mis. PostgreSQL LISTEN/NOTIFY atau Redis) supaya event sampai ke semua instance.
+**Limitation**: the hub lives in the memory of one process. Running more than one backend instance requires a shared pub/sub mechanism
+(e.g. PostgreSQL LISTEN/NOTIFY or Redis) so that events reach every instance.
 
-### 2.8 Format respons
+### 2.8 Response format
 
-- Snake_case dan `null` untuk field kosong, dibentuk lewat DTO (`NewXxxResponse`).
-- Sukses dibungkus `{"data": ...}`, gagal dibungkus `{"error": {"code", "message"}}`.
-- Kode error adalah string tetap (`NOT_FOUND`, `QUEUE_EMPTY`, dst.) agar klien bisa menangani tanpa membaca teks pesan.
+- Snake_case and `null` for empty fields, shaped through DTOs (`NewXxxResponse`).
+- Success is wrapped as `{"data": ...}`; failure is wrapped as `{"error": {"code", "message"}}`.
+- Error codes are fixed strings (`NOT_FOUND`, `QUEUE_EMPTY`, etc.) so that clients can handle them without reading the message text.
 
 ## 3. Frontend
 
-### 3.1 Teknologi
+### 3.1 Technology
 
-- **Expo SDK 57** dengan Expo Router (routing berbasis file). Target utama web (`output: static`), native menyusul.
-- **NativeWind** (Tailwind untuk React Native) untuk gaya.
-- **Zustand** dengan `persist` untuk sesi login (token dan nama tampilan). Disimpan di AsyncStorage, di web sebagai localStorage.
-- **SSE** lewat `fetch` stream (bukan `EventSource`), karena `EventSource` tidak bisa mengirim header `Authorization`.
+- **Expo SDK 57** with Expo Router (file-based routing). The main target is web (`output: static`); native follows.
 
-### 3.2 Struktur
+- **NativeWind** (Tailwind for React Native) for styling.
+- **Zustand** with `persist` for the login session (token and display name). Stored in AsyncStorage, and in localStorage on web.
+- **SSE** through a `fetch` stream (not `EventSource`), because `EventSource` cannot send the `Authorization` header.
+
+### 3.2 Structure
 
 ```
 src/
-  app/          rute (Expo Router). Membaca store, memanggil hook/lib, meneruskan data ke komponen.
-  components/   komponen presentational: hanya props, tanpa fetch dan tanpa store.
-  hooks/        data dari server (use-queue-board, use-queue-spot, use-my-tickets, use-queue-events, ...).
-  lib/          klien HTTP (api.ts), fungsi per endpoint (tickets.ts, queues.ts), util murni.
-  store/        authStore (sesi login).
-  utils/        logika murni (queue-view.ts: nomor sebelumnya/sekarang/berikutnya).
-  constants/    tokens.js: satu sumber warna dan radius.
+  app/          routes (Expo Router). Read the store, call hooks/lib, pass data to components.
+  components/   presentational components: props only, no fetch and no store.
+  hooks/        server data (use-queue-board, use-queue-spot, use-my-tickets, use-queue-events, ...).
+  lib/          HTTP client (api.ts), per-endpoint functions (tickets.ts, queues.ts), pure utilities.
+  store/        authStore (login session).
+  utils/        pure logic (queue-view.ts: previous/current/next numbers).
+  constants/    tokens.js: one source of colors and radii.
 ```
 
-Aturan: komponen di `components/` tidak mengimpor store dan tidak memanggil API. Dengan begitu tampilan bisa diuji
-dan dirombak tanpa menyentuh data.
+Rule: components in `components/` do not import the store and do not call the API. This way the UI can be tested
+and reworked without touching data.
 
-### 3.3 Routing dan penjagaan
+### 3.3 Routing and guards
 
-- `(user)/` dijaga `AuthGate` mode `required`. Tanpa token, user diarahkan ke login dengan parameter `next`.
-- `join` (`/join?t=<token>`) juga memakai `required`: user harus login sebelum bergabung. `AuthGate`
-  menerima `nextPath` eksplisit agar query token tidak hilang saat diarahkan ke login.
-- `display/[token]` publik (tanpa `AuthGate`): layar untuk monitor ruang tunggu.
-- Login ada di `/login` (mode `guest`); `/` hanya pintu masuk yang meneruskan ke `/login` (tamu) atau `next`/`/dashboard` (sudah login). `forgot-password`, `reset-password`, dan `verify-email` publik (tanpa `AuthGate`, karena tautan sering dibuka di perangkat yang belum masuk); `link-google` memakai `guest` dan hanya bisa dipakai bila ada link token yang menunggu di memori (selain itu kembali ke login). `(user)/` juga memuat riwayat, profil, `subscription`, dan `queues/[queueId]/live`.
-- `ticket/[queueId]` menampilkan status tiket yang sudah dimiliki (dibuka dari Antrian Saya/Riwayat).
-- Login dan register memakai `guest`: user yang sudah login langsung dibawa ke `next` atau dashboard.
-- `subscription`: layar langganan memanggil `POST /api/v1/owners/subscription/checkout` (metode `qris`), lalu membuka `pay_url` BorderPay. User biasa melihat kartu "Jadi Owner"; pembayaran pertama menjadikannya owner. Status langganan dimuat ulang lewat tombol REFRESH setelah webhook diterapkan.
-- `next` diperiksa dengan `sanitizeNext` agar tidak bisa dipakai untuk membuka situs lain (open redirect).
-- Respons 401 dari API menghapus sesi lokal dan mengarahkan ke login.
+- `(user)/` is guarded by `AuthGate` in `required` mode. Without a token, the user is sent to login with a `next` parameter.
+- `join` (`/join?t=<token>`) also uses `required`: the user must log in before joining. `AuthGate`
+  accepts an explicit `nextPath` so that the token query is not lost when redirecting to login.
+- `display/[token]` is public (without `AuthGate`): the screen for a waiting-room monitor.
+- Login is at `/login` (`guest` mode); `/` is only an entry point that forwards to `/login` (guests) or to `next`/`/dashboard` (logged in). `forgot-password`, `reset-password`, and `verify-email` are public (without `AuthGate`, because their links are often opened on a device that is not logged in); `link-google` uses `guest` and can only be used when a link token is waiting in memory (otherwise it returns to login). `(user)/` also contains history, profile, `subscription`, and `queues/[queueId]/live`.
+- `ticket/[queueId]` shows the status of a ticket the user already has (opened from My Queues or History).
+- Login and register use `guest`: a logged-in user is sent directly to `next` or the dashboard.
+- `subscription`: the subscription screen calls `POST /api/v1/owners/subscription/checkout` (method `qris`), then opens BorderPay's `pay_url`. A regular user sees a "Become an Owner" card; the first payment makes them an owner. The subscription status is reloaded with the REFRESH button after the webhook is applied.
+- `next` is checked with `sanitizeNext` so that it cannot be used to open another site (open redirect).
+- A 401 response from the API removes the local session and sends the user to login.
 
-### 3.4 Layout responsif
+### 3.4 Responsive layout
 
-Satu komponen kerangka (`ResponsiveScreenLayout`) dipakai untuk dua tampilan:
-- Lebar ≥ 1024 px: header dengan panel profil, konten dibatasi lebar maksimum, dan halaman detail antrian memakai
-  layout dua kolom yang tidak di-scroll sebagai halaman (hanya kolom kanan yang di-scroll).
-- Lebih sempit: header HP dengan tombol kembali, tab bar bawah, dan panel profil dari kanan.
+One shell component (`ResponsiveScreenLayout`) is used for two views:
+- Width ≥ 1024 px: a header with the profile panel, content limited to a maximum width, and the queue details page uses
+  a two-column layout that does not scroll as a page (only the right column scrolls).
+- Narrower: a phone header with a back button, a bottom tab bar, and the profile panel slides in from the right.
 
-Tab-root (Beranda, Antrian Saya, Riwayat, Profil) tidak punya tombol kembali. Halaman turunan punya.
+Root tabs (Home, My Queues, History, Profile) have no back button. Child pages do.
 
-### 3.5 Tema
+### 3.5 Theme
 
-- Warna semantik (`background`, `surface`, `foreground`, `line`, dst.) didefinisikan sekali di `tokens.js` untuk mode terang dan gelap.
-- Mode diatur lewat `colorScheme` NativeWind. Pilihan pengguna disimpan dengan kunci `qms-theme`.
-- Warna tetap (mis. papan antrian dan header gelap) tidak ikut tema, karena memang dirancang gelap di kedua mode.
-- Warna yang diberikan sebagai prop non-style (ikon, spinner) memakai `useThemeColor`.
+- Semantic colors (`background`, `surface`, `foreground`, `line`, etc.) are defined once in `tokens.js` for light and dark mode.
+- The mode is set through NativeWind's `colorScheme`. The user's choice is stored under the key `qms-theme`.
+- Fixed colors (for example the dark queue board and header) do not follow the theme, because they are designed to be dark in both modes.
+- Colors passed as non-style props (icons, spinners) use `useThemeColor`.
 
-### 3.6 Konfigurasi alamat API
+### 3.6 API address configuration
 
-`EXPO_PUBLIC_API_URL` dipakai saat build. Kalau kosong, frontend memakai host halaman yang dibuka dengan port 8080.
-Dengan nginx, `EXPO_PUBLIC_API_URL` harus diisi dengan origin nginx. Kalau tidak, frontend memanggil port 8080 langsung dan melewati proxy.
+`EXPO_PUBLIC_API_URL` is used at build time. If it is empty, the frontend uses the host of the opened page with port 8080.
+With nginx, `EXPO_PUBLIC_API_URL` must be set to the nginx origin. Otherwise the frontend calls port 8080 directly and bypasses the proxy.
 
-### 3.7 Umpan balik dan popup
+### 3.7 Feedback and popups
 
-- **Toast** (`components/ui/Toast.tsx`): galat sementara lewat `ToastProvider` di layout root dan `useErrorToast`. Hilang sendiri setelah 5 detik, pesan yang sama tidak ditumpuk, dan saat ada popup terbuka toast tampil di dalam popup paling atas supaya tidak tertutup latar gelap.
-- **Popup** (`components/ui/ModalCard.tsx`): kerangka bersama dengan latar gelap; tap latar atau tombol back memanggil `onRequestClose`. `ConfirmModal` adalah popup konfirmasi dua tombol di atasnya (Next, Skip, hapus foto, pengaturan layar publik). Mode `compact` mengecilkan padding kartu dari 20 menjadi 8 px.
-- **Konfirmasi password** (daftar dan reset password): pesan "Password tidak sama" tampil inline di bawah field konfirmasi, bukan toast, dan hanya setelah field itu kehilangan fokus atau tombol kirim ditekan (`utils/confirm-password.ts`), bukan sambil mengetik.
+- **Toast** (`components/ui/Toast.tsx`): temporary errors through `ToastProvider` in the root layout and `useErrorToast`. It disappears by itself after 5 seconds, identical messages are not stacked, and when a popup is open the toast is shown inside the topmost popup so that it is not hidden by the dark backdrop.
+- **Popup** (`components/ui/ModalCard.tsx`): a shared frame with a dark backdrop; tapping the backdrop or the back button calls `onRequestClose`. `ConfirmModal` is a two-button confirmation popup on top of it (Next, Skip, delete photo, public display settings). `compact` mode reduces the card padding from 20 to 8 px.
+- **Password confirmation** (sign up and reset password): the message "Passwords do not match" appears inline under the confirmation field, not as a toast, and only after that field loses focus or the submit button is pressed (`utils/confirm-password.ts`), not while typing.
 
 ## 4. Deployment
 
-- Stack berjalan lewat Docker Compose: `docker-compose.yml` (dev, kode di-mount, hot reload; termasuk Mailpit) dan `docker-compose.prod.yml` (demo/produksi di belakang Cloudflare Tunnel, env dari `.env.prod`, nginx hanya di `127.0.0.1:8080`, frontend statis). Layanan: `db`, `notify-service`, `mail-service`, `auth-service`, `payment-service`, `backend`, `frontend`, `nginx` (dan `mailpit` pada mode tertentu). Keduanya tidak bisa jalan bersamaan (port 8080).
-- Hanya nginx yang membuka port. Service internal tidak punya `ports:`; `auth-service` hanya terjangkau lewat rute `/api/v1/users/...` tertentu di nginx (503 JSON `AUTH_UNAVAILABLE` bila mati) dan sengaja tanpa `depends_on` dari backend atau nginx. Kunci publik JWT (`keys/` untuk prod, `keys-dev/` untuk dev) dipasang ke backend dan kunci privatnya hanya ke auth-service (`scripts/gen-auth-keys.sh`).
-- nginx meneruskan `/api/` ke backend, memakai rute SSE tanpa buffer (antrian dan layar publik), rate limit (login dan registrasi, join, reset password, avatar, layar publik), menyamarkan token di log, dan memblokir `/internal/`. Konfigurasinya ada di `deploy/nginx/`. TLS dipegang Cloudflare; nginx hanya HTTP.
-- Backend menolak start di `APP_ENV=production` bila `ALLOWED_ORIGINS` berisi `*` atau origin bukan https, atau `PUBLIC_APP_URL` bukan https (pemeriksaan rahasia lemah di backend saat ini dikomentari; auth-service memeriksa `PUBLIC_APP_URL` https dan `MAIL_SERVICE_TOKEN` minimal 32 karakter). Shutdown rapi: SIGINT/SIGTERM menutup SSE, menuntaskan request (`SHUTDOWN_TIMEOUT`), lalu menutup database.
-- Skema DB: `db/migrations/01*.sql` (satu file per domain; peta di `db/migrations/README.md`) hanya jalan pada data directory kosong; DB yang sudah berjalan memakai `db/scripts/apply_schema.sql` (idempoten) dan skrip role (`03_notify_role.sh`, `04_mail_role.sh`, `06_auth_role.sh`, `07_metrics_role.sh`, `08_payment_role.sh`). Perintah harian lewat `Makefile` dan `scripts/` (backup, akun demo, `check-service-isolation.sh`, `check-mail-mode.sh`).
-- Semua variabel sensitif diisi saat container dijalankan. Tidak ada rahasia di dalam image.
+- The stack runs through Docker Compose: `docker-compose.yml` (dev, code mounted, hot reload; includes Mailpit) and `docker-compose.prod.yml` (demo/production behind Cloudflare Tunnel, environment from `.env.prod`, nginx only on `127.0.0.1:8080`, static frontend). Services: `db`, `notify-service`, `mail-service`, `auth-service`, `payment-service`, `backend`, `frontend`, `nginx` (and `mailpit` in some modes). The two cannot run at the same time (port 8080).
+- Only nginx publishes a port. Internal services have no `ports:`; `auth-service` is only reachable through certain `/api/v1/users/...` routes in nginx (JSON 503 `AUTH_UNAVAILABLE` when it is down), and it deliberately has no `depends_on` from the backend or nginx. The JWT public key (`keys/` for prod, `keys-dev/` for dev) is mounted into the backend, and the private key only into auth-service (`scripts/gen-auth-keys.sh`).
+- nginx forwards `/api/` to the backend, uses unbuffered SSE routes (queues and the public display), rate limits (login and registration, join, password reset, avatar, public display), masks tokens in the log, and blocks `/internal/`. Its configuration is in `deploy/nginx/`. TLS is handled by Cloudflare; nginx only serves HTTP.
+- The backend refuses to start with `APP_ENV=production` if `ALLOWED_ORIGINS` contains `*` or a non-https origin, or if `PUBLIC_APP_URL` is not https (the weak-secret check in the backend is currently commented out; auth-service checks that `PUBLIC_APP_URL` is https and that `MAIL_SERVICE_TOKEN` is at least 32 characters). Graceful shutdown: SIGINT/SIGTERM close SSE, finish requests (`SHUTDOWN_TIMEOUT`), and then close the database.
+- DB schema: `db/migrations/01*.sql` (one file per domain; map in `db/migrations/README.md`) only runs on an empty data directory; an existing database uses `db/scripts/apply_schema.sql` (idempotent) and the role scripts (`03_notify_role.sh`, `04_mail_role.sh`, `06_auth_role.sh`, `07_metrics_role.sh`, `08_payment_role.sh`). Daily commands go through the `Makefile` and `scripts/` (backup, demo accounts, `check-service-isolation.sh`, `check-mail-mode.sh`).
+- All sensitive variables are supplied when the container runs. There are no secrets inside the image.
 
-## 5. Keputusan desain
+## 5. Design decisions
 
-| Keputusan | Alasan |
+| Decision | Reason |
 |---|---|
-| Join ulang mengembalikan tiket yang ada, bukan error | Spek: customer yang scan ulang harus melihat nomornya. Double-tap tetap menghasilkan satu tiket. |
-| Hanya nomor (tanpa nama customer) di tampilan publik | Privasi. Nama tidak ada di data tiket. |
-| 404 untuk akses yang tidak diizinkan | Keberadaan data orang lain tidak bocor. |
-| SSE lewat `fetch` stream | Header `Authorization` tetap dikirim. Token tidak masuk ke URL. |
-| Event SSE tanpa `user_id` dan `sort_key` | Penerima bisa customer lain. |
-| Customer menerima nomor yang sudah dihitung backend; owner menurunkannya dari daftar tiket | Customer tidak perlu daftar tiket lengkap. Owner memang butuh semua tiket untuk papan, jadi penurunannya di frontend tidak menambah beban. Aturannya sama di kedua sisi. |
-| Layar dan komponen dipisah (presentational) | Tampilan bisa diuji dan dirombak tanpa menyentuh data. |
-| Daftar antrian tetap ada tanpa langganan, tetapi hanya yang aktif | Owner tetap bisa melihat antrian yang masih berjalan. |
-| Gap 65536 untuk `sort_key` | Penyisipan di tengah bisa dilakukan tanpa menulis ulang baris lain. |
-| Library Go diseragamkan: `gin` untuk HTTP, `sqlx` dengan driver `pgx` untuk query, pgx v5.12.0 di semua modul | Satu cara menulis handler, middleware, dan repository di semua service, jadi pola logging, request ID, dan metrik tidak perlu dua versi. Berlaku untuk backend, auth-service, mail-service (gin dan sqlx), dan notify-service (sqlx). |
-| LISTEN/NOTIFY tetap memakai koneksi `pgx` langsung, bukan `sqlx` (mail-service `LISTEN mail_outbox`, notify-service `LISTEN queue_events`) | `WaitForNotification` hanya ada di API pgx native; `database/sql` tidak punya padanannya. Koneksi LISTEN dibuka khusus (`pgx.Connect`), tidak diambil dari pool sqlx, supaya koneksi yang menunggu notifikasi tidak ikut dipakai ulang oleh query biasa. Karena itu `pgx` tetap menjadi dependensi langsung di mail-service dan notify-service. |
-| notify-service tidak memakai `gin`; `/health` tetap `net/http` | Satu-satunya endpoint HTTP-nya hanya `GET /health` (48 baris, tanpa middleware). Menambah gin hanya untuk satu rute menambah dependensi dan ukuran binary tanpa manfaat. `net/http` di `internal/pusher` adalah klien Web Push, bukan server. |
-| Modul Go tidak berbagi `go.work` atau modul bersama; versi library dijaga sama secara manual | Tiap service dibangun dan di-deploy mandiri (Dockerfile sendiri). Paket kecil yang dipakai bersama (mis. logging, metrik) sengaja disalin per service. Saat menaikkan versi library bersama, naikkan di semua modul yang memakainya. |
+| Rejoining returns the existing ticket, not an error | The specification: a customer who scans again must see their number. A double tap still produces one ticket. |
+| Only the number (no customer name) on the public display | Privacy. Names are not part of the display data. |
+| 404 for forbidden access | The existence of other people's data does not leak. |
+| SSE through a `fetch` stream | The `Authorization` header is still sent. The token does not go into the URL. |
+| SSE events without `user_id` and `sort_key` | The recipients can be other customers. |
+| The customer receives the number computed by the backend; the owner derives it from the ticket list | Customers do not need the full ticket list. The owner needs all tickets for the board anyway, so deriving the positions in the frontend adds no load. The rules are the same on both sides. |
+| Presentational components separated from data | The UI can be tested and reworked without touching data. |
+| The queue list stays available without a subscription, but only active queues are shown | The owner can still see queues that are still running. |
+| A gap of 65536 for `sort_key` | Insertion in the middle can be done without rewriting other rows. |
+| Go libraries standardized: `gin` for HTTP, `sqlx` with the `pgx` driver for queries, pgx v5.12.0 in every module | One way to write handlers, middleware, and repositories in every service, so the logging, request ID, and metrics patterns do not need two versions. Applies to the backend, auth-service, mail-service (gin and sqlx), and notify-service (sqlx). |
+| LISTEN/NOTIFY keeps using a direct `pgx` connection, not `sqlx` (mail-service `LISTEN mail_outbox`, notify-service `LISTEN queue_events`) | `WaitForNotification` exists only in the native pgx API; `database/sql` has no equivalent. The LISTEN connection is opened separately (`pgx.Connect`), not taken from the sqlx pool, so a connection waiting for notifications is not reused by ordinary queries. This is why `pgx` remains a direct dependency in mail-service and notify-service. |
+| notify-service does not use `gin`; `/health` stays on `net/http` | Its only HTTP endpoint is `GET /health` (48 lines, no middleware). Adding gin for one route would add dependencies and binary size with no benefit. The `net/http` in `internal/pusher` is a Web Push client, not a server. |
+| Go modules do not share a `go.work` or a shared module; library versions are kept in sync manually | Each service is built and deployed on its own (its own Dockerfile). Small shared packages (for example logging and metrics) are deliberately copied into each service. When a shared library is upgraded, upgrade it in every module that uses it. |
 
-## 6. Strategi pengujian
+## 6. Testing strategy
 
-| Lapisan | Alat | Lokasi |
+| Layer | Tool | Location |
 |---|---|---|
-| Unit backend | `go test` dengan fake repository, stub service, spy notifier, dan mock | `backend/internal/test/<lapisan>_test` (dto, handler, service, repository, router, middleware, sse, config, dan lain-lain) |
-| Integration backend | `go test -tags integration` pada PostgreSQL (schema sementara) | `backend/internal/test/integration_test` |
-| Unit frontend | `node --test` (`npm run test:unit`) untuk logika murni | `frontend/tests/unit` |
-| Unit service lain | `go test ./...` di tiap service | `auth-service`, `mail-service`, `notify-service`, `payment-service` |
-| End-to-end | Playwright (tidak dijalankan secara default; tes email butuh Mailpit) | `frontend/playwright` |
+| Backend unit | `go test` with fake repositories, stub services, spy notifiers, and mocks | `backend/internal/test/<layer>_test` (dto, handler, service, repository, router, middleware, sse, config, and others) |
+| Backend integration | `go test -tags integration` on PostgreSQL (temporary schema) | `backend/internal/test/integration_test` |
+| Frontend unit | `node --test` (`npm run test:unit`) for pure logic | `frontend/tests/unit` |
+| Unit tests of the other services | `go test ./...` in each service | `auth-service`, `mail-service`, `notify-service`, `payment-service` |
+| End-to-end | Playwright (not run by default; email tests need Mailpit) | `frontend/playwright` |
 
-Ekspektasi tes diturunkan dari product overview proyek (dokumen di luar repo ini), bukan dari kode.
+Test expectations are derived from the project's product overview (a document outside this repository), not from the code.
 
-## 6b. notify-service (Web Push dan FCM)
+## 6b. notify-service (Web Push and FCM)
 
-Service Go terpisah, internal, tidak dipublikasikan nginx. Hanya membuka `GET :8091/health` (200 bila LISTEN aktif) untuk healthcheck compose; log JSON; push memakai timeout 8 detik dan coba ulang 3 kali untuk kegagalan sementara. Trigger `tickets_notify_trg` (`AFTER UPDATE OF status, called_at, recalled_at, skip_count`) memanggil `pg_notify('queue_events', {kind: called|recalled|skipped|requeued, queue_id, ticket_id})`; `requeued` juga membawa `reason` (`skip` atau `counter_closed`) dan `counter` (nama counter, dibaca saat trigger karena counter yang dihapus sudah hilang saat notify-service membaca), dan dicek lebih dulu daripada `skipped`; NOTIFY dikirim saat COMMIT. `notify-service` LISTEN (harus ke primary), membaca data dengan role `notify_ro` (SELECT `tickets`, `queues`, `counters`, `push_subscriptions`, `push_devices`; DELETE `push_subscriptions`, `push_devices`), lalu mengirim lewat webpush-go (browser) atau FCM HTTP v1 (aplikasi Android). `pusher.Dispatcher` memilih kanal per perangkat, jadi `service` tidak tahu kanal mana yang dipakai. Penerima: `called` → pemilik nomor dan tiket waiting terdepan; `recalled` → pemilik nomor; `skipped` (skip permanen) → pemilik nomor yang dilewati; `requeued` (nomor kembali ke `waiting` dari skip dengan fallback atau karena counter dihapus) → pemilik nomor, dengan posisi baru yang dihitung dari `sort_key` (`PositionOf`). Langganan 404/410 (Web Push) dan token `UNREGISTERED` atau tidak sah (FCM) dihapus; `INVALID_ARGUMENT` yang bukan soal token tidak menghapus apa pun. Teks nomor dibuat satu fungsi (`service.Label`). Struktur berlapis: `internal/{config,model,dto,repository,service,listener,pusher,runner,httpserver,apperror}` (`listener` menerima NOTIFY, `pusher` mengirim Web Push dengan coba ulang dan memilih kanal, `fcm` mengirim ke FCM dengan access token OAuth dari service account yang di-cache, `runner` merangkai keduanya), tes di `internal/test/`. Belum ada outbox: push saat service mati hilang.
+A separate Go service, internal, not published by nginx. It only exposes `GET :8091/health` (200 when LISTEN is active) for the Compose healthcheck; JSON logs; push uses an 8-second timeout and 3 retries for temporary failures. The trigger `tickets_notify_trg` (`AFTER UPDATE OF status, called_at, recalled_at, skip_count`) calls `pg_notify('queue_events', {kind: called|recalled|skipped|requeued, queue_id, ticket_id})`; `requeued` also carries `reason` (`skip` or `counter_closed`) and `counter` (the counter name, read by the trigger because a deleted counter no longer exists when notify-service reads it). The trigger checks `requeued` before `skipped`. NOTIFY is sent on COMMIT. `notify-service` LISTENs (it must connect to the primary), reads data with the role `notify_ro` (SELECT on `tickets`, `queues`, `counters`, `push_subscriptions`, `push_devices`; DELETE on `push_subscriptions` and `push_devices`), and then sends through webpush-go (browsers) or FCM HTTP v1 (the Android app). `pusher.Dispatcher` picks the channel per device, so `service` does not know which channel is used. Recipients: `called` → the owner of the number and the first waiting ticket; `recalled` → the owner of the number; `skipped` (permanent skip) → the owner of the skipped number; `requeued` (the number returned to `waiting` after a skip with fallback, or because a counter was deleted) → the owner of the number, with the new position computed from `sort_key` (`PositionOf`). Subscriptions that return 404 or 410 (Web Push) and tokens that are `UNREGISTERED` or invalid (FCM) are deleted; an `INVALID_ARGUMENT` that is not about a token deletes nothing. The text of a number is produced by one function (`service.Label`). Layered structure: `internal/{config,model,dto,repository,service,listener,pusher,runner,httpserver,apperror}` (`listener` receives NOTIFY, `pusher` sends Web Push with retries and selects the channel, `fcm` sends to FCM with a cached OAuth access token from the service account, `runner` connects them); tests in `internal/test/`. There is no outbox yet: a push sent while the service is down is lost.
 
-Backend: `POST /queues/:id/recall` (`tickets.recalled_at`, 3 detik, sekali per pemanggilan) dan `GET /push/public-key`, `POST /push/subscribe|unsubscribe`. Langganan unik per `endpoint`; subscribe memindahkannya ke user yang login. Untuk aplikasi Android: `POST /push/fcm/register|unregister` (token unik per perangkat, pindah ke akun yang login; rute hanya ada bila `FCM_PROJECT_ID` diisi). FCM bersifat opsional: tanpa kredensial, notify-service tidak membaca `push_devices` dan Web Push tetap jalan.
+The backend: `POST /queues/:id/recall` (`tickets.recalled_at`, 3 seconds, once per call) and `GET /push/public-key`, `POST /push/subscribe|unsubscribe`. A subscription is unique per `endpoint`; subscribing moves it to the logged-in user. For the Android app: `POST /push/fcm/register|unregister` (a token is unique per device and moves to the logged-in account; the routes only exist when `FCM_PROJECT_ID` is set). FCM is optional: without credentials, notify-service does not read `push_devices`, and Web Push keeps working.
 
-### mail-service (email, microservice tersendiri)
+### mail-service (email, its own microservice)
 
-Email dikirim oleh **`mail-service`**, bukan notify-service. Pemisahannya disengaja: `notify-service` hanya push (Web Push dan FCM), tidak punya kode, env, atau `depends_on` ke email, jadi SMTP atau mail-service yang mati tidak menghentikan push (dibuktikan dengan peristiwa nyata saat mail-service dimatikan; dijaga `scripts/check-service-isolation.sh`).
+Emails are sent by **`mail-service`**, not notify-service. The separation is deliberate: `notify-service` handles push only (Web Push and FCM), with no code, environment, or `depends_on` for email, so an SMTP or mail-service outage does not stop push notifications (proven with a real event while mail-service was stopped; guarded by `scripts/check-service-isolation.sh`).
 
-- **Bentuk:** modul Go sendiri (`mail-service/`, dependensi: `gin` untuk API, `sqlx` dengan driver `pgx` untuk query outbox, dan `pgx` langsung untuk LISTEN), port internal 8092 (worker outbox: lihat bagian "Outbox email" di bawah; tanpa `DATABASE_URL` worker mati dan hanya API kirim yang jalan), tidak ada rute nginx. `GET /health` tidak memeriksa SMTP. `POST /internal/v1/send` dengan header `X-Service-Token` (`MAIL_SERVICE_TOKEN`, minimal 32 karakter): `{"to","template","data"}`. Isi email ditentukan templat di mail-service; pemanggil hanya memberi nama dan data. Jawaban: 200 `{"data":{"status":"sent"}}`, 400 (JSON rusak, field asing, penerima tidak sah, templat tidak ada, data tidak lengkap), 401, 413 (body > 64 KB), 502 `SMTP_FAILED` (detail SMTP tidak dibocorkan), 503 `BUSY` (lebih dari 16 pengiriman bersamaan). Pengiriman sinkron dengan coba ulang di dalam; tidak ada antrian memori, jadi pemanggil yang butuh ketahanan memakai outbox (item 8, di bawah). Alamat penerima tidak dicatat di log.
-- **Paket `internal/mailer`** (dipanggil `service`): pesan MIME `multipart/alternative` (teks dan HTML, quoted-printable, subjek UTF-8), satu tenggat per percakapan SMTP (dial 5 detik, total 15 detik, ikut batal bersama `context`), mode TLS `none`/`starttls`/`tls` (`PlainAuth` menolak kata sandi lewat koneksi tanpa TLS ke host selain localhost), coba ulang 3 kali dengan backoff 1 dan 2 detik untuk kegagalan sementara (dial, 4xx); 5xx dan input tidak sah tidak diulang (`ErrPermanent`); `To` dan `Subject` dengan CR atau LF ditolak.
-- **Templat** (`internal/mailtemplate/templates`, embed): templat yang ada `joined`, `cancelled`, `removed`, `completed`, `queue-closed`, `email-verify`, `email-verified`, `password-reset`, dan `test`. Tiap templat terdiri dari `<nama>.subject.tmpl`, `.txt.tmpl`, `.html.tmpl` plus `layout.html.tmpl` bersama. HTML lewat `html/template` (nilai pengguna otomatis di-escape); `missingkey=error` membuat data yang kurang menjadi galat, bukan "<no value>" yang terkirim; nama templat divalidasi (`^[a-z0-9][a-z0-9-]*$`).
-- **Konfigurasi** divalidasi saat start (`config.Load`): `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`/`SMTP_PASSWORD` (berpasangan), `SMTP_TLS`, `MAIL_SERVICE_TOKEN`; konektivitas tidak diperiksa saat start. `mail-service send-test <alamat>` mengirim email uji.
-- **Dev:** Mailpit (`axllent/mailpit`, versi dipin): SMTP 1025 dan UI 8025 diikat ke 127.0.0.1 di host (ubah lewat `MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT`), tidak lewat nginx; mail-service memakai `mailpit:1025` lewat jaringan internal. **Produksi** memilih lewat `MAIL_MODE` (`.env.prod` atau `make prod-up MAIL_MODE=...`): `smtp` memakai SMTP nyata dan mewajibkan `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `MAIL_SERVICE_TOKEN`; `mailpit` (**bawaan** bila `MAIL_MODE` kosong) menyalakan Mailpit lewat compose profile `mailpit` (UI hanya 127.0.0.1, pesan di volume) dan memaksa `SMTP_*` ke Mailpit, untuk demo atau uji tanpa mengirim email sungguhan. `scripts/check-mail-mode.sh` menolak konfigurasi yang salah sebelum stack berjalan.
+- **Shape:** its own Go module (`mail-service/`; dependencies: `gin` for the API, `sqlx` with the `pgx` driver for outbox queries, and `pgx` directly for LISTEN), internal port 8092 (outbox worker: see the "Email outbox" section below; without `DATABASE_URL` the worker is off and only the send API runs), no nginx route. `GET /health` does not check SMTP. `POST /internal/v1/send` with the header `X-Service-Token` (`MAIL_SERVICE_TOKEN`, at least 32 characters): `{"to","template","data"}`. The content of an email is defined by the templates inside mail-service; callers only supply a name and data. Responses: 200 `{"data":{"status":"sent"}}`, 400 (broken JSON, unknown field, invalid recipient, missing template, incomplete data), 401, 413 (body larger than 64 KB), 502 `SMTP_FAILED` (SMTP details are not leaked), 503 `BUSY` (more than 16 concurrent sends). Sending is synchronous with internal retries; there is no in-memory queue, so a caller that needs durability uses the outbox (item 8, below). Recipient addresses are not written to the log.
+- **Package `internal/mailer`** (called by `service`): MIME message `multipart/alternative` (text and HTML, quoted-printable, UTF-8 subject), one deadline per SMTP conversation (dial 5 seconds, total 15 seconds, cancelled together with the `context`), TLS modes `none`/`starttls`/`tls` (`PlainAuth` refuses passwords over a connection without TLS to hosts other than localhost), 3 retries with a backoff of 1 and 2 seconds for temporary failures (dial, 4xx); 5xx and invalid input are not retried (`ErrPermanent`); `To` and `Subject` containing CR or LF are rejected.
+- **Templates** (`internal/mailtemplate/templates`, embedded): the existing templates are `joined`, `cancelled`, `removed`, `completed`, `queue-closed`, `email-verify`, `email-verified`, `password-reset`, and `test`. Each template consists of `<name>.subject.tmpl`, `.txt.tmpl`, `.html.tmpl`, plus the shared `layout.html.tmpl`. HTML goes through `html/template` (user values are escaped automatically); `missingkey=error` turns missing data into an error instead of a "<no value>" that would be sent; template names are validated (`^[a-z0-9][a-z0-9-]*$`).
+- **Configuration** is validated at startup (`config.Load`): `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`/`SMTP_PASSWORD` (as a pair), `SMTP_TLS`, `MAIL_SERVICE_TOKEN`; connectivity is not checked at startup. `mail-service send-test <address>` sends a test email.
+- **Development:** Mailpit (`axllent/mailpit`, pinned version): SMTP 1025 and UI 8025 are bound to 127.0.0.1 on the host (change them with `MAILPIT_SMTP_PORT` and `MAILPIT_UI_PORT`), not through nginx; mail-service uses `mailpit:1025` over the internal network. **Production** chooses through `MAIL_MODE` (in `.env.prod` or `make prod-up MAIL_MODE=...`): `smtp` uses a real SMTP server and requires `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, and `MAIL_SERVICE_TOKEN`; `mailpit` (**default** when `MAIL_MODE` is empty) starts Mailpit through the compose profile `mailpit` (UI only on 127.0.0.1, messages in a volume) and forces `SMTP_*` to Mailpit, for demos or testing without sending real email. `scripts/check-mail-mode.sh` rejects a wrong configuration before the stack starts.
 
+### Email outbox (item 8)
 
-### Outbox email (item 8)
+Four emails go to the ticket's owner: `joined` (on INSERT of a ticket; joining again returns the same ticket without an INSERT, so there is no duplicate; an owner's insert also produces `joined`), `cancelled`, `removed` (status `deleted`), and `completed` (only from `currently_served`, including when the queue is closed). One more email goes to the **owner**: `queue-closed`, when a queue changes from `active` to `closed` (the trigger `queues_email_outbox_trg`, `AFTER UPDATE OF status ON queues`; `ticket_id` is NULL, `queue_id` is set, one email per queue through the partial unique index `(kind, queue_id)`; the owner's `email_notifications` switch applies). Its link goes to `/riwayat`, not to `/ticket/:queueId`.
 
-Empat email ke pemilik tiket: `joined` (INSERT tiket; join ulang mengembalikan tiket yang sama tanpa INSERT, jadi tidak ganda; sisip owner juga `joined`), `cancelled`, `removed` (status `deleted`), dan `completed` (hanya dari `currently_served`, termasuk saat antrian ditutup). Satu email lagi ke **owner**: `queue-closed`, saat antrian berpindah dari `active` ke `closed` (trigger `queues_email_outbox_trg`, `AFTER UPDATE OF status ON queues`; `ticket_id` NULL, kolom `queue_id` terisi, satu email per antrian lewat indeks unik parsial `(kind, queue_id)`; sakelar `email_notifications` milik owner berlaku). Tautannya ke `/riwayat`, bukan `/ticket/:queueId`.
+Outside the outbox, `auth-service` calls `POST /internal/v1/send` directly for `email-verify`, `password-reset`, and `email-verified` (sent once after a successful verification, best effort).
 
-Di luar outbox, `auth-service` memanggil `POST /internal/v1/send` langsung untuk `email-verify`, `password-reset`, dan `email-verified` (dikirim sekali setelah verifikasi berhasil, best effort).
+- **Atomic write.** The trigger `tickets_email_outbox` (`AFTER INSERT OR UPDATE OF status`, separate from `tickets_notify` so that push is not affected) writes `notification_outbox` in the same transaction as the ticket change, and then `pg_notify('mail_outbox')` wakes the worker. `UNIQUE (kind, ticket_id)` together with `ON CONFLICT DO NOTHING` guarantees one email per event. The payload is a snapshot (`queue_id`, `queue_name`, `prefix`, `number`, `name`); it **never contains the owner's note**, and the number label is formatted in one place (`service.Label` in mail-service, the same as in notify-service). When a ticket is deleted, its outbox rows are deleted too (`ON DELETE CASCADE`), which also avoids id collisions after `TRUNCATE ... RESTART IDENTITY` in the seed.
+- **The switch** `users.email_notifications` (default `TRUE`, changed through `PUT /users/me/preferences`) is read **at the time of the event** by the trigger: turning it off does not cancel emails already in the queue, but later events do not enter the outbox, and turning it back on does not send the missed ones.
+- **The worker lives in mail-service**, not in notify-service: notify-service remains pure push (Web Push and FCM) with no dependency on email (guarded by `scripts/check-service-isolation.sh`). The worker claims rows with a single statement `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED)` that increments `attempts` and moves `next_attempt_at` forward by the lease (`SendTimeout + 1 minute`); the row lock is not held during SMTP. Delivery is **at-least-once**: if the process dies right after SMTP accepts the message and before `sent_at` is written, the email can be sent twice after the lease expires.
+- **Retries:** a temporary failure schedules `next_attempt_at` with an increasing backoff (30 seconds, 1, 2, ... up to a maximum of 30 minutes; `OUTBOX_MAX_ATTEMPTS` defaults to 8). A permanent failure (`mailer.ErrPermanent`: 5xx, a rejected address), a broken payload or template, or exhausted attempts marks `failed_at` and stops; `last_error` keeps the cause (at most 500 characters). One broken row does not block other rows. A **rate limit** `OUTBOX_RATE` (default 5 emails per second) keeps a large queue closure from flooding SMTP. Polling every 5 seconds is a safety net in case a NOTIFY is missed (a dropped LISTEN connection is reconnected).
+- **Privileges:** role `mail_rw` (`db/migrations/04_mail_role.sh`, password `MAIL_DB_PASSWORD`; idempotent): `SELECT` on the outbox, `UPDATE` only on the delivery status columns (`sent_at`, `attempts`, `last_error`, `next_attempt_at`, `failed_at`), and `SELECT (id, email, username, email_notifications)` on `users`. It cannot read `password_hash`, tickets, or other tables, and it cannot INSERT or DELETE (tested with `SET ROLE`). `notify_ro` is unchanged. The init script only runs on an empty data directory; for an existing database, run `db/scripts/apply_schema.sql` and then `04_mail_role.sh` (see the README).
+- **Links** in ticket emails: `QMS_PUBLIC_ORIGIN` + `/ticket/:queueId`; the `queue-closed` email: `QMS_PUBLIC_ORIGIN` + `/riwayat` (an absolute http or https URL is required while the worker is running). The content is in Indonesian, HTML and text; the subject includes the queue name (and the number, for ticket emails).
 
-- **Tulis atomik.** Trigger `tickets_email_outbox` (`AFTER INSERT OR UPDATE OF status`, terpisah dari `tickets_notify` supaya push tidak tersentuh) menulis `notification_outbox` dalam transaksi yang sama dengan perubahan tiket, lalu `pg_notify('mail_outbox')` untuk membangunkan worker. `UNIQUE (kind, ticket_id)` + `ON CONFLICT DO NOTHING` menjamin satu email per kejadian. Payload berupa snapshot (`queue_id`, `queue_name`, `prefix`, `number`, `name`); **tidak pernah memuat catatan owner** dan label nomor diformat di satu tempat (`service.Label` di mail-service, sama dengan notify-service). Ticket dihapus: baris outbox ikut terhapus (`ON DELETE CASCADE`), yang juga mencegah bentrok id setelah `TRUNCATE ... RESTART IDENTITY` pada seed.
-- **Sakelar** `users.email_notifications` (default `TRUE`, diubah lewat `PUT /users/me/preferences`) dibaca **saat kejadian** oleh trigger: mematikan sakelar tidak membatalkan email yang sudah antre, tetapi kejadian sesudahnya tidak masuk outbox, dan menyalakannya lagi tidak mengirim yang terlewat.
-- **Worker ada di mail-service**, bukan notify-service: notify-service tetap push murni (Web Push dan FCM) tanpa dependensi ke email (dijaga `scripts/check-service-isolation.sh`). Worker mengklaim lewat satu pernyataan `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED)` yang menaikkan `attempts` dan memajukan `next_attempt_at` sebesar lease (masa sewa, `SendTimeout + 1 menit`); kunci baris tidak dipegang selama SMTP. Pengiriman **at-least-once**: bila proses mati tepat setelah SMTP menerima pesan dan sebelum `sent_at` ditulis, email bisa terkirim dua kali setelah lease habis.
-- **Coba ulang:** kegagalan sementara menjadwalkan `next_attempt_at` dengan backoff berlipat (30 detik, 1, 2, ... maksimum 30 menit; `OUTBOX_MAX_ATTEMPTS` bawaan 8). Gagal permanen (`mailer.ErrPermanent`: 5xx, alamat ditolak), payload atau templat rusak, atau percobaan habis menandai `failed_at` dan berhenti; `last_error` menyimpan sebabnya (maks. 500 karakter). Satu baris rusak tidak menahan baris lain. **Rate limit** `OUTBOX_RATE` (bawaan 5 email per detik) supaya penutupan antrian besar tidak membanjiri SMTP. Polling tiap 5 detik menjadi jaring pengaman bila NOTIFY terlewat (koneksi LISTEN putus disambung ulang).
-- **Hak akses:** role `mail_rw` (`db/migrations/04_mail_role.sh`, password `MAIL_DB_PASSWORD`; idempoten): `SELECT` pada outbox, `UPDATE` hanya pada kolom status kirim (`sent_at`, `attempts`, `last_error`, `next_attempt_at`, `failed_at`), dan `SELECT (id, email, username, email_notifications)` pada `users`. Tidak bisa membaca `password_hash`, tiket, atau tabel lain, dan tidak bisa INSERT/DELETE (diuji lewat `SET ROLE`). `notify_ro` tidak diubah. Skrip init hanya jalan pada data directory kosong; untuk DB yang sudah ada jalankan `db/scripts/apply_schema.sql` lalu `04_mail_role.sh` (lihat README).
-- **Tautan** di email tiket: `QMS_PUBLIC_ORIGIN` + `/ticket/:queueId`; email `queue-closed`: `QMS_PUBLIC_ORIGIN` + `/riwayat` (wajib URL absolut http/https saat worker aktif). Isi berbahasa Indonesia, HTML dan teks, subjek memuat nama antrian (dan nomor pada email tiket).
+## 6d. Public display (feature 4.5)
 
-## 6d. Layar publik (fitur 4.5)
+A login-free screen for a waiting-room monitor: one card per counter, the next numbers, and the skipped numbers. Contract: the section "Public display" in `api-contract.md`.
 
-Layar tanpa login untuk monitor ruang tunggu: satu kartu per counter, nomor berikutnya, dan dilewati. Kontrak: `api-contract.md` bagian "Layar publik".
+- **Credential = a token in the URL.** `queue_displays` (1:1 with `queues`, `ON DELETE CASCADE`): `token` is unique, 24 random bytes (`crypto/rand`, base64url), and `upcoming_count` and `skipped_count` are between 0 and 10 (CHECK). The token is stored in plain text (not hashed) because the owner needs to see the URL again; for that reason `notify_ro` and `mail_rw` have no privileges on this table. A token in the wrong format is rejected without touching the database.
+- **Minimal public data.** `DisplaySnapshotResponse` (`dto/display_dto.go`) only contains display-ready text. The contract test `TestDisplaySnapshot_PublicResponseKeysAreLocked` locks the list of keys, so that a new field cannot leak by accident.
+- **Separate SSE room.** The hub sends a full event payload (user ids and so on) to every client in a room, so the public display must not join the queue room. `sse.DisplayRoom(queueID)` = `-queueID`; `Hub.Notify` sends the full payload to the queue room and a **`display_changed` signal without data** to the display room (except for `queue_qr_updated`). No existing event emitter has changed: `counter_updated` (create, rename, delete counter), `ticket_*`, and `queue_*` all go through `Hub.Notify`.
+- **Snapshot cache** (`service/display_cache.go`): 1 second per token, with one load shared by many concurrent screens. `Hub.SetBeforeNotify(cache.Invalidate)` clears the cache **before** the event is distributed, so a client that refetches after the signal does not get old data. A load that started before the invalidation is not stored (an `epoch` counter). Replacing the token or turning the display off clears the cache, so the old token returns 404 immediately.
+- **Limits.** 20 display SSE connections per queue (`Hub.RoomSize(DisplayRoom(id))`); beyond that, 429. nginx: `display_zone`, unbuffered SSE, and the log format `qms_masked` that masks the token in the path (`map $uri $uri_masked`) for `/display/<token>` and `/api/v1/display/<token>[/event]`; the display page uses `Referrer-Policy: no-referrer` and `Cache-Control: no-store`.
+- **Frontend.** The public route `app/display/[token].tsx` (without `AuthGate`), the hook `use-display-screen` (snapshot plus SSE without login, a 150 ms debounce for bursts of signals, resync every 45 seconds while the stream beats and every 3 seconds when it does not, Wake Lock), `DisplayCounterCard` (the style of the customer's "Your Number" card; empty counters are dimmed), and a dynamic layout from 1 to 10 cards (`utils/display.ts`). The status "Reconnecting..." appears when the stream has not beaten for 30 seconds AND the last snapshot is more than 10 seconds old; the last numbers stay visible. On the owner side: `DisplaySettingsCard` in the queue details.
+- **Not built yet:** a QR join on the screen (the column `show_qr` is deliberately not present yet; add it through `apply_schema.sql`).
 
-- **Kredensial = token di URL.** `queue_displays` (1:1 dengan `queues`, `ON DELETE CASCADE`): `token` unik 24 byte acak (`crypto/rand`, base64url), `upcoming_count` dan `skipped_count` 0 sampai 10 (CHECK). Token disimpan mentah (bukan hash) karena owner perlu melihat URL-nya lagi; karena itu `notify_ro` dan `mail_rw` tidak punya hak apa pun di tabel ini. Token berbentuk salah ditolak tanpa menyentuh database.
-- **Data publik minimal.** `DisplaySnapshotResponse` (`dto/display_dto.go`) hanya berisi teks siap tampil. Tes kontrak `TestDisplaySnapshot_PublicResponseKeysAreLocked` mengunci daftar kunci, supaya field baru tidak bocor tanpa sengaja.
-- **Room SSE terpisah.** Hub menyiarkan payload event lengkap (id user dan seterusnya) ke semua klien satu room, jadi layar publik tidak boleh ikut room antrian. `sse.DisplayRoom(queueID)` = `-queueID`; `Hub.Notify` mengirim payload lengkap ke room antrian dan **sinyal `display_changed` tanpa data** ke room layar (kecuali `queue_qr_updated`). Tidak ada perubahan pada emitter event yang sudah ada: `counter_updated` (buat, ganti nama, hapus counter), `ticket_*`, `queue_*` semuanya melewati `Hub.Notify`.
-- **Cache snapshot** (`service/display_cache.go`): 1 detik per token, satu pemuatan untuk banyak layar yang bersamaan. `Hub.SetBeforeNotify(cache.Invalidate)` membatalkan cache **sebelum** event disebar, jadi klien yang mengambil ulang setelah sinyal tidak mendapat data lama. Pemuatan yang mulai sebelum pembatalan tidak disimpan (penghitung `epoch`). Ganti token atau matikan layar membatalkan cache, jadi token lama langsung 404.
-- **Batas.** 20 sambungan SSE layar per antrian (`Hub.RoomSize(DisplayRoom(id))`), selebihnya 429. nginx: `display_zone`, SSE tanpa buffer, dan format log `qms_masked` yang menyamarkan token di path (`map $uri $uri_masked`) untuk `/display/<token>` dan `/api/v1/display/<token>[/event]`; halaman layar memakai `Referrer-Policy: no-referrer` dan `Cache-Control: no-store`.
-- **Frontend.** Rute publik `app/display/[token].tsx` (tanpa `AuthGate`), hook `use-display-screen` (snapshot + SSE tanpa login, debounce 150 ms untuk sinyal beruntun, resinkron 45 detik bila stream berdetak dan 3 detik bila tidak, Wake Lock), `DisplayCounterCard` (gaya kartu "Nomor Anda" customer; counter kosong redup), tata letak dinamis 1 sampai 10 kartu (`utils/display.ts`). Status "Menyambung ulang..." muncul bila stream tidak berdetak 30 detik DAN snapshot terakhir lebih dari 10 detik; angka terakhir tetap tampil. Sisi owner: `DisplaySettingsCard` di detail antrian.
-- **Belum dibangun:** QR join di layar (kolom `show_qr` sengaja belum ada; tambah lewat `apply_schema.sql`).
+## 6c. Profile photo
 
-## 6c. Foto profil
+`PUT/GET/DELETE /users/me/avatar` (api-contract.md). The photo is **private**: only `GET /users/me/avatar` exists, always for the caller, so there is no public URL and a queue owner cannot see a customer's photo.
 
-`PUT/GET/DELETE /users/me/avatar` (api-contract.md). Foto **privat**: hanya `GET /users/me/avatar` yang ada, selalu untuk pemanggil, jadi tidak ada URL publik dan owner antrian tidak melihat foto customer.
+- **Processing** (`backend/internal/imageproc`): the type is determined from the file content (`http.DetectContentType`), and only JPEG, PNG, and WebP are accepted; the dimensions are read from the header first and limited to 24 megapixels before decoding (protection against decompression bombs); a center square crop, resized to 512x512 (CatmullRom; small photos are not enlarged), re-encoded as JPEG with the quality lowered step by step until the result fits 150 KB. Re-encoding removes EXIF and GPS data; transparent PNG areas are flattened onto white.
+- **Storage**: the table `user_avatars` (`user_id` as PK and FK `ON DELETE CASCADE`, `data BYTEA` with a CHECK of 150 KB, `updated_at`). It lives in Postgres because it is automatically included in `scripts/backup-prod.sh` (which backs up the database only), needs no new volume or service, and writes atomically. `GET /users/me` only reads `updated_at` (`avatar_updated_at`), never the `data` column. `notify_ro` has no privileges on this table.
+- **The interface `service.AvatarStore`** (`Put/Get/Delete/UpdatedAt`) is the path to move to object storage. Size: about 50 KB per photo, so 100 thousand photos are about 5 GB, and 1 million photos (every user) about 50 GB. **Threshold to move: about 100 thousand photos (5 GB in the database), or when the backend runs more than one instance that needs to share files.** Object storage means a private bucket (no versioning), credentials in the environment, its own backup policy, and explicit object deletion when an account is deleted.
+- **nginx**: the location `= /api/v1/users/me/avatar` raises `client_max_body_size` to 6m only here (the global limit stays 1m) and uses the zone `avatar_zone` at 5 requests per second per IP. A 413 rejection from nginx is HTML, so the client maps the error by status.
+- **Frontend**: `expo-image-picker`. Because the endpoint requires a token, the web fetches the photo and creates an object URL (`hooks/use-avatar-source.ts`); native uses `expo-image` with the `Authorization` header. The web shrinks the photo in the browser first (`utils/avatar-image.ts`, canvas) so that uploads are small and the EXIF orientation is correct; the server still validates. On the Profile page the photo is shown at 88 px (the header avatar is 36 px through `UserAvatar`); when a photo exists, tapping it opens an enlarged photo popup (`ModalCard` in `compact` mode, with the size computed by `utils/avatar-preview.ts` to fit the screen, at most 464 px), closed with a small X button in the corner of the photo, a tap outside the card, or the back button. Without a photo (icon only), there is no popup. Buttons: "Upload Photo" or "Change Photo", and "Delete Photo" (through `ConfirmModal`).
+- **Development**: the frontend container keeps `node_modules` in an anonymous volume, so after adding a package run `docker compose up -d --build -V frontend`.
 
-- **Pengolahan** (`backend/internal/imageproc`): jenis ditentukan dari isi berkas (`http.DetectContentType`), hanya JPEG, PNG, WebP; dimensi dibaca dari header dulu dan dibatasi 24 megapiksel sebelum decode (anti decompression bomb); crop tengah persegi, perkecil ke 512x512 (CatmullRom, foto kecil tidak diperbesar), encode ulang JPEG dengan kualitas turun bertahap sampai muat 150 KB. Encode ulang membuang EXIF dan GPS; PNG transparan dialasi putih.
-- **Penyimpanan**: tabel `user_avatars` (`user_id` PK dan FK `ON DELETE CASCADE`, `data BYTEA` dengan CHECK 150 KB, `updated_at`). Dipilih di Postgres karena otomatis ikut `scripts/backup-prod.sh` (hanya mencadangkan database), tanpa volume atau layanan baru, dan tulis atomik. `GET /users/me` hanya membaca `updated_at` (`avatar_updated_at`), tidak pernah kolom `data`. `notify_ro` tidak punya hak apa pun di tabel ini.
-- **Antarmuka `service.AvatarStore`** (`Put/Get/Delete/UpdatedAt`) adalah jalur pindah ke object storage. Ukuran: sekitar 50 KB per foto, jadi 100 ribu foto sekitar 5 GB, 1 juta foto (semua user) sekitar 50 GB. **Ambang pindah: sekitar 100 ribu foto (5 GB di database), atau saat backend dijalankan lebih dari satu instance yang butuh berbagi berkas.** Object storage berarti bucket privat (tanpa versioning), kredensial di env, kebijakan backup sendiri, dan penghapusan objek eksplisit saat akun dihapus.
-- **nginx**: lokasi `= /api/v1/users/me/avatar` menaikkan `client_max_body_size` ke 6m hanya di sini (global tetap 1m) dan memakai zona `avatar_zone` 5 r/s per IP. Penolakan 413 dari nginx berbentuk HTML, jadi klien memetakan galat lewat status.
-- **Frontend**: `expo-image-picker`. Karena endpoint butuh token, web mengambil foto dengan fetch lalu object URL (`hooks/use-avatar-source.ts`); native memakai `expo-image` dengan header `Authorization`. Web memperkecil foto di browser dulu (`utils/avatar-image.ts`, canvas) supaya unggahan kecil dan orientasi EXIF benar; server tetap memvalidasi. Di Profil foto tampil 88 px (avatar header 36 px lewat `UserAvatar`); bila foto ada, mengetuknya membuka popup foto diperbesar (`ModalCard` mode `compact`, sisi dihitung `utils/avatar-preview.ts` agar muat di layar, maksimum 464 px) yang ditutup tombol X kecil di pojok foto, tap di luar kartu, atau tombol back. Tanpa foto (hanya ikon) tidak ada popup. Tombol: "Unggah Foto" atau "Ganti Foto", dan "Hapus Foto" (lewat `ConfirmModal`).
-- **Dev**: container frontend menyimpan `node_modules` di volume anonim, jadi setelah menambah paket jalankan `docker compose up -d --build -V frontend`.
+## 7. Limitations and what is not built yet
 
-## 7. Batasan dan yang belum dibangun
+Not built yet:
+- Changing the email address (`email_change`) is not built; the `purpose` column is already prepared for it.
+- Load testing. (Observability exists: OpenTelemetry, Prometheus, Loki, Tempo, Grafana, and 11 alert rules, as the overlay `docker-compose.observability.yml`; the alerts do not send notifications yet. payment-service does not yet have JSON logs, metrics, or traces.)
+- An outbox for push (Web Push and FCM), native iOS notifications, a migration runner, automatic backups, HSTS and Cloudflare Access.
+- A QR join on the public display (the column `show_qr` does not exist yet); subscription plans other than one month (30 days) through QRIS BorderPay, and recurring billing.
+- Removed from the product (31 October 2026): `registration_limit`, the daily QR limit, the history limit, and permanent deletion (history always remains).
 
-Belum dibangun:
-- Ganti alamat email (`email_change`) belum dibangun; kolom `purpose` sudah menyiapkannya.
-- Uji beban. (Observability sudah ada: OpenTelemetry, Prometheus, Loki, Tempo, Grafana, dan 11 aturan alert sebagai overlay `docker-compose.observability.yml`; alert belum mengirim notifikasi. payment-service belum punya log JSON, metrik, maupun trace.)
-- Outbox untuk push (Web Push dan FCM), notifikasi iOS native, migration runner, backup otomatis, HSTS dan Cloudflare Access.
-- QR join di layar publik (kolom `show_qr` belum ada); plan langganan selain satu bulan (30 hari) lewat QRIS BorderPay, serta penagihan berulang.
-- Dihapus dari produk (31 Okt 2026): `registration_limit`, batas harian QR, batas riwayat, dan penghapusan permanen (riwayat selalu ada).
+Built since the previous version of this document: customer cancellation, owner removal of a number, custom counters, insertion at a position, the requeue fallback for Skip, notes, history and export, the public display, the profile photo, password reset, email notifications, Google login (requires `GOOGLE_CLIENT_IDS`), email verification, and the 30-day subscription through QRIS BorderPay (replacing the MOCK subscription).
 
-Sudah dibangun sejak versi sebelumnya dokumen ini: pembatalan oleh customer, hapus nomor oleh owner, counter kustom, sisip posisi, antrian ulang (fallback Skip), catatan, riwayat dan ekspor, layar publik, foto profil, lupa password, email notifikasi, login Google (butuh `GOOGLE_CLIENT_IDS`), verifikasi email, dan langganan 30 hari lewat QRIS BorderPay (menggantikan langganan MOCK).
-
-Batasan teknis:
-- Hub SSE di memori (lihat 2.7): backend hanya satu instance.
-- Deploy demo: `docker-compose.prod.yml` di belakang Cloudflare Tunnel; backend `APP_ENV=production` memvalidasi rahasia dan origin https.
-- Push tidak punya outbox; email punya (at-least-once, bisa terkirim dua kali bila proses mati tepat setelah SMTP menerima).
-- `ALREADY_JOINED` tidak lagi dikirim oleh join (join ulang mengembalikan tiket yang ada). Handler join masih memetakan `ErrAlreadyJoined` dan frontend masih menanganinya agar tidak merusak klien lama; kode itu hanya aktif untuk sisip owner (`POST /insert`, 409 `ALREADY_JOINED`).
-- Harga langganan dibaca dari `SUBSCRIPTION_PRICE_IDR` (bawaan Rp15.000; nilai tidak valid atau <= 0 menggagalkan start backend).
+Technical limitations:
+- The SSE hub is in memory (see 2.7): the backend runs as a single instance.
+- Demo deployment: `docker-compose.prod.yml` behind Cloudflare Tunnel; the backend with `APP_ENV=production` validates secrets and https origins.
+- Push has no outbox; email has one (at-least-once, so it can be sent twice if the process dies right after SMTP accepts the message).
+- `ALREADY_JOINED` is no longer returned by join (joining again returns the existing ticket). The join handler still maps `ErrAlreadyJoined` and the frontend still handles it, so that older clients are not broken; that code path is only active for an owner's insert (`POST /insert`, 409 `ALREADY_JOINED`).
