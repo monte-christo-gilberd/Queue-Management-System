@@ -20,7 +20,6 @@
   <a href="https://github.com/monte-christo-gilberd/Queue-Management-System/actions"><img alt="CI: GitHub Actions" src="https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white"></a>
   <img alt="Platform: Web and Android" src="https://img.shields.io/badge/Platform-Web%20%7C%20Android-blue?style=for-the-badge&logo=android&logoColor=white">
   <img alt="Status: Active" src="https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge">
-  <a href="https://github.com/monte-christo-gilberd/Queue-Management-System/pulls"><img alt="PRs Welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge&logo=github&logoColor=white"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge"></a>
   <a href="docs/"><img alt="Docs" src="https://img.shields.io/badge/Docs-available-blue?style=for-the-badge&logo=readthedocs&logoColor=white"></a>
 </p>
